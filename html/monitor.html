@@ -523,7 +523,7 @@ async function connectSubscriber() {
         pendingSubQuery.reject(new Error(msg.message));
         pendingSubQuery = null;
       } else if (msg.type === 'live') {
-        handleLive(msg.payload);  // server sends {type:'live', subject, payload}
+        handleLive(msg.payload, msg.subject);
       }
     } catch(e) {}
   };
@@ -546,8 +546,30 @@ function subQuery(siteId, fromTs, toTs, limit) {
 }
 
 // ── Live push handler ──────────────────────────────────────────
-function handleLive(d) {
-  // Track last-seen timestamp for the "last write" status display
+function handleLive(payload, subject) {
+  // Support both topic modes from the generator:
+  //   per_cell:      payload has site_id/rack_id/module_id/cell_id + all fields
+  //   per_cell_item: subject = "batteries.site=0.rack=1.module=2.cell=3.voltage"
+  //                  payload = {timestamp, value, unit}
+  let d;
+  if (payload.site_id !== undefined) {
+    d = payload;
+  } else {
+    // Parse identity from subject, field name from last segment
+    const parts = (subject || '').split('.');
+    const field = parts[parts.length - 1];
+    const meta  = {};
+    parts.forEach(p => { const [k, v] = p.split('='); if (v !== undefined) meta[k] = v; });
+    d = {
+      site_id:   meta.site,
+      rack_id:   meta.rack,
+      module_id: meta.module,
+      cell_id:   meta.cell,
+      timestamp: payload.timestamp,
+      [field]:   payload.value,
+    };
+  }
+
   if (d.timestamp) liveLastTs = d.timestamp;
 
   const [site, rack, mod, cell] = selValues('selSite','selRack','selModule','selCell');
