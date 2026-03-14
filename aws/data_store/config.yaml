@@ -6,8 +6,15 @@ s3:
   region: us-east-1
   access_key: minioadmin
   secret_key: minioadmin
-  prefix: ""                              # optional key prefix to monitor
-  project_id: 0                          # written as proj={project_id} in the S3 path
+  prefix: ""
+  project_id: 0
+  # Partition order — must match parquet_writer/config.yaml
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
 
 poll_interval_seconds: 10
 

@@ -115,20 +115,19 @@ def check_s3(cfg: dict) -> bool:
 def run_history_query(cfg: dict, proj_id: str, site_id: str, from_ts: float, to_ts: float, limit: int) -> dict:
     bucket = cfg["s3"]["bucket"]
     prefix = cfg["s3"].get("prefix", "").strip("/")
-    base   = f"s3://{bucket}/{prefix + '/' if prefix else ''}"
-    if proj_id and site_id:
-        path = f"{base}**/proj={proj_id}/site={site_id}/*.parquet"
-    elif proj_id:
-        path = f"{base}**/proj={proj_id}/**/*.parquet"
-    elif site_id:
-        path = f"{base}**/site={site_id}/*.parquet"
-    else:
-        path = f"{base}**/*.parquet"
+    # Always glob all parquet files — hive_partitioning detects key=value dirs
+    # and maps them to columns; proj_id / site_id filters applied via SQL WHERE.
+    path = f"s3://{bucket}/{prefix + '/' if prefix else ''}**/*.parquet"
 
+    where = [f"timestamp >= {from_ts}", f"timestamp <= {to_ts}"]
+    if proj_id:
+        where.append(f"CAST(project AS VARCHAR) = '{proj_id}'")
+    if site_id:
+        where.append(f"CAST(site AS VARCHAR) = '{site_id}'")
     sql = f"""
         SELECT *
         FROM read_parquet('{path}', hive_partitioning=true)
-        WHERE timestamp >= {from_ts} AND timestamp <= {to_ts}
+        WHERE {' AND '.join(where)}
         ORDER BY timestamp DESC
         LIMIT {limit}
     """

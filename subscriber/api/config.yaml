@@ -12,7 +12,7 @@ s3:
   access_key: minioadmin
   secret_key: minioadmin
   prefix: ""
-  project_id: 0                  # filter: omit to query all projects
+  project_id: 0
 
 # WebSocket server (monitor.html, subscriber.html)
 websocket:

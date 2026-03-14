@@ -19,7 +19,15 @@ s3:
   access_key: minioadmin
   secret_key: minioadmin
   prefix: ""
-  project_id: 0                  # written as proj={project_id} in the S3 path
+  project_id: 0
+  # Partition order — change here only; code reads this list at runtime.
+  # Available variables: {project_id} {site_id} {year} {month} {day} {hour}
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
 
 # Parquet
 parquet:
