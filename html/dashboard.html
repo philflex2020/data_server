@@ -813,72 +813,91 @@
   }
 
   // ── Architecture SVG ─────────────────────────────────────────
-  const PIPELINES = {
-    // detect by presence of component name
-    nats: {
-      detect: ['mosquitto','nats','nats_bridge'],
-      viewBox: '0 0 430 490',
-      nodes: [
-        { id:'generator',     label:'Battery Sites',   sub:'dev: generator · :8765',              port:'', x:10, y:10,  w:190, h:48, ext:true },
-        { id:'mosquitto',     label:'FlashMQ',          sub:'MQTT Broker · AWS EC2 (dev: :1884)',  port:'', x:10, y:88,  w:190, h:48 },
-        { id:'nats_bridge',   label:'NATS Bridge',      sub:'FlashMQ → NATS · AWS EC2',            port:'', x:10, y:166, w:190, h:48 },
-        { id:'nats',          label:'NATS JetStream',   sub:'Durable stream · AWS EC2 · :4222',    port:'', x:10, y:244, w:190, h:48 },
-        { id:'parquet_writer',label:'Parquet Writer',   sub:'ack-after-S3-write · AWS EC2',        port:'', x:10, y:322, w:190, h:48 },
-        { id:'minio',         label:'AWS S3',           sub:'Parquet store · AWS (dev: MinIO :9000)', port:'', x:10, y:400, w:190, h:48 },
-        { id:'subscriber_api',label:'Subscriber API',   sub:'NATS live + DuckDB/S3 history · :8767', port:'', x:225,y:244, w:145, h:48 },
-        { id:'monitor',       label:'monitor.html',     sub:'Browser · WebSocket',                 port:'', x:225,y:322, w:145, h:48, ext:true },
-        { id:'aws_server',    label:'AWS Store',        sub:'Parquet browser · AWS EC2 · :8766',   port:'', x:225,y:400, w:145, h:48 },
-      ],
-      arrows: [
-        { id:'gen-mosq',    x1:105,y1:58,  x2:105,y2:88,  label:'MQTT',    flow:['generator','mosquitto'] },
-        { id:'mosq-bridge', x1:105,y1:136, x2:105,y2:166, label:'sub',     flow:['mosquitto','nats_bridge'] },
-        { id:'bridge-nats', x1:105,y1:214, x2:105,y2:244, label:'pub',     flow:['nats_bridge','nats'] },
-        { id:'nats-writer', x1:105,y1:292, x2:105,y2:322, label:'pull',    flow:['nats','parquet_writer'] },
-        { id:'writer-minio',x1:105,y1:370, x2:105,y2:400, label:'PUT',     flow:['parquet_writer','minio'] },
-        { id:'minio-aws',   x1:200,y1:424, x2:225,y2:424, label:'list',    flow:['minio','aws_server'] },
-        { id:'nats-sub',    x1:200,y1:268, x2:225,y2:268, label:'live',    flow:['nats','subscriber_api'] },
-        { id:'sub-monitor', x1:297,y1:292, x2:297,y2:322, label:'WS',      flow:['subscriber_api'] },
-      ],
-    },
-    orig: {
-      detect: ['flashmq','influxdb','telegraf'],
-      viewBox: '0 0 270 420',
-      nodes: [
-        { id:'generator', label:'Battery Sites',   sub:'Remote IoT installations (dev: generator)', port:'', x:10, y:10,  w:200, h:48, ext:true },
-        { id:'flashmq',   label:'FlashMQ',          sub:'MQTT Broker · AWS EC2 · :1883',             port:'', x:10, y:88,  w:200, h:48 },
-        { id:'telegraf',  label:'Telegraf',          sub:'MQTT subscriber · AWS EC2',                 port:'', x:10, y:166, w:200, h:48 },
-        { id:'influxdb',  label:'InfluxDB2 + EFS',   sub:'Time-series · AWS EC2 · :8086',             port:'', x:10, y:244, w:200, h:48 },
-        { id:'monitor',   label:'orig_aws.html',     sub:'Browser · REST/Flux queries',               port:'', x:10, y:322, w:200, h:48, ext:true },
-      ],
-      arrows: [
-        { id:'gen-flash',  x1:110,y1:58,  x2:110,y2:88,  label:'MQTT pub', flow:['generator','flashmq'] },
-        { id:'flash-tele', x1:110,y1:136, x2:110,y2:166, label:'subscribe',flow:['flashmq','telegraf'] },
-        { id:'tele-infl',  x1:110,y1:214, x2:110,y2:244, label:'write',    flow:['telegraf','influxdb'] },
-        { id:'infl-mon',   x1:110,y1:292, x2:110,y2:322, label:'REST/Flux', flow:['influxdb'] },
-      ],
-    },
-  };
 
-  let archBuilt = false;
+  function makePipelines(port, comps) {
+    const h          = AWS_PORTS.has(port) ? 'spark-22b6' : 'phil-dev';
+    const mqttPort   = (port === 8761) ? ':1884' : ':1883';
+    // generator WebSocket only on phil-dev NATS stack
+    const genSub     = comps['generator'] ? h + ' · generator · :8765' : h + ' · via Mosquitto (port 8763)';
+    const genExt     = !comps['generator'];
+    // mosquitto may be managed by a different manager (spark: port 8763)
+    const mosqExt    = !comps['mosquitto'];
+    const mosqSub    = mosqExt ? 'MQTT Broker · ' + h + ' ' + mqttPort + ' (managed by port 8763)'
+                               : 'MQTT Broker · ' + h + ' ' + mqttPort;
+
+    // orig stack broker: flashmq on phil-dev, mosquitto on spark
+    const brokerId   = comps['flashmq'] ? 'flashmq' : 'mosquitto';
+    const brokerLabel= comps['flashmq'] ? 'FlashMQ' : 'Mosquitto';
+
+    return {
+      nats: {
+        detect: c => c['nats'] && c['nats_bridge'],
+        viewBox: '0 0 430 490',
+        nodes: [
+          { id:'generator',     label:'Battery Sites',   sub: genSub,                                      port:'', x:10,  y:10,  w:190, h:48, ext: genExt  },
+          { id:'mosquitto',     label:'Mosquitto',        sub: mosqSub,                                     port:'', x:10,  y:88,  w:190, h:48, ext: mosqExt },
+          { id:'nats_bridge',   label:'NATS Bridge',      sub: 'MQTT → NATS · ' + h,                       port:'', x:10,  y:166, w:190, h:48 },
+          { id:'nats',          label:'NATS JetStream',   sub: 'Durable stream · ' + h + ' :4222',         port:'', x:10,  y:244, w:190, h:48 },
+          { id:'parquet_writer',label:'Parquet Writer',   sub: 'ack-after-S3-write · ' + h,                port:'', x:10,  y:322, w:190, h:48 },
+          { id:'minio',         label:'MinIO / S3',       sub: 'Parquet store · ' + h + ' :9000',          port:'', x:10,  y:400, w:190, h:48 },
+          { id:'subscriber_api',label:'Subscriber API',   sub: 'NATS live + DuckDB · ' + h + ' :8767',     port:'', x:225, y:244, w:145, h:48 },
+          { id:'monitor',       label:'monitor.html',     sub: 'Browser · WebSocket',                      port:'', x:225, y:322, w:145, h:48, ext:true },
+          { id:'aws_server',    label:'AWS Store',        sub: 'Parquet browser · ' + h + ' :8766',        port:'', x:225, y:400, w:145, h:48 },
+        ],
+        arrows: [
+          { id:'gen-mosq',    x1:105,y1:58,  x2:105,y2:88,  label:'MQTT',    flow:['generator','mosquitto'] },
+          { id:'mosq-bridge', x1:105,y1:136, x2:105,y2:166, label:'sub',     flow:['mosquitto','nats_bridge'] },
+          { id:'bridge-nats', x1:105,y1:214, x2:105,y2:244, label:'pub',     flow:['nats_bridge','nats'] },
+          { id:'nats-writer', x1:105,y1:292, x2:105,y2:322, label:'pull',    flow:['nats','parquet_writer'] },
+          { id:'writer-minio',x1:105,y1:370, x2:105,y2:400, label:'PUT',     flow:['parquet_writer','minio'] },
+          { id:'minio-aws',   x1:200,y1:424, x2:225,y2:424, label:'list',    flow:['minio','aws_server'] },
+          { id:'nats-sub',    x1:200,y1:268, x2:225,y2:268, label:'live',    flow:['nats','subscriber_api'] },
+          { id:'sub-monitor', x1:297,y1:292, x2:297,y2:322, label:'WS',      flow:['subscriber_api'] },
+        ],
+      },
+      orig: {
+        detect: c => c['influxdb'] && c['telegraf'],
+        viewBox: '0 0 270 420',
+        nodes: [
+          { id:'generator',  label:'Battery Sites', sub: h + ' · generator',                  port:'', x:10, y:10,  w:200, h:48, ext:true },
+          { id: brokerId,    label: brokerLabel,     sub: 'MQTT Broker · ' + h + ' :1883',     port:'', x:10, y:88,  w:200, h:48 },
+          { id:'telegraf',   label:'Telegraf',       sub: 'MQTT subscriber · ' + h,            port:'', x:10, y:166, w:200, h:48 },
+          { id:'influxdb',   label:'InfluxDB2',      sub: 'Time-series · ' + h + ' :8086',     port:'', x:10, y:244, w:200, h:48 },
+          { id:'monitor',    label:'orig_aws.html',  sub: 'Browser · REST/Flux queries',       port:'', x:10, y:322, w:200, h:48, ext:true },
+        ],
+        arrows: [
+          { id:'gen-broker',    x1:110,y1:58,  x2:110,y2:88,  label:'MQTT pub',  flow:['generator', brokerId] },
+          { id:'broker-tele',   x1:110,y1:136, x2:110,y2:166, label:'subscribe', flow:[brokerId, 'telegraf'] },
+          { id:'tele-infl',     x1:110,y1:214, x2:110,y2:244, label:'write',     flow:['telegraf','influxdb'] },
+          { id:'infl-mon',      x1:110,y1:292, x2:110,y2:322, label:'REST/Flux', flow:['influxdb'] },
+        ],
+      },
+    };
+  }
+
+  let archBuilt     = false;
   let activePipeline = null;
+  let lastArchPort  = null;
 
-  function detectPipeline() {
-    for (const [key, def] of Object.entries(PIPELINES)) {
-      if (def.detect.every(id => components[id])) return key;
+  function detectPipeline(pipelines) {
+    for (const [key, def] of Object.entries(pipelines)) {
+      if (def.detect(components)) return key;
     }
     return null;
   }
 
   function renderArch() {
-    const key = detectPipeline();
+    const pipelines = makePipelines(activePort, components);
+    const key = detectPipeline(pipelines);
     if (!key) return;
-    const def = PIPELINES[key];
+    const def = pipelines[key];
     const svg = document.getElementById('archSvg');
 
-    // Build on first render or pipeline change
-    if (!archBuilt || activePipeline !== key) {
+    // Rebuild when pipeline type or active port changes
+    if (!archBuilt || activePipeline !== key || lastArchPort !== activePort) {
       activePipeline = key;
-      archBuilt = true;
+      lastArchPort   = activePort;
+      archBuilt      = true;
       buildArchSVG(svg, def);
     }
     updateArchStatus(svg, def);

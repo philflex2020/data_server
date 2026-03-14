@@ -55,6 +55,9 @@
     .connect-bar input:focus { border-color: #2563eb; }
     .connect-bar input.host { width: 160px; }
     .connect-bar input.port { width: 70px; }
+    .stack-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#334155; margin-right:4px; vertical-align:middle; }
+    .stack-dot.up   { background:#3fb950; }
+    .stack-dot.down { background:#f85149; }
     .ping-box {
       margin-left: auto; display: flex; align-items: center; gap: 8px;
       font-size: 12px; color: #94a3b8;
@@ -182,6 +185,17 @@
       NATS: <span id="natsPill" class="pill bad">OFFLINE</span>
       &nbsp;S3: <span id="s3Pill" class="pill bad">OFFLINE</span>
     </div>
+  </div>
+
+  <!-- Stack selector -->
+  <div class="stack-bar" style="display:flex;gap:6px;padding:6px 12px;background:#0a1628;border-bottom:1px solid #1e3a8a;flex-wrap:wrap">
+    <button class="btn" id="btnPhilDev" onclick="selectHost('ds')">
+      <span class="stack-dot" id="dotPhilDev"></span> phil-dev :8767
+    </button>
+    <button class="btn" id="btnSpark" onclick="selectHost('aws')">
+      <span class="stack-dot" id="dotSpark"></span> spark-22b6 :8767
+    </button>
+    <span style="margin-left:auto;font-size:11px;color:#475569;align-self:center" id="hostLabel">—</span>
   </div>
 
   <!-- Connect bar -->
@@ -550,13 +564,45 @@
   function setNatsPill(cls, text)   { const e = document.getElementById('natsPill');   e.className=`pill ${cls}`; e.textContent=text; }
   function setS3Pill(cls, text)     { const e = document.getElementById('s3Pill');     e.className=`pill ${cls}`; e.textContent=text; }
 
-  // ── Host persistence + auto-connect ──────────────────────────
+  // ── Host persistence + stack selector ────────────────────────
+  let activeHostKey = 'ds_host';
+
+  function selectHost(key) {
+    activeHostKey = key === 'aws' ? 'aws_host' : 'ds_host';
+    const el = document.getElementById('wsHost');
+    el.value = localStorage.getItem(activeHostKey) || window.location.hostname;
+    document.getElementById('hostLabel').textContent =
+      'ws://' + el.value + ':' + (document.getElementById('wsPort').value || '8767');
+    document.getElementById('btnPhilDev').className = 'btn' + (key === 'ds'  ? ' primary' : '');
+    document.getElementById('btnSpark').className   = 'btn' + (key === 'aws' ? ' primary' : '');
+    probeHosts();
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    connectWs();
+  }
+
+  function probeHosts() {
+    ['ds_host','aws_host'].forEach((hostKey, i) => {
+      const dotId = i === 0 ? 'dotPhilDev' : 'dotSpark';
+      const dot = document.getElementById(dotId);
+      const h = localStorage.getItem(hostKey) || window.location.hostname;
+      const port = document.getElementById('wsPort').value || '8767';
+      const p = new WebSocket(`ws://${h}:${port}`);
+      const t = setTimeout(() => { dot.className = 'stack-dot down'; try { p.close(); } catch(e){} }, 3000);
+      p.onopen  = () => { clearTimeout(t); dot.className = 'stack-dot up';   p.close(); };
+      p.onerror = () => { clearTimeout(t); dot.className = 'stack-dot down'; };
+    });
+  }
+
   (function() {
     const el = document.getElementById('wsHost');
-    const saved = localStorage.getItem('ds_host');
-    if (saved) el.value = saved;
-    el.addEventListener('change', () => localStorage.setItem('ds_host', el.value.trim()));
-    connectWs();
+    el.addEventListener('change', () => {
+      localStorage.setItem(activeHostKey, el.value.trim());
+      document.getElementById('hostLabel').textContent =
+        'ws://' + el.value.trim() + ':' + (document.getElementById('wsPort').value || '8767');
+    });
+    probeHosts();
+    setInterval(probeHosts, 10000);
+    selectHost('ds');   // default to phil-dev
   })();
 </script>
 </body>
