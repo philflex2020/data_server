@@ -282,6 +282,7 @@ window.onload = () => {
   }, 500);
   probeAll();
   setInterval(probeAll, 10000);
+  selectStack('influxdb');   // pre-select orig_aws on load
 };
 
 function saveHost() { localStorage.setItem('mon_host', document.getElementById('cfgHost').value.trim()); }
@@ -306,6 +307,8 @@ function selectStack(stack) {
     document.getElementById('sbSource').textContent    = 'Sub API';
   }
   setBackendPill('bad', 'OFFLINE');
+  // auto-connect after stack switch
+  doConnect();
 }
 
 // Probe connectivity for each stack dot
@@ -315,7 +318,9 @@ function probeStack(stack) {
   if (stack === 'influxdb') {
     const host = document.getElementById('cfgHost').value.trim() || 'localhost';
     const port = document.getElementById('cfgPort').value.trim() || '8086';
-    fetch(`http://${host}:${port}/ping`, { signal: AbortSignal.timeout(2000) })
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 2000);
+    fetch(`http://${host}:${port}/ping`, { signal: ctrl.signal })
       .then(r => { dot.className = (r.ok || r.status === 204) ? 'stack-dot up' : 'stack-dot down'; })
       .catch(() => { dot.className = 'stack-dot down'; });
   } else {
