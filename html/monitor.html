@@ -124,7 +124,7 @@
 
   <!-- Connect bar -->
   <div class="connect-bar">
-    <label>Host</label><input class="w-host" id="cfgHost" value="localhost" onchange="saveHost()"/>
+    <label>Host</label><input class="w-host" id="cfgHost" value="localhost" autocomplete="off" onchange="saveHost()"/>
     <span class="influx-only" id="influxFields">
       <label>Port</label><input class="w-port" id="cfgPort" value="8086"/>
       <label>Token</label><input class="w-token" id="cfgToken" value="battery-token-secret" type="password"/>
@@ -276,6 +276,7 @@ window.onload = () => {
   fill('selSite', SITES); fill('selRack', RACKS); fill('selModule', MODULES); fill('selCell', CELLS);
   const saved = localStorage.getItem('mon_host');
   if (saved) document.getElementById('cfgHost').value = saved;
+  localStorage.removeItem('mon_host');  // don't persist host across sessions
   setInterval(() => {
     if (!lastQueryMs) return;
     document.getElementById('qAgo').textContent = ((Date.now() - lastQueryMs) / 1000).toFixed(1) + 's';
