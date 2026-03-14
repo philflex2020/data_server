@@ -6,7 +6,7 @@ nats:
 
 # S3 / MinIO (historical data source)
 s3:
-  endpoint_url: "http://localhost:9000"
+  endpoint_url: "http://spark-22b6:9000"  # MinIO on spark-22b6
   bucket: battery-data
   region: us-east-1
   access_key: minioadmin

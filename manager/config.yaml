@@ -2,15 +2,14 @@ websocket:
   host: 0.0.0.0
   port: 8761
 
-# Start order: broker → storage → NATS → bridge → writers → subscribers
+# Start order: broker → NATS → bridge → writers → subscribers
+# minio and aws_server run on spark-22b6 (see manager/config.spark.yaml)
 order:
   - mosquitto
-  - minio
   - nats
   - nats_bridge
   - generator
   - parquet_writer
-  - aws_server
   - subscriber_api
 
 components:
@@ -19,14 +18,6 @@ components:
     label: "MQTT Broker (Mosquitto)"
     cmd: ["/usr/sbin/mosquitto", "-p", "1884", "-v"]
     cwd: "."
-
-  minio:
-    label: "S3 Store (MinIO)"
-    cmd: ["./minio", "server", "./minio-data", "--console-address", ":9011"]
-    cwd: "aws/data_store"
-    env:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
 
   nats:
     label: "NATS JetStream"
@@ -47,11 +38,6 @@ components:
     label: "Parquet Writer (NATS → S3)"
     cmd: [".venv/bin/python","writer.py", "--config", "config.yaml"]
     cwd: "source/parquet_writer"
-
-  aws_server:
-    label: "AWS Data Store Server"
-    cmd: [".venv/bin/python","server.py", "--config", "config.yaml"]
-    cwd: "aws/data_store"
 
   subscriber_api:
     label: "Subscriber API (NATS + DuckDB)"

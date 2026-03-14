@@ -1,0 +1,7 @@
+# spark-22b6 dependencies — MinIO + AWS data store server only
+# Install with: pip install -r requirements.spark.txt
+
+pyarrow>=14.0.0
+boto3>=1.34.0
+websockets>=12.0
+pyyaml>=6.0
