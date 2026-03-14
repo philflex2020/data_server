@@ -271,7 +271,13 @@ async def main_async(cfg: dict) -> None:
     log.info("Manager WebSocket on ws://%s:%d", ws_host, ws_port)
     log.info("Components: %s", ", ".join(g_components.keys()))
 
+    auto_start = cfg.get("auto_start", False)
+
     async with websockets.serve(ws_handler, ws_host, ws_port):
+        if auto_start:
+            log.info("auto_start: starting all components")
+            for comp in g_components.values():
+                await comp.start(broadcast)
         await asyncio.Event().wait()
 
 
