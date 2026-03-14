@@ -4,18 +4,18 @@ websocket:
 
 auto_start: true
 
-# orig_aws stack on spark-22b6: Mosquitto + InfluxDB2 + Telegraf (systemd log tails) + generator
+# orig_aws stack on spark-22b6: FlashMQ + InfluxDB2 + Telegraf (systemd log tails) + generator
 order:
-  - mosquitto
+  - flashmq
   - influxdb
   - telegraf
   - generator
 
 components:
 
-  mosquitto:
-    label: "Mosquitto MQTT Broker (port 1883)"
-    cmd: ["journalctl", "-fu", "mosquitto", "--no-pager", "--output=short"]
+  flashmq:
+    label: "FlashMQ MQTT Broker (port 1883)"
+    cmd: ["journalctl", "-fu", "flashmq", "--no-pager", "--output=short"]
     cwd: "."
 
   influxdb:

@@ -1,4 +1,4 @@
-# MQTT broker — spark-22b6 uses Mosquitto on port 1883
+# MQTT broker — spark-22b6 uses FlashMQ on port 1883
 mqtt:
   host: localhost
   port: 1883
