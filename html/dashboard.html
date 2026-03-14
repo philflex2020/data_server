@@ -335,6 +335,11 @@
       spark-22b6 — MinIO + Store Server
       <span style="font-size:10px;color:#475569">:8762</span>
     </button>
+    <button class="stack-btn" id="btnSparkOrig" onclick="selectStack(8763)">
+      <span class="stack-dot" id="dot8763"></span>
+      spark-22b6 — Orig AWS (Mosquitto → InfluxDB2)
+      <span style="font-size:10px;color:#475569">:8763</span>
+    </button>
     <div class="stack-sep"></div>
     <div class="stack-host">
       Host: <input id="wsHost" autocomplete="off" onchange="onHostChange()" />
@@ -517,8 +522,8 @@
   // probe WebSockets for each stack (just for the status dots)
   const probes = {};
 
-  const STACK_LABELS   = { 8760: 'orig_aws', 8761: 'New NATS Stack', 8762: 'spark-22b6' };
-  const AWS_PORTS      = new Set([8762]);   // ports that use aws_host instead of ds_host
+  const STACK_LABELS   = { 8760: 'orig_aws', 8761: 'New NATS Stack', 8762: 'spark-22b6 NATS', 8763: 'spark-22b6 orig_aws' };
+  const AWS_PORTS      = new Set([8762, 8763]);   // ports that use aws_host instead of ds_host
 
   function hostKeyFor(port) { return AWS_PORTS.has(port) ? 'aws_host' : 'ds_host'; }
   function savedHost(port)  { return localStorage.getItem(hostKeyFor(port)) || window.location.hostname; }
@@ -553,9 +558,10 @@
     archBuilt = false;
     rebuildGrid();
 
-    document.getElementById('btnOld').className   = 'stack-btn' + (port === 8760 ? ' active-old' : '');
-    document.getElementById('btnNew').className   = 'stack-btn' + (port === 8761 ? ' active-new' : '');
-    document.getElementById('btnSpark').className = 'stack-btn' + (port === 8762 ? ' active-new' : '');
+    document.getElementById('btnOld').className      = 'stack-btn' + (port === 8760 ? ' active-old' : '');
+    document.getElementById('btnNew').className      = 'stack-btn' + (port === 8761 ? ' active-new' : '');
+    document.getElementById('btnSpark').className    = 'stack-btn' + (port === 8762 ? ' active-new' : '');
+    document.getElementById('btnSparkOrig').className= 'stack-btn' + (port === 8763 ? ' active-old' : '');
     document.getElementById('stackLabel').textContent = STACK_LABELS[port] || port;
     setServerPill('loading', 'CONNECTING');
     document.getElementById('headerAddr').textContent = `Manager: ws://${host()}:${port}`;
@@ -619,7 +625,7 @@
     p.onclose = () => clearTimeout(t);
   }
 
-  function probeAll() { probeStack(8760); probeStack(8761); probeStack(8762); }
+  function probeAll() { probeStack(8760); probeStack(8761); probeStack(8762); probeStack(8763); }
 
   // ── Ping ────────────────────────────────────────────────────
 
