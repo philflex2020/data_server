@@ -213,8 +213,9 @@ const NATS_MAIN = [
 ];
 // Side nodes sit to the right, beside their related main node
 const NATS_SIDE = [
+  { id:'subscriber_api',label:'Subscriber API',   sub:'DuckDB + live stream',        port:':8767', mainY:225 },
+  { id:'monitor',       label:'monitor.html',     sub:'Battery Monitor',             port:'',      mainY:300, kind:'external' },
   { id:'aws_server',    label:'AWS Store',        sub:'Parquet browser',             port:':8766', mainY:375 },
-  { id:'subscriber_api',label:'Subscriber API',   sub:'DuckDB + live stream',        port:':8767', mainY:300 },
 ];
 const NATS_ARROWS_MAIN = [
   { id:'gen-mosq',    y1:NH,  y2:75,  label:'MQTT',    flow:['generator','mosquitto'] },
@@ -224,8 +225,12 @@ const NATS_ARROWS_MAIN = [
   { id:'writer-minio',y1:300+NH,y2:375, label:'PUT',   flow:['parquet_writer','minio'] },
 ];
 const NATS_ARROWS_SIDE = [
-  { id:'minio-aws',   mainY:375, sideId:'aws_server',    label:'list', flow:['minio','aws_server'] },
-  { id:'nats-sub',    mainY:225, sideId:'subscriber_api',label:'live', flow:['nats','subscriber_api'] },
+  { id:'nats-sub',    mainY:225, label:'live', flow:['nats','subscriber_api'] },
+  { id:'minio-aws',   mainY:375, label:'list', flow:['minio','aws_server'] },
+];
+// Extra arrows between side nodes (vertical)
+const NATS_ARROWS_EXTRA = [
+  { id:'sub-monitor', flow:['subscriber_api'] },
 ];
 
 // ── SVG helpers ─────────────────────────────────────────────────────────────
@@ -322,6 +327,11 @@ function buildNats(svg, status) {
       SX,      cy(a.mainY),
       a.label);
   });
+  // vertical arrow: subscriber_api → monitor.html
+  const subN = NATS_SIDE.find(n => n.id === 'subscriber_api');
+  const monN = NATS_SIDE.find(n => n.id === 'monitor');
+  if (subN && monN)
+    drawArrow(svg, 'sub-monitor', SX + SW/2, subN.mainY + NH, SX + SW/2, monN.mainY, 'WS');
 
   // main nodes
   NATS_MAIN.forEach(n => {
@@ -330,8 +340,8 @@ function buildNats(svg, status) {
   });
   // side nodes (aligned to their mainY)
   NATS_SIDE.forEach(n => {
-    drawNode(svg, n.id, n.label, n.sub, n.port, SX, n.mainY, SW, NH, 'managed',
-      status[n.id]);
+    drawNode(svg, n.id, n.label, n.sub, n.port, SX, n.mainY, SW, NH,
+      n.kind || 'managed', status[n.id]);
   });
 }
 
@@ -395,7 +405,7 @@ function connect(port) {
       } else {
         buildNats(svg, Object.fromEntries(Object.entries(comps).map(([k,v]) => [k, v])));
         applyStatus(svg, comps,
-          [...NATS_ARROWS_MAIN, ...NATS_ARROWS_SIDE]);
+          [...NATS_ARROWS_MAIN, ...NATS_ARROWS_SIDE, ...NATS_ARROWS_EXTRA]);
       }
     } catch(e) {}
   };

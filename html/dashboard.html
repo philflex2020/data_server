@@ -805,8 +805,9 @@
         { id:'nats',          label:'NATS JetStream',   sub:'Durable stream · :4222',      port:'', x:10, y:244, w:190, h:48 },
         { id:'parquet_writer',label:'Parquet Writer',   sub:'ack-after-write',             port:'', x:10, y:322, w:190, h:48 },
         { id:'minio',         label:'MinIO / S3',       sub:'Parquet store · :9000',       port:'', x:10, y:400, w:190, h:48 },
+        { id:'subscriber_api',label:'Subscriber API',   sub:'DuckDB + live · :8767',       port:'', x:225,y:244, w:145, h:48 },
+        { id:'monitor',       label:'monitor.html',     sub:'Battery Monitor',             port:'', x:225,y:322, w:145, h:48, ext:true },
         { id:'aws_server',    label:'AWS Store',        sub:'Parquet browser · :8766',     port:'', x:225,y:400, w:145, h:48 },
-        { id:'subscriber_api',label:'Subscriber API',   sub:'DuckDB + live · :8767',       port:'', x:225,y:322, w:145, h:48 },
       ],
       arrows: [
         { id:'gen-mosq',    x1:105,y1:58,  x2:105,y2:88,  label:'MQTT',    flow:['generator','mosquitto'] },
@@ -815,7 +816,8 @@
         { id:'nats-writer', x1:105,y1:292, x2:105,y2:322, label:'pull',    flow:['nats','parquet_writer'] },
         { id:'writer-minio',x1:105,y1:370, x2:105,y2:400, label:'PUT',     flow:['parquet_writer','minio'] },
         { id:'minio-aws',   x1:200,y1:424, x2:225,y2:424, label:'list',    flow:['minio','aws_server'] },
-        { id:'nats-sub',    x1:200,y1:346, x2:225,y2:346, label:'live',    flow:['nats','subscriber_api'] },
+        { id:'nats-sub',    x1:200,y1:268, x2:225,y2:268, label:'live',    flow:['nats','subscriber_api'] },
+        { id:'sub-monitor', x1:297,y1:292, x2:297,y2:322, label:'WS',      flow:['subscriber_api'] },
       ],
     },
     orig: {
