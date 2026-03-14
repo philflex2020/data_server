@@ -1049,20 +1049,20 @@
   async function ixDoConnect() {
     ixSetPill('loading', 'CONNECTING');
     document.getElementById('ixBtnConnect').disabled = true;
+    // Skip /ping (no CORS headers on that endpoint) — go straight to first query.
     try {
-      const res = await ixFetch('/ping');
-      if (res.ok || res.status === 204) {
-        ixConnected = true;
-        ixSetPill('ok', 'ONLINE');
-        document.getElementById('ixBtnConnect').textContent = 'Disconnect';
-        document.getElementById('ixBtnConnect').disabled = false;
-        document.getElementById('ixBtnRefresh').disabled = false;
-        document.getElementById('ixSbBucket').textContent = ixBkt();
-        ixRestartAutoRefresh();
-        ixDoRefresh();
-      } else { throw new Error('HTTP ' + res.status); }
+      ixConnected = true;
+      ixSetPill('ok', 'ONLINE');
+      document.getElementById('ixBtnConnect').textContent = 'Disconnect';
+      document.getElementById('ixBtnConnect').disabled = false;
+      document.getElementById('ixBtnRefresh').disabled = false;
+      document.getElementById('ixSbBucket').textContent = ixBkt();
+      ixRestartAutoRefresh();
+      ixDoRefresh();
     } catch(e) {
+      ixConnected = false;
       ixSetPill('bad', 'OFFLINE');
+      document.getElementById('ixBtnConnect').textContent = 'Connect';
       document.getElementById('ixBtnConnect').disabled = false;
       document.getElementById('ixQTime').textContent = 'Error: ' + e.message;
     }
