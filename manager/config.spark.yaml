@@ -4,10 +4,15 @@ websocket:
 
 auto_start: true
 
-# Components that run on spark-22b6
+# Full NATS stack on spark-22b6
+# Generator runs via config.spark-orig.yaml (shared Mosquitto on port 1883)
 order:
   - minio
+  - nats
+  - nats_bridge
+  - parquet_writer
   - aws_server
+  - subscriber_api
 
 components:
 
@@ -19,7 +24,27 @@ components:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
 
+  nats:
+    label: "NATS JetStream"
+    cmd: ["nats-server", "-c", "nats-server.conf"]
+    cwd: "manager"
+
+  nats_bridge:
+    label: "MQTT → NATS Bridge"
+    cmd: [".venv/bin/python", "bridge.py", "--config", "config.spark.yaml"]
+    cwd: "source/nats_bridge"
+
+  parquet_writer:
+    label: "Parquet Writer (NATS → S3)"
+    cmd: [".venv/bin/python", "writer.py", "--config", "config.yaml"]
+    cwd: "source/parquet_writer"
+
   aws_server:
     label: "AWS Data Store Server"
-    cmd: [".venv/bin/python","server.py", "--config", "config.yaml"]
+    cmd: [".venv/bin/python", "server.py", "--config", "config.yaml"]
     cwd: "aws/data_store"
+
+  subscriber_api:
+    label: "Subscriber API (NATS + DuckDB)"
+    cmd: [".venv/bin/python", "server.py", "--config", "config.yaml"]
+    cwd: "subscriber/api"

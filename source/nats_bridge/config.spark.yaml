@@ -1,0 +1,17 @@
+# MQTT broker — spark-22b6 uses Mosquitto on port 1883
+mqtt:
+  host: localhost
+  port: 1883
+  username: ""
+  password: ""
+  client_id: nats-bridge
+  topic: "batteries/#"
+  qos: 1
+
+# NATS JetStream
+nats:
+  url: "nats://localhost:4222"
+  stream_name: BATTERY_DATA
+  stream_subjects:
+    - "batteries.>"
+  max_age_hours: 48

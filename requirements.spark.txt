@@ -1,7 +1,21 @@
-# spark-22b6 dependencies — MinIO + AWS data store server only
+# spark-22b6 dependencies — full NATS stack + AWS data store
 # Install with: pip install -r requirements.spark.txt
 
+# MQTT
+aiomqtt>=2.0.0
+
+# NATS JetStream
+nats-py>=2.6.0
+
+# Parquet / S3
 pyarrow>=14.0.0
 boto3>=1.34.0
+
+# WebSocket servers
 websockets>=12.0
+
+# Config
 pyyaml>=6.0
+
+# Analytics (subscriber API)
+duckdb>=0.10.0
