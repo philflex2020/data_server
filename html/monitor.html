@@ -283,8 +283,10 @@ window.onload = () => {
   localStorage.removeItem('mon_host');
   document.getElementById('cfgHost').value = window.location.hostname;
   setInterval(() => {
-    if (!lastQueryMs) return;
-    document.getElementById('qAgo').textContent = ((Date.now() - lastQueryMs) / 1000).toFixed(1) + 's';
+    if (lastQueryMs)
+      document.getElementById('qAgo').textContent = ((Date.now() - lastQueryMs) / 1000).toFixed(1) + 's';
+    if (liveLastTs)
+      document.getElementById('sbLast').textContent = (Date.now() / 1000 - liveLastTs).toFixed(1) + 's';
   }, 500);
   probeAll();
   setInterval(probeAll, 10000);
@@ -514,10 +516,11 @@ async function connectSubscriber() {
       if (msg.type === 'history' && pendingSubQuery && msg.query_id === pendingSubQuery.id) {
         pendingSubQuery.resolve(msg);
         pendingSubQuery = null;
-      }
-      if (msg.type === 'error' && pendingSubQuery && msg.query_id === pendingSubQuery.id) {
+      } else if (msg.type === 'error' && pendingSubQuery && msg.query_id === pendingSubQuery.id) {
         pendingSubQuery.reject(new Error(msg.message));
         pendingSubQuery = null;
+      } else if (msg.type === 'live') {
+        handleLive(msg.data);
       }
     } catch(e) {}
   };
@@ -537,6 +540,41 @@ function subQuery(siteId, fromTs, toTs, limit) {
     };
     subWs.send(JSON.stringify({ type: 'query_history', query_id: id, site_id: siteId, from_ts: fromTs, to_ts: toTs, limit }));
   });
+}
+
+// ── Live push handler ──────────────────────────────────────────
+function handleLive(d) {
+  // Track last-seen timestamp for the "last write" status display
+  if (d.timestamp) liveLastTs = d.timestamp;
+
+  const [site, rack, mod, cell] = selValues('selSite','selRack','selModule','selCell');
+  if (String(d.site_id) !== site) return;
+
+  // Update heatmap if this cell is in the selected rack
+  if (String(d.rack_id) === rack && d.voltage !== undefined) {
+    heatData.set(`${d.module_id}_${d.cell_id}`, d.voltage);
+    if (!liveHeatTimer) liveHeatTimer = setTimeout(() => {
+      renderHeatmap(site, rack);
+      document.getElementById('sbCells').textContent = heatData.size;
+      liveHeatTimer = null;
+    }, 500);
+  }
+
+  // Update time-series and mini-stats for the selected cell
+  if (String(d.rack_id) === rack && String(d.module_id) === mod && String(d.cell_id) === cell) {
+    const t = d.timestamp * 1000;
+    for (const f of ['voltage','temperature','soc','current','soh','resistance']) {
+      if (d[f] === undefined) continue;
+      if (!chartData[f]) chartData[f] = [];
+      chartData[f].push({ t, v: d[f] });
+      if (chartData[f].length > LIVE_MAX_PTS) chartData[f].shift();
+    }
+    renderMiniStats();
+    if (!liveChartTimer) liveChartTimer = setTimeout(() => {
+      renderCharts();
+      liveChartTimer = null;
+    }, 1000);
+  }
 }
 
 function rangeToSeconds() {
