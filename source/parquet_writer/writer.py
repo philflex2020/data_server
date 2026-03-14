@@ -89,9 +89,10 @@ def rows_to_parquet(rows: list[dict], compression: str) -> bytes:
 def s3_key(prefix: str, site_id, now: datetime) -> str:
     parts = [p for p in [
         prefix.strip("/"),
+        now.strftime('%Y'),
+        now.strftime('%m'),
+        now.strftime('%d'),
         f"site={site_id}",
-        f"date={now.strftime('%Y-%m-%d')}",
-        f"hour={now.strftime('%H')}",
         f"{now.strftime('%Y%m%dT%H%M%SZ')}.parquet",
     ] if p]
     return "/".join(parts)

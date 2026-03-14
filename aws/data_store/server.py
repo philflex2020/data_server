@@ -162,9 +162,10 @@ def _make_parquet_bytes(rows: list[dict], compression: str = "snappy") -> bytes:
 def _s3_key(prefix: str, site_id: int, ts: datetime) -> str:
     parts = [p for p in [
         prefix.strip("/"),
+        ts.strftime('%Y'),
+        ts.strftime('%m'),
+        ts.strftime('%d'),
         f"site={site_id}",
-        f"date={ts.strftime('%Y-%m-%d')}",
-        f"hour={ts.strftime('%H')}",
         f"{ts.strftime('%Y%m%dT%H%M%SZ')}.parquet",
     ] if p]
     return "/".join(parts)

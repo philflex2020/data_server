@@ -114,7 +114,7 @@ def check_s3(cfg: dict) -> bool:
 def run_history_query(cfg: dict, site_id: str, from_ts: float, to_ts: float, limit: int) -> dict:
     bucket = cfg["s3"]["bucket"]
     prefix = cfg["s3"].get("prefix", "").strip("/")
-    path   = (f"s3://{bucket}/{prefix + '/' if prefix else ''}site={site_id}/**/*.parquet"
+    path   = (f"s3://{bucket}/{prefix + '/' if prefix else ''}**/site={site_id}/*.parquet"
               if site_id else
               f"s3://{bucket}/{prefix + '/' if prefix else ''}**/*.parquet")
 
