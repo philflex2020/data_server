@@ -199,6 +199,38 @@ data_server/
 
 ---
 
+## ⚠️ KNOWN ISSUE: InfluxDB2 CORS Blocks Browser Status Probe
+
+**Problem:** The browser pages (`monitor.html`, `orig_aws.html`) probe InfluxDB2 at `:8086/ping`
+to show the online/offline dot. Because the pages are served from `:8080`, this is a
+cross-origin request. InfluxDB2 returns **no `Access-Control-Allow-Origin` header** on `/ping`,
+so Chrome/Firefox block it — the dot shows red even when InfluxDB2 is running fine.
+
+The actual data queries (Flux API at `/api/v2/query`) work because InfluxDB2 does include
+CORS headers on that endpoint. Only the ping probe is broken.
+
+**Workarounds to try (in order of preference):**
+
+1. **Enable CORS in InfluxDB2 config** — add to `/etc/influxdb/config.toml`:
+   ```toml
+   http-cors-enabled = true
+   http-cors-allowed-origins = ["http://phil-dev:8080", "http://localhost:8080"]
+   ```
+   Then `sudo systemctl restart influxdb`. This is the cleanest fix.
+
+2. **Nginx reverse proxy** — serve both `:8080` (static files) and `:8086` (InfluxDB2)
+   from the same origin via a proxy path (e.g. `/influx/` → `http://localhost:8086/`).
+   Eliminates all cross-origin issues.
+
+3. **Ignore the dot** — the dot is cosmetic. If you can run a Flux query (Connect button
+   works), InfluxDB2 is up. The ping probe failure does not affect data fetching.
+
+**Root cause:** InfluxDB2 OSS does not send `Access-Control-Allow-Origin` on `/ping` or `/health`
+endpoints. `mode: 'no-cors'` fetch also fails in Chrome when the server explicitly returns no
+CORS headers (Chrome rejects the opaque response as `ERR_FAILED`).
+
+---
+
 ## InfluxDB2 Credentials (orig_aws)
 
 | Setting | Value |

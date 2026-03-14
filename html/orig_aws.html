@@ -276,7 +276,9 @@ const bkt       = () => $('cfgBucket').value.trim();
 
 async function influxGet(path, auth = true) {
   const headers = auth ? { 'Authorization': `Token ${authToken()}` } : {};
-  return fetch(baseUrl() + path, { headers });
+  const opts = { headers };
+  if (!auth) opts.mode = 'no-cors';   // ping: avoid CORS block, returns opaque response
+  return fetch(baseUrl() + path, opts);
 }
 
 async function influxQuery(flux) {
@@ -312,20 +314,20 @@ function toggleConnect() { connected ? doDisconnect() : doConnect(); }
 async function doConnect() {
   setPill('influxPill', 'loading', 'CONNECTING');
   $('btnConnect').disabled = true;
+  // Skip /ping (no CORS headers on that endpoint) — go straight to a real query.
   try {
-    const res = await influxGet('/ping', false);
-    if (res.ok || res.status === 204) {
-      connected = true;
-      setPill('influxPill', 'ok', 'ONLINE');
-      $('btnConnect').textContent = 'Disconnect';
-      $('btnConnect').disabled = false;
-      $('btnRefresh').disabled = false;
-      $('sbBucket').textContent = bkt();
-      restartAutoRefresh();
-      doRefresh();
-    } else { throw new Error('HTTP ' + res.status); }
+    connected = true;
+    setPill('influxPill', 'ok', 'ONLINE');
+    $('btnConnect').textContent = 'Disconnect';
+    $('btnConnect').disabled = false;
+    $('btnRefresh').disabled = false;
+    $('sbBucket').textContent = bkt();
+    restartAutoRefresh();
+    doRefresh();
   } catch(e) {
+    connected = false;
     setPill('influxPill', 'bad', 'OFFLINE');
+    $('btnConnect').textContent = 'Connect';
     $('btnConnect').disabled = false;
     $('qTime').textContent = 'Error: ' + e.message;
   }

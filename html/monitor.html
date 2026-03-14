@@ -328,8 +328,8 @@ function probeStack(stack) {
     const port = document.getElementById('cfgPort').value.trim() || '8086';
     const ctrl = new AbortController();
     setTimeout(() => ctrl.abort(), 2000);
-    fetch(`http://${host}:${port}/ping`, { signal: ctrl.signal })
-      .then(r => { dot.className = (r.ok || r.status === 204) ? 'stack-dot up' : 'stack-dot down'; })
+    fetch(`http://${host}:${port}/ping`, { signal: ctrl.signal, mode: 'no-cors' })
+      .then(r => { dot.className = (r.ok || r.type === 'opaque') ? 'stack-dot up' : 'stack-dot down'; })
       .catch(() => { dot.className = 'stack-dot down'; });
   } else {
     const host = document.getElementById('cfgHost').value.trim() || window.location.hostname;
@@ -389,19 +389,20 @@ async function influxQuery(flux) {
 async function connectInflux() {
   setBackendPill('loading', 'CONNECTING');
   document.getElementById('btnConnect').disabled = true;
+  // Skip /ping (no CORS headers on that endpoint) — go straight to a real query.
+  // If the Flux API is reachable the query will succeed; if not, catch shows OFFLINE.
   try {
-    const res = await influxFetch('/ping', false);
-    if (res.ok || res.status === 204) {
-      connected = true;
-      setBackendPill('ok', 'ONLINE');
-      document.getElementById('btnConnect').textContent = 'Disconnect';
-      document.getElementById('btnConnect').disabled = false;
-      document.getElementById('btnRefresh').disabled = false;
-      restartAutoRefresh();
-      doRefresh();
-    } else { throw new Error('HTTP ' + res.status); }
+    connected = true;
+    setBackendPill('ok', 'ONLINE');
+    document.getElementById('btnConnect').textContent = 'Disconnect';
+    document.getElementById('btnConnect').disabled = false;
+    document.getElementById('btnRefresh').disabled = false;
+    restartAutoRefresh();
+    await doRefresh();   // first real query — if it fails, doRefresh shows the error
   } catch(e) {
+    connected = false;
     setBackendPill('bad', 'OFFLINE');
+    document.getElementById('btnConnect').textContent = 'Connect';
     document.getElementById('btnConnect').disabled = false;
     document.getElementById('qTime').textContent = 'Error: ' + e.message;
   }

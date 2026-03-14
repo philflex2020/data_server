@@ -123,14 +123,15 @@ def run_history_query(cfg: dict, site_id: str, from_ts: float, to_ts: float, lim
         ORDER BY timestamp DESC
         LIMIT {limit}
     """
-    t0     = time.monotonic()
-    result = g_duckdb.execute(sql).fetchdf()
+    t0       = time.monotonic()
+    cursor   = g_duckdb.execute(sql)
+    columns  = [d[0] for d in cursor.description]
+    raw_rows = cursor.fetchall()
     elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
-    columns = list(result.columns)
-    rows    = [
-        [str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v
+    rows = [
+        [float(v) if isinstance(v, (int, float)) else str(v) if v is not None else None
          for v in row]
-        for row in result.itertuples(index=False, name=None)
+        for row in raw_rows
     ]
     return {"columns": columns, "rows": rows, "total": len(rows), "elapsed_ms": elapsed_ms}
 
@@ -155,7 +156,10 @@ async def start_live_sub(subject: str) -> None:
         g_stats["live_total"]   += 1
         g_stats["live_per_sec"]  = len(g_live_window)
         try:
-            payload = json.loads(msg.data)
+            raw = json.loads(msg.data)
+            # Flatten {value, unit} measurement objects to plain scalars
+            payload = {k: (v["value"] if isinstance(v, dict) and "value" in v else v)
+                       for k, v in raw.items()}
         except Exception:
             payload = {"raw": msg.data.decode(errors="replace")}
         await broadcast({"type": "live", "subject": msg.subject, "payload": payload})
