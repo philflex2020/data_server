@@ -191,7 +191,7 @@ const ORIG = {
     { id:'flashmq',   label:'FlashMQ',           sub:'MQTT Broker · AWS EC2',          port:':1883', y:75,  kind:'managed' },
     { id:'telegraf',  label:'Telegraf',           sub:'MQTT subscriber · AWS EC2',      port:'',      y:150, kind:'managed' },
     { id:'influxdb',  label:'InfluxDB2 + EFS',    sub:'Time-series · AWS EC2',          port:':8086', y:225, kind:'managed' },
-    { id:'monitor',   label:'orig_aws.html',      sub:'Browser · REST/Flux queries',    port:'',      y:300, kind:'external'},
+    { id:'monitor',   label:'orig_aws.html',      sub:'Browser · REST/Flux · :8086 or :8768',    port:'',      y:300, kind:'external'},
   ],
   arrows: [
     { from:'generator', to:'flashmq',  label:'MQTT publish', flow:['generator','flashmq'] },
@@ -214,7 +214,7 @@ const NATS_MAIN = [
 // Side nodes sit to the right, beside their related main node
 const NATS_SIDE = [
   { id:'subscriber_api',label:'Subscriber API',  sub:'NATS live + DuckDB/S3 history', port:':8767', mainY:225 },
-  { id:'monitor',       label:'monitor.html',    sub:'Browser · WebSocket',           port:'',      mainY:300, kind:'external' },
+  { id:'monitor',       label:'monitor.html',    sub:'Browser · WS live + Flux/DuckDB history',           port:'',      mainY:300, kind:'external' },
   { id:'aws_server',    label:'AWS Store',       sub:'Parquet browser · AWS EC2',     port:':8766', mainY:375 },
 ];
 const NATS_ARROWS_MAIN = [
