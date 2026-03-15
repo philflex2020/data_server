@@ -5,7 +5,7 @@ mqtt:
   username: ""
   password: ""
   client_id: nats-bridge
-  topic: "batteries/project=+/#"   # stress runner only; excludes orig_aws generator (batteries/site=...)
+  topic: "batteries/#"
   qos: 1
 
 # NATS JetStream
