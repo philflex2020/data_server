@@ -2,15 +2,16 @@
 Battery data generator for the FlashMQ → Telegraf → InfluxDB2 pipeline.
 
 Publishes JSON-encoded cell measurements to MQTT topics:
-  batteries/site=0/rack=1/module=2/cell=3
+  batteries/project=0/site=0/rack=1/module=2/cell=3
 
 Payload schema (matches telegraf.conf json_v2 parser):
   {
-    "timestamp":   1700000000,   # unix seconds
-    "site_id":     "0",
-    "rack_id":     "1",
-    "module_id":   "2",
-    "cell_id":     "3",
+    "timestamp":   1700000000.0, # unix seconds (float)
+    "project_id":  0,
+    "site_id":     0,
+    "rack_id":     1,
+    "module_id":   2,
+    "cell_id":     3,
     "voltage":     3.72,
     "current":     -1.5,
     "temperature": 28.4,
@@ -78,11 +79,12 @@ class MeasurementState:
 
 @dataclass
 class CellState:
-    site_id:   str
-    rack_id:   str
-    module_id: str
-    cell_id:   str
-    states:    dict = field(default_factory=dict)
+    project_id: int
+    site_id:    int
+    rack_id:    int
+    module_id:  int
+    cell_id:    int
+    states:     dict = field(default_factory=dict)
 
     def __post_init__(self):
         for name, (lo, hi, nominal, drift) in MEASUREMENTS.items():
@@ -96,16 +98,17 @@ class CellState:
 
     @property
     def topic(self) -> str:
-        return (f"batteries/site={self.site_id}/rack={self.rack_id}"
-                f"/module={self.module_id}/cell={self.cell_id}")
+        return (f"batteries/project={self.project_id}/site={self.site_id}"
+                f"/rack={self.rack_id}/module={self.module_id}/cell={self.cell_id}")
 
     def payload(self) -> dict:
         p = {
-            "timestamp": int(time.time()),
-            "site_id":   self.site_id,
-            "rack_id":   self.rack_id,
-            "module_id": self.module_id,
-            "cell_id":   self.cell_id,
+            "timestamp":  time.time(),
+            "project_id": self.project_id,
+            "site_id":    self.site_id,
+            "rack_id":    self.rack_id,
+            "module_id":  self.module_id,
+            "cell_id":    self.cell_id,
         }
         for name, state in self.states.items():
             p[name] = state.step()
@@ -116,12 +119,13 @@ class CellState:
 
 def build_cells(cfg: dict) -> List[CellState]:
     h = cfg["hierarchy"]
+    project_id = cfg.get("project_id", 0)
     cells = []
     for s in range(h["sites"]):
         for r in range(h["racks_per_site"]):
             for m in range(h["modules_per_rack"]):
                 for c in range(h["cells_per_module"]):
-                    cells.append(CellState(str(s), str(r), str(m), str(c)))
+                    cells.append(CellState(project_id, s, r, m, c))
     return cells
 
 

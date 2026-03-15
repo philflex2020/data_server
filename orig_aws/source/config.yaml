@@ -1,7 +1,9 @@
+project_id: 0
+
 mqtt:
   host: localhost
   port: 1883
-  topic_prefix: batteries   # publishes to batteries/site=0/rack=1/module=2/cell=3
+  topic_prefix: batteries   # publishes to batteries/project=0/site=0/rack=1/module=2/cell=3
 
 hierarchy:
   sites: 3
