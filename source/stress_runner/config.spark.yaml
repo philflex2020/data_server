@@ -1,5 +1,6 @@
 # Stress runner — spark-22b6 24/7 load test
-# Adjust project/site/cell counts to target desired MQTT message rate.
+# cell_data defines the default measurement schema for all projects.
+# Any project can add its own cell_data block to override the schema.
 
 mqtt:
   host: localhost
@@ -15,13 +16,16 @@ websocket:
 topic_prefix: batteries
 sample_interval_seconds: 1
 
-# Cell measurements (same ranges as generator)
+# Default measurement schema — matches orig_aws generator defaults.
+# drift = max absolute step per sample (Gaussian random-walk).
 cell_data:
-  voltage:           {min: 3.0,   max: 4.2,  unit: V,       nominal: 3.7}
-  current:           {min: -50.0, max: 50.0,  unit: A,       nominal: 0.0}
-  temperature:       {min: 20.0,  max: 45.0,  unit: C,       nominal: 25.0}
-  soc:               {min: 0.0,   max: 100.0, unit: percent,  nominal: 80.0}
-  internal_resistance: {min: 0.001, max: 0.05, unit: ohm,    nominal: 0.01}
+  voltage:     {min: 3.0,   max: 4.2,   nominal: 3.7,   drift: 0.005}
+  current:     {min: -10.0, max: 10.0,  nominal: 0.0,   drift: 0.2}
+  temperature: {min: 15.0,  max: 45.0,  nominal: 28.0,  drift: 0.1}
+  soc:         {min: 10.0,  max: 95.0,  nominal: 70.0,  drift: 0.05}
+  soh:         {min: 80.0,  max: 100.0, nominal: 98.0,  drift: 0.01}
+  resistance:  {min: 0.001, max: 0.01,  nominal: 0.003, drift: 0.00005}
+  capacity:    {min: 80.0,  max: 105.0, nominal: 100.0, drift: 0.01}
 
 projects:
   - project_id: 0
