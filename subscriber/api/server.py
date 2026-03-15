@@ -129,7 +129,7 @@ def run_history_query(cfg: dict, proj_id: str, site_id: str, from_ts: float, to_
         where.append(f"CAST(site_id AS VARCHAR) = '{site_id}'")
     sql = f"""
         SELECT *
-        FROM read_parquet('{path}', hive_partitioning=true, union_by_name=true)
+        FROM read_parquet('{path}', hive_partitioning=false, union_by_name=true)
         WHERE {' AND '.join(where)}
         ORDER BY timestamp DESC
         LIMIT {limit}

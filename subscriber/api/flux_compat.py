@@ -98,7 +98,7 @@ def flux_to_sql(flux: str, cfg: dict):
     bucket = cfg["s3"]["bucket"]
     prefix = cfg["s3"].get("prefix", "").strip("/")
     path = "s3://{}/{}**/*.parquet".format(bucket, prefix + "/" if prefix else "")
-    read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(path)
+    read = "read_parquet('{}', hive_partitioning=false, union_by_name=true)".format(path)
 
     where = ["timestamp >= {}".format(from_ts), "timestamp <= {}".format(to_ts)]
     for col in ("site_id", "rack_id", "module_id", "cell_id"):
