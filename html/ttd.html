@@ -796,8 +796,9 @@ function applyComponents(components) {
   for (const key of COMPONENT_KEYS) {
     const info = components[key];
     if (!info) continue;
-    const running = info.running === true || info === true;
-    setInd(key, running ? 'green' : 'grey', running ? 'running' : 'stopped');
+    const st = info.status || (info === true ? 'running' : 'stopped');
+    const color = st === 'running' ? 'green' : st === 'error' ? 'red' : 'grey';
+    setInd(key, color, st);
   }
 }
 
