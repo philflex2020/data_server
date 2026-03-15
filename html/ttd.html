@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Battery Data Server · TTD</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: monospace;
+    background: #0d1117;
+    color: #e0e0e0;
+    padding: 40px 24px;
+    max-width: 960px;
+    margin: auto;
+    line-height: 1.6;
+  }
+
+  h1   { color: #58a6ff; font-size: 1.7em; margin-bottom: 4px; letter-spacing: 0.03em; }
+  h2   { color: #79c0ff; font-size: 1.05em; margin: 32px 0 12px;
+         border-bottom: 1px solid #30363d; padding-bottom: 6px; }
+  h3   { color: #d2a679; font-size: 0.92em; margin: 18px 0 6px; }
+  p    { color: #c9d1d9; font-size: 0.85em; margin-bottom: 10px; }
+  code { color: #f39c12; background: #161b22; padding: 1px 5px; border-radius: 3px; }
+  a    { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .subtitle {
+    color: #8b949e; font-size: 0.88em; margin-bottom: 36px;
+  }
+
+  /* ── TTD pillars ─────────────────────────────────────────── */
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin: 20px 0 36px;
+  }
+  .pillar {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 18px 20px;
+  }
+  .pillar .pillar-label {
+    font-size: 1.4em;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+  .pillar .pillar-desc { color: #8b949e; font-size: 0.82em; }
+  .pillar.test  { border-color: #1e4a6e; }
+  .pillar.test  .pillar-label { color: #58a6ff; }
+  .pillar.train { border-color: #2a3d1e; }
+  .pillar.train .pillar-label { color: #56d364; }
+  .pillar.doc   { border-color: #3d2a1e; }
+  .pillar.doc   .pillar-label { color: #d2a679; }
+
+  /* ── Concept section ─────────────────────────────────────── */
+  .concept-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 600px) { .concept-grid { grid-template-columns: 1fr; } }
+
+  .concept-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 14px 16px;
+  }
+  .concept-card h3 { margin-top: 0; }
+  .concept-card ul {
+    margin: 6px 0 0 16px;
+    color: #8b949e;
+    font-size: 0.82em;
+  }
+  .concept-card ul li { margin-bottom: 3px; }
+
+  /* ── Demo catalogue ──────────────────────────────────────── */
+  .demo-section { margin-bottom: 32px; }
+
+  .demo-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82em;
+    margin-top: 8px;
+  }
+  .demo-table th {
+    text-align: left;
+    padding: 6px 10px;
+    background: #161b22;
+    color: #8b949e;
+    border-bottom: 1px solid #30363d;
+    font-weight: normal;
+  }
+  .demo-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #21262d;
+    vertical-align: top;
+  }
+  .demo-table tr:last-child td { border-bottom: none; }
+  .demo-table tr:hover td { background: #1c2128; }
+
+  .demo-table td:first-child { white-space: nowrap; }
+  .demo-table td a { font-weight: bold; }
+
+  .tag {
+    display: inline-block; font-size: 0.70em; padding: 1px 7px;
+    border-radius: 10px; margin-left: 6px; vertical-align: middle;
+  }
+  .tag.t { background: #1e4a6e; color: #79c0ff; }   /* test */
+  .tag.d { background: #2a1f0a; color: #f39c12; }   /* doc / ref */
+  .tag.s { background: #1f3a1a; color: #56d364; }   /* standalone */
+
+  /* ── Workflow diagram ────────────────────────────────────── */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 16px 0 28px;
+    flex-wrap: wrap;
+  }
+  .flow-step {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 10px 16px;
+    font-size: 0.80em;
+    text-align: center;
+    min-width: 110px;
+  }
+  .flow-step .fs-num { color: #8b949e; font-size: 0.75em; display: block; margin-bottom: 2px; }
+  .flow-step .fs-label { color: #c9d1d9; font-weight: bold; }
+  .flow-arrow { color: #30363d; font-size: 1.3em; padding: 0 6px; }
+
+  /* ── Coverage matrix ─────────────────────────────────────── */
+  .matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.80em;
+    margin-top: 8px;
+  }
+  .matrix th {
+    padding: 5px 10px;
+    background: #161b22;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    font-weight: normal;
+    text-align: center;
+  }
+  .matrix th:first-child { text-align: left; }
+  .matrix td {
+    padding: 5px 10px;
+    border: 1px solid #21262d;
+    text-align: center;
+    color: #8b949e;
+  }
+  .matrix td:first-child { text-align: left; color: #c9d1d9; }
+  .yes { color: #56d364 !important; font-weight: bold; }
+  .part { color: #f39c12 !important; }
+
+  /* ── Footer nav ──────────────────────────────────────────── */
+  .footer-nav {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid #30363d;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .footer-nav a {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 0.82em;
+    color: #58a6ff;
+  }
+  .footer-nav a:hover { border-color: #58a6ff; text-decoration: none; }
+
+  /* ── Live connect bar ────────────────────────────────────── */
+  .connect-bar {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.82em;
+    margin-bottom: 20px;
+  }
+  .connect-bar input[type=text] {
+    background: #0d1117; color: #e0e0e0; border: 1px solid #30363d;
+    padding: 4px 8px; font-family: monospace; border-radius: 3px; font-size: 0.92em;
+  }
+  .connect-bar button {
+    background: #161b22; color: #e0e0e0; border: 1px solid #58a6ff;
+    padding: 4px 14px; cursor: pointer; font-family: monospace; font-size: 0.85em;
+    border-radius: 3px; transition: background 0.15s;
+  }
+  .connect-bar button:hover   { background: #1f2937; }
+  .connect-bar button.active  { background: #0d3060; border-color: #3fb950; color: #3fb950; }
+  .connect-bar .sep { color: #30363d; }
+
+  /* ── Status indicators ───────────────────────────────────── */
+  .status-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .sind {
+    display: flex; align-items: center; gap: 6px;
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 4px; padding: 6px 12px; font-size: 0.80em;
+  }
+  .sind .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #484f58; flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .sind .dot.green  { background: #3fb950; box-shadow: 0 0 5px #3fb95066; }
+  .sind .dot.amber  { background: #d29922; box-shadow: 0 0 5px #d2992266; }
+  .sind .dot.red    { background: #f85149; }
+  .sind .dot.grey   { background: #484f58; }
+  .sind .label { color: #8b949e; }
+  .sind .value { color: #c9d1d9; font-weight: bold; margin-left: 2px; }
+
+  /* ── SVG topology ────────────────────────────────────────── */
+  .topo-wrap {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 28px;
+    overflow-x: auto;
+  }
+  .topo-wrap svg { display: block; margin: auto; }
+</style>
+</head>
+<body>
+
+<h1>Battery Data Server · TTD</h1>
+<p class="subtitle">
+  Test · Train · Document hub for the battery cell telemetry pipeline —
+  MQTT → NATS JetStream → Parquet → MinIO/S3 → Subscriber API,
+  with an off-the-shelf orig_aws stack (Telegraf → InfluxDB2) running in parallel.
+</p>
+
+<!-- ─── Live System Status ────────────────────────────────── -->
+<h2>Live System Status</h2>
+<p>Connect to the process manager WebSocket to see which pipeline components are running.
+   Indicators update automatically on connect.</p>
+
+<!-- Connection bar -->
+<div class="connect-bar">
+  <span id="mgr-dot" class="dot" style="width:9px;height:9px;border-radius:50%;background:#484f58;display:inline-block;transition:background .3s;flex-shrink:0"></span>
+  <span id="mgr-label" style="color:#8b949e;">Not connected</span>
+  <span class="sep">|</span>
+  Host: <input type="text" id="mgr-host" value="localhost" style="width:120px">
+  <button onclick="mgrConnect(8761)">phil-dev :8761</button>
+  <button onclick="mgrConnect(8762)">spark-22b6 :8762</button>
+  <button id="mgr-disc" onclick="mgrDisconnect()" style="display:none;border-color:#f85149;color:#f85149;">Disconnect</button>
+</div>
+
+<!-- Process indicators -->
+<div class="status-row">
+  <div class="sind">
+    <div class="dot grey" id="dot-minio"></div>
+    <span class="label">minio</span>
+    <span class="value" id="val-minio">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-nats"></div>
+    <span class="label">nats</span>
+    <span class="value" id="val-nats">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-nats_bridge"></div>
+    <span class="label">nats_bridge</span>
+    <span class="value" id="val-nats_bridge">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-parquet_writer"></div>
+    <span class="label">parquet_writer</span>
+    <span class="value" id="val-parquet_writer">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-aws_server"></div>
+    <span class="label">aws_server</span>
+    <span class="value" id="val-aws_server">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-subscriber_api"></div>
+    <span class="label">subscriber_api</span>
+    <span class="value" id="val-subscriber_api">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-stress_runner"></div>
+    <span class="label">stress_runner</span>
+    <span class="value" id="val-stress_runner">—</span>
+  </div>
+</div>
+
+<!-- SVG Pipeline Topology -->
+<div class="topo-wrap">
+  <svg viewBox="0 0 860 250" width="860" height="250" xmlns="http://www.w3.org/2000/svg"
+       style="font-family:monospace; max-width:100%;">
+
+    <defs>
+      <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#30363d"/>
+      </marker>
+      <marker id="arr-grn" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#3fb950"/>
+      </marker>
+      <marker id="arr-dim" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#484f58"/>
+      </marker>
+    </defs>
+
+    <!-- ══ NATS STACK (main pipeline, top half) ══════════════════════════ -->
+
+    <!-- Stress Runner / Generator — stacked boxes -->
+    <rect x="10" y="18" width="100" height="32" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="60" y="31" text-anchor="middle" fill="#8b949e" font-size="9">Stress Runner</text>
+    <text x="60" y="43" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="bold">24/7 load test</text>
+
+    <rect x="10" y="58" width="100" height="32" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="60" y="71" text-anchor="middle" fill="#8b949e" font-size="9">Generator</text>
+    <text x="60" y="83" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="bold">cell telemetry</text>
+
+    <!-- → FlashMQ -->
+    <line x1="110" y1="34" x2="163" y2="60" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <line x1="110" y1="74" x2="163" y2="74" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+
+    <!-- FlashMQ :1883 -->
+    <rect x="165" y="50" width="110" height="44" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="220" y="68" text-anchor="middle" fill="#8b949e" font-size="9">MQTT broker</text>
+    <text x="220" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">FlashMQ :1883</text>
+
+    <!-- → NATS Bridge (MQTT→NATS) -->
+    <line x1="275" y1="72" x2="318" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <text x="296" y="66" text-anchor="middle" fill="#3fb950" font-size="8">MQTT→NATS</text>
+
+    <!-- NATS Bridge -->
+    <rect x="320" y="50" width="100" height="44" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="370" y="68" text-anchor="middle" fill="#8b949e" font-size="9">bridge</text>
+    <text x="370" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">NATS Bridge</text>
+
+    <!-- → NATS JetStream -->
+    <line x1="420" y1="72" x2="463" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+
+    <!-- NATS JetStream :4222 -->
+    <rect x="465" y="50" width="120" height="44" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="525" y="68" text-anchor="middle" fill="#8b949e" font-size="9">JetStream</text>
+    <text x="525" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">NATS :4222</text>
+
+    <!-- → Parquet Writer (pull consumer) -->
+    <line x1="585" y1="72" x2="628" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <text x="606" y="66" text-anchor="middle" fill="#3fb950" font-size="8">pull consumer</text>
+
+    <!-- Parquet Writer -->
+    <rect x="630" y="50" width="100" height="44" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="680" y="68" text-anchor="middle" fill="#8b949e" font-size="9">writer</text>
+    <text x="680" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">Parquet Writer</text>
+
+    <!-- → MinIO/S3 :9000 -->
+    <line x1="730" y1="72" x2="773" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+
+    <!-- MinIO/S3 :9000 -->
+    <rect x="775" y="50" width="76" height="44" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="813" y="68" text-anchor="middle" fill="#8b949e" font-size="9">MinIO/S3</text>
+    <text x="813" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">:9000</text>
+
+    <!-- ↓ Subscriber API (below MinIO, connected via arrow up/right from parquet) -->
+    <!-- Subscriber API gets data from MinIO — arrow down from MinIO to subscriber box -->
+    <line x1="813" y1="94" x2="813" y2="114" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+
+    <!-- Subscriber API :8767/:8768 -->
+    <rect x="740" y="116" width="145" height="44" rx="4"
+          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="812" y="134" text-anchor="middle" fill="#8b949e" font-size="9">Subscriber API</text>
+    <text x="812" y="148" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">:8767 / :8768</text>
+
+    <!-- ══ orig_aws STACK (bottom, dimmer) ═══════════════════════════════ -->
+
+    <text x="10" y="195" fill="#484f58" font-size="9" font-style="italic">orig_aws stack:</text>
+
+    <!-- Generator (dim) -->
+    <rect x="10" y="203" width="80" height="30" rx="3"
+          fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="50" y="222" text-anchor="middle" fill="#484f58" font-size="9">Generator</text>
+
+    <!-- → FlashMQ (dim) -->
+    <line x1="90" y1="218" x2="128" y2="218" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
+
+    <!-- FlashMQ (dim) -->
+    <rect x="130" y="203" width="80" height="30" rx="3"
+          fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="170" y="222" text-anchor="middle" fill="#484f58" font-size="9">FlashMQ</text>
+
+    <!-- → Telegraf (dim) -->
+    <line x1="210" y1="218" x2="248" y2="218" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
+
+    <!-- Telegraf (dim) -->
+    <rect x="250" y="203" width="80" height="30" rx="3"
+          fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="290" y="222" text-anchor="middle" fill="#484f58" font-size="9">Telegraf</text>
+
+    <!-- → InfluxDB2 (dim) -->
+    <line x1="330" y1="218" x2="368" y2="218" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
+
+    <!-- InfluxDB2 :8086 (dim) -->
+    <rect x="370" y="203" width="100" height="30" rx="3"
+          fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="420" y="222" text-anchor="middle" fill="#484f58" font-size="9">InfluxDB2 :8086</text>
+
+    <!-- ══ LEGEND ═══════════════════════════════════════════════════════ -->
+    <rect x="10" y="245" width="840" height="0" rx="3" fill="#161b22" stroke="#21262d" stroke-width="0"/>
+
+    <line x1="10" y1="238" x2="30" y2="238" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <text x="34" y="242" fill="#8b949e" font-size="8">NATS stack (active)</text>
+
+    <line x1="170" y1="238" x2="190" y2="238" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)" stroke-dasharray="4 3"/>
+    <text x="194" y="242" fill="#8b949e" font-size="8">orig_aws stack</text>
+
+    <rect x="310" y="232" width="10" height="8" rx="2" fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="324" y="242" fill="#8b949e" font-size="8">Core component</text>
+
+    <rect x="430" y="232" width="10" height="8" rx="2" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="444" y="242" fill="#8b949e" font-size="8">Supporting component</text>
+
+  </svg>
+</div>
+
+<!-- ─── Three Pillars ──────────────────────────────────────── -->
+<h2>The Three Pillars</h2>
+<div class="pillars">
+  <div class="pillar test">
+    <div class="pillar-label">T &nbsp;— Test</div>
+    <div class="pillar-desc">
+      <code>pytest tests/unit/</code> runs 161 unit tests with no network required — every Python
+      package has full unit coverage exercising serialisation, routing logic, and API behaviour.
+      KPI benchmarks in <code>tests/kpi/</code> measure end-to-end throughput, latency, and
+      Parquet write rates under realistic load.  Demo pages connect live to each service so
+      wire formats and edge cases can be verified interactively in the browser.
+    </div>
+  </div>
+  <div class="pillar train">
+    <div class="pillar-label">T &nbsp;— Train</div>
+    <div class="pillar-desc">
+      The demo pages walk through each pipeline stage in sequence: start the stack in dashboard.html,
+      generate cell data with generator.html, watch messages flow in monitor.html, query stored
+      history in subscriber.html, then inspect S3 objects in aws.html.  Each page introduces one
+      new concept so a newcomer can build intuition for the full MQTT → NATS → Parquet → S3 path
+      without reading source code first.
+    </div>
+  </div>
+  <div class="pillar doc">
+    <div class="pillar-label">D &nbsp;— Document</div>
+    <div class="pillar-desc">
+      <code>docs/NATS_STACK_DESIGN.md</code> and <code>docs/SUBSCRIBER_API.md</code> cover
+      architecture and wire formats.  Each Python package ships its own README.
+      <code>docs/aws_deploy.md</code> covers the spark-22b6 production deployment.
+      api_test.html doubles as a living API reference — request/response examples stay in sync
+      with the running server by construction.
+    </div>
+  </div>
+</div>
+
+<!-- ─── Pipeline Overview ─────────────────────────────────── -->
+<h2>Pipeline Overview</h2>
+<div class="concept-grid">
+  <div class="concept-card">
+    <h3>NATS Stack (custom Python)</h3>
+    <ul>
+      <li>Generator publishes synthetic cell telemetry over MQTT</li>
+      <li>FlashMQ :1883 brokers MQTT; NATS Bridge converts to JetStream subjects</li>
+      <li>NATS JetStream :4222 provides durable, replayable message store</li>
+      <li>Parquet Writer (pull consumer) batches and writes columnar files to MinIO/S3 :9000</li>
+      <li>Subscriber API :8767 (WebSocket) and :8768 (Flux HTTP) serve live + historical data</li>
+      <li>Stress Runner runs 24/7 on spark-22b6 to validate pipeline under load</li>
+    </ul>
+  </div>
+  <div class="concept-card">
+    <h3>orig_aws Stack (off-the-shelf)</h3>
+    <ul>
+      <li>Same generator and FlashMQ broker as the NATS stack</li>
+      <li>Telegraf consumes from FlashMQ and writes to InfluxDB2 :8086</li>
+      <li>dashboard.html can connect to InfluxDB2 for comparison queries</li>
+      <li>Runs in parallel — both stacks receive the same MQTT messages</li>
+    </ul>
+  </div>
+  <div class="concept-card">
+    <h3>Two Machines</h3>
+    <ul>
+      <li><strong style="color:#79c0ff;">phil-dev</strong> — development machine, generator source, pipeline work</li>
+      <li><strong style="color:#79c0ff;">spark-22b6</strong> — full NATS stack running 24/7, stress runner active</li>
+      <li>Process manager WebSocket :8761 (phil-dev) and :8762 (spark-22b6)</li>
+      <li>Host defaults stored in <code>localStorage</code> keys <code>ds_host</code> / <code>aws_host</code></li>
+    </ul>
+  </div>
+  <div class="concept-card">
+    <h3>Subscriber API Surface</h3>
+    <ul>
+      <li>WebSocket :8767 — live cell stream, NATS subject subscribe, history queries</li>
+      <li>HTTP :8768 — Flux-compatible query endpoint for InfluxDB2 clients</li>
+      <li>api_test.html provides raw WS command panel and Flux HTTP tester</li>
+      <li>subscriber.html wraps the most common history queries in a UI</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─── Typical Workflow ──────────────────────────────────── -->
+<h2>Typical Workflow</h2>
+<div class="flow">
+  <div class="flow-step">
+    <span class="fs-num">1</span>
+    <span class="fs-label"><a href="dashboard.html">Start Stack</a></span>
+  </div>
+  <div class="flow-arrow">›</div>
+  <div class="flow-step">
+    <span class="fs-num">2</span>
+    <span class="fs-label"><a href="generator.html">Generate Data</a></span>
+  </div>
+  <div class="flow-arrow">›</div>
+  <div class="flow-step">
+    <span class="fs-num">3</span>
+    <span class="fs-label"><a href="monitor.html">Monitor Live</a></span>
+  </div>
+  <div class="flow-arrow">›</div>
+  <div class="flow-step">
+    <span class="fs-num">4</span>
+    <span class="fs-label"><a href="subscriber.html">Query History</a></span>
+  </div>
+  <div class="flow-arrow">›</div>
+  <div class="flow-step">
+    <span class="fs-num">5</span>
+    <span class="fs-label"><a href="aws.html">Inspect S3</a></span>
+  </div>
+</div>
+
+<!-- ─── Demo Catalogue ────────────────────────────────────── -->
+<h2>Demo Page Catalogue</h2>
+
+<div class="demo-section">
+  <table class="demo-table">
+    <tr>
+      <th>Page</th><th>Ports</th><th>Description</th><th>Tags</th>
+    </tr>
+    <tr>
+      <td><a href="dashboard.html">dashboard.html</a></td>
+      <td><code>8761/8762/8763</code></td>
+      <td>Process manager — start/stop all pipeline components, live status, architecture diagram</td>
+      <td><span class="tag t">test</span><span class="tag s">standalone</span></td>
+    </tr>
+    <tr>
+      <td><a href="generator.html">generator.html</a></td>
+      <td><code>8765</code></td>
+      <td>Battery data generator control — start/stop, configure cell count and rate, live cell samples</td>
+      <td><span class="tag t">test</span></td>
+    </tr>
+    <tr>
+      <td><a href="monitor.html">monitor.html</a></td>
+      <td><code>8767 / 8086</code></td>
+      <td>Live data monitor — subscribe to NATS stream or poll InfluxDB2; per-cell live push display</td>
+      <td><span class="tag t">test</span></td>
+    </tr>
+    <tr>
+      <td><a href="subscriber.html">subscriber.html</a></td>
+      <td><code>8767</code></td>
+      <td>Subscriber API explorer — live stream, history range queries, cell time-series</td>
+      <td><span class="tag t">test</span><span class="tag d">doc</span></td>
+    </tr>
+    <tr>
+      <td><a href="aws.html">aws.html</a></td>
+      <td><code>8766</code></td>
+      <td>S3 data store monitor — browse Parquet file list, generate synthetic data, inspect objects</td>
+      <td><span class="tag t">test</span></td>
+    </tr>
+    <tr>
+      <td><a href="api_test.html">api_test.html</a></td>
+      <td><code>8767 / 8768</code></td>
+      <td>Interactive API tester — raw WebSocket command panel and Flux HTTP query tester</td>
+      <td><span class="tag t">test</span><span class="tag d">doc</span></td>
+    </tr>
+    <tr>
+      <td><a href="architecture.html">architecture.html</a></td>
+      <td>—</td>
+      <td>Static architecture diagram — full stack overview with component descriptions</td>
+      <td><span class="tag d">doc</span></td>
+    </tr>
+  </table>
+</div>
+
+<!-- ─── Package Coverage Matrix ──────────────────────────── -->
+<h2>Package Coverage Matrix</h2>
+<p>
+  Each row is a custom Python package in the pipeline.
+  <span class="yes">●</span> = present,
+  <span class="part">◑</span> = partial / in progress,
+  <code>—</code> = not yet written.
+</p>
+<table class="matrix">
+  <tr>
+    <th>Package</th>
+    <th>Unit tests</th>
+    <th>KPI tests</th>
+    <th>README</th>
+    <th>Design doc</th>
+  </tr>
+  <tr>
+    <td>generator</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td>nats_bridge</td>
+    <td class="yes">●</td>
+    <td>—</td>
+    <td class="yes">●</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td>parquet_writer</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+  </tr>
+  <tr>
+    <td>subscriber / api</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+    <td class="yes">●</td>
+  </tr>
+  <tr>
+    <td>aws / data_store</td>
+    <td class="yes">●</td>
+    <td>—</td>
+    <td class="yes">●</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td>stress_runner</td>
+    <td>—</td>
+    <td>—</td>
+    <td class="yes">●</td>
+    <td>—</td>
+  </tr>
+</table>
+
+<!-- ─── TTD Feature Coverage ──────────────────────────────── -->
+<h2>TTD Feature Coverage</h2>
+<p>
+  Each row is a pipeline capability area.
+  <span class="yes">●</span> = fully covered by at least one demo page,
+  <span class="part">◑</span> = partially covered (doc only, no interactive demo),
+  <code>—</code> = not yet in demo suite.
+</p>
+<table class="matrix">
+  <tr>
+    <th>Feature area</th>
+    <th>Test</th>
+    <th>Train</th>
+    <th>Doc</th>
+  </tr>
+  <tr><td>Stack start / stop (process manager)</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>Generator configuration &amp; cell data</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>MQTT → NATS JetStream flow</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>Live NATS stream subscription</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>InfluxDB2 live poll (orig_aws)</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="part">◑</td></tr>
+  <tr><td>Parquet write &amp; S3 storage</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>Subscriber API history queries</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>Flux HTTP API (:8768)</td>
+    <td class="yes">●</td><td class="part">◑</td><td class="yes">●</td></tr>
+  <tr><td>Raw WS command / response inspection</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>S3 file list &amp; object inspection</td>
+    <td class="yes">●</td><td class="yes">●</td><td class="yes">●</td></tr>
+  <tr><td>KPI / throughput benchmarks</td>
+    <td class="yes">●</td><td>—</td><td class="part">◑</td></tr>
+  <tr><td>24/7 stress runner validation</td>
+    <td class="part">◑</td><td>—</td><td class="part">◑</td></tr>
+  <tr><td>Architecture &amp; design documentation</td>
+    <td>—</td><td class="part">◑</td><td class="yes">●</td></tr>
+</table>
+
+<!-- ─── Design Principles ─────────────────────────────────── -->
+<h2>Design Principles</h2>
+<p>
+  <strong>Self-contained pages.</strong>  Each demo is a single HTML file with no build step,
+  no framework, and no external CDN dependency.  Open the file directly in a browser pointed
+  at a running server.
+</p>
+<p>
+  <strong>Two stacks, one page set.</strong>  monitor.html and dashboard.html support both the
+  NATS stack and the orig_aws InfluxDB2 stack via the same localStorage host keys (<code>ds_host</code>
+  and <code>aws_host</code>).  Switching between stacks is a host toggle, not a separate page.
+</p>
+<p>
+  <strong>Transparency.</strong>  api_test.html shows the exact bytes sent and received over
+  WebSocket and HTTP.  There is no abstraction hiding the wire format from the developer.
+</p>
+<p>
+  <strong>Progressive disclosure.</strong>  The five-step workflow (Start → Generate → Monitor →
+  Query → Inspect) introduces one pipeline stage per page.  A newcomer can follow the sequence
+  and observe data flowing through every stage without reading source code.
+</p>
+<p>
+  <strong>Always in sync.</strong>  Demo pages connect to the live server so request/response
+  examples always reflect the currently deployed API — documentation cannot drift from reality.
+</p>
+
+<!-- ─── Footer nav ────────────────────────────────────────── -->
+<div class="footer-nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="generator.html">Generator</a>
+  <a href="monitor.html">Monitor</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="aws.html">S3 / AWS</a>
+  <a href="api_test.html">API Test</a>
+  <a href="architecture.html">Architecture</a>
+</div>
+
+<script>
+// ── Manager WebSocket state ─────────────────────────────────────────
+let mgr = null, mgrPort = null;
+
+const COMPONENT_KEYS = [
+  'minio', 'nats', 'nats_bridge', 'parquet_writer',
+  'aws_server', 'subscriber_api', 'stress_runner'
+];
+
+function getHost() {
+  return (document.getElementById('mgr-host').value.trim()
+       || localStorage.getItem('ds_host')
+       || 'localhost');
+}
+
+function mgrConnect(port) {
+  if (mgr && mgr.readyState === WebSocket.OPEN) mgr.close();
+  mgrPort = port;
+  const host = getHost();
+  const url  = `ws://${host}:${port}`;
+  setMgrState('connecting');
+  mgr = new WebSocket(url);
+
+  mgr.onopen = () => {
+    setMgrState('connected');
+    localStorage.setItem('ds_host', host);
+    mgr.send(JSON.stringify({ type: 'get_status' }));
+  };
+
+  mgr.onmessage = e => {
+    try {
+      const obj = JSON.parse(e.data);
+      if (obj.type === 'components' && obj.components) {
+        applyComponents(obj.components);
+      } else if (obj.type === 'status' && obj.components) {
+        applyComponents(obj.components);
+      }
+    } catch(_) {}
+  };
+
+  mgr.onclose = () => { setMgrState('disconnected'); resetInds(); };
+  mgr.onerror = ()  => { setMgrState('error'); };
+}
+
+function mgrDisconnect() {
+  if (mgr) mgr.close();
+}
+
+function applyComponents(components) {
+  for (const key of COMPONENT_KEYS) {
+    const info = components[key];
+    if (!info) continue;
+    const running = info.running === true || info === true;
+    setInd(key, running ? 'green' : 'grey', running ? 'running' : 'stopped');
+  }
+}
+
+// ── indicator helpers ───────────────────────────────────────────────
+function setInd(id, color, text) {
+  const dot = document.getElementById('dot-' + id);
+  const val = document.getElementById('val-' + id);
+  if (dot) { dot.className = 'dot ' + color; }
+  if (val) val.textContent = text;
+}
+
+function resetInds() {
+  for (const key of COMPONENT_KEYS) setInd(key, 'grey', '—');
+}
+
+// ── manager connection state ────────────────────────────────────────
+function setMgrState(state) {
+  const dot  = document.getElementById('mgr-dot');
+  const lbl  = document.getElementById('mgr-label');
+  const disc = document.getElementById('mgr-disc');
+  const map = {
+    connected:    { d: '#3fb950', l: 'Connected',    show: true  },
+    connecting:   { d: '#d29922', l: 'Connecting…',  show: false },
+    disconnected: { d: '#484f58', l: 'Disconnected', show: false },
+    error:        { d: '#f85149', l: 'Error',         show: false },
+  };
+  const s = map[state] || map.disconnected;
+  dot.style.background = s.d;
+  lbl.textContent = s.l;
+  lbl.style.color = s.d;
+  disc.style.display = s.show ? '' : 'none';
+}
+
+// ── Restore saved host on load ──────────────────────────────────────
+window.onload = () => {
+  const saved = localStorage.getItem('ds_host');
+  if (saved) {
+    document.getElementById('mgr-host').value = saved;
+  }
+};
+</script>
+</body>
+</html>
