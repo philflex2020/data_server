@@ -23,7 +23,6 @@ import yaml
 
 import aiomqtt
 import nats
-from datetime import timedelta
 from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -43,23 +42,27 @@ async def ensure_stream(js, cfg: dict) -> None:
 
     max_bytes = int(cfg["nats"].get("max_bytes", 8 * 1024 ** 3))  # default 8 GB
 
-    stream_cfg = StreamConfig(
-        name      = stream_name,
-        subjects  = subjects,
-        storage   = StorageType.FILE,
-        retention = RetentionPolicy.LIMITS,
-        max_age   = timedelta(hours=max_age_hours),
-        max_bytes = max_bytes,
-    )
     try:
         await js.stream_info(stream_name)
-        # Update existing stream limits in case config changed
-        await js.update_stream(stream_cfg)
-        log.info("Stream %s updated (max_age=%dh max_bytes=%dGB)",
-                 stream_name, max_age_hours, max_bytes // 1024 ** 3)
+        # Update max_bytes on existing stream via NATS CLI-style direct update
+        await js.update_stream(StreamConfig(
+            name      = stream_name,
+            subjects  = subjects,
+            storage   = StorageType.FILE,
+            retention = RetentionPolicy.LIMITS,
+            max_bytes = max_bytes,
+        ))
+        log.info("Stream %s updated (max_bytes=%dGB)", stream_name, max_bytes // 1024 ** 3)
     except nats.js.errors.NotFoundError:
-        await js.add_stream(stream_cfg)
-        log.info("Created stream %s  subjects=%s", stream_name, subjects)
+        await js.add_stream(StreamConfig(
+            name      = stream_name,
+            subjects  = subjects,
+            storage   = StorageType.FILE,
+            retention = RetentionPolicy.LIMITS,
+            max_bytes = max_bytes,
+        ))
+        log.info("Created stream %s  max_bytes=%dGB  subjects=%s",
+                 stream_name, max_bytes // 1024 ** 3, subjects)
 
 
 async def run(cfg: dict) -> None:
