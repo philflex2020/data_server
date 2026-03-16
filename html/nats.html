@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NATS Monitor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: monospace;
+    background: #0d1117;
+    color: #e0e0e0;
+    padding: 24px;
+    max-width: 1100px;
+    margin: auto;
+    line-height: 1.5;
+  }
+
+  h1   { color: #58a6ff; font-size: 1.5em; margin-bottom: 4px; letter-spacing: 0.03em; }
+  h2   { color: #79c0ff; font-size: 0.97em; margin: 24px 0 10px;
+         border-bottom: 1px solid #30363d; padding-bottom: 5px; }
+  p    { color: #8b949e; font-size: 0.82em; margin-bottom: 10px; }
+  code { color: #f39c12; background: #161b22; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+  a    { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+
+  /* ── Connect bar ─────────────────────────────────────────── */
+  .connect-bar {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.82em;
+    margin-bottom: 16px;
+  }
+  .connect-bar input[type=text] {
+    background: #0d1117; color: #e0e0e0; border: 1px solid #30363d;
+    padding: 4px 8px; font-family: monospace; border-radius: 3px; font-size: 0.92em; width: 140px;
+  }
+  .connect-bar button {
+    background: #161b22; color: #e0e0e0; border: 1px solid #30363d;
+    padding: 4px 14px; cursor: pointer; font-family: monospace; font-size: 0.82em;
+    border-radius: 3px; transition: background 0.15s;
+  }
+  .connect-bar button:hover  { background: #1f2937; border-color: #58a6ff; }
+  .connect-bar button.active { background: #0d3060; border-color: #3fb950; color: #3fb950; }
+  .connect-bar .sep { color: #30363d; }
+  .conn-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: #484f58;
+    display: inline-block; flex-shrink: 0; transition: background 0.3s;
+  }
+  #conn-label { color: #8b949e; }
+
+  /* ── Refresh bar ─────────────────────────────────────────── */
+  .refresh-bar {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.80em; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .refresh-bar button {
+    background: #161b22; color: #e0e0e0; border: 1px solid #30363d;
+    padding: 3px 12px; cursor: pointer; font-family: monospace; font-size: 0.82em;
+    border-radius: 3px;
+  }
+  .refresh-bar button:hover { border-color: #58a6ff; }
+  .refresh-bar select {
+    background: #161b22; color: #e0e0e0; border: 1px solid #30363d;
+    padding: 3px 6px; font-family: monospace; font-size: 0.82em; border-radius: 3px;
+  }
+  #last-fetch { color: #8b949e; }
+  #fetch-err  { color: #f85149; }
+
+  /* ── Stat grid ───────────────────────────────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .stat-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 10px 14px;
+  }
+  .stat-label { color: #8b949e; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .stat-value { color: #e0e0e0; font-size: 1.15em; font-weight: bold; }
+  .stat-sub   { color: #484f58; font-size: 0.72em; margin-top: 2px; }
+  .stat-card.green { border-color: #2a3d1e; }
+  .stat-card.green .stat-value { color: #56d364; }
+  .stat-card.blue  { border-color: #1e4a6e; }
+  .stat-card.blue  .stat-value { color: #79c0ff; }
+  .stat-card.amber { border-color: #3d2a1e; }
+  .stat-card.amber .stat-value { color: #f39c12; }
+  .stat-card.red   { border-color: #3d1e1e; }
+  .stat-card.red   .stat-value { color: #f85149; }
+
+  /* ── Section tables ──────────────────────────────────────── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.80em;
+    margin-bottom: 20px;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 5px 10px;
+    background: #161b22;
+    color: #8b949e;
+    border-bottom: 1px solid #30363d;
+    font-weight: normal;
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #21262d;
+    vertical-align: top;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #1c2128; }
+  .num  { text-align: right; font-variant-numeric: tabular-nums; color: #c9d1d9; }
+  .mono { color: #f39c12; }
+  .dim  { color: #484f58; }
+
+  /* ── Endpoint panel ──────────────────────────────────────── */
+  .endpoint-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 5px; padding: 10px 14px; margin-bottom: 8px;
+    font-size: 0.80em;
+  }
+  .endpoint-row .ep-path { color: #f39c12; white-space: nowrap; min-width: 120px; }
+  .endpoint-row .ep-desc { color: #8b949e; }
+  .endpoint-row .ep-link { margin-left: auto; white-space: nowrap; }
+
+  /* ── Raw JSON viewer ─────────────────────────────────────── */
+  .raw-panel {
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 4px;
+    padding: 12px;
+    font-size: 0.75em;
+    color: #8b949e;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre;
+    margin-bottom: 20px;
+    display: none;
+  }
+  .raw-panel.visible { display: block; }
+
+  /* ── Health badge ────────────────────────────────────────── */
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 0.72em; font-weight: bold; vertical-align: middle;
+  }
+  .badge.ok  { background: #1f3a1a; color: #56d364; }
+  .badge.err { background: #3d1e1e; color: #f85149; }
+  .badge.dim { background: #21262d; color: #8b949e; }
+
+  /* ── Footer nav ──────────────────────────────────────────── */
+  .footer-nav {
+    margin-top: 32px;
+    padding-top: 14px;
+    border-top: 1px solid #30363d;
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .footer-nav a {
+    background: #161b22; border: 1px solid #30363d; border-radius: 4px;
+    padding: 5px 12px; font-size: 0.80em; color: #58a6ff;
+  }
+  .footer-nav a:hover { border-color: #58a6ff; text-decoration: none; }
+
+  .section-toggle {
+    background: none; border: none; color: #8b949e; font-family: monospace;
+    font-size: 0.80em; cursor: pointer; padding: 0; float: right; margin-top: 2px;
+  }
+  .section-toggle:hover { color: #58a6ff; }
+</style>
+</head>
+<body>
+
+<h1>NATS Monitor</h1>
+<p class="subtitle">
+  Live introspection of the NATS JetStream server via the HTTP monitoring API (<code>:8222</code>).
+  Covers server stats, JetStream streams &amp; consumers, and active client connections.
+</p>
+
+<!-- ─── Connect bar ───────────────────────────────────────── -->
+<div class="connect-bar">
+  <span class="conn-dot" id="conn-dot"></span>
+  <span id="conn-label">Not connected</span>
+  <span class="sep">|</span>
+  Host: <input type="text" id="nats-host" value="localhost" placeholder="hostname or IP">
+  Port: <input type="text" id="nats-port" value="8222" style="width:60px">
+  <button id="btn-phildev"  onclick="connectTo('phil-dev')">phil-dev</button>
+  <button id="btn-spark"    onclick="connectTo('spark-22b6')">spark-22b6</button>
+  <button id="btn-local"    onclick="connectTo('localhost')">localhost</button>
+  <button id="btn-disc" onclick="disconnect()" style="display:none;border-color:#f85149;color:#f85149;">Disconnect</button>
+</div>
+
+<!-- ─── Refresh bar ───────────────────────────────────────── -->
+<div class="refresh-bar">
+  <button onclick="fetchAll()">↻ Refresh now</button>
+  Auto-refresh:
+  <select id="sel-interval" onchange="restartAuto()">
+    <option value="0">Off</option>
+    <option value="3">3 s</option>
+    <option value="5" selected>5 s</option>
+    <option value="10">10 s</option>
+    <option value="30">30 s</option>
+  </select>
+  <span id="last-fetch"></span>
+  <span id="fetch-err"></span>
+</div>
+
+<!-- ─── Server Overview ───────────────────────────────────── -->
+<h2>Server Overview <span style="font-size:0.85em;color:#8b949e;font-weight:normal" id="health-badge"></span></h2>
+<div class="stat-grid" id="varz-grid">
+  <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value dim">—</div></div>
+</div>
+
+<!-- ─── JetStream Summary ─────────────────────────────────── -->
+<h2>JetStream
+  <button class="section-toggle" onclick="toggleRaw('jsz-raw')">{ raw }</button>
+</h2>
+<div class="stat-grid" id="jsz-grid">
+  <div class="stat-card"><div class="stat-label">JetStream</div><div class="stat-value dim">—</div></div>
+</div>
+<pre class="raw-panel" id="jsz-raw"></pre>
+
+<!-- ─── Streams ───────────────────────────────────────────── -->
+<h2>Streams
+  <button class="section-toggle" onclick="toggleRaw('streams-raw')">{ raw }</button>
+</h2>
+<p>Per-stream message counts, storage usage, and consumer lag.</p>
+<table class="data-table" id="streams-table">
+  <thead>
+    <tr>
+      <th>Stream</th><th>Subjects</th>
+      <th class="num">Messages</th><th class="num">Bytes</th>
+      <th class="num">Consumers</th><th class="num">First seq</th><th class="num">Last seq</th>
+      <th>Retention</th><th>Storage</th>
+    </tr>
+  </thead>
+  <tbody id="streams-body">
+    <tr><td colspan="9" class="dim" style="padding:10px">Not loaded</td></tr>
+  </tbody>
+</table>
+<pre class="raw-panel" id="streams-raw"></pre>
+
+<!-- ─── Consumers ────────────────────────────────────────────── -->
+<h2>Consumers
+  <button class="section-toggle" onclick="toggleRaw('consumers-raw')">{ raw }</button>
+</h2>
+<p>All durable consumers — shows deliver sequence vs last sequence (lag) to identify pipeline backpressure.</p>
+<table class="data-table" id="consumers-table">
+  <thead>
+    <tr>
+      <th>Stream</th><th>Consumer</th>
+      <th class="num">Pending</th><th class="num">Delivered</th>
+      <th class="num">Redelivered</th><th class="num">Ack pending</th>
+      <th>Filter</th><th>Deliver policy</th>
+    </tr>
+  </thead>
+  <tbody id="consumers-body">
+    <tr><td colspan="8" class="dim" style="padding:10px">Not loaded</td></tr>
+  </tbody>
+</table>
+<pre class="raw-panel" id="consumers-raw"></pre>
+
+<!-- ─── Connections ───────────────────────────────────────── -->
+<h2>Client Connections
+  <button class="section-toggle" onclick="toggleRaw('connz-raw')">{ raw }</button>
+</h2>
+<p>Active client connections to the NATS server (includes nats_bridge, parquet_writer, subscriber_api).</p>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Client</th><th>IP</th><th class="num">Msgs In</th><th class="num">Msgs Out</th>
+      <th class="num">Bytes In</th><th class="num">Bytes Out</th><th class="num">Subs</th><th>Uptime</th>
+    </tr>
+  </thead>
+  <tbody id="connz-body">
+    <tr><td colspan="8" class="dim" style="padding:10px">Not loaded</td></tr>
+  </tbody>
+</table>
+<pre class="raw-panel" id="connz-raw"></pre>
+
+<!-- ─── API Reference ─────────────────────────────────────── -->
+<h2>Monitoring API Endpoints</h2>
+<p>All endpoints are plain HTTP GET on port <code>8222</code>. No auth required (internal network only).</p>
+
+<div class="endpoint-row">
+  <span class="ep-path">/healthz</span>
+  <span class="ep-desc">Server health check — returns <code>{"status":"ok"}</code> if running</span>
+  <span class="ep-link"><a id="link-healthz" href="#" target="_blank">/healthz ↗</a></span>
+</div>
+<div class="endpoint-row">
+  <span class="ep-path">/varz</span>
+  <span class="ep-desc">General server variables — version, uptime, connections, message &amp; byte rates, config summary</span>
+  <span class="ep-link"><a id="link-varz" href="#" target="_blank">/varz ↗</a></span>
+</div>
+<div class="endpoint-row">
+  <span class="ep-path">/jsz</span>
+  <span class="ep-desc">JetStream summary — stream count, consumer count, memory &amp; file store totals</span>
+  <span class="ep-link"><a id="link-jsz" href="#" target="_blank">/jsz ↗</a></span>
+</div>
+<div class="endpoint-row">
+  <span class="ep-path">/jsz?streams=true&amp;consumer=true</span>
+  <span class="ep-desc">JetStream with full stream config + per-stream consumer list and delivery state</span>
+  <span class="ep-link"><a id="link-jsz-full" href="#" target="_blank">/jsz?streams=true&amp;consumer=true ↗</a></span>
+</div>
+<div class="endpoint-row">
+  <span class="ep-path">/connz</span>
+  <span class="ep-desc">Client connections — name, IP, subscriptions, message &amp; byte counts per client</span>
+  <span class="ep-link"><a id="link-connz" href="#" target="_blank">/connz ↗</a></span>
+</div>
+<div class="endpoint-row">
+  <span class="ep-path">/subsz</span>
+  <span class="ep-desc">Subscription routing table — total subjects, matches, slow consumers</span>
+  <span class="ep-link"><a id="link-subsz" href="#" target="_blank">/subsz ↗</a></span>
+</div>
+
+<!-- ─── FlashMQ Monitoring Note ───────────────────────────── -->
+<h2>FlashMQ Monitoring</h2>
+<p>
+  FlashMQ (the MQTT broker on port <code>1883</code>) does not expose an HTTP monitoring API.
+  On spark-22b6 it runs as an OS-level service (systemd), not via the process manager.
+  Monitoring options:
+</p>
+<ul style="font-size:0.82em;color:#8b949e;margin:0 0 12px 20px;line-height:1.8">
+  <li>Process status via process manager WebSocket (<code>:8762</code>) — shows running/stopped for the stack</li>
+  <li>
+    FlashMQ publishes broker statistics to <code>$SYS/#</code> MQTT topics every 10 s, including:<br>
+    <code>$SYS/broker/clients/connected</code> — active client count<br>
+    <code>$SYS/broker/messages/publish/received</code> — total publishes received<br>
+    <code>$SYS/broker/messages/publish/sent</code> — total publishes forwarded<br>
+    <code>$SYS/broker/bytes/received</code> and <code>$SYS/broker/bytes/sent</code>
+  </li>
+  <li>NATS message rate in <code>/varz</code> above reflects the FlashMQ → bridge throughput indirectly</li>
+  <li>Log file: <code>/var/log/flashmq/flashmq.log</code> (info level by default)</li>
+  <li>Health check: <code>mosquitto_sub -t '$SYS/broker/uptime' -C 1</code></li>
+</ul>
+
+<!-- ─── Footer nav ────────────────────────────────────────── -->
+<div class="footer-nav">
+  <a href="ttd.html">TTD Hub</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="monitor.html">Monitor</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="aws.html">S3 / AWS</a>
+  <a href="api_test.html">API Test</a>
+  <a href="architecture.html">Architecture</a>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+let baseUrl  = null;   // e.g. "http://192.168.1.10:8222"
+let autoTimer = null;
+const HOSTS = {
+  'phil-dev':   localStorage.getItem('nats_host_phildev')  || 'phil-dev',
+  'spark-22b6': localStorage.getItem('nats_host_spark')    || 'spark-22b6',
+  'localhost':  'localhost',
+};
+
+// ── Init ────────────────────────────────────────────────────────
+window.onload = () => {
+  const saved = localStorage.getItem('nats_host');
+  if (saved) document.getElementById('nats-host').value = saved;
+};
+
+// ── Connect / disconnect ────────────────────────────────────────
+function connectTo(machine) {
+  const hostMap = {
+    'phil-dev':   HOSTS['phil-dev'],
+    'spark-22b6': HOSTS['spark-22b6'],
+    'localhost':  'localhost',
+  };
+  document.getElementById('nats-host').value = hostMap[machine] || machine;
+  connect();
+}
+
+function connect() {
+  const host = document.getElementById('nats-host').value.trim() || 'localhost';
+  const port = document.getElementById('nats-port').value.trim() || '8222';
+  baseUrl = `http://${host}:${port}`;
+  localStorage.setItem('nats_host', host);
+  updateLinks(host, port);
+  setConnState('connecting');
+  fetchAll().then(() => {
+    setConnState('connected');
+    restartAuto();
+  }).catch(() => {
+    setConnState('error');
+  });
+}
+
+function disconnect() {
+  baseUrl = null;
+  stopAuto();
+  setConnState('offline');
+  clearPanels();
+}
+
+function setConnState(state) {
+  const dot  = document.getElementById('conn-dot');
+  const lbl  = document.getElementById('conn-label');
+  const disc = document.getElementById('btn-disc');
+  const map = {
+    connected:   { c: '#3fb950', l: 'Connected',   show: true  },
+    connecting:  { c: '#d29922', l: 'Connecting…', show: false },
+    error:       { c: '#f85149', l: 'Error',        show: false },
+    offline:     { c: '#484f58', l: 'Not connected',show: false },
+  };
+  const s = map[state] || map.offline;
+  dot.style.background = s.c;
+  lbl.textContent = s.l; lbl.style.color = s.c;
+  disc.style.display = s.show ? '' : 'none';
+  ['btn-phildev','btn-spark','btn-local'].forEach(id => {
+    document.getElementById(id).classList.remove('active');
+  });
+  if (state === 'connected') {
+    const host = document.getElementById('nats-host').value.trim();
+    if (host === HOSTS['phil-dev'] || host === 'phil-dev')   document.getElementById('btn-phildev').classList.add('active');
+    if (host === HOSTS['spark-22b6'] || host === 'spark-22b6') document.getElementById('btn-spark').classList.add('active');
+    if (host === 'localhost')                                 document.getElementById('btn-local').classList.add('active');
+  }
+}
+
+// ── Links ───────────────────────────────────────────────────────
+function updateLinks(host, port) {
+  const base = `http://${host}:${port}`;
+  const eps = { healthz:'healthz', varz:'varz', jsz:'jsz', 'jsz-full':'jsz?streams=true&consumer=true', connz:'connz', subsz:'subsz' };
+  for (const [id, path] of Object.entries(eps)) {
+    const el = document.getElementById('link-' + id);
+    if (el) { el.href = `${base}/${path}`; }
+  }
+}
+
+// ── Fetch all data ──────────────────────────────────────────────
+async function fetchAll() {
+  if (!baseUrl) return;
+  document.getElementById('fetch-err').textContent = '';
+  try {
+    const [varz, jsz, connz] = await Promise.all([
+      get('/varz'),
+      get('/jsz?streams=true&consumer=true'),
+      get('/connz'),
+    ]);
+    renderVarz(varz);
+    renderJsz(jsz);
+    renderConnz(connz);
+    setConnState('connected');
+    document.getElementById('last-fetch').textContent =
+      'Last: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('fetch-err').textContent = 'Fetch error: ' + e.message;
+    throw e;
+  }
+}
+
+async function get(path) {
+  const res = await fetch(baseUrl + path);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+  return res.json();
+}
+
+// ── Render: /varz ───────────────────────────────────────────────
+function renderVarz(d) {
+  const uptime  = d.uptime || '—';
+  const health  = d.server_id ? 'ok' : 'err';
+  document.getElementById('health-badge').innerHTML =
+    `<span class="badge ${health}">${health === 'ok' ? 'OK' : 'ERROR'}</span>`;
+
+  const cards = [
+    { label: 'Version',      value: d.version || '—',           cls: 'blue' },
+    { label: 'Uptime',       value: uptime,                      cls: '' },
+    { label: 'Connections',  value: fmt(d.connections),          cls: d.connections > 0 ? 'green' : '' },
+    { label: 'Total Conns',  value: fmt(d.total_connections),    cls: '' },
+    { label: 'Msgs In',      value: fmt(d.in_msgs),              cls: 'blue', sub: rate(d.in_msgs_rate) + '/s' },
+    { label: 'Msgs Out',     value: fmt(d.out_msgs),             cls: 'blue', sub: rate(d.out_msgs_rate) + '/s' },
+    { label: 'Bytes In',     value: fmtBytes(d.in_bytes),        cls: '', sub: fmtBytes(d.in_bytes_rate) + '/s' },
+    { label: 'Bytes Out',    value: fmtBytes(d.out_bytes),       cls: '', sub: fmtBytes(d.out_bytes_rate) + '/s' },
+    { label: 'Subscriptions',value: fmt(d.subscriptions),        cls: '' },
+    { label: 'Slow Consumers',value: fmt(d.slow_consumers),      cls: d.slow_consumers > 0 ? 'red' : 'green' },
+    { label: 'CPU',          value: (d.cpu || 0).toFixed(1) + '%', cls: '' },
+    { label: 'Mem',          value: fmtBytes(d.mem),             cls: '' },
+  ];
+  document.getElementById('varz-grid').innerHTML = cards.map(c =>
+    `<div class="stat-card ${c.cls}">
+      <div class="stat-label">${c.label}</div>
+      <div class="stat-value">${c.value}</div>
+      ${c.sub ? `<div class="stat-sub">${c.sub}</div>` : ''}
+    </div>`
+  ).join('');
+}
+
+// ── Render: /jsz ────────────────────────────────────────────────
+function renderJsz(d) {
+  const js = d.jetstream_stats || d;
+  const summary = [
+    { label: 'JetStream',    value: d.config ? 'enabled' : 'enabled', cls: 'green' },
+    { label: 'Streams',      value: fmt(d.streams),          cls: 'blue' },
+    { label: 'Consumers',    value: fmt(d.consumers),        cls: 'blue' },
+    { label: 'Messages',     value: fmt(d.messages),         cls: '' },
+    { label: 'Bytes Stored', value: fmtBytes(d.bytes),       cls: '' },
+    { label: 'Memory Used',  value: fmtBytes(d.memory),      cls: '' },
+    { label: 'File Store',   value: fmtBytes(d.store),       cls: '' },
+    { label: 'Reserved Mem', value: fmtBytes(d.reserved_memory), cls: 'amber' },
+    { label: 'Reserved File',value: fmtBytes(d.reserved_store),  cls: 'amber' },
+  ].filter(c => c.value !== '—' && c.value !== undefined);
+  document.getElementById('jsz-grid').innerHTML = summary.map(c =>
+    `<div class="stat-card ${c.cls}"><div class="stat-label">${c.label}</div><div class="stat-value">${c.value}</div></div>`
+  ).join('');
+
+  document.getElementById('jsz-raw').textContent = JSON.stringify(d, null, 2);
+
+  // Streams table
+  const streams = d.account_details?.[0]?.stream_detail || d.stream_detail || [];
+  const sb = document.getElementById('streams-body');
+  const cb = document.getElementById('consumers-body');
+
+  if (!streams.length) {
+    sb.innerHTML = `<tr><td colspan="9" class="dim" style="padding:8px">No streams found</td></tr>`;
+    cb.innerHTML = `<tr><td colspan="8" class="dim" style="padding:8px">No streams found</td></tr>`;
+    return;
+  }
+
+  sb.innerHTML = streams.map(s => {
+    const si = s.state || {};
+    return `<tr>
+      <td class="mono">${esc(s.name)}</td>
+      <td>${(s.config?.subjects || []).map(esc).join('<br>')}</td>
+      <td class="num">${fmt(si.messages)}</td>
+      <td class="num">${fmtBytes(si.bytes)}</td>
+      <td class="num">${fmt(si.consumer_count)}</td>
+      <td class="num dim">${fmt(si.first_seq)}</td>
+      <td class="num">${fmt(si.last_seq)}</td>
+      <td class="dim">${esc(s.config?.retention || '—')}</td>
+      <td class="dim">${esc(s.config?.storage || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('streams-raw').textContent = JSON.stringify(streams, null, 2);
+
+  // Consumers from stream_detail
+  const consumerRows = [];
+  for (const s of streams) {
+    for (const c of (s.consumer_detail || [])) {
+      const di = c.delivered || {};
+      const ai = c.ack_floor || {};
+      const pending = (di.stream_seq || 0) - (ai.stream_seq || 0);
+      consumerRows.push({ stream: s.name, consumer: c });
+    }
+  }
+  if (!consumerRows.length) {
+    cb.innerHTML = `<tr><td colspan="8" class="dim" style="padding:8px">No consumers found</td></tr>`;
+  } else {
+    cb.innerHTML = consumerRows.map(({ stream, consumer: c }) => {
+      const di = c.delivered || {};
+      const pending = c.num_pending ?? '—';
+      return `<tr>
+        <td class="dim">${esc(stream)}</td>
+        <td class="mono">${esc(c.name)}</td>
+        <td class="num ${pending > 0 ? '' : 'dim'}">${fmt(pending)}</td>
+        <td class="num">${fmt(di.consumer_seq)}</td>
+        <td class="num dim">${fmt(c.num_redelivered)}</td>
+        <td class="num dim">${fmt(c.num_ack_pending)}</td>
+        <td class="dim" style="font-size:0.9em">${esc(c.config?.filter_subject || '>')}</td>
+        <td class="dim">${esc(c.config?.deliver_policy || '—')}</td>
+      </tr>`;
+    }).join('');
+  }
+  document.getElementById('consumers-raw').textContent = JSON.stringify(consumerRows, null, 2);
+}
+
+// ── Render: /connz ──────────────────────────────────────────────
+function renderConnz(d) {
+  document.getElementById('connz-raw').textContent = JSON.stringify(d, null, 2);
+  const conns = d.connections || [];
+  if (!conns.length) {
+    document.getElementById('connz-body').innerHTML =
+      `<tr><td colspan="8" class="dim" style="padding:8px">No connections</td></tr>`;
+    return;
+  }
+  document.getElementById('connz-body').innerHTML = conns.map(c => `<tr>
+    <td class="mono">${esc(c.name || c.cid || '—')}</td>
+    <td class="dim">${esc(c.ip || '—')}:${esc(String(c.port || ''))}</td>
+    <td class="num">${fmt(c.in_msgs)}</td>
+    <td class="num">${fmt(c.out_msgs)}</td>
+    <td class="num">${fmtBytes(c.in_bytes)}</td>
+    <td class="num">${fmtBytes(c.out_bytes)}</td>
+    <td class="num">${fmt(c.subscriptions)}</td>
+    <td class="dim">${esc(c.uptime || '—')}</td>
+  </tr>`).join('');
+}
+
+// ── Auto-refresh ────────────────────────────────────────────────
+function restartAuto() {
+  stopAuto();
+  const s = parseInt(document.getElementById('sel-interval').value);
+  if (s > 0 && baseUrl) autoTimer = setInterval(fetchAll, s * 1000);
+}
+function stopAuto() { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } }
+
+// ── Helpers ─────────────────────────────────────────────────────
+function clearPanels() {
+  document.getElementById('varz-grid').innerHTML =
+    `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-value dim">—</div></div>`;
+  ['jsz-grid'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+  ['streams-body','consumers-body','connz-body'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      `<tr><td colspan="9" class="dim" style="padding:8px">Disconnected</td></tr>`;
+  });
+  document.getElementById('health-badge').innerHTML = '';
+}
+
+function toggleRaw(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('visible');
+}
+
+const fmt  = n => (n === undefined || n === null) ? '—' : Number(n).toLocaleString();
+const rate = n => n ? Number(n).toLocaleString() : '0';
+const esc  = s => String(s ?? '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function fmtBytes(n) {
+  if (!n) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + ' MB';
+  return (n/1024/1024/1024).toFixed(2) + ' GB';
+}
+</script>
+</body>
+</html>

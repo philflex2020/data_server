@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Stress Runner Monitor</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: "Segoe UI", Tahoma, sans-serif; background: #0a0a0a; color: #e5e7eb; }
+    .container { max-width: 1400px; margin: 0 auto; background: #121212; border: 1px solid #1e3a8a; border-radius: 12px; display: flex; flex-direction: column; min-height: 96vh; overflow: hidden; }
+
+    /* ── Header ── */
+    .header { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 12px 20px; background: linear-gradient(135deg, #000, #1e3a8a); border-bottom: 2px solid #2563eb; }
+    .header h2 { margin: 0; font-size: 18px; }
+    .header small { color: #93c5fd; font-size: 12px; }
+    .nav-links { display: flex; gap: 6px; }
+    .nav-link { padding: 4px 10px; border-radius: 5px; font-size: 12px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; text-decoration: none; transition: background 0.15s; }
+    .nav-link:hover { background: #2563eb; color: #fff; border-color: #60a5fa; }
+
+    /* ── Connect bar ── */
+    .connect-bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: #080e1a; border-bottom: 1px solid #1e3a8a; flex-wrap: wrap; }
+    .connect-bar label { font-size: 12px; color: #94a3b8; }
+    .connect-bar input { background: #020617; border: 1px solid #334155; border-radius: 5px; color: #e2e8f0; padding: 4px 8px; font-size: 12px; outline: none; width: 80px; }
+    .btn { padding: 5px 14px; border-radius: 6px; border: 1px solid #475569; background: #334155; color: #e5e7eb; font-weight: bold; font-size: 12px; cursor: pointer; transition: background 0.15s; white-space: nowrap; }
+    .btn:hover { background: #475569; }
+    .btn.primary { background: #2563eb; border-color: #60a5fa; }
+    .btn.primary:hover { background: #1d4ed8; }
+    .btn.danger  { background: #7f1d1d; border-color: #ef4444; color: #fecaca; }
+    .btn.danger:hover { background: #991b1b; }
+    .ws-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
+    .ws-dot { width: 9px; height: 9px; border-radius: 50%; background: #334155; flex-shrink: 0; }
+    .ws-dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+    .ws-dot.red   { background: #ef4444; }
+    .ws-dot.amber { background: #f59e0b; }
+
+    /* ── KPI strip ── */
+    .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #1e3a8a; border-bottom: 1px solid #1e3a8a; }
+    .kpi { background: #0f172a; padding: 14px 20px; text-align: center; }
+    .kpi .val { font-size: 28px; font-weight: 700; color: #60a5fa; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+    .kpi .lbl { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+    .kpi .val.green { color: #4ade80; }
+    .kpi .val.amber { color: #f59e0b; }
+    .kpi .val.red   { color: #ef4444; }
+
+    /* ── Body ── */
+    .body { display: grid; grid-template-columns: 1fr 340px; flex: 1; gap: 0; }
+
+    /* ── Chart panel ── */
+    .chart-panel { padding: 16px; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #1e3a8a; }
+    .panel-title { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    canvas { width: 100% !important; background: #0a0f1a; border-radius: 8px; border: 1px solid #1e3a8a; }
+
+    /* ── Site table panel ── */
+    .table-panel { padding: 16px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th { text-align: left; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 4px 6px; border-bottom: 1px solid #1e3a8a; }
+    tbody tr { border-bottom: 1px solid #1a2744; }
+    tbody tr:hover { background: #0f1f3d; }
+    tbody td { padding: 6px 6px; color: #cbd5e1; font-variant-numeric: tabular-nums; }
+    .proj-hdr td { background: #0d1b38; color: #93c5fd; font-weight: 600; font-size: 11px; }
+    .rate-bar { display: flex; align-items: center; gap: 6px; }
+    .bar-bg { flex: 1; height: 5px; background: #1e293b; border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 100%; background: #2563eb; border-radius: 3px; transition: width 0.5s; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .tag.running { background: #065f46; color: #6ee7b7; }
+    .tag.idle    { background: #1e293b; color: #64748b; }
+
+    /* ── Log strip ── */
+    .log-strip { border-top: 1px solid #1e3a8a; background: #050a14; padding: 6px 14px; font-family: monospace; font-size: 11px; color: #475569; min-height: 28px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <h2>Stress Runner Monitor</h2>
+      <small>Live MQTT publish throughput — ws://localhost:<span id="hdr-port">8769</span></small>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="dashboard.html">Dashboard</a>
+      <a class="nav-link" href="monitor.html">Monitor</a>
+      <a class="nav-link" href="subscriber.html">Subscriber</a>
+      <a class="nav-link" href="architecture.html">Architecture</a>
+    </div>
+  </div>
+
+  <!-- Connect bar -->
+  <div class="connect-bar">
+    <label>Host</label>
+    <input id="inp-host" value="localhost"/>
+    <label>Port</label>
+    <input id="inp-port" value="8769" style="width:65px"/>
+    <button class="btn primary" onclick="connect()">Connect</button>
+    <button class="btn danger"  onclick="disconnect()">Disconnect</button>
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Disconnected</span>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-strip">
+    <div class="kpi"><div class="val" id="kpi-total">—</div><div class="lbl">Total Published</div></div>
+    <div class="kpi"><div class="val green" id="kpi-mps">—</div><div class="lbl">Msgs / sec</div></div>
+    <div class="kpi"><div class="val" id="kpi-tasks">—</div><div class="lbl">Active Tasks</div></div>
+    <div class="kpi"><div class="val" id="kpi-sites">—</div><div class="lbl">Sites</div></div>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+
+    <!-- Chart panel -->
+    <div class="chart-panel">
+      <div class="panel-title">Messages per second — last 120 s</div>
+      <canvas id="mps-chart" height="180"></canvas>
+      <div class="panel-title" style="margin-top:8px">Cumulative published — last 120 s</div>
+      <canvas id="total-chart" height="180"></canvas>
+    </div>
+
+    <!-- Site table -->
+    <div class="table-panel">
+      <div class="panel-title">Projects &amp; Sites</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Project / Site</th>
+            <th>Cells</th>
+            <th>Published</th>
+            <th>Rate</th>
+          </tr>
+        </thead>
+        <tbody id="site-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- Log strip -->
+  <div class="log-strip" id="log-strip">Waiting for data…</div>
+
+</div>
+
+<script>
+// ── Chart helpers ───────────────────────────────────────────────────────────
+const HISTORY = 120;
+
+function makeChart(id, label, color) {
+  const canvas = document.getElementById(id);
+  const ctx = canvas.getContext('2d');
+  const data = Array(HISTORY).fill(null);
+  const labels = Array.from({length: HISTORY}, (_, i) => i - HISTORY + 1 + 's');
+
+  function draw() {
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    if (W === 0) return;
+    canvas.width  = W;
+    canvas.height = H;
+
+    const valid = data.filter(v => v !== null);
+    const max   = valid.length ? Math.max(...valid, 1) : 1;
+    const pad   = { top: 12, right: 10, bottom: 20, left: 44 };
+    const pw    = W - pad.left - pad.right;
+    const ph    = H - pad.top  - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.lineWidth   = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (ph * i / 4);
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + pw, y); ctx.stroke();
+      ctx.fillStyle = '#475569';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(fmt(max * (1 - i/4)), pad.left - 4, y + 3);
+    }
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    let first = true;
+    data.forEach((v, i) => {
+      if (v === null) { first = true; return; }
+      const x = pad.left + (i / (HISTORY - 1)) * pw;
+      const y = pad.top  + ph * (1 - v / max);
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else        ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Fill
+    ctx.fillStyle = color + '22';
+    ctx.beginPath();
+    let startX = null;
+    data.forEach((v, i) => {
+      if (v === null) return;
+      const x = pad.left + (i / (HISTORY - 1)) * pw;
+      const y = pad.top  + ph * (1 - v / max);
+      if (startX === null) { ctx.moveTo(x, pad.top + ph); ctx.lineTo(x, y); startX = x; }
+      else ctx.lineTo(x, y);
+    });
+    if (startX !== null) { ctx.lineTo(pad.left + pw, pad.top + ph); ctx.closePath(); ctx.fill(); }
+
+    // X labels
+    ctx.fillStyle = '#475569';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 4; i++) {
+      const idx = Math.round(i * (HISTORY - 1) / 4);
+      const x   = pad.left + (idx / (HISTORY - 1)) * pw;
+      ctx.fillText(labels[idx], x, H - 4);
+    }
+  }
+
+  return { data, draw, push(v) { data.shift(); data.push(v); } };
+}
+
+function fmt(n) {
+  if (n === null || n === undefined) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+  return Math.round(n).toString();
+}
+
+const mpsChart   = makeChart('mps-chart',   'Messages/s', '#60a5fa');
+const totalChart = makeChart('total-chart', 'Total',      '#4ade80');
+
+function redraw() { mpsChart.draw(); totalChart.draw(); }
+window.addEventListener('resize', redraw);
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
+let ws   = null;
+let prevPublished = {};  // key: "p:s" → last published count
+
+function setStatus(state, label) {
+  const dot   = document.getElementById('ws-dot');
+  const lbl   = document.getElementById('ws-label');
+  dot.className = 'ws-dot ' + state;
+  lbl.textContent = label;
+  document.getElementById('hdr-port').textContent = document.getElementById('inp-port').value;
+}
+
+function connect() {
+  if (ws) ws.close();
+  const host = document.getElementById('inp-host').value.trim();
+  const port = document.getElementById('inp-port').value.trim();
+  if (host) localStorage.setItem('ds_host', host);
+  const url  = `ws://${host}:${port}`;
+  setStatus('amber', 'Connecting…');
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setStatus('green', 'Connected');
+    log('Connected to ' + url);
+    ws.send(JSON.stringify({type: 'get_status'}));
+  };
+
+  ws.onmessage = (ev) => {
+    try { handleMsg(JSON.parse(ev.data)); } catch(e) {}
+  };
+
+  ws.onclose = () => {
+    setStatus('red', 'Disconnected');
+    log('Connection closed');
+    ws = null;
+  };
+
+  ws.onerror = () => {
+    setStatus('red', 'Error');
+    log('WebSocket error');
+  };
+}
+
+function disconnect() {
+  if (ws) { ws.close(); ws = null; }
+}
+
+function log(msg) {
+  document.getElementById('log-strip').textContent = new Date().toLocaleTimeString() + '  ' + msg;
+}
+
+// ── Stats handling ──────────────────────────────────────────────────────────
+function handleMsg(msg) {
+  if (msg.type !== 'stats') return;
+
+  const { total_published, mps, active_tasks, projects } = msg;
+
+  // KPIs
+  document.getElementById('kpi-total').textContent = fmt(total_published);
+  document.getElementById('kpi-mps').textContent   = fmt(mps);
+  document.getElementById('kpi-tasks').textContent = active_tasks;
+
+  let siteCount = 0;
+  projects.forEach(p => { siteCount += p.sites.length; });
+  document.getElementById('kpi-sites').textContent = siteCount;
+
+  // Charts
+  mpsChart.push(mps);
+  totalChart.push(total_published);
+  redraw();
+
+  // Per-site rate (delta published)
+  const newPrev = {};
+  const siteRates = {};
+  let maxRate = 1;
+  projects.forEach(p => {
+    p.sites.forEach(s => {
+      const key  = `${p.project_id}:${s.site_id}`;
+      const rate = s.published - (prevPublished[key] || 0);
+      siteRates[key] = rate;
+      maxRate = Math.max(maxRate, rate);
+      newPrev[key] = s.published;
+    });
+  });
+  prevPublished = newPrev;
+
+  // Site table
+  const tbody = document.getElementById('site-tbody');
+  tbody.innerHTML = '';
+
+  projects.forEach(p => {
+    const projRow = tbody.insertRow();
+    projRow.className = 'proj-hdr';
+    projRow.insertCell().colSpan = 4;
+    projRow.cells[0].textContent = `Project ${p.project_id}`;
+    projRow.cells[0].colSpan = 4;
+
+    p.sites.forEach(s => {
+      const key  = `${p.project_id}:${s.site_id}`;
+      const rate = siteRates[key] || 0;
+      const pct  = Math.round(rate / maxRate * 100);
+      const tr   = tbody.insertRow();
+
+      const tdName = tr.insertCell();
+      tdName.textContent = `  Site ${s.site_id}`;
+      tdName.style.color = '#94a3b8';
+
+      tr.insertCell().textContent = fmt(s.cells);
+
+      tr.insertCell().textContent = fmt(s.published);
+
+      const tdRate = tr.insertCell();
+      tdRate.innerHTML = `
+        <div class="rate-bar">
+          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <span style="color:#60a5fa;font-size:11px;width:36px;text-align:right">${fmt(rate)}/s</span>
+        </div>`;
+    });
+  });
+
+  log(`stats: ${fmt(total_published)} total  ${fmt(mps)} mps  ${active_tasks} tasks`);
+}
+
+// ── Auto-connect on load ─────────────────────────────────────────────────────
+(function () {
+  const saved = localStorage.getItem('ds_host');
+  if (saved) document.getElementById('inp-host').value = saved;
+})();
+connect();
+</script>
+</body>
+</html>

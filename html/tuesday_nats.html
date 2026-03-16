@@ -62,9 +62,9 @@ strong { color: #e6edf3; }
   border-radius: 6px;
   padding: 20px 22px;
 }
-.card.problem  { border-color: #6e2020; }
+.card.problem { border-color: #6e2020; }
 .card.solution { border-color: #1e4a6e; }
-.card.warning  { border-color: #5a4000; background: #161100; }
+.card.warning { border-color: #5a4000; background: #161100; }
 
 /* ── Line item table ── */
 .cost-table {
@@ -92,6 +92,7 @@ strong { color: #e6edf3; }
 .old  { color: #f85149; }
 .new  { color: #3fb950; }
 .save { color: #e3b341; }
+.elim { color: #3fb950; font-size: 0.8em; letter-spacing: 0.04em; }
 .row-dim td { color: #484f58; }
 
 /* ── Task cards ── */
@@ -222,7 +223,7 @@ strong { color: #e6edf3; }
 </head>
 <body>
 
-<h1>AWS Cost Reduction — Architecture Review</h1>
+<h1>AWS Cost Reduction — Architecture Proposal</h1>
 <p class="subtitle">
   Team Kickoff &nbsp;·&nbsp; March 2026 &nbsp;·&nbsp;
   Confidential — internal working document
@@ -236,19 +237,19 @@ strong { color: #e6edf3; }
     <div class="sub">pre-discount, growing</div>
   </div>
   <div class="cost-cell new">
-    <div class="lbl">Full Rollout Target</div>
-    <div class="amt">&lt;$23k</div>
-    <div class="sub">conservative — all sites</div>
+    <div class="lbl">Phase 1 Target</div>
+    <div class="amt">~$54k</div>
+    <div class="sub">committed — pilot sites</div>
   </div>
   <div class="cost-cell save">
-    <div class="lbl">Full Fleet Saving</div>
-    <div class="amt">&gt;$53k/mo</div>
-    <div class="sub">&gt;70% reduction</div>
+    <div class="lbl">Phase 1 Saving</div>
+    <div class="amt">~$22k/mo</div>
+    <div class="sub">29% reduction</div>
   </div>
   <div class="cost-cell ann">
     <div class="lbl">Annual if rolled out</div>
-    <div class="amt">&gt;$630k</div>
-    <div class="sub">fleet-wide goal</div>
+    <div class="amt">&gt;$800k</div>
+    <div class="sub">stretch goal</div>
   </div>
 </div>
 
@@ -289,46 +290,46 @@ strong { color: #e6edf3; }
 </div>
 
 <!-- ── Cost Breakdown ── -->
-<h2>2. Where the Money Goes — and Where It Could Go</h2>
+<h2>2. Where the Money Goes — and Where It Goes With the New Stack</h2>
 
 <table class="cost-table">
   <thead>
     <tr>
       <th>AWS Service</th>
       <th>Current/mo</th>
-      <th>Target/mo</th>
+      <th>New Stack/mo</th>
       <th>Saving</th>
-      <th>Approach</th>
+      <th>How</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>EC2 — Compute</td>
       <td class="old">$36,000</td>
-      <td class="new">&lt;$18,000</td>
-      <td class="save">&gt;$18,000</td>
-      <td>Replace InfluxDB2 cluster with lightweight message-routing and batch-write services</td>
+      <td class="new">~$1,500</td>
+      <td class="save">~$34,500</td>
+      <td>Replace InfluxDB2 cluster with 2–4 small instances running NATS + Parquet writer</td>
     </tr>
     <tr>
       <td>EFS — Storage</td>
       <td class="old">$10,000</td>
-      <td class="new">~$0</td>
+      <td class="new"><span class="elim">ELIMINATED</span></td>
       <td class="save">$10,000</td>
-      <td>Move time-series storage from EFS-backed InfluxDB2 to compressed columnar files on S3</td>
+      <td>Parquet files on S3 replace InfluxDB2 file storage entirely</td>
     </tr>
     <tr>
       <td>IoT Core</td>
       <td class="old">$3,000</td>
-      <td class="new">~$0</td>
+      <td class="new"><span class="elim">ELIMINATED</span></td>
       <td class="save">$3,000</td>
-      <td>Replace AWS-managed message routing with a self-hosted broker — no per-message charges</td>
+      <td>NATS bridge replaces AWS IoT — no per-message AWS charges</td>
     </tr>
     <tr>
       <td>Lambda</td>
       <td class="old">$2,000</td>
-      <td class="new">~$0</td>
+      <td class="new"><span class="elim">ELIMINATED</span></td>
       <td class="save">$2,000</td>
-      <td>Remove the routing Lambda — message delivery handled directly by the broker</td>
+      <td>No routing layer needed — NATS JetStream handles message delivery directly</td>
     </tr>
     <tr>
       <td>CloudWatch</td>
@@ -342,46 +343,46 @@ strong { color: #e6edf3; }
       <td class="old">$3,000</td>
       <td class="new">~$3,500</td>
       <td class="save" style="color:#f39c12">–$500</td>
-      <td>Slight increase — S3 becomes primary store, columnar compression keeps total size low</td>
+      <td>Slight increase — Parquet is primary store, but 5:1 compression keeps cost low</td>
     </tr>
     <tr>
       <td>Data Transfer</td>
       <td class="old">$3,600</td>
       <td class="new">~$1,000</td>
       <td class="save">~$2,600</td>
-      <td>Batched writes vs. continuous real-time streaming to AWS</td>
+      <td>Batched Parquet writes vs. continuous real-time streaming to AWS</td>
     </tr>
     <tr>
       <td><strong>TOTAL</strong></td>
       <td class="old"><strong>$76,200</strong></td>
-      <td class="new"><strong>&lt;$23,000</strong></td>
-      <td class="save"><strong>&gt;$53,000</strong></td>
+      <td class="new"><strong>~$6,500</strong></td>
+      <td class="save"><strong>~$69,700</strong></td>
       <td></td>
     </tr>
   </tbody>
 </table>
 
-<!-- ── The Approach ── -->
-<h2>3. The Proposed Approach</h2>
+<!-- ── The New Architecture ── -->
+<h2>3. The New Architecture</h2>
 <div class="two-col">
   <div class="card solution">
-    <h3>Core changes</h3>
+    <h3>Core pipeline</h3>
     <ul>
-      <li>Site MQTT broker (FlashMQ) — <strong>unchanged</strong>, already running</li>
-      <li>Replace AWS IoT Core + Lambda with a <strong>self-hosted message broker</strong></li>
-      <li>Replace InfluxDB2 + EFS with <strong>columnar storage on S3</strong> (Parquet format)</li>
-      <li>Serve live data and historical queries from a <strong>lightweight API layer</strong></li>
-      <li>Architecture under active development — early results are promising</li>
+      <li>Site MQTT broker (FlashMQ) — unchanged, already running</li>
+      <li><strong>NATS Bridge</strong> — subscribes to MQTT, publishes to NATS JetStream</li>
+      <li><strong>NATS JetStream</strong> — durable, replayable message store (replaces IoT + Lambda)</li>
+      <li><strong>Parquet Writer</strong> — batches messages, writes columnar files to S3</li>
+      <li><strong>Subscriber API</strong> — serves live stream and historical queries from S3</li>
     </ul>
   </div>
   <div class="card solution">
     <h3>Why this works at scale</h3>
     <ul>
-      <li>Self-hosted broker handles the ingest load at a fraction of IoT Core pricing</li>
-      <li>Parquet columnar format gives <strong>5–10× storage compression</strong> vs InfluxDB2 TSM</li>
-      <li>SQL query engine reads S3 directly — no dedicated database server needed for history</li>
+      <li>NATS handles <strong>millions of messages/sec</strong> on a single t3.medium</li>
+      <li>Parquet columnar format gives <strong>5–10× storage compression</strong> vs InfluxDB2</li>
+      <li>DuckDB queries Parquet on S3 directly — no database server needed for history</li>
       <li>Self-hosted — no per-message AWS charges anywhere in the pipeline</li>
-      <li>Architecture scales linearly: one small instance per site</li>
+      <li>Working proof-of-concept running on spark-22b6 right now</li>
     </ul>
   </div>
 </div>
@@ -392,16 +393,15 @@ strong { color: #e6edf3; }
 
 <div class="phase-grid">
   <div class="phase-card committed">
-    <div class="phase-label">Phase 1 — Proof of Concept</div>
+    <div class="phase-label">Phase 1 — Committed</div>
     <div class="phase-title">Pilot: 3–4 Troubled Sites</div>
-    <div class="phase-saving" style="font-size:1.0em;color:#58a6ff">Does it work on real sites?</div>
+    <div class="phase-saving">~$22k/mo saved</div>
     <ul>
-      <li>Sites already struggling — "can only get better" risk profile</li>
-      <li>If it works on a stressed system, it works anywhere</li>
-      <li>1 week intensive testing on demo system first</li>
-      <li>Deliverable: working stack on a real site, not a cost saving</li>
+      <li>Sites already struggling with the current solution</li>
+      <li>"Can only get better" risk profile</li>
+      <li>1 week intensive testing on spark-22b6 first</li>
+      <li>Proves the model on real data before wider rollout</li>
       <li>Target: live within 30 days</li>
-      <li>Once solid: each new site added at <strong>lower marginal cost</strong> than the current architecture</li>
     </ul>
   </div>
   <div class="phase-card expected">
@@ -412,7 +412,6 @@ strong { color: #e6edf3; }
       <li>Use Phase 1 deployment template</li>
       <li>Team can execute independently</li>
       <li>Rollout risk is low — proven stack</li>
-      <li>Marginal cost per new site falls as the template matures</li>
       <li>Target: 60–90 days after Phase 1</li>
     </ul>
   </div>
@@ -423,8 +422,8 @@ strong { color: #e6edf3; }
     <ul>
       <li>All 80+ sites on new stack</li>
       <li>AWS bill restructured entirely</li>
-      <li>Template repeatable across all asset types</li>
-      <li>Team owns the full deployment playbook</li>
+      <li>Architecture becomes a product in its own right</li>
+      <li>Every competitor in the industry has this problem</li>
     </ul>
   </div>
 </div>
@@ -447,7 +446,7 @@ strong { color: #e6edf3; }
       <li><strong>Wind</strong> — turbine count, power, RPM, wind speed, pitch angle</li>
       <li><strong>Grid</strong> — import/export, frequency, voltage, power factor</li>
       <li>Each config: fields, units, value ranges, MQTT topic pattern, expected msg/s</li>
-      <li>Confirm the pipeline passes the new messages without schema changes</li>
+      <li>Confirm the NATS bridge, Parquet writer, and Subscriber API pass new messages without schema changes</li>
     </ul>
     <div class="deliverable">One config file per asset type + message rate table</div>
     <div class="task-owner">Template: <code>generator/config.yaml</code> &nbsp;·&nbsp; Owner: <span>TBD</span></div>
@@ -455,16 +454,16 @@ strong { color: #e6edf3; }
 
   <div class="task-card t2">
     <div class="task-num">Task 2</div>
-    <div class="task-title">Stress &amp; Validation Test</div>
+    <div class="task-title">Stress Simulator</div>
     <p>Define and run a stress test that proves the stack is production-ready before Phase 1
        deployment. "Proven" must be defined clearly — not a feeling.</p>
     <ul>
       <li>Sustained load: full site equivalent for 24–48 hours minimum</li>
-      <li>Pass criteria: message throughput, end-to-end latency, write rate to storage</li>
-      <li>Failure modes: what happens when the broker restarts? When storage is slow?</li>
+      <li>Pass criteria: message throughput, end-to-end latency, Parquet write rate</li>
+      <li>Failure modes: what does the stack do when NATS restarts? When S3 is slow?</li>
       <li>Report format suitable for showing the owner and team</li>
     </ul>
-    <div class="deliverable">Test plan + pass/fail report from demo system run</div>
+    <div class="deliverable">Test plan + pass/fail report from spark-22b6 run</div>
     <div class="task-owner">Template: <code>stress_runner/</code> package &nbsp;·&nbsp; Owner: <span>TBD</span></div>
   </div>
 
@@ -476,8 +475,8 @@ strong { color: #e6edf3; }
     <ul>
       <li>List all current monitoring tools, dashboards, and scripts that query AWS</li>
       <li>For each: which endpoint, what query, what data format, how often</li>
-      <li>Identify which tools use InfluxDB2 / Flux and which use the S3 / Parquet path</li>
-      <li>Note any monitors that will break or need reconfiguring under an architecture change</li>
+      <li>Identify which tools use InfluxDB2 / Flux and which use the Subscriber API (WS :8767 / Flux :8768)</li>
+      <li>Note any monitors that will break or need reconfiguring under NATS stack migration</li>
       <li>Identify gaps: data that should be monitored but currently is not</li>
     </ul>
     <div class="deliverable">Monitor audit doc — all current AWS data consumers mapped</div>
@@ -492,63 +491,48 @@ strong { color: #e6edf3; }
     <ul>
       <li>Identify sites currently having problems with the existing solution</li>
       <li>Document each site: asset types, MQTT topics, message frequency, payload format</li>
-      <li>Define the broker bridge config needed to feed each site into the new stack</li>
+      <li>Define the MQTT bridge config needed to feed each site into NATS</li>
       <li>Identify any data model differences between sites</li>
       <li>Flag any site-specific constraints (connectivity, hardware, compliance)</li>
     </ul>
-    <div class="deliverable">Site profiles (4×) + broker config per site</div>
+    <div class="deliverable">Site profiles (4×) + MQTT bridge config per site</div>
     <div class="task-owner">Needs: access to site configs &nbsp;·&nbsp; Owner: <span>TBD</span></div>
   </div>
 
 </div>
 
-<!-- ── Pre-meeting Prerequisites ── -->
-<h2>6. Pre-Meeting Checklist</h2>
-<div class="card warning" style="margin-bottom:16px">
-  <h3>Before Tuesday — demo system must be ready</h3>
-  <ul style="margin-top:8px">
-    <li>&#9744; Get InfluxDB2 stack running on demo system — native install via <code>orig_aws/setup_aws.sh</code> (FlashMQ → Telegraf → InfluxDB2 → Grafana)</li>
-    <li>&#9744; Confirm data generator producing live data visible in Grafana</li>
-    <li>&#9744; Run for at least 30 minutes continuous before the meeting</li>
-    <li>&#9744; Verify Grafana dashboards load cleanly from a fresh browser session</li>
-  </ul>
-</div>
-
 <!-- ── Test Platform ── -->
-<h2>7. Test Platform</h2>
-<p style="font-size:0.82em;color:#8b949e;margin-bottom:12px">
-  <em>Note: the demo system is a local ARM64 test machine running FlashMQ → Telegraf → InfluxDB2 → Grafana — the same architecture as production.</em>
-</p>
+<h2>6. Test Platform</h2>
 <div class="two-col">
   <div class="card">
-    <h3>Demo system — current state</h3>
+    <h3>spark-22b6 — current state</h3>
     <ul>
-      <li>FlashMQ MQTT broker — receiving live sensor data</li>
-      <li>Telegraf — consuming and parsing MQTT messages</li>
-      <li>InfluxDB2 — storing time-series data, queryable via Flux</li>
-      <li>Grafana — live dashboards showing battery cell telemetry</li>
-      <li>Data generator running — realistic multi-cell load</li>
+      <li>Full NATS stack running 24/7</li>
+      <li>Stress runner active — continuous load test</li>
+      <li>MinIO S3-compatible storage</li>
+      <li>Process manager WebSocket :8762</li>
+      <li>All pipeline components: FlashMQ, NATS, bridge, writer, subscriber API</li>
     </ul>
   </div>
   <div class="card">
     <h3>What "proven" means before Phase 1</h3>
     <ul>
       <li>Sustained throughput matching target site load for <strong>48 hours</strong></li>
-      <li>End-to-end latency: MQTT publish → data landed in storage &lt; 30s</li>
+      <li>End-to-end latency: MQTT publish → Parquet landed in S3 &lt; 30s</li>
       <li>Zero message loss under normal load</li>
-      <li>Graceful recovery: broker restart, storage slowdown, network blip</li>
+      <li>Graceful recovery: NATS restart, S3 slowdown, network blip</li>
       <li>Query response time: 30-day history scan &lt; 5 seconds</li>
     </ul>
   </div>
 </div>
 
 <!-- ── Guiding Principles ── -->
-<h2>8. How We Work</h2>
+<h2>7. How We Work</h2>
 <div class="card">
   <div class="principle">
     <div class="icon">&#9679;</div>
     <div class="text"><strong>Prove it, then roll it.</strong> Nothing goes to a production site
-    until it has passed the defined test criteria on demo system. No exceptions.</div>
+    until it has passed the defined test criteria on spark-22b6. No exceptions.</div>
   </div>
   <div class="principle">
     <div class="icon">&#9679;</div>
@@ -569,7 +553,7 @@ strong { color: #e6edf3; }
 </div>
 
 <!-- ── Meeting Agenda ── -->
-<h2>9. Tuesday Agenda</h2>
+<h2>8. Tuesday Agenda</h2>
 <div class="card">
   <div class="agenda-row">
     <div class="agenda-time">0:00</div>
@@ -578,12 +562,12 @@ strong { color: #e6edf3; }
   </div>
   <div class="agenda-row">
     <div class="agenda-time">0:10</div>
-    <div class="agenda-item"><strong>Live demo</strong> — demo system: FlashMQ receiving sensor data, Telegraf parsing, InfluxDB2 storing, Grafana displaying live dashboards</div>
+    <div class="agenda-item"><strong>Live demo</strong> — spark-22b6 running the full NATS stack, data flowing, Parquet landing in S3, query API responding</div>
     <div class="agenda-who">15 min</div>
   </div>
   <div class="agenda-row">
     <div class="agenda-time">0:25</div>
-    <div class="agenda-item"><strong>Cost model walkthrough</strong> — line-by-line old vs. new, where each saving comes from</div>
+    <div class="agenda-item"><strong>Cost model walkthrough</strong> — costs.html interactive estimator, line-by-line old vs. new</div>
     <div class="agenda-who">10 min</div>
   </div>
   <div class="agenda-row">
@@ -605,7 +589,7 @@ strong { color: #e6edf3; }
 
 <div class="footer">
   <span>Battery Data Server · AWS Cost Reduction · March 2026</span>
-  <span>Working proof-of-concept running on demo system</span>
+  <span>Working proof-of-concept: spark-22b6 :8762</span>
 </div>
 
 </body>

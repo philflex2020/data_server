@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Study 2 — Data Recall &amp; Query Patterns</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 40px 32px;
+  max-width: 1100px;
+  margin: auto;
+  line-height: 1.65;
+}
+
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 0 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+ul   { margin: 6px 0 0 18px; color: #8b949e; font-size: 0.85em; }
+ul li { margin-bottom: 4px; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 40px; }
+
+/* ── Cards ── */
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.card.deliverable { border-color: #e3b341; }
+.card.warning     { border-color: #6e2020; background: #180d0d; }
+.card.info        { border-color: #1e4a6e; }
+
+/* ── Column grids ── */
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 800px) { .three-col { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .two-col   { grid-template-columns: 1fr; } }
+
+/* ── Tier cards ── */
+.tier-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 20px 22px;
+}
+.tier-card.realtime  { border-color: #3fb950; }
+.tier-card.medium    { border-color: #e3b341; }
+.tier-card.longterm  { border-color: #58a6ff; }
+.tier-title {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.tier-card.realtime .tier-title  { color: #3fb950; }
+.tier-card.medium   .tier-title  { color: #e3b341; }
+.tier-card.longterm .tier-title  { color: #58a6ff; }
+.tier-window {
+  font-size: 0.78em;
+  color: #8b949e;
+  margin-bottom: 12px;
+}
+
+/* ── Live demo panel ── */
+.demo-panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.conn-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.conn-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #484f58;
+  flex-shrink: 0;
+}
+.conn-dot.connected    { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
+.conn-dot.connecting   { background: #e3b341; }
+.conn-label { color: #8b949e; font-size: 0.82em; flex: 1; min-width: 180px; }
+
+.btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 6px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover   { background: #2d333b; border-color: #58a6ff; color: #58a6ff; }
+.btn.active  { background: #1e3a5e; border-color: #58a6ff; color: #58a6ff; }
+.btn.green   { border-color: #1e4a2a; color: #3fb950; }
+.btn.green:hover { border-color: #3fb950; background: #0d1f12; }
+.btn.danger  { border-color: #6e2020; color: #f85149; }
+.btn.danger:hover { border-color: #f85149; background: #180d0d; }
+
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+
+.msg-list {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 0.78em;
+  font-family: monospace;
+  color: #8b949e;
+  min-height: 120px;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+.msg-list .msg-live    { color: #3fb950; }
+.msg-list .msg-history { color: #79c0ff; }
+.msg-list .msg-status  { color: #e3b341; }
+.msg-list .msg-error   { color: #f85149; }
+.msg-list .msg-info    { color: #8b949e; font-style: italic; }
+
+.query-result {
+  background: #0d1117;
+  border: 1px solid #1e4a6e;
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-size: 0.82em;
+  color: #c9d1d9;
+  display: none;
+}
+.query-result.visible { display: block; }
+.qr-row { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 6px; }
+.qr-item .qr-label { font-size: 0.75em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+.qr-item .qr-val   { font-size: 1.1em; font-weight: 700; color: #58a6ff; }
+
+/* ── Pre / code blocks ── */
+.pre-wrap {
+  position: relative;
+  margin: 10px 0;
+}
+pre {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  padding: 14px 16px;
+  font-size: 0.82em;
+  overflow-x: auto;
+  color: #c9d1d9;
+  line-height: 1.55;
+}
+.copy-btn {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75em;
+  font-family: inherit;
+}
+.copy-btn:hover  { border-color: #58a6ff; color: #58a6ff; }
+.copy-btn.copied { border-color: #3fb950; color: #3fb950; }
+
+/* ── Tables ── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84em;
+  margin-top: 8px;
+}
+.data-table th {
+  padding: 7px 12px;
+  text-align: left;
+  background: #0d1117;
+  color: #8b949e;
+  font-weight: normal;
+  border-bottom: 1px solid #30363d;
+}
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #21262d;
+  color: #c9d1d9;
+  vertical-align: top;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #1c2128; }
+.td-green  { color: #3fb950; }
+.td-yellow { color: #e3b341; }
+.td-blue   { color: #58a6ff; }
+.td-red    { color: #f85149; }
+.td-dim    { color: #8b949e; font-size: 0.88em; }
+
+/* ── Gap warning box ── */
+.gap-box {
+  background: #180d0d;
+  border: 1px solid #6e2020;
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin-bottom: 16px;
+}
+.gap-box h3 { color: #f85149; margin-bottom: 10px; }
+
+/* ── Stat strip ── */
+.stat-strip {
+  display: flex; gap: 0;
+  background: #30363d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.stat-cell {
+  background: #0d1117;
+  padding: 12px 16px;
+  flex: 1;
+  text-align: center;
+}
+.stat-cell + .stat-cell { border-left: 1px solid #30363d; }
+.stat-cell .slbl { font-size: 0.70em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; }
+.stat-cell .sval { font-size: 1.3em; font-weight: 700; margin-top: 4px; }
+.sval.blue   { color: #58a6ff; }
+.sval.green  { color: #3fb950; }
+.sval.yellow { color: #e3b341; }
+.sval.red    { color: #f85149; }
+
+/* ── Step list ── */
+.step-list { list-style: none; margin: 0; }
+.step-list li {
+  padding: 10px 0 10px 36px;
+  position: relative;
+  border-bottom: 1px solid #21262d;
+  color: #c9d1d9;
+  font-size: 0.87em;
+}
+.step-list li:last-child { border-bottom: none; }
+.step-list li::before {
+  content: attr(data-n);
+  position: absolute;
+  left: 0; top: 10px;
+  width: 24px; height: 24px;
+  background: #1e4a6e;
+  color: #79c0ff;
+  border-radius: 50%;
+  font-size: 0.75em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Footer nav ── */
+.footer-nav {
+  margin-top: 60px;
+  padding-top: 20px;
+  border-top: 1px solid #30363d;
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 0.85em;
+}
+.footer-nav a { color: #58a6ff; }
+</style>
+</head>
+<body>
+
+<h1>Study 2 — Data Recall &amp; Query Patterns</h1>
+<p class="subtitle">
+  Assignee brief: define the three recall tiers for each asset type, specify retention
+  requirements, and benchmark query response times against the running stack.
+</p>
+
+<!-- ── Section 1: What to research ── -->
+<h2>What to Research</h2>
+<div class="card deliverable">
+  <h3>Deliverable</h3>
+  <p>
+    The pipeline has three distinct recall paths. Your job is to characterise each path
+    in production, document its behaviour, and confirm it meets requirements for all asset types.
+  </p>
+  <ul>
+    <li><strong>Define retention windows</strong> for each tier: what is actually stored, for how long, and what happens at the limit</li>
+    <li><strong>Benchmark query response times</strong> for the long-term path (DuckDB over S3 Parquet) across windows of 30s, 5min, 1hr, and 24hr</li>
+    <li><strong>Document the 60-second gap</strong> — the period during which data is in NATS JetStream but not yet in S3 — and specify the correct API call for each tier</li>
+    <li><strong>Extend the recall spec</strong> to cover Solar, Wind, and Grid once those asset types are implemented in Study 1</li>
+    <li><strong>Measure partition pruning</strong>: confirm that queries with tight time bounds scan only the relevant Parquet files and not the entire bucket</li>
+  </ul>
+</div>
+
+<!-- ── Section 2: Three-tier recall overview ── -->
+<h2>Three-Tier Recall Overview</h2>
+
+<div class="three-col">
+  <!-- Real-time -->
+  <div class="tier-card realtime">
+    <div class="tier-title">Tier 1 — Real-time</div>
+    <div class="tier-window">Latency: &lt; 1 second</div>
+    <p style="font-size:0.84em;">
+      NATS push consumer delivers messages to the Subscriber API which forwards them over
+      WebSocket as <code>live</code> events. Latency is publish-to-browser in under 100ms
+      under normal load.
+    </p>
+    <p style="font-size:0.84em;margin-top:8px;"><strong>Storage:</strong> NATS JetStream in-memory + disk</p>
+    <p style="font-size:0.84em;"><strong>API call:</strong></p>
+    <code style="font-size:0.78em;">{"type":"subscribe","subject":"batteries.>"}</code>
+    <p style="font-size:0.84em;margin-top:8px;"><strong>Use case:</strong> live dashboards, real-time alerts, operator displays</p>
+  </div>
+
+  <!-- Medium-term -->
+  <div class="tier-card medium">
+    <div class="tier-title">Tier 2 — Medium-term</div>
+    <div class="tier-window">Window: 1 second – 48 hours</div>
+    <p style="font-size:0.84em;">
+      Data still resides in NATS JetStream (48h rolling window, 8 GB max). For sub-60s
+      recall this is the <em>only</em> path — data has not yet been flushed to Parquet.
+      For 60s–48h recall it overlaps with Tier 3.
+    </p>
+    <p style="font-size:0.84em;margin-top:8px;">
+      <strong>Important:</strong> the Subscriber API <code>query_history</code> call reads
+      from S3 Parquet — it will miss the last ~60 seconds of data. To recall data from the
+      last 60 seconds use the live subscribe path or implement a direct NATS replay consumer.
+    </p>
+    <p style="font-size:0.84em;margin-top:8px;"><strong>Retention:</strong> 48h rolling / 8 GB cap</p>
+    <p style="font-size:0.84em;"><strong>At cap:</strong> oldest messages dropped first</p>
+  </div>
+
+  <!-- Long-term -->
+  <div class="tier-card longterm">
+    <div class="tier-title">Tier 3 — Long-term</div>
+    <div class="tier-window">Window: &gt; 60 seconds (S3 flush)</div>
+    <p style="font-size:0.84em;">
+      The Parquet writer flushes to MinIO/S3 every 60 seconds (or every 10,000 messages,
+      whichever comes first). Once flushed, data is queryable via DuckDB through the
+      Subscriber API <code>query_history</code> call.
+    </p>
+    <p style="font-size:0.84em;margin-top:8px;"><strong>Partition path:</strong></p>
+    <code style="font-size:0.78em;">s3://battery-data/project={p}/site={s}/{year}/{month}/{day}/</code>
+    <p style="font-size:0.84em;margin-top:8px;"><strong>Retention:</strong> indefinite (no lifecycle policy)</p>
+    <p style="font-size:0.84em;"><strong>API call:</strong> <code>query_history</code> over WS :8767</p>
+    <p style="font-size:0.84em;"><strong>Use case:</strong> historical analysis, trend reports, anomaly investigation</p>
+  </div>
+</div>
+
+<!-- ── Section 3: Live demo panel ── -->
+<h2>Live Demo Panel</h2>
+
+<div class="demo-panel">
+  <div class="conn-bar">
+    <div class="conn-dot" id="connDot"></div>
+    <span class="conn-label" id="connLabel">Not connected — choose a host</span>
+    <button class="btn" id="btnPhilDev"  onclick="connectWS('phil-dev')">phil-dev :8767</button>
+    <button class="btn" id="btnSpark"    onclick="connectWS('spark-22b6')">spark-22b6 :8767</button>
+    <button class="btn danger" id="btnDisconn" onclick="disconnectWS()" style="display:none">Disconnect</button>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn green" onclick="doSubscribe()" id="btnSub">Subscribe live</button>
+    <button class="btn" onclick="doQuery(30)"   id="btnQ30">Query last 30s</button>
+    <button class="btn" onclick="doQuery(300)"  id="btnQ5m">Query last 5min</button>
+    <button class="btn" onclick="doQuery(3600)" id="btnQ1h">Query last 1hr</button>
+    <button class="btn" onclick="doStatus()"    id="btnStatus">Get status</button>
+  </div>
+
+  <div class="msg-list" id="msgList">
+    <span class="msg-info">Connect to a host to begin...</span>
+  </div>
+
+  <div class="query-result" id="queryResult">
+    <strong style="color:#79c0ff;">Last query result</strong>
+    <div class="qr-row">
+      <div class="qr-item">
+        <div class="qr-label">Elapsed</div>
+        <div class="qr-val" id="qrElapsed">—</div>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Total rows</div>
+        <div class="qr-val" id="qrRows">—</div>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">First timestamp</div>
+        <div class="qr-val" id="qrFirst" style="font-size:0.88em;">—</div>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Last timestamp</div>
+        <div class="qr-val" id="qrLast" style="font-size:0.88em;">—</div>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Query window</div>
+        <div class="qr-val" id="qrWindow">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Section 4: Data retention table ── -->
+<h2>Data Retention Table</h2>
+
+<div class="card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Tier</th>
+        <th>Storage layer</th>
+        <th>Retention window</th>
+        <th>Max size</th>
+        <th>At limit</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="td-green">Tier 1 — Real-time</td>
+        <td>NATS JetStream (in-flight)</td>
+        <td>No explicit window — push delivery</td>
+        <td>—</td>
+        <td>Messages delivered once; missed if consumer disconnected</td>
+      </tr>
+      <tr>
+        <td class="td-yellow">Tier 2 — Medium-term</td>
+        <td>NATS JetStream (stream replay)</td>
+        <td>48 hours rolling</td>
+        <td>8 GB</td>
+        <td>Oldest messages purged first when 8 GB or 48h exceeded</td>
+      </tr>
+      <tr>
+        <td class="td-blue">Tier 3 — Long-term</td>
+        <td>MinIO / S3 Parquet</td>
+        <td>Indefinite (no lifecycle policy)</td>
+        <td>Bucket storage limit (unconfigured)</td>
+        <td>No automatic deletion — requires manual lifecycle policy</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top:14px;font-size:0.82em;color:#8b949e;">
+    Note: at 1,152 msgs/s the NATS 8 GB cap is reached in approximately
+    <strong style="color:#e3b341;">~7.8 hours</strong> (8 GB ÷ ~285 KB/s ≈ 28,070 seconds).
+    The 48h time window is the binding constraint only at lower message rates.
+    At 144 msgs/s (generator): 8 GB ÷ ~35 KB/s ≈ ~63 hours — time window binds first.
+  </p>
+</div>
+
+<!-- ── Section 5: Query response expectations ── -->
+<h2>Query Response Expectations</h2>
+
+<div class="card">
+  <p>
+    Estimates based on the stress runner topology: 1,152 msgs/s from
+    1 project × 3 sites × 4 racks × 8 modules × 12 cells.
+    DuckDB scans Parquet files on S3; partition pruning limits the scan to the
+    <code>project={p}/site={s}/{year}/{month}/{day}/</code> prefix.
+  </p>
+  <table class="data-table" style="margin-top:14px;">
+    <thead>
+      <tr>
+        <th>Query window</th>
+        <th>Approx rows (at 1,152 msg/s)</th>
+        <th>Parquet files scanned</th>
+        <th>Expected query time</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Last 30s</td>
+        <td class="td-yellow">~34,560</td>
+        <td>~3–4 files (10k-msg flush)</td>
+        <td class="td-green">&lt; 500 ms</td>
+        <td class="td-dim">Data may not exist yet — 60s gap applies</td>
+      </tr>
+      <tr>
+        <td>Last 5 min</td>
+        <td class="td-yellow">~345,600</td>
+        <td>~35 files</td>
+        <td class="td-green">&lt; 2 s</td>
+        <td class="td-dim">Single day partition; partition pruning effective</td>
+      </tr>
+      <tr>
+        <td>Last 1 hr</td>
+        <td class="td-yellow">~4,147,200</td>
+        <td>~415 files</td>
+        <td class="td-blue">2–10 s</td>
+        <td class="td-dim">Single day partition; verify DuckDB parallelism</td>
+      </tr>
+      <tr>
+        <td>Last 24 hr</td>
+        <td class="td-yellow">~99,532,800</td>
+        <td>~9,953 files</td>
+        <td class="td-red">30–120 s</td>
+        <td class="td-dim">Crosses midnight — two day partitions scanned; benchmark required</td>
+      </tr>
+      <tr>
+        <td>Cross-site (1 hr, all 3 sites)</td>
+        <td class="td-yellow">~12,441,600</td>
+        <td>~1,244 files</td>
+        <td class="td-red">5–30 s</td>
+        <td class="td-dim">Three site partitions; parallelism depends on DuckDB thread count</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top:12px;font-size:0.82em;color:#8b949e;">
+    At 10,000-message flush cap: files per hour = ceil(1152 × 3600 / 10000) = 415 files/hr per site.
+    At 60-second flush cap (lower rates): files per hour = 60 files/hr.
+    Benchmark to confirm actual S3 ListObjects overhead vs DuckDB scan time.
+  </p>
+</div>
+
+<!-- ── Section 6: The 60-second gap ── -->
+<h2>The 60-Second Gap</h2>
+
+<div class="gap-box">
+  <h3>Data in the last ~60 seconds is NOT in S3</h3>
+  <p>
+    The Parquet writer buffers incoming messages and flushes to S3 every
+    <strong>60 seconds</strong> or every <strong>10,000 messages</strong>, whichever occurs first.
+    Until a flush completes, the buffered data exists only in the Parquet writer's in-memory
+    buffer and in the NATS JetStream stream.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Consequence:</strong> a <code>query_history</code> call with
+    <code>to_ts = now</code> and <code>from_ts = now - 30</code> will return
+    <strong>zero rows</strong> even though 34,560 messages have been published in that window.
+    The data simply has not landed in S3 yet.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>At 1,152 msgs/s</strong> the 10,000-message cap is reached in ~8.7 seconds —
+    so the effective gap is closer to <strong>9–10 seconds</strong> rather than 60.
+    At 144 msgs/s the 60-second time limit fires first — gap is the full <strong>60 seconds</strong>.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Correct approach for sub-60s recall:</strong> subscribe to the live NATS stream
+    via <code>{"type":"subscribe","subject":"batteries.>"}</code> on WS :8767. This delivers
+    messages as they arrive with sub-100ms latency.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Research task:</strong> confirm the actual effective gap for each deployment by
+    running a query at T+5s, T+15s, T+30s, T+70s after a known publish event.
+    Document the first query window that reliably returns data.
+  </p>
+</div>
+
+<!-- ── Section 7: Sample API calls ── -->
+<h2>Sample API Calls</h2>
+
+<p>Timestamps below are computed dynamically from <code>Date.now()</code> at page load.</p>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">Subscribe to live stream (Tier 1)</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre id="pre-subscribe">// WebSocket: ws://HOST:8767
+// Send after onopen:
+{"type": "subscribe", "subject": "batteries.>"}
+
+// Response events (one per message):
+{"type": "live", "subject": "batteries.site=0.rack=1.module=2.cell=3", "payload": {
+  "timestamp": 1741234567.891,
+  "site_id": 0, "rack_id": 1, "module_id": 2, "cell_id": 3,
+  "voltage": 3.714, "current": -0.42, "temperature": 28.3,
+  "soc": 71.2, "soh": 97.8, "resistance": 0.0118, "capacity": 99.4,
+  "power": -1.560
+}}</pre>
+</div>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">Query last 30 seconds (Tier 3 — note the 60s gap)</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre id="pre-q30">// WebSocket: ws://HOST:8767
+// Send:
+<span id="pre-q30-text"></span>
+
+// Response:
+{"type": "history", "query_id": "q30s",
+ "columns": ["timestamp","site_id","rack_id","module_id","cell_id",
+              "voltage","current","temperature","soc","soh",
+              "resistance","capacity","power","project_id"],
+ "rows": [[1741234537.0, 0, 1, 2, 3, 3.714, -0.42, 28.3, 71.2, 97.8, 0.0118, 99.4, -1.560, 0],
+          ...],
+ "total": 34560,
+ "elapsed_ms": 312}</pre>
+</div>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">Query last 5 minutes</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre id="pre-q5m">// WebSocket: ws://HOST:8767
+// Send:
+<span id="pre-q5m-text"></span></pre>
+</div>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">Query last 1 hour</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre id="pre-q1h">// WebSocket: ws://HOST:8767
+// Send:
+<span id="pre-q1h-text"></span></pre>
+</div>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">Get status</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre>// WebSocket: ws://HOST:8767
+// Send:
+{"type": "get_status"}
+
+// Response:
+{"type": "status", "nats_connected": true, "s3_connected": true,
+ "subscribed": true, "subject": "batteries.>"}</pre>
+</div>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">HTTP diagnostic endpoint</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre>GET http://HOST:8768/diag
+
+# Response (JSON):
+{
+  "nats_connected": true,
+  "s3_connected": true,
+  "subscriber_stats": { ... }
+}</pre>
+</div>
+
+<h3 style="margin: 20px 0 8px; color: #79c0ff; font-size: 0.92em;">Flux-compatible query (HTTP :8768)</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre>POST http://HOST:8768/api/v2/query
+Content-Type: application/vnd.flux
+
+from(bucket: "battery-data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r.site_id == "0")
+
+# Returns: InfluxDB2 annotated CSV</pre>
+</div>
+
+<!-- ── Section 8: Research tasks ── -->
+<h2>Research Tasks</h2>
+
+<div class="card">
+  <ol class="step-list">
+    <li data-n="1">
+      <strong>Confirm effective gap duration.</strong> With the stress runner running at
+      1,152 msgs/s, send query_history calls at T+5s, T+15s, T+30s, T+70s after stack
+      start. Record the first query window that returns non-zero rows. Document the actual
+      flush trigger (time vs message count).
+    </li>
+    <li data-n="2">
+      <strong>Benchmark query_history response times.</strong> Run queries for windows
+      of 30s, 5min, 1hr, and 24hr against the stress runner data set. Record
+      <code>elapsed_ms</code> from the response, Parquet file count, and row count.
+      Run each query three times and take the median.
+    </li>
+    <li data-n="3">
+      <strong>Measure partition pruning effectiveness.</strong> Run a 1-hour query
+      scoped to a single site vs a cross-site query. Compare elapsed_ms. Confirm that
+      DuckDB is pruning by the <code>project={p}/site={s}</code> prefix.
+    </li>
+    <li data-n="4">
+      <strong>Test the NATS stream at the 8 GB cap.</strong> Calculate when the cap is
+      hit (8 GB ÷ 285 KB/s ≈ 7.8hr at full stress load). After the cap is hit, confirm
+      that old messages are purged and that query_history still returns data from S3
+      for those earlier periods.
+    </li>
+    <li data-n="5">
+      <strong>Validate the live subscribe path under load.</strong> Connect to WS :8767
+      and subscribe while the stress runner is at 1,152 msgs/s. Confirm message delivery
+      latency (timestamp in payload vs browser clock). Record any message drops.
+    </li>
+    <li data-n="6">
+      <strong>Specify retention for new asset types.</strong> Once Solar, Wind, and Grid
+      are implemented (Study 1), confirm that their data follows the same three-tier path.
+      Determine if different retention requirements apply (e.g. lower msg/s means the
+      time-based window binds instead of the size cap).
+    </li>
+  </ol>
+</div>
+
+<!-- ── Footer nav ── -->
+<div class="footer-nav">
+  <a href="study_data_sources.html">Study 1: Data Sources</a>
+  <a href="ttd.html">TTD</a>
+  <a href="monitor.html">Monitor</a>
+  <a href="nats.html">NATS</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="generator.html">Generator</a>
+</div>
+
+<script>
+// ── WebSocket state ──────────────────────────────────────────────────────────
+let ws       = null;
+let liveMax  = 10;
+let liveLines = [];
+let subscribed = false;
+let queryCounter = 0;
+
+function connectWS(host) {
+  if (ws) { ws.close(); ws = null; }
+  subscribed = false;
+  const url = 'ws://' + host + ':8767';
+
+  setConnLabel('Connecting to ' + url + ' \u2026', 'connecting');
+  ws = new WebSocket(url);
+
+  ws.onopen = function() {
+    setConnLabel('Connected to ' + url, 'connected');
+    document.getElementById('btnDisconn').style.display = '';
+    document.getElementById('btnPhilDev').classList.toggle('active', host === 'phil-dev');
+    document.getElementById('btnSpark').classList.toggle('active', host === 'spark-22b6');
+    appendMsg('Connected to ' + url, 'info');
+  };
+
+  ws.onmessage = function(e) {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'live') {
+        const subj = msg.subject || '';
+        const ts   = msg.payload && msg.payload.timestamp ? msg.payload.timestamp.toFixed(3) : '';
+        appendMsg('[live] ' + subj + (ts ? '  ts=' + ts : ''), 'live');
+      } else if (msg.type === 'history') {
+        handleHistory(msg);
+      } else if (msg.type === 'status') {
+        appendMsg('[status] nats=' + msg.nats_connected + '  s3=' + msg.s3_connected +
+                  '  subscribed=' + msg.subscribed, 'status');
+      } else {
+        appendMsg('[' + (msg.type || 'unknown') + '] ' + e.data.slice(0, 120), 'info');
+      }
+    } catch(_) {
+      appendMsg('[raw] ' + e.data.slice(0, 120), 'info');
+    }
+  };
+
+  ws.onclose = function() {
+    setConnLabel('Disconnected', '');
+    document.getElementById('btnDisconn').style.display = 'none';
+    document.getElementById('btnPhilDev').classList.remove('active');
+    document.getElementById('btnSpark').classList.remove('active');
+    subscribed = false;
+    appendMsg('Connection closed.', 'info');
+  };
+
+  ws.onerror = function() {
+    setConnLabel('Connection error \u2014 is the server running on ' + host + ':8767?', '');
+    appendMsg('WebSocket error.', 'error');
+  };
+}
+
+function disconnectWS() {
+  if (ws) { ws.close(); ws = null; }
+  subscribed = false;
+}
+
+function doSubscribe() {
+  if (!ws || ws.readyState !== 1) { appendMsg('Not connected.', 'error'); return; }
+  ws.send(JSON.stringify({type: 'subscribe', subject: 'batteries.>'}));
+  subscribed = true;
+  appendMsg('[sent] subscribe batteries.>', 'info');
+}
+
+function doQuery(seconds) {
+  if (!ws || ws.readyState !== 1) { appendMsg('Not connected.', 'error'); return; }
+  const now    = Date.now() / 1000;
+  const fromTs = now - seconds;
+  queryCounter++;
+  const qid = 'q' + queryCounter;
+  const payload = {
+    type:     'query_history',
+    query_id: qid,
+    proj_id:  '0',
+    site_id:  '0',
+    from_ts:  parseFloat(fromTs.toFixed(3)),
+    to_ts:    parseFloat(now.toFixed(3)),
+    limit:    1000
+  };
+  ws.send(JSON.stringify(payload));
+  const label = seconds < 60 ? seconds + 's' : (seconds / 60) + 'min';
+  appendMsg('[sent] query_history  window=' + label + '  qid=' + qid, 'info');
+  document.getElementById('qrWindow').textContent = label;
+  document.getElementById('queryResult').classList.add('visible');
+}
+
+function doStatus() {
+  if (!ws || ws.readyState !== 1) { appendMsg('Not connected.', 'error'); return; }
+  ws.send(JSON.stringify({type: 'get_status'}));
+  appendMsg('[sent] get_status', 'info');
+}
+
+function handleHistory(msg) {
+  const total   = msg.total || 0;
+  const elapsed = msg.elapsed_ms != null ? msg.elapsed_ms + ' ms' : '?';
+  const cols    = msg.columns || [];
+  const rows    = msg.rows || [];
+  const tsIdx   = cols.indexOf('timestamp');
+
+  let firstTs = '—', lastTs = '—';
+  if (tsIdx >= 0 && rows.length > 0) {
+    firstTs = new Date(rows[0][tsIdx] * 1000).toISOString().replace('T',' ').slice(0,19) + ' UTC';
+    lastTs  = new Date(rows[rows.length-1][tsIdx] * 1000).toISOString().replace('T',' ').slice(0,19) + ' UTC';
+  }
+
+  document.getElementById('qrElapsed').textContent = elapsed;
+  document.getElementById('qrRows').textContent    = total.toLocaleString();
+  document.getElementById('qrFirst').textContent   = firstTs;
+  document.getElementById('qrLast').textContent    = lastTs;
+  document.getElementById('queryResult').classList.add('visible');
+
+  appendMsg('[history] qid=' + msg.query_id + '  rows=' + total + '  elapsed=' + elapsed +
+            '  cols=' + (cols.length), 'history');
+}
+
+function setConnLabel(text, state) {
+  document.getElementById('connLabel').textContent = text;
+  const dot = document.getElementById('connDot');
+  dot.className = 'conn-dot' + (state ? ' ' + state : '');
+}
+
+function appendMsg(text, cls) {
+  liveLines.push({text, cls});
+  if (liveLines.length > liveMax) liveLines.shift();
+  const el = document.getElementById('msgList');
+  el.innerHTML = liveLines.map(l =>
+    '<span class="msg-' + l.cls + '">' + escHtml(l.text) + '</span><br>'
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Copy buttons ─────────────────────────────────────────────────────────────
+function copyPre(btn) {
+  const pre = btn.nextElementSibling;
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+// ── Dynamic timestamps in sample API calls ───────────────────────────────────
+(function renderTimestamps() {
+  const now = Date.now() / 1000;
+
+  const q30 = {
+    type: 'query_history', query_id: 'q30s', proj_id: '0', site_id: '0',
+    from_ts: parseFloat((now - 30).toFixed(3)),
+    to_ts:   parseFloat(now.toFixed(3)),
+    limit:   1000
+  };
+  const q5m = {
+    type: 'query_history', query_id: 'q5min', proj_id: '0', site_id: '0',
+    from_ts: parseFloat((now - 300).toFixed(3)),
+    to_ts:   parseFloat(now.toFixed(3)),
+    limit:   1000
+  };
+  const q1h = {
+    type: 'query_history', query_id: 'q1hr', proj_id: '0', site_id: '0',
+    from_ts: parseFloat((now - 3600).toFixed(3)),
+    to_ts:   parseFloat(now.toFixed(3)),
+    limit:   1000
+  };
+
+  document.getElementById('pre-q30-text').textContent = JSON.stringify(q30, null, 2);
+  document.getElementById('pre-q5m-text').textContent = JSON.stringify(q5m, null, 2);
+  document.getElementById('pre-q1h-text').textContent = JSON.stringify(q1h, null, 2);
+})();
+</script>
+</body>
+</html>

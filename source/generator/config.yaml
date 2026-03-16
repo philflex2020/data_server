@@ -3,54 +3,85 @@ broker:
   port: 1884
   username: ""
   password: ""
-  client_id: battery-data-generator
+  client_id: data-generator
 
 websocket:
   host: 0.0.0.0
   port: 8765
 
-# Hierarchy
-sites: 2
-racks_per_site: 3
-modules_per_rack: 4
-cells_per_module: 6
-
-# How often to publish a sample for each cell (seconds)
+# How often to publish a sample for each asset (seconds)
 sample_interval_seconds: 1
 
 # Topic structure:
-#   per_cell       — one topic per cell, payload is JSON with all measurements
-#                    e.g. batteries/site=0/rack=1/module=2/cell=3
-#   per_cell_item  — one topic per measurement per cell
-#                    e.g. batteries/site=0/rack=1/module=2/cell=3/voltage
+#   per_cell       — one topic per asset, payload is JSON with all measurements
+#   per_cell_item  — one topic per measurement per asset
 topic_mode: per_cell
 
-topic_prefix: batteries
+# Active source configurations.
+# Set enabled: true to include a source in the publish loop.
+# The generator normalises any missing sources to disabled defaults at startup.
+sources:
+  - id: battery
+    type: battery
+    enabled: true
+    topic_prefix: batteries
+    sites: 2
+    racks_per_site: 3
+    modules_per_rack: 4
+    cells_per_module: 6
+    cell_data:
+      voltage:     {min: 3.0,   max: 4.2,   nominal: 3.7,   unit: V,   drift: 0.005}
+      current:     {min: -50.0, max: 50.0,  nominal: 0.0,   unit: A,   drift: 0.5}
+      temperature: {min: 20.0,  max: 45.0,  nominal: 25.0,  unit: C,   drift: 0.1}
+      soc:         {min: 0.0,   max: 100.0, nominal: 80.0,  unit: "%", drift: 0.05}
+      soh:         {min: 80.0,  max: 100.0, nominal: 98.0,  unit: "%", drift: 0.01}
+      resistance:  {min: 0.001, max: 0.05,  nominal: 0.01,  unit: ohm, drift: 0.0001}
+      capacity:    {min: 80.0,  max: 105.0, nominal: 100.0, unit: Ah,  drift: 0.01}
 
-# Cell measurements — each generates realistic drifting values
-cell_data:
-  voltage:
-    min: 3.0
-    max: 4.2
-    unit: V
-    nominal: 3.7
-  current:
-    min: -50.0
-    max: 50.0
-    unit: A
-    nominal: 0.0
-  temperature:
-    min: 20.0
-    max: 45.0
-    unit: C
-    nominal: 25.0
-  soc:
-    min: 0.0
-    max: 100.0
-    unit: percent
-    nominal: 80.0
-  internal_resistance:
-    min: 0.001
-    max: 0.05
-    unit: ohm
-    nominal: 0.01
+  - id: solar
+    type: solar
+    enabled: false
+    topic_prefix: solar
+    sites: 2
+    racks_per_site: 4
+    modules_per_rack: 6
+    cells_per_module: 10
+    cell_data:
+      irradiance: {min: 0,    max: 1200, nominal: 800, unit: "W/m2", drift: 5.0}
+      panel_temp: {min: -10,  max: 85,   nominal: 35,  unit: C,      drift: 0.2}
+      dc_voltage: {min: 250,  max: 1000, nominal: 600, unit: V,      drift: 2.0}
+      dc_current: {min: 0,    max: 20,   nominal: 8,   unit: A,      drift: 0.1}
+      ac_power:   {min: 0,    max: 250,  nominal: 180, unit: W,      drift: 2.0}
+      efficiency: {min: 10,   max: 25,   nominal: 20,  unit: "%",    drift: 0.05}
+
+  - id: wind
+    type: wind
+    enabled: false
+    topic_prefix: wind
+    sites: 2
+    racks_per_site: 5
+    modules_per_rack: 1
+    cells_per_module: 1
+    cell_data:
+      wind_speed:  {min: 0,    max: 30,   nominal: 12,   unit: m/s, drift: 0.2}
+      rotor_rpm:   {min: 0,    max: 25,   nominal: 15,   unit: RPM, drift: 0.1}
+      ac_power:    {min: 0,    max: 3000, nominal: 1500, unit: kW,  drift: 10.0}
+      frequency:   {min: 49.5, max: 50.5, nominal: 50,   unit: Hz,  drift: 0.005}
+      pitch_angle: {min: 0,    max: 90,   nominal: 15,   unit: deg, drift: 0.1}
+      temperature: {min: -20,  max: 80,   nominal: 40,   unit: C,   drift: 0.2}
+
+  - id: localgen
+    type: localgen
+    enabled: false
+    topic_prefix: localgen
+    sites: 1
+    racks_per_site: 2
+    modules_per_rack: 1
+    cells_per_module: 1
+    cell_data:
+      fuel_level:  {min: 0,   max: 100,  nominal: 75,  unit: "%", drift: 0.02}
+      rpm:         {min: 0,   max: 3600, nominal: 1500, unit: RPM, drift: 5.0}
+      ac_power:    {min: 0,   max: 500,  nominal: 250,  unit: kW,  drift: 2.0}
+      frequency:   {min: 49,  max: 51,   nominal: 50,   unit: Hz,  drift: 0.01}
+      voltage:     {min: 380, max: 420,  nominal: 400,  unit: V,   drift: 0.5}
+      temperature: {min: 60,  max: 120,  nominal: 90,   unit: C,   drift: 0.3}

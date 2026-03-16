@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Study 3 — AWS Monitoring &amp; Performance</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 40px 32px;
+  max-width: 1100px;
+  margin: auto;
+  line-height: 1.65;
+}
+
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 0 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+ul   { margin: 6px 0 0 18px; color: #8b949e; font-size: 0.85em; }
+ul li { margin-bottom: 4px; }
+ol   { margin: 6px 0 0 20px; color: #8b949e; font-size: 0.85em; }
+ol li { margin-bottom: 5px; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 40px; }
+
+/* ── Cards ── */
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.card.deliverable { border-color: #e3b341; }
+.card.warning     { border-color: #6e2020; background: #180d0d; }
+.card.ok          { border-color: #1a3d1a; }
+.card.info        { border-color: #1e4a6e; }
+
+/* ── Grids ── */
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.three-col { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 800px) { .three-col,.two-col { grid-template-columns: 1fr; } }
+
+/* ── Monitor category cards ── */
+.mon-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 18px 20px;
+}
+.mon-card.infra   { border-color: #1e4a6e; }
+.mon-card.flow    { border-color: #2a3d1e; }
+.mon-card.data    { border-color: #4a1e6e; }
+.mon-title { font-size: 0.82em; font-weight: 700; text-transform: uppercase;
+             letter-spacing: 0.07em; margin-bottom: 6px; }
+.mon-card.infra .mon-title { color: #58a6ff; }
+.mon-card.flow  .mon-title { color: #56d364; }
+.mon-card.data  .mon-title { color: #a371f7; }
+
+/* ── Connect bar ── */
+.connect-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: #161b22; border: 1px solid #30363d;
+  border-radius: 6px; padding: 10px 16px;
+  flex-wrap: wrap; font-size: 0.84em; margin-bottom: 12px;
+}
+.conn-dot { width:9px; height:9px; border-radius:50%; background:#484f58;
+            flex-shrink:0; display:inline-block; transition: background .3s; }
+.conn-dot.green { background:#3fb950; box-shadow: 0 0 5px #3fb95066; }
+.conn-dot.amber { background:#d29922; }
+.conn-dot.red   { background:#f85149; }
+#conn-label { color:#8b949e; }
+.connect-bar input[type=text] {
+  background:#0d1117; color:#e0e0e0; border:1px solid #30363d;
+  padding:4px 8px; font-family:monospace; border-radius:3px; font-size:0.92em;
+}
+
+/* ── Buttons ── */
+.btn {
+  background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+  padding: 5px 14px; border-radius: 5px; cursor: pointer;
+  font-size: 0.82em; font-family: 'Segoe UI', sans-serif;
+  transition: background 0.15s;
+}
+.btn:hover  { background: #2d333b; border-color: #58a6ff; }
+.btn.active { border-color: #3fb950; color: #3fb950; background: #0d2416; }
+.btn.amber  { border-color: #d29922; color: #d29922; }
+.btn-group  { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Diag panel ── */
+.diag-grid {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 10px; margin-bottom: 14px;
+}
+@media (max-width: 750px) { .diag-grid { grid-template-columns: 1fr; } }
+
+.diag-card {
+  background: #0d1117; border: 1px solid #21262d;
+  border-radius: 5px; padding: 12px 14px;
+}
+.diag-card-title { font-size: 0.72em; text-transform: uppercase;
+                   letter-spacing: 0.07em; margin-bottom: 8px; }
+.diag-card.nats-card  { border-color: #1e4a6e; }
+.diag-card.nats-card  .diag-card-title { color: #58a6ff; }
+.diag-card.s3-card    { border-color: #2a3d1e; }
+.diag-card.s3-card    .diag-card-title { color: #56d364; }
+.diag-card.sub-card   { border-color: #4a1e6e; }
+.diag-card.sub-card   .diag-card-title { color: #a371f7; }
+
+.diag-row { display:flex; justify-content:space-between; align-items:baseline;
+            font-size:0.80em; padding: 3px 0; border-bottom: 1px solid #1c2128; }
+.diag-row:last-child { border-bottom: none; }
+.diag-key   { color: #8b949e; }
+.diag-val   { color: #c9d1d9; font-family: monospace; font-weight: bold; }
+.diag-val.good  { color: #56d364; }
+.diag-val.warn  { color: #d29922; }
+.diag-val.bad   { color: #f85149; }
+.diag-val.dim   { color: #484f58; }
+
+/* ── Check results ── */
+.check-output {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 4px;
+  font-family: monospace; font-size: 0.78em; padding: 10px 12px;
+  min-height: 80px; max-height: 260px; overflow-y: auto;
+  color: #8b949e; white-space: pre-wrap; margin-top: 10px;
+}
+.check-output .ok   { color: #56d364; }
+.check-output .warn { color: #d29922; }
+.check-output .err  { color: #f85149; }
+.check-output .dim  { color: #484f58; }
+
+/* ── Data tables ── */
+.spec-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.83em; margin-bottom: 20px;
+}
+.spec-table th {
+  padding: 7px 12px; text-align: left;
+  background: #0d1117; color: #8b949e; font-weight: normal;
+  border-bottom: 1px solid #30363d;
+}
+.spec-table td {
+  padding: 7px 12px; border-bottom: 1px solid #21262d; color: #c9d1d9;
+}
+.spec-table tr:last-child td { border-bottom: none; }
+.spec-table tr:hover td { background: #161b22; }
+.num { text-align: right; font-family: monospace; }
+.tag-rt   { color: #3fb950; }
+.tag-med  { color: #e3b341; }
+.tag-hist { color: #58a6ff; }
+
+/* ── Pre / code blocks ── */
+pre.snippet {
+  background: #161b22; border: 1px solid #21262d; border-radius: 4px;
+  padding: 12px 14px; font-size: 0.78em; overflow-x: auto;
+  color: #c9d1d9; line-height: 1.55; margin: 8px 0 14px; position: relative;
+}
+.copy-btn {
+  position: absolute; top: 8px; right: 10px;
+  background: #21262d; border: 1px solid #30363d; color: #8b949e;
+  padding: 2px 10px; border-radius: 3px; cursor: pointer; font-size: 0.80em;
+}
+.copy-btn:hover { color: #58a6ff; border-color: #58a6ff; }
+
+/* ── Scale cards ── */
+.scale-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 16px 18px; text-align: center;
+}
+.scale-num  { font-size: 2.2em; font-weight: 800; line-height: 1.1; margin: 6px 0 4px; }
+.scale-lbl  { font-size: 0.75em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; }
+.scale-sub  { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+
+/* ── Footer nav ── */
+.footer-nav {
+  margin-top: 40px; padding-top: 16px;
+  border-top: 1px solid #30363d;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.footer-nav a {
+  background: #161b22; border: 1px solid #30363d; border-radius: 4px;
+  padding: 6px 14px; font-size: 0.82em; color: #58a6ff;
+}
+.footer-nav a:hover { border-color: #58a6ff; text-decoration: none; }
+
+/* ── Refresh indicator ── */
+#refresh-status { color: #484f58; font-size: 0.78em; }
+#refresh-status.live { color: #3fb950; }
+
+/* ── Path tabs ── */
+.path-tabs {
+  display: flex; gap: 0; margin: 24px 0 0;
+  border-bottom: 2px solid #21262d;
+}
+.path-tab {
+  padding: 10px 22px; cursor: pointer; font-size: 0.88em; font-weight: 600;
+  color: #8b949e; border: 1px solid transparent; border-bottom: none;
+  border-radius: 6px 6px 0 0; background: transparent; transition: all 0.15s;
+  margin-bottom: -2px;
+}
+.path-tab:hover { color: #c9d1d9; background: #161b22; }
+.path-tab.active { color: #e6edf3; background: #161b22;
+  border-color: #21262d; border-bottom: 2px solid #161b22; }
+.path-tab.nats.active  { color: #58a6ff; border-top-color: #1e4a6e; }
+.path-tab.influx.active { color: #f6a623; border-top-color: #4a2e00; }
+.tab-badge {
+  display: inline-block; font-size: 0.72em; padding: 1px 6px;
+  border-radius: 10px; margin-left: 6px; vertical-align: middle;
+}
+.path-tab.nats   .tab-badge { background: #1e4a6e; color: #58a6ff; }
+.path-tab.influx .tab-badge { background: #4a2e00; color: #f6a623; }
+</style>
+</head>
+<body>
+
+<h1>Study 3 — AWS Monitoring &amp; Performance</h1>
+<p class="subtitle">
+  Research brief for the battery data pipeline ·
+  AWS deployment monitoring, recall-time specifications, data availability checking, and scale.
+</p>
+
+<!-- ─── Path tabs ───────────────────────────────────────────── -->
+<div class="path-tabs">
+  <div class="path-tab nats active" onclick="switchTab('nats')">
+    NATS Path <span class="tab-badge">NATS → S3 → DuckDB</span>
+  </div>
+  <div class="path-tab influx" onclick="switchTab('influx')">
+    InfluxDB Path <span class="tab-badge">Telegraf → InfluxDB2</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- TAB: NATS                                                  -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="tab-nats">
+
+<!-- ─── Deliverable ────────────────────────────────────────── -->
+<div class="card deliverable">
+  <h3>Deliverable — NATS Path</h3>
+  <p style="margin-top:8px">
+    Identify how the current deployed systems pull data from AWS on the NATS path.
+    Map every monitor, dashboard, and query client to the specific API endpoint it uses,
+    the data it retrieves, and how often. Then benchmark the recall performance and verify
+    data completeness on a live deployment.
+  </p>
+  <ul style="margin-top:8px">
+    <li>Audit all current tools querying the Subscriber API (<code>:8767</code> WS and <code>:8768</code> Flux HTTP) — document each query pattern</li>
+    <li>Identify monitors that will break or need reconfiguring if the stack changes</li>
+    <li>Define pass/fail thresholds for every metric in the <code>/diag</code> panel below</li>
+    <li>Benchmark query response times for 30s, 5min, 1h, 24h windows against spark-22b6</li>
+    <li>Run the data completeness check queries and confirm expected cell count</li>
+    <li>Specify how many monitoring processes a fleet of 80+ sites requires</li>
+  </ul>
+</div>
+
+<!-- ─── Live Diag Panel ───────────────────────────────────── -->
+<h2>Live Pipeline Diagnostics — <code>GET :8768/diag</code></h2>
+<p>
+  The Subscriber API exposes a single-call health snapshot at <code>/diag</code>.
+  It queries NATS monitoring (<code>:8222/jsz</code>) and S3 in parallel and returns
+  combined JSON. This is the primary monitoring endpoint for any deployment.
+</p>
+
+<div class="connect-bar">
+  <span class="conn-dot" id="conn-dot"></span>
+  <span id="conn-label">Not connected</span>
+  &nbsp;|&nbsp;
+  Host: <input type="text" id="diag-host" value="localhost" style="width:130px">
+  Port: <input type="text" id="diag-port" value="8768" style="width:55px">
+  <div class="btn-group">
+    <button class="btn" onclick="connectTo('phil-dev')">phil-dev</button>
+    <button class="btn" onclick="connectTo('spark-22b6')">spark-22b6</button>
+    <button class="btn" onclick="fetchDiag()">↻ Fetch now</button>
+  </div>
+  Auto-refresh:
+  <select id="sel-interval" onchange="restartAuto()" style="background:#0d1117;color:#e0e0e0;border:1px solid #30363d;padding:4px 6px;border-radius:3px;font-size:0.82em">
+    <option value="0">Off</option>
+    <option value="5" selected>5 s</option>
+    <option value="10">10 s</option>
+    <option value="30">30 s</option>
+  </select>
+  <span id="refresh-status"></span>
+</div>
+
+<div class="diag-grid">
+  <div class="diag-card nats-card">
+    <div class="diag-card-title">NATS JetStream</div>
+    <div class="diag-row"><span class="diag-key">Stream</span>       <span class="diag-val" id="d-stream">—</span></div>
+    <div class="diag-row"><span class="diag-key">Messages</span>     <span class="diag-val" id="d-msgs">—</span></div>
+    <div class="diag-row"><span class="diag-key">Stored</span>        <span class="diag-val" id="d-bytes">—</span></div>
+    <div class="diag-row"><span class="diag-key">Consumer lag</span> <span class="diag-val" id="d-lag">—</span></div>
+    <div class="diag-row"><span class="diag-key">Consumers</span>    <span class="diag-val" id="d-cons">—</span></div>
+    <div class="diag-row"><span class="diag-key">Fill %</span>        <span class="diag-val" id="d-fill">—</span></div>
+    <div class="diag-row"><span class="diag-key">Max age</span>       <span class="diag-val" id="d-age">—</span></div>
+  </div>
+  <div class="diag-card s3-card">
+    <div class="diag-card-title">S3 / MinIO</div>
+    <div class="diag-row"><span class="diag-key">Bucket</span>        <span class="diag-val" id="d-bucket">—</span></div>
+    <div class="diag-row"><span class="diag-key">Total files</span>  <span class="diag-val" id="d-files">—</span></div>
+    <div class="diag-row"><span class="diag-key">Total size</span>   <span class="diag-val" id="d-size">—</span></div>
+    <div class="diag-row"><span class="diag-key">Last file</span>    <span class="diag-val" id="d-lastfile" style="font-size:0.85em;word-break:break-all">—</span></div>
+    <div class="diag-row"><span class="diag-key">Last modified</span><span class="diag-val" id="d-lastmod">—</span></div>
+    <div class="diag-row"><span class="diag-key">Write interval</span><span class="diag-val" id="d-wint">—</span></div>
+  </div>
+  <div class="diag-card sub-card">
+    <div class="diag-card-title">Subscriber API</div>
+    <div class="diag-row"><span class="diag-key">NATS connected</span><span class="diag-val" id="d-nconn">—</span></div>
+    <div class="diag-row"><span class="diag-key">S3 connected</span>  <span class="diag-val" id="d-sconn">—</span></div>
+    <div class="diag-row"><span class="diag-key">Live msg/s</span>    <span class="diag-val" id="d-mps">—</span></div>
+    <div class="diag-row"><span class="diag-key">Live total</span>    <span class="diag-val" id="d-ltot">—</span></div>
+    <div class="diag-row"><span class="diag-key">WS clients</span>    <span class="diag-val" id="d-wsc">—</span></div>
+    <div class="diag-row"><span class="diag-key">Queries run</span>   <span class="diag-val" id="d-qrun">—</span></div>
+    <div class="diag-row"><span class="diag-key">Uptime</span>         <span class="diag-val" id="d-uptime">—</span></div>
+  </div>
+</div>
+
+<details style="margin-bottom:24px">
+  <summary style="cursor:pointer;font-size:0.82em;color:#8b949e;padding:4px 0">Show raw /diag JSON</summary>
+  <pre class="snippet" id="diag-raw" style="margin-top:8px;font-size:0.76em">Fetch data above to see raw JSON.</pre>
+</details>
+
+<!-- ─── What needs monitoring ─────────────────────────────── -->
+<h2>What Needs Monitoring</h2>
+<p>Three distinct monitoring categories, each requiring different checks and thresholds.</p>
+
+<div class="three-col">
+  <div class="mon-card infra">
+    <div class="mon-title">1 — Infrastructure Health</div>
+    <p style="font-size:0.82em;margin:6px 0 8px">Is the process running and connected?</p>
+    <ul>
+      <li>NATS server reachable — <code>GET :8222/healthz</code></li>
+      <li>S3/MinIO bucket accessible — <code>/diag</code> <code>s3.bucket</code></li>
+      <li>Subscriber API responding — <code>GET :8768/ping</code></li>
+      <li>NATS bridge connected — consumer count &gt; 0 in <code>/jsz</code></li>
+      <li>Parquet writer alive — <code>consumer_pending</code> not growing unboundedly</li>
+      <li>Process manager status — WS <code>:8762</code> component map</li>
+    </ul>
+  </div>
+  <div class="mon-card flow">
+    <div class="mon-title">2 — Data Flow Health</div>
+    <p style="font-size:0.82em;margin:6px 0 8px">Is data moving at the expected rate?</p>
+    <ul>
+      <li>NATS <code>in_msgs_rate</code> — matches expected site load</li>
+      <li>NATS <code>consumer_pending</code> — writer keeping up; should stay near 0</li>
+      <li>S3 <code>write_interval_sec</code> — should be ≤ <code>flush_interval_seconds</code> (60 s)</li>
+      <li>Subscriber API <code>live_per_sec</code> — matches expected msg rate</li>
+      <li>NATS stream fill % — should stay well below 100%</li>
+      <li>Slow consumer count — must be 0 (<code>/varz</code> <code>slow_consumers</code>)</li>
+    </ul>
+  </div>
+  <div class="mon-card data">
+    <div class="mon-title">3 — Data Completeness</div>
+    <p style="font-size:0.82em;margin:6px 0 8px">Is all the expected data present in S3?</p>
+    <ul>
+      <li>Distinct cell count in last 60 s — must equal expected total</li>
+      <li>Per-cell last-seen age — no cell silent for &gt; expected interval</li>
+      <li>S3 row count per time window — matches expected volume</li>
+      <li>Gap detection — time spans with zero rows for a given cell</li>
+      <li>Value range validation — voltage/temp outside physical bounds</li>
+      <li>Timestamp skew — cells reporting future or very stale timestamps</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─── Recall Time Specifications ──────────────────────────── -->
+<h2>Recall Time Specifications</h2>
+<p>
+  The pipeline serves three recall tiers. The table below shows the current architecture for each,
+  the expected row volumes at the stress-runner load (1,152 msg/s), and the
+  <strong>target response time the assignee must benchmark and confirm</strong> against spark-22b6.
+</p>
+
+<table class="spec-table">
+  <thead>
+    <tr>
+      <th>Tier</th>
+      <th>Query window</th>
+      <th>Data path</th>
+      <th>Expected rows<br><small style="font-weight:normal;color:#484f58">@ 1,152 msg/s, 1 site</small></th>
+      <th>Target response</th>
+      <th>Benchmark status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="tag-rt">Real-time</span></td>
+      <td>Live push</td>
+      <td>NATS push consumer → WS</td>
+      <td class="num">n/a (streaming)</td>
+      <td class="num">&lt; 50 ms</td>
+      <td style="color:#484f58">TBD</td>
+    </tr>
+    <tr>
+      <td><span class="tag-med">Medium</span></td>
+      <td>Last 30 s</td>
+      <td>S3 Parquet (DuckDB)</td>
+      <td class="num">~34,560 rows</td>
+      <td class="num">&lt; 1 s</td>
+      <td style="color:#484f58">TBD</td>
+    </tr>
+    <tr>
+      <td><span class="tag-med">Medium</span></td>
+      <td>Last 5 min</td>
+      <td>S3 Parquet (DuckDB)</td>
+      <td class="num">~345,600 rows</td>
+      <td class="num">&lt; 3 s</td>
+      <td style="color:#484f58">TBD</td>
+    </tr>
+    <tr>
+      <td><span class="tag-hist">History</span></td>
+      <td>Last 1 hr</td>
+      <td>S3 Parquet (DuckDB)</td>
+      <td class="num">~4,147,200 rows</td>
+      <td class="num">&lt; 5 s</td>
+      <td style="color:#484f58">TBD</td>
+    </tr>
+    <tr>
+      <td><span class="tag-hist">History</span></td>
+      <td>Last 24 hr</td>
+      <td>S3 Parquet (DuckDB)</td>
+      <td class="num">~99,532,800 rows</td>
+      <td class="num">&lt; 15 s</td>
+      <td style="color:#484f58">TBD</td>
+    </tr>
+    <tr>
+      <td><span class="tag-hist">History</span></td>
+      <td>Last 7 days</td>
+      <td>S3 Parquet (DuckDB)</td>
+      <td class="num">~696M rows</td>
+      <td class="num">&lt; 30 s</td>
+      <td style="color:#484f58">TBD</td>
+    </tr>
+    <tr>
+      <td><span class="tag-hist">History</span></td>
+      <td>Last 30 days</td>
+      <td>S3 Parquet (DuckDB)</td>
+      <td class="num">~2.98B rows</td>
+      <td class="num">define target</td>
+      <td style="color:#d29922">Research needed</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="card warning" style="margin-bottom:20px">
+  <h3>The 60-second gap</h3>
+  <p style="margin-top:8px">
+    Data published in the last <code>flush_interval_seconds</code> (default 60 s) lives only in
+    the NATS JetStream stream — the Parquet Writer has not yet flushed it to S3.
+    Any DuckDB / history query will miss this window. The only way to retrieve sub-60s data
+    is the live WebSocket subscribe path (<code>:8767</code>).
+    <strong>Monitoring systems must account for this gap</strong>: do not raise a "data missing"
+    alert for events less than 90 s old.
+  </p>
+</div>
+
+<!-- ─── Live Recall Benchmark Panel ───────────────────────── -->
+<h2>Recall Benchmark Panel</h2>
+<p>
+  Connect to the Subscriber API WebSocket and run timed queries to benchmark your deployment.
+  Results are displayed with <code>elapsed_ms</code> and row counts. Record these in the
+  research doc.
+</p>
+
+<div class="connect-bar">
+  <span class="conn-dot" id="ws-dot"></span>
+  <span id="ws-label">Not connected</span>
+  &nbsp;|&nbsp;
+  Host: <input type="text" id="ws-host" value="localhost" style="width:130px">
+  Port: <input type="text" id="ws-port" value="8767" style="width:55px">
+  <div class="btn-group">
+    <button class="btn" onclick="wsConnectTo('phil-dev')">phil-dev</button>
+    <button class="btn" onclick="wsConnectTo('spark-22b6')">spark-22b6</button>
+    <button class="btn" id="ws-disc" onclick="wsDisconnect()" style="display:none;border-color:#f85149;color:#f85149">Disconnect</button>
+  </div>
+</div>
+
+<div class="btn-group" style="margin-bottom:12px;flex-wrap:wrap">
+  <button class="btn" onclick="runQuery(30,   'q30s',   'Last 30s')">Query last 30s</button>
+  <button class="btn" onclick="runQuery(300,  'q5m',    'Last 5min')">Query last 5min</button>
+  <button class="btn" onclick="runQuery(3600, 'q1h',    'Last 1hr')">Query last 1hr</button>
+  <button class="btn" onclick="runQuery(86400,'q24h',   'Last 24hr')">Query last 24hr</button>
+  <button class="btn" onclick="runCompleteness()">Check completeness (last 5min)</button>
+  <button class="btn" onclick="clearOutput()">Clear</button>
+</div>
+
+<div class="check-output" id="bench-out">Connect above and run a query to see results.</div>
+
+<!-- ─── Data Completeness Checks ─────────────────────────────── -->
+<h2>Data Completeness Checks</h2>
+<p>
+  Completeness checks verify that <em>all expected cells</em> are present in S3 within a
+  given time window and that no cell has gone silent. These queries run via the
+  <code>query_history</code> WebSocket command and can be issued from any monitoring process.
+</p>
+
+<h3>Check 1 — Distinct cell count in last 5 minutes</h3>
+<p>
+  Run a <code>query_history</code> with <code>limit: 10000</code> over the last 5 min,
+  then count distinct <code>(site_id, rack_id, module_id, cell_id)</code> tuples in the result.
+  Compare to expected cell count. A shortfall means one or more cells stopped publishing.
+</p>
+<pre class="snippet" id="snip1">// WebSocket request — count distinct cells in last 5 min
+{
+  "type":     "query_history",
+  "query_id": "check-cell-count",
+  "from_ts":  /* now - 300 */,
+  "to_ts":    /* now */,
+  "limit":    10000
+}
+
+// In the response, count unique combos:
+const rows = result.rows;
+const idx = Object.fromEntries(result.columns.map((c,i) => [c,i]));
+const seen = new Set(rows.map(r =>
+  `${r[idx.site_id]}.${r[idx.rack_id]}.${r[idx.module_id]}.${r[idx.cell_id]}`
+));
+// seen.size should equal expected cell count (e.g. 1152 for stress runner)
+console.log("Distinct cells:", seen.size, "/ expected:", EXPECTED_CELLS);</pre>
+<button class="copy-btn" onclick="copySnip('snip1')">copy</button>
+
+<h3>Check 2 — Per-cell last-seen age</h3>
+<p>
+  Find the most recent timestamp per cell and flag any cell whose last message is older
+  than <code>max_age_seconds</code> (e.g. 2× the expected sample interval).
+</p>
+<pre class="snippet" id="snip2">// After receiving a query_history response:
+const MAX_AGE_SECS = 10;   // 2× sample_interval_seconds (5s for stress runner)
+const now = Date.now() / 1000;
+const latestByCell = {};
+
+for (const row of result.rows) {
+  const key = `${row[idx.site_id]}.${row[idx.rack_id]}.${row[idx.module_id]}.${row[idx.cell_id]}`;
+  const ts  = row[idx.timestamp];
+  if (!latestByCell[key] || ts > latestByCell[key]) latestByCell[key] = ts;
+}
+
+const stale = Object.entries(latestByCell)
+  .filter(([, ts]) => now - ts > MAX_AGE_SECS)
+  .map(([key, ts]) => `${key}  age=${(now-ts).toFixed(1)}s`);
+
+console.log("Stale cells:", stale.length);
+stale.forEach(s => console.warn("STALE:", s));</pre>
+<button class="copy-btn" onclick="copySnip('snip2')">copy</button>
+
+<h3>Check 3 — S3 write interval health (from /diag)</h3>
+<p>
+  The <code>/diag</code> response includes <code>s3.write_interval_sec</code> — the average
+  time between the last 10 Parquet file uploads. If this exceeds
+  <code>flush_interval_seconds × 1.5</code> (90 s) the Parquet Writer may be slow or stalled.
+</p>
+<pre class="snippet" id="snip3">// Fetch /diag and check write interval
+const diag = await fetch(`http://${host}:8768/diag`).then(r => r.json());
+const wint = diag.s3.write_interval_sec;
+const lag  = diag.nats.consumer_pending;
+
+if (wint === null)             console.warn("No S3 files yet");
+else if (wint > 90)            console.error(`SLOW WRITER: ${wint}s between files`);
+else                           console.log(`Write interval OK: ${wint}s`);
+
+if (lag > 10000)               console.error(`HIGH LAG: ${lag} messages unwritten`);
+else if (lag > 1000)           console.warn(`LAG: ${lag} messages pending`);
+else                           console.log(`Consumer lag OK: ${lag}`);</pre>
+<button class="copy-btn" onclick="copySnip('snip3')">copy</button>
+
+<!-- ─── Fleet Monitoring Scale ───────────────────────────────── -->
+<h2>Fleet Monitoring Scale</h2>
+<p>
+  At 80+ sites the question is not just <em>what</em> to monitor but
+  <em>how many monitoring processes</em> are needed and what resources they consume.
+</p>
+
+<div class="three-col" style="margin-bottom:24px">
+  <div class="scale-card">
+    <div class="scale-lbl">Subscriber APIs</div>
+    <div class="scale-num" style="color:#58a6ff">1 per site</div>
+    <div class="scale-sub">Each site runs its own Subscriber API. The /diag endpoint on each is the primary health source.</div>
+  </div>
+  <div class="scale-card">
+    <div class="scale-lbl">NATS servers</div>
+    <div class="scale-num" style="color:#56d364">1 per site</div>
+    <div class="scale-sub">Each site has its own NATS JetStream instance. NATS monitoring :8222/varz per site.</div>
+  </div>
+  <div class="scale-card">
+    <div class="scale-lbl">Central monitor</div>
+    <div class="scale-num" style="color:#a371f7">1 per fleet</div>
+    <div class="scale-sub">One fleet monitor polls /diag on all sites every 30s. Aggregates and alerts on thresholds.</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card info">
+    <h3>Per-site monitoring (existing)</h3>
+    <ul>
+      <li><code>GET :8768/diag</code> — returns full pipeline snapshot in one call</li>
+      <li><code>GET :8222/varz</code> — NATS server health, msg rates, slow consumers</li>
+      <li><code>GET :8222/jsz</code> — JetStream stream + consumer detail</li>
+      <li><code>WS :8761/:8762</code> — process manager, component up/down</li>
+      <li>Resource cost: 1 HTTP GET per site per 30s = negligible</li>
+    </ul>
+  </div>
+  <div class="card info">
+    <h3>Fleet-level aggregation (to design)</h3>
+    <ul>
+      <li>One central process polls each site's <code>/diag</code> in parallel</li>
+      <li>Aggregates: sites up/down, total msg rate, total S3 size, stale-cell counts</li>
+      <li>Alerting thresholds: consumer lag &gt; N, write interval &gt; 90s, S3 fill &gt; 80%</li>
+      <li>Completeness check frequency: run cell-count check once per 5 min per site</li>
+      <li>80 sites × 1 WS connection × 5min = 80 queries/5min = low load</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Resource budget per monitoring instance</h3>
+<table class="spec-table">
+  <thead>
+    <tr><th>Check</th><th>Endpoint</th><th>Frequency</th><th>Estimated load</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Infrastructure health</td><td><code>GET :8768/diag</code></td>
+        <td>30 s</td><td class="num">~2 KB/call</td><td>One HTTP GET, JSON response</td></tr>
+    <tr><td>NATS health</td><td><code>GET :8222/varz</code></td>
+        <td>30 s</td><td class="num">~1 KB/call</td><td>Combine with /jsz for efficiency</td></tr>
+    <tr><td>Completeness check</td><td>WS <code>:8767</code> query_history</td>
+        <td>5 min</td><td class="num">~500 rows/call</td><td>Only last 5min window; uses partition pruning</td></tr>
+    <tr><td>Fleet aggregate</td><td>All sites in parallel</td>
+        <td>30 s</td><td class="num">80 × 2 KB = 160 KB</td><td>All sites parallel fetch, single monitor process</td></tr>
+    <tr><td>Stale cell alert</td><td>Derived from completeness</td>
+        <td>5 min</td><td class="num">negligible</td><td>Post-process of completeness result</td></tr>
+  </tbody>
+</table>
+
+<!-- ─── Research Tasks ────────────────────────────────────── -->
+<h2>Research Tasks for Assignee</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>Benchmarking</h3>
+    <ol>
+      <li>Run all query windows in the Recall Benchmark Panel above against spark-22b6 and record <code>elapsed_ms</code> in the MD doc.</li>
+      <li>Identify at what window size DuckDB partition pruning starts to dominate (vs full scan).</li>
+      <li>Measure <code>consumer_pending</code> under max stress-runner load — what is the steady-state lag?</li>
+      <li>Time the <code>/diag</code> call itself — it makes two external calls (NATS :8222 + S3 list) so can be slow on cold start.</li>
+      <li>Determine the largest <code>limit</code> value that returns in &lt; 5 s for a 24hr query.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h3>Completeness &amp; Alerting Design</h3>
+    <ol>
+      <li>Run Check 1 and Check 2 from this page against spark-22b6 and confirm the expected cell count matches.</li>
+      <li>Define the <code>MAX_AGE_SECS</code> threshold for each asset type (battery cells vs solar panels may differ).</li>
+      <li>Design the alert conditions: at what consumer lag / write interval / stale cell count should an alert fire?</li>
+      <li>Specify whether completeness checks should run centrally (one monitor per fleet) or locally (one per site).</li>
+      <li>Define what "data available" means for a QA sign-off — not just that the process is running but that data is actually landing in S3 for every expected cell.</li>
+    </ol>
+  </div>
+</div>
+
+</div><!-- end #tab-nats -->
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- TAB: InfluxDB                                              -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="tab-influx" style="display:none">
+
+<!-- ─── InfluxDB Deliverable ─────────────────────────────── -->
+<div class="card deliverable" style="margin-top:24px">
+  <h3>Deliverable — InfluxDB Path</h3>
+  <p style="margin-top:8px">
+    Identify how the current deployed systems pull data from AWS on the InfluxDB path.
+    Map every Grafana dashboard, Flux query, and monitoring script to the InfluxDB2
+    endpoint and bucket it queries. Then verify health and benchmark query performance.
+  </p>
+  <ul style="margin-top:8px">
+    <li>Audit all current Grafana dashboards and Flux queries — document each panel's data source, bucket, and query pattern</li>
+    <li>Identify any scripts or tools that call <code>:8086/api/v2/query</code> directly</li>
+    <li>Note which dashboards will break if InfluxDB2 is replaced or the bucket is renamed</li>
+    <li>Confirm InfluxDB2 health and verify <code>metrics_dropped == 0</code> under full load</li>
+    <li>Benchmark Flux query response for 5min, 1hr, 24hr windows</li>
+    <li>Implement the cell-completeness Flux query and test it against a live dataset</li>
+  </ul>
+</div>
+
+<!-- ─── InfluxDB Health Checks ──────────────────────────── -->
+<h2>InfluxDB2 Health Endpoints</h2>
+<p>InfluxDB2 exposes two HTTP health probes. No auth token required.</p>
+<div class="two-col">
+  <div class="card info">
+    <h3>Liveness</h3>
+    <pre class="snippet" id="snip-ping"><button class="copy-btn" onclick="copySnip('snip-ping')">copy</button>curl http://HOST:8086/ping
+# → HTTP 204 (no body) if alive</pre>
+    <p>Returns 204 immediately. Use as the systemd healthcheck or load balancer probe.
+       Returns 503 if InfluxDB2 is starting up or overloaded.</p>
+  </div>
+  <div class="card info">
+    <h3>Readiness</h3>
+    <pre class="snippet" id="snip-health"><button class="copy-btn" onclick="copySnip('snip-health')">curl http://HOST:8086/health
+# → {"status":"pass","name":"influxdb",...}</pre>
+    <p>Returns JSON with <code>status: "pass"</code> when InfluxDB2 is fully
+       initialised and ready to accept writes. Use this before starting Telegraf.</p>
+  </div>
+</div>
+
+<!-- ─── Telegraf Internal Metrics ───────────────────────── -->
+<h2>Telegraf Monitoring — Internal Metrics</h2>
+<p>
+  The <code>[[inputs.internal]]</code> plugin in <code>telegraf.conf</code> writes Telegraf's
+  own health metrics to InfluxDB2 under the <code>internal_agent</code> and <code>internal_write</code>
+  measurements. Check these first when diagnosing drops or latency.
+</p>
+<table class="spec-table">
+  <thead><tr><th>Measurement</th><th>Field</th><th>Meaning</th><th>Alert if</th></tr></thead>
+  <tbody>
+    <tr><td><code>internal_agent</code></td><td><code>metrics_gathered</code></td>
+        <td>Total metrics consumed from MQTT input</td><td>stops growing</td></tr>
+    <tr><td><code>internal_agent</code></td><td><code>metrics_written</code></td>
+        <td>Total metrics sent to InfluxDB2</td><td>lags behind gathered</td></tr>
+    <tr><td><code>internal_agent</code></td><td><code>metrics_dropped</code></td>
+        <td>Metrics dropped due to buffer overflow</td><td>&gt; 0</td></tr>
+    <tr><td><code>internal_write</code></td><td><code>buffer_size</code></td>
+        <td>Current in-memory metric buffer</td><td>approaches 100,000</td></tr>
+    <tr><td><code>internal_write</code></td><td><code>write_time_ns</code></td>
+        <td>Time to flush to InfluxDB2 (nanoseconds)</td><td>&gt; 5,000,000,000 (5 s)</td></tr>
+  </tbody>
+</table>
+
+<p>Query Flux (run in InfluxDB2 Data Explorer):</p>
+<pre class="snippet" id="snip-drops"><button class="copy-btn" onclick="copySnip('snip-drops')">copy</button>// Check for metric drops in last 5 minutes
+from(bucket: "battery-data")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "internal_agent"
+                    and r._field == "metrics_dropped")
+  |> last()</pre>
+
+<!-- ─── FlashMQ via $SYS ──────────────────────────────── -->
+<h2>FlashMQ Monitoring — <code>$SYS/#</code> Topics</h2>
+<p>
+  FlashMQ has no HTTP API. Health is observed via MQTT <code>$SYS/#</code> topics published
+  every 10 seconds. Subscribe from the same host or from Telegraf with an additional
+  <code>[[inputs.mqtt_consumer]]</code> block targeting <code>$SYS/#</code>.
+</p>
+<table class="spec-table">
+  <thead><tr><th>Topic</th><th>Meaning</th><th>Alert if</th></tr></thead>
+  <tbody>
+    <tr><td><code>$SYS/broker/clients/connected</code></td><td>Active MQTT client count</td>
+        <td>drops below expected (bridge + Telegraf + generators)</td></tr>
+    <tr><td><code>$SYS/broker/messages/received</code></td><td>Total messages received (cumulative)</td>
+        <td>stops incrementing when generators are running</td></tr>
+    <tr><td><code>$SYS/broker/messages/sent</code></td><td>Total messages delivered to subscribers</td>
+        <td>diverges from received (drops occurring)</td></tr>
+    <tr><td><code>$SYS/broker/load/messages/received/1min</code></td><td>1-min moving average msg/s</td>
+        <td>&lt; expected rate × 0.8</td></tr>
+    <tr><td><code>$SYS/broker/subscriptions/count</code></td><td>Active topic subscriptions</td>
+        <td>0 (no consumers)</td></tr>
+  </tbody>
+</table>
+
+<pre class="snippet" id="snip-sys"><button class="copy-btn" onclick="copySnip('snip-sys')">copy</button># Subscribe to FlashMQ stats (requires mosquitto-clients)
+mosquitto_sub -h localhost -p 1883 -t '$SYS/#' -v</pre>
+
+<!-- ─── InfluxDB Recall Specs ────────────────────────────── -->
+<h2>Recall Time Specifications — InfluxDB Path</h2>
+<p>
+  InfluxDB2 uses the TSM (Time Structured Merge) storage engine. Query times depend on
+  the number of series, the time window, and whether the TSM cache is warm. The Flux
+  query engine is single-threaded per query.
+</p>
+
+<table class="spec-table">
+  <thead>
+    <tr>
+      <th>Query window</th>
+      <th>Expected rows<br><small style="font-weight:normal;color:#484f58">@ 1,152 msg/s, 1 site</small></th>
+      <th>Flux call</th>
+      <th>Target response</th>
+      <th>Retention limit</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="tag-rt">Real-time</td>
+      <td class="num">—</td>
+      <td><code>last()</code> per cell</td>
+      <td>&lt; 200 ms</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td class="tag-med">Last 5 min</td>
+      <td class="num">~345,600</td>
+      <td><code>range(start: -5m)</code></td>
+      <td>&lt; 1,000 ms</td>
+      <td>30 days</td>
+    </tr>
+    <tr>
+      <td class="tag-med">Last 1 hr</td>
+      <td class="num">~4,147,200</td>
+      <td><code>range(start: -1h)</code></td>
+      <td>&lt; 5,000 ms</td>
+      <td>30 days</td>
+    </tr>
+    <tr>
+      <td class="tag-hist">Last 24 hr</td>
+      <td class="num">~99,532,800</td>
+      <td><code>range(start: -24h)</code></td>
+      <td>benchmark required</td>
+      <td>30 days</td>
+    </tr>
+    <tr>
+      <td class="tag-hist">Last 7 days</td>
+      <td class="num">~697,730,000</td>
+      <td><code>range(start: -7d)</code></td>
+      <td>benchmark required</td>
+      <td>30 days</td>
+    </tr>
+    <tr>
+      <td>Last 30 days</td>
+      <td class="num">~2,986,000,000</td>
+      <td><code>range(start: -30d)</code></td>
+      <td>Use downsampled bucket</td>
+      <td>30 days — max</td>
+    </tr>
+    <tr>
+      <td style="color:#f85149">Beyond 30 days</td>
+      <td class="num">—</td>
+      <td>—</td>
+      <td style="color:#f85149">Data deleted</td>
+      <td style="color:#f85149">Not available</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="card warning">
+  <h3>30-Day Rolling Delete</h3>
+  <p style="margin-top:8px">
+    The <code>battery-data</code> bucket was created with <code>--retention 30d</code>.
+    InfluxDB2 automatically compacts and deletes data older than 30 days. There is no
+    archive, no cold-storage tier, and no recovery option once data passes the retention
+    window. If long-term trend analysis is required, a Flux downsampling task must be
+    set up to copy minute-averaged data to a long-term bucket <em>before</em> the 30-day
+    window expires.
+  </p>
+</div>
+
+<!-- ─── Sample Flux Queries ──────────────────────────────── -->
+<h2>Sample Flux Queries</h2>
+
+<h3 style="margin-top:20px;color:#d2a679;font-size:0.90em">Last reading per cell (heatmap / current state)</h3>
+<pre class="snippet" id="snip-last"><button class="copy-btn" onclick="copySnip('snip-last')">copy</button>from(bucket: "battery-data")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "battery_cell"
+                    and r._field == "voltage")
+  |> last()</pre>
+
+<h3 style="margin-top:20px;color:#d2a679;font-size:0.90em">Voltage trend — 1-minute averages over last hour</h3>
+<pre class="snippet" id="snip-trend"><button class="copy-btn" onclick="copySnip('snip-trend')">copy</button>from(bucket: "battery-data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "battery_cell"
+                    and r._field == "voltage"
+                    and r.site_id == "0")
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+  |> yield(name: "voltage_1m")</pre>
+
+<h3 style="margin-top:20px;color:#d2a679;font-size:0.90em">Data completeness — cells seen in last 60 seconds</h3>
+<pre class="snippet" id="snip-complete"><button class="copy-btn" onclick="copySnip('snip-complete')">copy</button>// Returns one row per cell — missing cells will be absent from results
+// Expected: 1152 cells (spark-22b6) or 144 cells (phil-dev)
+from(bucket: "battery-data")
+  |> range(start: -60s)
+  |> filter(fn: (r) => r._measurement == "battery_cell"
+                    and r._field == "voltage")
+  |> group(columns: ["site_id", "rack_id", "module_id", "cell_id"])
+  |> last()
+  |> count()</pre>
+
+<h3 style="margin-top:20px;color:#d2a679;font-size:0.90em">Write rate — messages per second (last 5 min)</h3>
+<pre class="snippet" id="snip-rate"><button class="copy-btn" onclick="copySnip('snip-rate')">copy</button>from(bucket: "battery-data")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "battery_cell"
+                    and r._field == "voltage")
+  |> aggregateWindow(every: 1s, fn: count, createEmpty: false)
+  |> yield(name: "msg_rate")</pre>
+
+<!-- ─── InfluxDB Monitoring Summary ──────────────────────── -->
+<h2>InfluxDB Path — Monitoring Summary</h2>
+<div class="three-col">
+  <div class="mon-card infra">
+    <div class="mon-title">Infrastructure Health</div>
+    <ul style="margin-top:8px">
+      <li>FlashMQ: <code>systemctl status flashmq</code></li>
+      <li>InfluxDB2: <code>GET :8086/ping</code> → 204</li>
+      <li>Telegraf: <code>systemctl status telegraf</code></li>
+      <li>Grafana: <code>GET :3000/api/health</code></li>
+    </ul>
+  </div>
+  <div class="mon-card flow">
+    <div class="mon-title">Data Flow Health</div>
+    <ul style="margin-top:8px">
+      <li>Telegraf <code>metrics_dropped == 0</code></li>
+      <li>FlashMQ <code>$SYS/…/received</code> growing</li>
+      <li>InfluxDB2 write latency &lt; 5 s</li>
+      <li>Telegraf flush every <code>10s</code></li>
+    </ul>
+  </div>
+  <div class="mon-card data">
+    <div class="mon-title">Data Completeness</div>
+    <ul style="margin-top:8px">
+      <li>Cell count in last 60s == expected</li>
+      <li>No cell silent &gt; 2× sample interval</li>
+      <li>Bucket retention: data still present</li>
+      <li>Downsampled archive task running</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─── InfluxDB Research Tasks ─────────────────────────── -->
+<h2>Research Tasks for Assignee — InfluxDB Path</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>Benchmarking</h3>
+    <ol>
+      <li>Run each Flux query above against a live InfluxDB2 with stress runner active. Record response time.</li>
+      <li>Check <code>metrics_dropped</code> after 10 minutes of full-load operation.</li>
+      <li>Measure how long the Telegraf buffer takes to drain after InfluxDB2 restart.</li>
+      <li>Compare write latency on <code>t3.medium</code> vs <code>t3.large</code> instances at 1,152 msgs/s.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h3>Retention &amp; Completeness</h3>
+    <ol>
+      <li>Implement the cell-count Flux query as a scheduled Flux task. Set alert threshold.</li>
+      <li>Design a downsampling task to archive 1-minute averages to a <code>battery-data-1h</code> bucket before 30-day deletion.</li>
+      <li>Verify that the flat-payload requirement is met by the generator before deploying on a new site.</li>
+      <li>Decide whether to use EBS <code>gp3</code> (lower cost, single-AZ) vs EFS for the InfluxDB2 data directory.</li>
+    </ol>
+  </div>
+</div>
+
+</div><!-- end #tab-influx -->
+
+<!-- ─── Footer nav ────────────────────────────────────────── -->
+<div class="footer-nav">
+  <a href="ttd.html">TTD Hub</a>
+  <a href="study_data_sources.html">Study 1: Data Sources</a>
+  <a href="study_data_recall.html">Study 2: Data Recall</a>
+  <a href="nats.html">NATS Monitor</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="monitor.html">Monitor</a>
+  <a href="tuesday.html">Tuesday Kickoff</a>
+  <a href="tuesday_nats.html">Tuesday (NATS detail)</a>
+</div>
+
+<script>
+// ── Tab switching ────────────────────────────────────────────
+function switchTab(name) {
+  ['nats','influx'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
+    document.querySelectorAll('.path-tab.' + t).forEach(el => {
+      el.classList.toggle('active', t === name);
+    });
+  });
+  localStorage.setItem('mon_tab', name);
+}
+
+// ── Diag panel ───────────────────────────────────────────────
+let autoTimer = null;
+
+const HOSTS = { 'phil-dev': 'phil-dev', 'spark-22b6': 'spark-22b6' };
+
+function connectTo(machine) {
+  document.getElementById('diag-host').value = HOSTS[machine] || machine;
+  fetchDiag();
+}
+
+function diagBase() {
+  const h = document.getElementById('diag-host').value.trim() || 'localhost';
+  const p = document.getElementById('diag-port').value.trim() || '8768';
+  return `http://${h}:${p}`;
+}
+
+function setConnState(state) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  const map = {
+    ok:   { c: 'green', t: 'Connected' },
+    err:  { c: 'red',   t: 'Error'     },
+    busy: { c: 'amber', t: 'Fetching…' },
+    off:  { c: '',      t: 'Not connected' },
+  };
+  const s = map[state] || map.off;
+  dot.className = 'conn-dot ' + s.c;
+  lbl.textContent = s.t;
+}
+
+async function fetchDiag() {
+  setConnState('busy');
+  try {
+    const r = await fetch(diagBase() + '/diag', { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    renderDiag(d);
+    setConnState('ok');
+    const rs = document.getElementById('refresh-status');
+    rs.textContent = 'Last: ' + new Date().toLocaleTimeString();
+    rs.className = 'live';
+    document.getElementById('diag-raw').textContent = JSON.stringify(d, null, 2);
+  } catch(e) {
+    setConnState('err');
+    document.getElementById('refresh-status').textContent = 'Error: ' + e.message;
+    document.getElementById('refresh-status').className = '';
+  }
+}
+
+function renderDiag(d) {
+  const nats = d.nats || {};
+  const s3   = d.s3   || {};
+  const sub  = d.subscriber || {};
+
+  const fmt = (v, digits=0) => (v == null ? '—' : Number(v).toLocaleString(undefined, {maximumFractionDigits: digits}));
+  const fmtBytes = v => {
+    if (v == null || v === 0) return '—';
+    if (v < 1024) return v + ' B';
+    if (v < 1048576) return (v/1024).toFixed(1) + ' KB';
+    if (v < 1073741824) return (v/1048576).toFixed(1) + ' MB';
+    return (v/1073741824).toFixed(2) + ' GB';
+  };
+  const fmtAge = s => {
+    if (!s) return '—';
+    const n = parseFloat(s);
+    if (n < 60) return n.toFixed(0) + 's';
+    if (n < 3600) return (n/60).toFixed(0) + 'min';
+    return (n/3600).toFixed(1) + 'hr';
+  };
+  const setVal = (id, val, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.className = 'diag-val ' + (cls || '');
+  };
+
+  // NATS
+  setVal('d-stream', nats.stream || '—');
+  setVal('d-msgs',   fmt(nats.messages),  nats.messages > 0 ? 'good' : 'dim');
+  setVal('d-bytes',  fmtBytes(nats.bytes));
+  const lag = nats.consumer_pending;
+  setVal('d-lag', fmt(lag), lag > 10000 ? 'bad' : lag > 1000 ? 'warn' : 'good');
+  setVal('d-cons', fmt(nats.num_consumers));
+  const fill = nats.fill_pct;
+  setVal('d-fill', fill != null ? fill + '%' : '—', fill > 80 ? 'bad' : fill > 50 ? 'warn' : 'good');
+  setVal('d-age', nats.max_age_hours != null ? nats.max_age_hours + 'hr' : '—');
+
+  // S3
+  setVal('d-bucket', s3.bucket || '—');
+  setVal('d-files',  fmt(s3.total_files), s3.total_files > 0 ? 'good' : 'dim');
+  setVal('d-size',   fmtBytes(s3.total_bytes));
+  setVal('d-lastfile', s3.last_file ? s3.last_file.split('/').slice(-1)[0] : '—');
+  setVal('d-lastmod', s3.last_modified || '—');
+  const wi = s3.write_interval_sec;
+  setVal('d-wint', wi != null ? wi + 's' : '—', wi > 90 ? 'bad' : wi > 60 ? 'warn' : 'good');
+
+  // Subscriber
+  setVal('d-nconn',  sub.nats_connected ? 'yes' : 'NO', sub.nats_connected ? 'good' : 'bad');
+  setVal('d-sconn',  sub.s3_connected   ? 'yes' : 'NO', sub.s3_connected   ? 'good' : 'bad');
+  setVal('d-mps',    fmt(sub.live_per_sec),  sub.live_per_sec > 0 ? 'good' : 'dim');
+  setVal('d-ltot',   fmt(sub.live_total));
+  setVal('d-wsc',    fmt(sub.ws_clients));
+  setVal('d-qrun',   fmt(sub.queries_run));
+  const up = sub.uptime_sec;
+  setVal('d-uptime', up != null ? fmtAge(up) : '—');
+}
+
+function restartAuto() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  const s = parseInt(document.getElementById('sel-interval').value);
+  if (s > 0) autoTimer = setInterval(fetchDiag, s * 1000);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const savedTab = localStorage.getItem('mon_tab');
+  if (savedTab === 'influx') switchTab('influx');
+  restartAuto();
+  const h = localStorage.getItem('ds_host');
+  if (h) {
+    document.getElementById('diag-host').value = h;
+    document.getElementById('ws-host').value   = h;
+  }
+});
+
+// ── Recall benchmark WS ─────────────────────────────────────
+let ws = null;
+let pendingQueries = {};
+let queryCounter   = 0;
+
+function wsConnectTo(machine) {
+  document.getElementById('ws-host').value = HOSTS[machine] || machine;
+  document.getElementById('ws-port').value = '8767';
+  wsConnect();
+}
+
+function wsConnect() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  const h = document.getElementById('ws-host').value.trim() || 'localhost';
+  const p = document.getElementById('ws-port').value.trim() || '8767';
+  ws = new WebSocket(`ws://${h}:${p}`);
+  setWsState('connecting');
+  ws.onopen = () => { setWsState('connected'); };
+  ws.onclose = () => { setWsState('closed'); ws = null; };
+  ws.onerror = () => { setWsState('error'); };
+  ws.onmessage = ({ data }) => {
+    try {
+      const msg = JSON.parse(data);
+      if (msg.type === 'history' || msg.type === 'error') {
+        const pq = pendingQueries[msg.query_id];
+        if (pq) { clearTimeout(pq.timer); delete pendingQueries[msg.query_id]; pq.resolve(msg); }
+      }
+    } catch(_) {}
+  };
+}
+
+function wsDisconnect() { if (ws) ws.close(); }
+
+function setWsState(state) {
+  const dot = document.getElementById('ws-dot');
+  const lbl = document.getElementById('ws-label');
+  const disc = document.getElementById('ws-disc');
+  const map = {
+    connected:  { c: 'green', t: 'Connected'   },
+    connecting: { c: 'amber', t: 'Connecting…' },
+    closed:     { c: '',      t: 'Disconnected' },
+    error:      { c: 'red',   t: 'Error'        },
+  };
+  const s = map[state] || map.closed;
+  dot.className = 'conn-dot ' + s.c;
+  lbl.textContent = s.t;
+  disc.style.display = state === 'connected' ? '' : 'none';
+}
+
+function wsQuery(secs, qid) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { wsConnect(); reject(new Error('Not connected — try again')); return; }
+    const now = Date.now() / 1000;
+    const timer = setTimeout(() => { delete pendingQueries[qid]; reject(new Error('Query timeout')); }, 30000);
+    pendingQueries[qid] = { resolve, timer };
+    ws.send(JSON.stringify({ type: 'query_history', query_id: qid, from_ts: now - secs, to_ts: now, limit: 10000 }));
+  });
+}
+
+const out = () => document.getElementById('bench-out');
+function log(html) {
+  const el = out();
+  el.innerHTML += html + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function clearOutput() { out().innerHTML = ''; }
+
+async function runQuery(secs, qid, label) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { wsConnect(); log(`<span class="warn">Connecting… try again in a moment.</span>`); return; }
+  const id = qid + '_' + (++queryCounter);
+  log(`<span class="dim">→ ${label} query sent (${id})…</span>`);
+  const t0 = Date.now();
+  try {
+    const msg = await wsQuery(secs, id);
+    if (msg.type === 'error') {
+      log(`<span class="err">ERROR ${label}: ${msg.message}</span>`);
+    } else {
+      const wall = Date.now() - t0;
+      const rows = msg.total || 0;
+      const elapsed = msg.elapsed_ms != null ? msg.elapsed_ms.toFixed(1) : '?';
+      log(`<span class="ok">✓ ${label}: ${rows.toLocaleString()} rows  DuckDB=${elapsed}ms  wall=${wall}ms</span>`);
+    }
+  } catch(e) {
+    log(`<span class="err">FAIL ${label}: ${e.message}</span>`);
+  }
+}
+
+async function runCompleteness() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { wsConnect(); log(`<span class="warn">Connecting… try again in a moment.</span>`); return; }
+  const id = 'completeness_' + (++queryCounter);
+  log(`<span class="dim">→ Completeness check (last 5min, limit 10000)…</span>`);
+  try {
+    const msg = await wsQuery(300, id);
+    if (msg.type === 'error') { log(`<span class="err">ERROR: ${msg.message}</span>`); return; }
+    const cols = msg.columns;
+    const rows = msg.rows;
+    const idx = {};
+    cols.forEach((c,i) => idx[c] = i);
+    const now = Date.now() / 1000;
+
+    // Count distinct cells
+    const cells = new Set(rows.map(r =>
+      `${r[idx.site_id]}.${r[idx.rack_id]}.${r[idx.module_id]}.${r[idx.cell_id]}`
+    ));
+
+    // Find latest timestamp per cell
+    const latest = {};
+    for (const r of rows) {
+      const k = `${r[idx.site_id]}.${r[idx.rack_id]}.${r[idx.module_id]}.${r[idx.cell_id]}`;
+      const ts = r[idx.timestamp];
+      if (!latest[k] || ts > latest[k]) latest[k] = ts;
+    }
+    const stale = Object.entries(latest).filter(([,ts]) => now - ts > 10).map(([k,ts]) => `${k} (${(now-ts).toFixed(1)}s ago)`);
+
+    log(`<span class="ok">✓ Distinct cells seen: ${cells.size}  Total rows: ${msg.total.toLocaleString()}  ${msg.elapsed_ms}ms</span>`);
+    if (stale.length === 0) {
+      log(`<span class="ok">✓ All cells seen within 10s — no stale cells</span>`);
+    } else {
+      log(`<span class="warn">⚠ Stale cells (>${10}s): ${stale.length}</span>`);
+      stale.slice(0,10).forEach(s => log(`<span class="warn">  ${s}</span>`));
+      if (stale.length > 10) log(`<span class="dim">  … and ${stale.length-10} more</span>`);
+    }
+  } catch(e) {
+    log(`<span class="err">FAIL: ${e.message}</span>`);
+  }
+}
+
+// ── Copy buttons ────────────────────────────────────────────
+function copySnip(id) {
+  const txt = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(txt).catch(() => {});
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Study 1 — Data Sources &amp; Message Rates</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 40px 32px;
+  max-width: 1100px;
+  margin: auto;
+  line-height: 1.65;
+}
+
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 0 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+ul   { margin: 6px 0 0 18px; color: #8b949e; font-size: 0.85em; }
+ul li { margin-bottom: 4px; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 40px; }
+
+/* ── Live counter bar ── */
+.live-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 14px 20px;
+  margin-bottom: 36px;
+  flex-wrap: wrap;
+}
+.live-bar .live-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #484f58;
+  flex-shrink: 0;
+}
+.live-bar .live-dot.connected { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
+.live-bar .live-label { color: #8b949e; font-size: 0.82em; flex: 1; min-width: 160px; }
+.live-bar .live-count { font-size: 1.3em; font-weight: 700; color: #3fb950; min-width: 80px; }
+.live-bar .btn-group { display: flex; gap: 8px; }
+.btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 6px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: #2d333b; border-color: #58a6ff; color: #58a6ff; }
+.btn.active { background: #1e3a5e; border-color: #58a6ff; color: #58a6ff; }
+
+/* ── Cards ── */
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.card.deliverable { border-color: #e3b341; }
+.card.done        { border-color: #1e4a6e; }
+.card.research    { border-color: #3d2a1e; }
+
+/* ── Two/three/four column grids ── */
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+.four-col  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+@media (max-width: 900px) { .four-col  { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .two-col, .three-col, .four-col { grid-template-columns: 1fr; } }
+
+/* ── Stat strip ── */
+.stat-strip {
+  display: flex; gap: 0;
+  background: #30363d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.stat-cell {
+  background: #0d1117;
+  padding: 12px 16px;
+  flex: 1;
+  text-align: center;
+}
+.stat-cell + .stat-cell { border-left: 1px solid #30363d; }
+.stat-cell .slbl { font-size: 0.70em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; }
+.stat-cell .sval { font-size: 1.3em; font-weight: 700; margin-top: 4px; }
+.stat-cell .sval.blue   { color: #58a6ff; }
+.stat-cell .sval.green  { color: #3fb950; }
+.stat-cell .sval.yellow { color: #e3b341; }
+.stat-cell .sval.purple { color: #a371f7; }
+
+/* ── Pre / code blocks ── */
+.pre-wrap {
+  position: relative;
+  margin: 10px 0;
+}
+pre {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  padding: 14px 16px;
+  font-size: 0.82em;
+  overflow-x: auto;
+  color: #c9d1d9;
+  line-height: 1.55;
+}
+.copy-btn {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75em;
+  font-family: inherit;
+}
+.copy-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+.copy-btn.copied { border-color: #3fb950; color: #3fb950; }
+
+/* ── Asset type cards ── */
+.asset-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 18px 20px;
+}
+.asset-card.battery { border-color: #1e4a6e; }
+.asset-card.solar   { border-color: #5a4000; }
+.asset-card.wind    { border-color: #2a3d1e; }
+.asset-card.grid    { border-color: #3d1e3d; }
+.asset-title {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.asset-card.battery .asset-title { color: #58a6ff; }
+.asset-card.solar   .asset-title { color: #e3b341; }
+.asset-card.wind    .asset-title { color: #56d364; }
+.asset-card.grid    .asset-title { color: #a371f7; }
+.status-badge {
+  display: inline-block;
+  font-size: 0.68em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.badge-done     { background: #1e3a5e; color: #79c0ff; }
+.badge-research { background: #3d2a0a; color: #e3b341; }
+
+/* ── Calculator ── */
+.calc-form {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+.calc-form label { display: block; color: #8b949e; font-size: 0.78em; margin-bottom: 4px; }
+.calc-form select, .calc-form input[type=number] {
+  width: 100%;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 0.86em;
+  font-family: inherit;
+}
+.calc-result {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  padding: 14px 20px;
+  margin-top: 12px;
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.calc-result .cr-label { color: #8b949e; font-size: 0.80em; }
+.calc-result .cr-val   { font-size: 1.4em; font-weight: 700; color: #3fb950; }
+
+/* ── Tables ── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84em;
+  margin-top: 8px;
+}
+.data-table th {
+  padding: 7px 12px;
+  text-align: left;
+  background: #0d1117;
+  color: #8b949e;
+  font-weight: normal;
+  border-bottom: 1px solid #30363d;
+}
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #21262d;
+  color: #c9d1d9;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #1c2128; }
+
+/* ── Footer nav ── */
+.footer-nav {
+  margin-top: 60px;
+  padding-top: 20px;
+  border-top: 1px solid #30363d;
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 0.85em;
+}
+.footer-nav a { color: #58a6ff; }
+
+/* ── Step list ── */
+.step-list { list-style: none; margin: 0; }
+.step-list li {
+  padding: 10px 0 10px 36px;
+  position: relative;
+  border-bottom: 1px solid #21262d;
+  color: #c9d1d9;
+  font-size: 0.87em;
+}
+.step-list li:last-child { border-bottom: none; }
+.step-list li::before {
+  content: attr(data-n);
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 24px; height: 24px;
+  background: #1e4a6e;
+  color: #79c0ff;
+  border-radius: 50%;
+  font-size: 0.75em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>
+</head>
+<body>
+
+<h1>Study 1 — Data Sources &amp; Message Rates</h1>
+<p class="subtitle">
+  Assignee brief: create YAML config files for each asset type (Battery, Solar, Wind, Grid)
+  that a modified generator can load. Define schemas, topic structures, and message rates.
+</p>
+
+<!-- Live counter bar -->
+<div class="live-bar" id="liveBar">
+  <div class="live-dot" id="liveDot"></div>
+  <span class="live-label" id="liveLabel">Not connected — choose a host to start</span>
+  <div>
+    <span class="slbl" style="font-size:0.72em;color:#8b949e;text-transform:uppercase;letter-spacing:0.06em;">Live msgs received</span>
+    <div class="live-count" id="liveCount">0</div>
+  </div>
+  <div class="btn-group">
+    <button class="btn" id="btnPhilDev"  onclick="connectWS('phil-dev')">phil-dev :8767</button>
+    <button class="btn" id="btnSpark"    onclick="connectWS('spark-22b6')">spark-22b6 :8767</button>
+    <button class="btn" id="btnDisconn" onclick="disconnectWS()" style="display:none">Disconnect</button>
+  </div>
+</div>
+
+<!-- Section 1: What to research -->
+<h2>What to Research</h2>
+<div class="card deliverable">
+  <h3>Deliverable</h3>
+  <p>
+    Create a YAML config file for each asset type that a modified generator can load.
+    The generator needs only minor changes to accept different source configs — the task
+    is defining what each source looks like precisely enough to drive that implementation.
+    For each asset type (<strong>Battery</strong>, <strong>Solar</strong>, <strong>Wind</strong>, <strong>Grid</strong>) produce:
+  </p>
+  <ul>
+    <li>A <code>config_&lt;type&gt;.yaml</code> file: fields, units, value ranges, sample interval</li>
+    <li>MQTT topic pattern following the existing <code>batteries/project=N/site=N/...</code> convention</li>
+    <li>Expected message rate for a typical site (e.g. solar farm 500 panels, wind farm 20 turbines)</li>
+    <li>Notes on realistic signal behaviour (solar ramp with daylight, wind stochastic, grid near-constant)</li>
+    <li>Confirmation that the pipeline (bridge → writer → API) passes the new messages without schema changes</li>
+  </ul>
+</div>
+
+<!-- Section 2: Battery baseline -->
+<h2>Battery Data — Current Baseline</h2>
+
+<div class="two-col">
+  <!-- Generator (phil-dev) -->
+  <div class="card done">
+    <h3>Generator — phil-dev</h3>
+    <div class="stat-strip">
+      <div class="stat-cell"><div class="slbl">Sites</div><div class="sval blue">2</div></div>
+      <div class="stat-cell"><div class="slbl">Racks/site</div><div class="sval blue">3</div></div>
+      <div class="stat-cell"><div class="slbl">Modules/rack</div><div class="sval blue">4</div></div>
+      <div class="stat-cell"><div class="slbl">Cells/module</div><div class="sval blue">6</div></div>
+    </div>
+    <p style="margin-top:10px;">
+      <strong>Total cells:</strong> 2 × 3 × 4 × 6 = <strong>144</strong><br>
+      <strong>Message rate:</strong> 144 msgs/s (1 msg per cell per second)<br>
+      <strong>Payload size:</strong> ~250 bytes JSON (per_cell nested mode)<br>
+      <strong>Ingest:</strong> ~35 KB/s · ~2.1 MB/min · ~126 MB/hr
+    </p>
+    <p style="margin-bottom:4px;color:#8b949e;font-size:0.80em;">MQTT topic pattern:</p>
+    <code style="font-size:0.80em;">batteries/site=0/rack=1/module=2/cell=3</code>
+    <p style="margin-top:8px;margin-bottom:4px;color:#8b949e;font-size:0.80em;">NATS subject pattern:</p>
+    <code style="font-size:0.80em;">batteries.site=0.rack=1.module=2.cell=3</code>
+    <p style="margin-top:8px;margin-bottom:4px;color:#8b949e;font-size:0.80em;">Mode:</p>
+    <code style="font-size:0.80em;">per_cell</code> — nested value/unit objects, no project_id
+  </div>
+
+  <!-- Stress runner (spark-22b6) -->
+  <div class="card done">
+    <h3>Stress Runner — spark-22b6</h3>
+    <div class="stat-strip">
+      <div class="stat-cell"><div class="slbl">Projects</div><div class="sval green">1</div></div>
+      <div class="stat-cell"><div class="slbl">Sites</div><div class="sval green">3</div></div>
+      <div class="stat-cell"><div class="slbl">Racks/site</div><div class="sval green">4</div></div>
+      <div class="stat-cell"><div class="slbl">Modules/rack</div><div class="sval green">8</div></div>
+    </div>
+    <div class="stat-strip" style="margin-top:4px;">
+      <div class="stat-cell"><div class="slbl">Cells/module</div><div class="sval green">12</div></div>
+      <div class="stat-cell"><div class="slbl">Total cells</div><div class="sval green">1,152</div></div>
+      <div class="stat-cell"><div class="slbl">msgs/s</div><div class="sval yellow">1,152</div></div>
+      <div class="stat-cell"><div class="slbl">KB/s</div><div class="sval yellow">~285</div></div>
+    </div>
+    <p style="margin-top:10px;">
+      <strong>Ingest:</strong> ≈285 KB/s · ≈24 MB/min · ≈1.4 GB/hr<br>
+      <strong>Payload size:</strong> ~220-280 bytes JSON (flat mode with power field)
+    </p>
+    <p style="margin-top:8px;margin-bottom:4px;color:#8b949e;font-size:0.80em;">MQTT topic pattern:</p>
+    <code style="font-size:0.80em;">batteries/project=0/site=0/rack=1/module=2/cell=3</code>
+    <p style="margin-top:8px;margin-bottom:4px;color:#8b949e;font-size:0.80em;">Mode:</p>
+    <code style="font-size:0.80em;">flat</code> — includes project_id, soh, resistance, capacity, power (computed)
+  </div>
+</div>
+
+<h3 style="margin: 20px 0 10px; color: #79c0ff; font-size: 0.95em;">Generator payload (per_cell mode)</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre id="payload-gen">{
+  "timestamp": 1741234567.891,
+  "site_id": 0,
+  "rack_id": 1,
+  "module_id": 2,
+  "cell_id": 3,
+  "voltage":     {"value": 3.714, "unit": "V"},
+  "current":     {"value": -0.42, "unit": "A"},
+  "temperature": {"value": 28.3,  "unit": "C"},
+  "soc":         {"value": 71.2,  "unit": "percent"},
+  "internal_resistance": {"value": 0.0118, "unit": "ohm"}
+}</pre>
+</div>
+
+<h3 style="margin: 16px 0 10px; color: #79c0ff; font-size: 0.95em;">Stress runner payload (flat mode)</h3>
+<div class="pre-wrap">
+  <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre id="payload-stress">{
+  "timestamp": 1741234567.891,
+  "project_id": 0,
+  "site_id": 0,
+  "rack_id": 1,
+  "module_id": 2,
+  "cell_id": 3,
+  "voltage":     3.714,
+  "current":    -0.42,
+  "temperature": 28.3,
+  "soc":         71.2,
+  "soh":         97.8,
+  "resistance":  0.0118,
+  "capacity":    99.4,
+  "power":       -1.560
+}</pre>
+</div>
+
+<!-- Section 3: Asset type reference -->
+<h2>Asset Type Reference</h2>
+
+<div class="four-col">
+  <!-- Battery -->
+  <div class="asset-card battery">
+    <div class="asset-title">Battery <span class="status-badge badge-done">Done</span></div>
+    <p style="font-size:0.82em;color:#8b949e;margin-bottom:8px;">Implemented. See payloads above.</p>
+    <ul>
+      <li>Topic: <code style="font-size:0.78em;">batteries/project=N/site=N/rack=N/module=N/cell=N</code></li>
+      <li>Fields: voltage, current, temperature, soc, soh, resistance, capacity, power</li>
+      <li>Rate: 144–1,152 msgs/s depending on topology</li>
+      <li>Partition key: project_id + site_id</li>
+    </ul>
+  </div>
+
+  <!-- Solar -->
+  <div class="asset-card solar">
+    <div class="asset-title">Solar <span class="status-badge badge-research">Research Target</span></div>
+    <p style="font-size:0.82em;color:#8b949e;margin-bottom:8px;">Not yet implemented. Design and verify.</p>
+    <ul>
+      <li>Suggested topic: <code style="font-size:0.78em;">solar/project=N/site=N/array=N/panel=N</code></li>
+      <li>Suggested fields: dc_voltage (V), dc_current (A), ac_power (W), irradiance (W/m²), cell_temp (C), efficiency (%), energy_today (Wh)</li>
+      <li>Typical range: 500–5,000 panels/site, 1 msg/s/panel</li>
+      <li>Verify: inverter aggregation vs per-panel granularity, typical SCADA poll interval (1s vs 5s)</li>
+    </ul>
+  </div>
+
+  <!-- Wind -->
+  <div class="asset-card wind">
+    <div class="asset-title">Wind <span class="status-badge badge-research">Research Target</span></div>
+    <p style="font-size:0.82em;color:#8b949e;margin-bottom:8px;">Not yet implemented. Design and verify.</p>
+    <ul>
+      <li>Suggested topic: <code style="font-size:0.78em;">wind/project=N/site=N/turbine=N</code></li>
+      <li>Suggested fields: wind_speed (m/s), wind_direction (deg), rotor_rpm, ac_power (W), nacelle_temp (C), blade_pitch (deg), yaw_angle (deg), status_code</li>
+      <li>Typical range: 20–200 turbines/site, 1 msg/s/turbine</li>
+      <li>Verify: typical SCADA poll interval, which fields are per-turbine vs site-level</li>
+    </ul>
+  </div>
+
+  <!-- Grid -->
+  <div class="asset-card grid">
+    <div class="asset-title">Grid <span class="status-badge badge-research">Research Target</span></div>
+    <p style="font-size:0.82em;color:#8b949e;margin-bottom:8px;">Not yet implemented. Design and verify.</p>
+    <ul>
+      <li>Suggested topic: <code style="font-size:0.78em;">grid/project=N/site=N/meter=N/phase=N</code></li>
+      <li>Suggested fields: voltage_l1/l2/l3 (V), current_l1/l2/l3 (A), active_power (W), reactive_power (VAr), power_factor, frequency (Hz), energy_import (Wh), energy_export (Wh)</li>
+      <li>Typical range: 3–12 meters/site, 1 msg/s/meter</li>
+      <li>Verify: three-phase vs single-phase meters, smart meter poll intervals (1s vs 15s)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Section 4: Data rate calculator -->
+<h2>Data Rate Calculator</h2>
+<div class="card">
+  <p>Estimate message throughput and ingest bandwidth for any asset type and topology.</p>
+  <div class="calc-form">
+    <div>
+      <label for="assetType">Asset type</label>
+      <select id="assetType" onchange="calcRates()">
+        <option value="battery">Battery (per_cell)</option>
+        <option value="stress">Battery (stress / flat)</option>
+        <option value="solar">Solar (per-panel)</option>
+        <option value="wind">Wind (per-turbine)</option>
+        <option value="grid">Grid (per-meter)</option>
+      </select>
+    </div>
+    <div>
+      <label for="numSites">Sites</label>
+      <input type="number" id="numSites" value="2" min="1" oninput="calcRates()">
+    </div>
+    <div>
+      <label for="numDevices">Devices per site</label>
+      <input type="number" id="numDevices" value="72" min="1" oninput="calcRates()">
+    </div>
+    <div>
+      <label for="intervalMs">Poll interval (ms)</label>
+      <input type="number" id="intervalMs" value="1000" min="100" step="100" oninput="calcRates()">
+    </div>
+  </div>
+  <div class="calc-result" id="calcResult">
+    <div>
+      <div class="cr-label">msgs/s</div>
+      <div class="cr-val" id="crMsgs">—</div>
+    </div>
+    <div>
+      <div class="cr-label">KB/s (est.)</div>
+      <div class="cr-val" id="crKBs">—</div>
+    </div>
+    <div>
+      <div class="cr-label">MB/min</div>
+      <div class="cr-val" id="crMBMin">—</div>
+    </div>
+    <div>
+      <div class="cr-label">GB/hr</div>
+      <div class="cr-val" id="crGBHr">—</div>
+    </div>
+    <div>
+      <div class="cr-label">Parquet files/hr (60s flush)</div>
+      <div class="cr-val" id="crParquet">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 5: Generator config template -->
+<h2>Generator Config Template</h2>
+<p>New asset types should follow the same YAML structure. Add a top-level key for the asset class, then define topology and field ranges.</p>
+
+<div class="two-col">
+  <div>
+    <p style="color:#8b949e;font-size:0.82em;margin-bottom:6px;">Battery config (existing — reference)</p>
+    <div class="pre-wrap">
+      <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre># generator/config.yaml (battery section)
+mqtt:
+  broker: localhost
+  port: 1883
+
+battery:
+  mode: per_cell          # per_cell | flat
+  interval_ms: 1000       # publish interval per cell
+  topology:
+    sites: 2
+    racks_per_site: 3
+    modules_per_rack: 4
+    cells_per_module: 6
+  ranges:
+    voltage:     [3.0, 4.2]   # V  (LFP cell)
+    current:     [-2.0, 2.0]  # A
+    temperature: [20.0, 45.0] # C
+    soc:         [10.0, 100.0]
+    soh:         [80.0, 100.0]
+    resistance:  [0.008, 0.020] # ohm
+    capacity:    [90.0, 100.0]  # Ah</pre>
+    </div>
+  </div>
+  <div>
+    <p style="color:#8b949e;font-size:0.82em;margin-bottom:6px;">Solar config (template to implement)</p>
+    <div class="pre-wrap">
+      <button class="copy-btn" onclick="copyPre(this)">Copy</button>
+<pre># generator/config.yaml (solar section — to design)
+solar:
+  mode: per_panel         # design decision
+  interval_ms: 1000       # verify against real SCADA rate
+  topology:
+    sites: 1
+    arrays_per_site: 10   # adjust for target site
+    panels_per_array: 50
+  ranges:
+    dc_voltage:   [300, 600]  # V  (string voltage — verify)
+    dc_current:   [0, 10]     # A
+    ac_power:     [0, 5000]   # W per panel (verify)
+    irradiance:   [0, 1200]   # W/m²
+    cell_temp:    [15, 75]    # C
+    efficiency:   [14, 22]    # % (verify technology)
+    energy_today: [0, 40000]  # Wh cumulative
+  # NOTE: verify inverter aggregation granularity</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Section 6: How to connect and verify -->
+<h2>How to Connect and Verify</h2>
+<div class="card">
+  <ol class="step-list">
+    <li data-n="1">
+      <strong>Start the stack on spark-22b6.</strong> Open the process manager at
+      <code>http://spark-22b6:8762</code> and confirm that FlashMQ, NATS, the NATS bridge,
+      the Parquet writer, and the generator (stress runner) are all running.
+    </li>
+    <li data-n="2">
+      <strong>Open monitor.html</strong> at <code>http://phil-dev:8761</code> (or the local
+      file path). Select "spark-22b6" and confirm that the live message rate shows
+      ≈1,152 msgs/s and the NATS stream lag is stable.
+    </li>
+    <li data-n="3">
+      <strong>Open this page</strong> and click "spark-22b6 :8767" in the live bar above.
+      The counter should increment at the rate matching the generator topology.
+    </li>
+    <li data-n="4">
+      <strong>Wait 60 seconds</strong> for the first Parquet flush to land in MinIO.
+      Open the MinIO console and verify a file appears under
+      <code>s3://battery-data/project=0/site=0/{year}/{month}/{day}/</code>.
+    </li>
+    <li data-n="5">
+      <strong>Run a 30-second history query</strong> from the Subscriber API test page
+      (<code>api_test.html</code>) or via WebSocket. Set <code>from_ts = now - 30</code>,
+      <code>to_ts = now</code>. Confirm you receive rows with correct timestamps and fields.
+    </li>
+    <li data-n="6">
+      <strong>Check the diagnostic endpoint.</strong> Run:
+      <code>curl http://spark-22b6:8768/diag</code>
+      and confirm <code>nats_connected: true</code>, <code>s3_connected: true</code>.
+    </li>
+    <li data-n="7">
+      <strong>After implementing a new asset type,</strong> repeat steps 1–6 with the new
+      MQTT topic. Verify the NATS bridge forwards the message, the Parquet writer creates
+      a file in the correct partition, and history query returns data.
+    </li>
+  </ol>
+</div>
+
+<!-- Footer nav -->
+<div class="footer-nav">
+  <a href="study_data_recall.html">Study 2: Data Recall</a>
+  <a href="ttd.html">TTD</a>
+  <a href="monitor.html">Monitor</a>
+  <a href="nats.html">NATS</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="generator.html">Generator</a>
+</div>
+
+<script>
+// ── WebSocket live counter ──────────────────────────────────────────────────
+let ws = null;
+let liveCount = 0;
+
+function connectWS(host) {
+  if (ws) { ws.close(); ws = null; }
+  const url = 'ws://' + host + ':8767';
+  const dot   = document.getElementById('liveDot');
+  const label = document.getElementById('liveLabel');
+  const cnt   = document.getElementById('liveCount');
+
+  label.textContent = 'Connecting to ' + url + ' …';
+  dot.className = 'live-dot';
+
+  ws = new WebSocket(url);
+
+  ws.onopen = function() {
+    dot.className = 'live-dot connected';
+    label.textContent = 'Connected to ' + url;
+    document.getElementById('btnDisconn').style.display = '';
+    document.getElementById('btnPhilDev').classList.toggle('active', host === 'phil-dev');
+    document.getElementById('btnSpark').classList.toggle('active', host === 'spark-22b6');
+    ws.send(JSON.stringify({type: 'subscribe', subject: 'batteries.>'}));
+  };
+
+  ws.onmessage = function(e) {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'live') {
+        liveCount++;
+        cnt.textContent = liveCount.toLocaleString();
+      }
+    } catch(_) {}
+  };
+
+  ws.onclose = function() {
+    dot.className = 'live-dot';
+    label.textContent = 'Disconnected from ' + url;
+    document.getElementById('btnDisconn').style.display = 'none';
+    document.getElementById('btnPhilDev').classList.remove('active');
+    document.getElementById('btnSpark').classList.remove('active');
+  };
+
+  ws.onerror = function() {
+    dot.className = 'live-dot';
+    label.textContent = 'Connection error — is the server running on ' + host + ':8767?';
+  };
+}
+
+function disconnectWS() {
+  if (ws) { ws.close(); ws = null; }
+  liveCount = 0;
+  document.getElementById('liveCount').textContent = '0';
+}
+
+// ── Data rate calculator ────────────────────────────────────────────────────
+const PAYLOAD_BYTES = {
+  battery: 250,
+  stress:  260,
+  solar:   220,
+  wind:    240,
+  grid:    280
+};
+
+function calcRates() {
+  const asset     = document.getElementById('assetType').value;
+  const sites     = parseInt(document.getElementById('numSites').value)   || 1;
+  const devices   = parseInt(document.getElementById('numDevices').value) || 1;
+  const intervalMs = parseInt(document.getElementById('intervalMs').value) || 1000;
+
+  const totalDevices = sites * devices;
+  const msgsPerSec   = totalDevices / (intervalMs / 1000);
+  const bytesPerSec  = msgsPerSec * PAYLOAD_BYTES[asset];
+  const kbPerSec     = bytesPerSec / 1024;
+  const mbPerMin     = (bytesPerSec * 60) / (1024 * 1024);
+  const gbPerHr      = (bytesPerSec * 3600) / (1024 * 1024 * 1024);
+  // Parquet flush every 60s OR 10,000 messages
+  const msgsIn60s    = msgsPerSec * 60;
+  const parquetPer60s = Math.ceil(msgsIn60s / 10000) * Math.ceil(totalDevices > 0 ? 1 : 0);
+  // rough: one file per flush interval, but limited by 10k msg cap
+  const parquetPerHr = msgsIn60s > 10000
+    ? Math.ceil(msgsPerSec * 3600 / 10000)
+    : 60;
+
+  document.getElementById('crMsgs').textContent    = msgsPerSec.toLocaleString(undefined, {maximumFractionDigits: 1});
+  document.getElementById('crKBs').textContent     = kbPerSec.toFixed(1);
+  document.getElementById('crMBMin').textContent   = mbPerMin.toFixed(2);
+  document.getElementById('crGBHr').textContent    = gbPerHr.toFixed(3);
+  document.getElementById('crParquet').textContent = parquetPerHr.toLocaleString();
+}
+
+// ── Copy buttons ────────────────────────────────────────────────────────────
+function copyPre(btn) {
+  const pre = btn.nextElementSibling;
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+// Init calculator
+calcRates();
+</script>
+</body>
+</html>
