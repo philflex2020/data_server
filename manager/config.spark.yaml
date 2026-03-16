@@ -21,6 +21,7 @@ components:
     label: "S3 Store (MinIO)"
     cmd: ["./minio", "server", "./minio-data", "--console-address", ":9011"]
     cwd: "aws/data_store"
+    ports: [9000, 9011]
     env:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -29,6 +30,7 @@ components:
     label: "NATS JetStream"
     cmd: ["nats-server", "-c", "nats-server.conf"]
     cwd: "manager"
+    ports: [4222]
 
   nats_bridge:
     label: "MQTT → NATS Bridge"
@@ -44,11 +46,13 @@ components:
     label: "AWS Data Store Server"
     cmd: [".venv/bin/python", "server.py", "--config", "config.yaml"]
     cwd: "aws/data_store"
+    ports: [8766]
 
   subscriber_api:
     label: "Subscriber API (NATS + DuckDB)"
     cmd: [".venv/bin/python", "server.py", "--config", "config.yaml"]
     cwd: "subscriber/api"
+    ports: [8767, 8768]
 
   stress_runner:
     label: "Stress Runner (multi-project 24/7)"

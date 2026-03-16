@@ -25,7 +25,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 import signal
+import subprocess
 import sys
 from collections import deque
 from typing import Dict, Optional, Set
@@ -75,6 +77,47 @@ def _cleanup_orphans() -> None:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
+
+async def _kill_port_occupants(port: int, label: str, broadcast_fn) -> bool:
+    """Kill any process already listening on *port* before we try to start.
+
+    Uses ``ss`` to find the PID(s), sends SIGTERM, waits 0.5 s, then
+    SIGKILL if still alive.  Broadcasts a log line for each kill so the
+    dashboard shows exactly what happened.  Returns True if anything was
+    killed.
+    """
+    try:
+        result = subprocess.run(
+            ["ss", "-Htlnp", f"sport = :{port}"],
+            capture_output=True, text=True, timeout=3,
+        )
+        pids = list(set(re.findall(r"pid=(\d+)", result.stdout)))
+        if not pids:
+            return False
+        for pid_str in pids:
+            pid = int(pid_str)
+            msg = f"[MANAGER] port {port} occupied by PID {pid} — sending SIGTERM"
+            log.warning("%s: %s", label, msg)
+            await broadcast_fn({"type": "log", "component": "manager", "line": msg, "stream": "stderr"})
+            try:
+                os.kill(pid, signal.SIGTERM)
+                await asyncio.sleep(0.5)
+                try:
+                    os.kill(pid, 0)          # still alive?
+                    os.kill(pid, signal.SIGKILL)
+                    msg2 = f"[MANAGER] PID {pid} did not exit — sent SIGKILL"
+                    log.warning("%s: %s", label, msg2)
+                    await broadcast_fn({"type": "log", "component": "manager", "line": msg2, "stream": "stderr"})
+                except ProcessLookupError:
+                    pass                     # clean exit after SIGTERM
+            except ProcessLookupError:
+                pass
+        await asyncio.sleep(0.3)             # give OS time to release the port
+        return True
+    except Exception as exc:
+        log.warning("Port %d occupant check failed: %s", port, exc)
+        return False
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # data_server root
 
 # ---------------------------------------------------------------------------
@@ -94,6 +137,7 @@ class Component:
         self.cwd     = os.path.join(BASE_DIR, cfg.get("cwd", "."))
         self.env     = cfg.get("env", {})
         self.label   = cfg.get("label", name)
+        self.ports: list = cfg.get("ports", [])
         self.process: Optional[asyncio.subprocess.Process] = None
         self.status  = "stopped"   # stopped | starting | running | error
         self.pid: Optional[int] = None
@@ -108,6 +152,9 @@ class Component:
             return
         self.status = "starting"
         await broadcast_fn(self._status_msg())
+
+        for port in self.ports:
+            await _kill_port_occupants(port, self.label, broadcast_fn)
 
         env = {**os.environ, **self.env}
         try:

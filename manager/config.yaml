@@ -18,11 +18,13 @@ components:
     label: "MQTT Broker (Mosquitto)"
     cmd: ["/usr/sbin/mosquitto", "-p", "1884", "-v"]
     cwd: "."
+    ports: [1884]
 
   nats:
     label: "NATS JetStream"
     cmd: ["nats-server", "-c", "nats-server.conf"]
     cwd: "manager"
+    ports: [4222]
 
   nats_bridge:
     label: "MQTT → NATS Bridge"
@@ -43,3 +45,4 @@ components:
     label: "Subscriber API (NATS + DuckDB)"
     cmd: [".venv/bin/python","server.py", "--config", "config.yaml"]
     cwd: "subscriber/api"
+    ports: [8767, 8768]
