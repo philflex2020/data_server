@@ -390,7 +390,7 @@
     ws.onclose = () => {
       connected = false;
       setServerPill('bad', 'DISCONNECTED');
-      setMqttPill('bad', 'OFFLINE');
+      setNatsPill('bad', 'OFFLINE');
       setS3Pill('bad', 'OFFLINE');
       document.getElementById('btnConnect').textContent = 'Connect';
       document.getElementById('btnConnect').disabled = false;
