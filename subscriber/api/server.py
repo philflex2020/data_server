@@ -49,8 +49,19 @@ from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 
 from flux_compat import serve_flux_api, update_server_state
 
+LOG_BUFFER: collections.deque = collections.deque(maxlen=200)
+
+class _BufferHandler(logging.Handler):
+    def emit(self, record):
+        LOG_BUFFER.append(self.format(record))
+
+_fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+_buf_handler = _BufferHandler()
+_buf_handler.setFormatter(_fmt)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
+logging.getLogger().addHandler(_buf_handler)
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -302,6 +313,13 @@ async def ws_handler(websocket) -> None:
             elif t == "unsubscribe":
                 await stop_live_sub()
                 await broadcast_status()
+
+            elif t == "get_logs":
+                lines = int(msg.get("lines", 100))
+                await websocket.send(json.dumps({
+                    "type": "logs",
+                    "lines": list(LOG_BUFFER)[-lines:]
+                }))
 
             elif t == "query_history":
                 query_id = msg.get("query_id", "q")
