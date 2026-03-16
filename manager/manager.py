@@ -292,8 +292,15 @@ async def ws_handler(websocket) -> None:
 
             elif t == "stop_all":
                 async def _stop_all():
-                    for comp in reversed(list(g_components.values())):
-                        await comp.stop(broadcast)
+                    # Cancel every reader task immediately so logging stops at once
+                    all_readers = [t for c in g_components.values() for t in c._reader_tasks]
+                    for t in all_readers:
+                        t.cancel()
+                    await asyncio.gather(*all_readers, return_exceptions=True)
+                    for c in g_components.values():
+                        c._reader_tasks = []
+                    # Now terminate all processes concurrently
+                    await asyncio.gather(*[c.stop(broadcast) for c in g_components.values()], return_exceptions=True)
                 asyncio.create_task(_stop_all())
 
     except websockets.exceptions.ConnectionClosed:
