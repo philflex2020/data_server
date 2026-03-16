@@ -351,6 +351,8 @@ async def ws_handler(websocket) -> None:
     finally:
         g_connected.discard(websocket)
         log.info("Client disconnected (%d remaining)", len(g_connected))
+        if not g_connected:
+            await stop_live_sub()
 
 
 # ---------------------------------------------------------------------------
