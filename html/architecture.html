@@ -97,9 +97,18 @@ svg.arch { width: 100%; overflow: visible; display: block; }
   stroke: #3fb950; stroke-dasharray: 5 4;
   animation: dash 0.8s linear infinite;
 }
+.arch-arrow.leaf-node {
+  stroke: #58a6ff; stroke-dasharray: 5 3; stroke-width: 1.5; fill: none;
+}
 @keyframes dash { to { stroke-dashoffset: -18; } }
 .arch-lbl         { font-size: 8.5px; fill: #8b949e; text-anchor: middle; }
 .arch-lbl.flowing { fill: #3fb950; }
+.arch-lbl.leaf    { fill: #58a6ff; }
+
+/* ── Zone labels ── */
+.zone-label { font-size: 8.5px; font-weight: 700; fill: #8b949e; }
+.zone-label.site { fill: #58a6ff; }
+.zone-label.aws  { fill: #3fb950; }
 
 /* ── Legend ── */
 .legend {
@@ -125,18 +134,18 @@ svg.arch { width: 100%; overflow: visible; display: block; }
 </div>
 
 <div class="cost-bar">
-  <div class="cost-cell orig"><div class="lbl">orig_aws / month</div><div class="amt">$76,200</div></div>
-  <div class="cost-cell new"> <div class="lbl">new NATS / month</div><div class="amt">~$1,000</div></div>
-  <div class="cost-cell save"><div class="lbl">monthly saving</div>  <div class="amt">~$75,200</div></div>
+  <div class="cost-cell orig"><div class="lbl">InfluxDB / month (80 sites)</div><div class="amt">$76,200</div></div>
+  <div class="cost-cell new"> <div class="lbl">Edge Parquet / month (80 sites)</div><div class="amt">$860</div></div>
+  <div class="cost-cell save"><div class="lbl">Monthly saving</div><div class="amt">$75,340</div></div>
 </div>
 
 <div class="columns">
 
-  <!-- orig_aws -->
+  <!-- InfluxDB Stack (orig_aws) -->
   <div class="column">
     <div class="col-title" style="color:#fb923c">
-      orig_aws
-      <span class="col-badge">current production</span>
+      InfluxDB Stack
+      <span class="col-badge">legacy / being replaced</span>
       <span class="ws-dot" id="dot8760"></span>
       <span style="font-size:0.65rem;color:#8b949e" id="lbl8760">disconnected</span>
     </div>
@@ -150,21 +159,21 @@ svg.arch { width: 100%; overflow: visible; display: block; }
     </div>
   </div>
 
-  <!-- new NATS stack -->
+  <!-- Edge Parquet Architecture -->
   <div class="column">
     <div class="col-title" style="color:#3fb950">
-      New NATS Stack
-      <span class="col-badge">~95% cheaper</span>
-      <span class="ws-dot" id="dot8761"></span>
-      <span style="font-size:0.65rem;color:#8b949e" id="lbl8761">disconnected</span>
+      Edge Parquet Architecture
+      <span class="col-badge">target architecture · 99% cheaper</span>
+      <span class="ws-dot" id="dot8762"></span>
+      <span style="font-size:0.65rem;color:#8b949e" id="lbl8762">disconnected</span>
     </div>
-    <div class="col-sub">Battery Sites → FlashMQ → NATS → Parquet → AWS S3 &nbsp;·&nbsp; Subscriber API serves browser &nbsp;·&nbsp; manager :8761</div>
-    <svg class="arch" id="svg8761" viewBox="0 0 325 510"></svg>
+    <div class="col-sub">Battery Sites → FlashMQ → NATS → Parquet → S3 &nbsp;·&nbsp; Subscriber API serves browser &nbsp;·&nbsp; manager :8762</div>
+    <svg class="arch" id="svg8762" viewBox="0 0 340 580"></svg>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>running</div>
       <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div>stopped</div>
       <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>error</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>browser client</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>external / conceptual</div>
     </div>
   </div>
 
@@ -177,22 +186,27 @@ svg.arch { width: 100%; overflow: visible; display: block; }
       <path d="M0,0 L0,6 L7,3 z" fill="#30363d"/></marker>
     <marker id="ag2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
       <path d="M0,0 L0,6 L7,3 z" fill="#3fb950"/></marker>
+    <marker id="ag-blue" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#58a6ff"/></marker>
+    <marker id="ag-up" markerWidth="7" markerHeight="7" refX="3" refY="5" orient="auto">
+      <path d="M0,7 L6,7 L3,0 z" fill="#30363d"/></marker>
+    <marker id="ag-up2" markerWidth="7" markerHeight="7" refX="3" refY="5" orient="auto">
+      <path d="M0,7 L6,7 L3,0 z" fill="#3fb950"/></marker>
   </defs>
 </svg>
 
 <script>
 // ── Layout constants ────────────────────────────────────────────────────────
 const NW = 200, NH = 46, NX = 50;   // node width, height, left-x (centred in 300px)
-const GAP = 70;                      // vertical gap centre-to-centre
 
-// orig_aws: Generator at top (simulates IoT sites), then FlashMQ, Telegraf, InfluxDB2, Monitor
+// orig_aws / InfluxDB stack
 const ORIG = {
   nodes: [
-    { id:'generator', label:'Battery Sites',    sub:'Remote IoT installations',       port:'',      y:0,   kind:'external' },
-    { id:'flashmq',   label:'FlashMQ',           sub:'MQTT Broker · AWS EC2',          port:':1883', y:75,  kind:'managed' },
-    { id:'telegraf',  label:'Telegraf',           sub:'MQTT subscriber · AWS EC2',      port:'',      y:150, kind:'managed' },
-    { id:'influxdb',  label:'InfluxDB2 + EFS',    sub:'Time-series · AWS EC2',          port:':8086', y:225, kind:'managed' },
-    { id:'monitor',   label:'orig_aws.html',      sub:'Browser · REST/Flux · :8086 or :8768',    port:'',      y:300, kind:'external'},
+    { id:'generator', label:'Battery Sites',    sub:'Remote IoT installations',            port:'',      y:0,   kind:'external' },
+    { id:'flashmq',   label:'FlashMQ',           sub:'MQTT Broker · AWS EC2',               port:':1883', y:75,  kind:'managed' },
+    { id:'telegraf',  label:'Telegraf',           sub:'MQTT subscriber · AWS EC2',           port:'',      y:150, kind:'managed' },
+    { id:'influxdb',  label:'InfluxDB2 + EFS',    sub:'Time-series · AWS EC2',               port:':8086', y:225, kind:'managed' },
+    { id:'monitor',   label:'orig_aws.html',      sub:'Browser · REST/Flux · :8086 or :8768',port:'',      y:300, kind:'external'},
   ],
   arrows: [
     { from:'generator', to:'flashmq',  label:'MQTT publish', flow:['generator','flashmq'] },
@@ -202,37 +216,38 @@ const ORIG = {
   ],
 };
 
-// new NATS stack: Generator at top, then Mosquitto, NATS Bridge, NATS, Parquet Writer, MinIO
-// Side nodes: AWS Server and Subscriber API branch off MinIO/NATS
-const NATS_MAIN = [
-  { id:'generator',     label:'Battery Sites',    sub:'Remote IoT installations',       port:'',      y:0   },
-  { id:'mosquitto',     label:'FlashMQ',           sub:'MQTT Broker · AWS EC2 (shared)', port:':1883', y:75  },
-  { id:'nats_bridge',   label:'NATS Bridge',       sub:'FlashMQ → NATS · AWS EC2',       port:'',      y:150 },
-  { id:'nats',          label:'NATS JetStream',    sub:'Durable stream · AWS EC2',       port:':4222', y:225 },
-  { id:'parquet_writer',label:'Parquet Writer',    sub:'ack-after-S3-write · AWS EC2',   port:'',      y:300 },
-  { id:'minio',         label:'AWS S3',            sub:'Parquet columnar store',         port:'',      y:375 },
+// ── Edge Parquet layout constants ────────────────────────────────────────────
+// viewBox: 340 × 580
+// Zone 1 (site): y 10–310  Zone 2 (aws): y 340–560
+// Node column: x=10, w=200, h=46
+
+const EP_NX = 10, EP_NW = 200, EP_NH = 46;
+
+// Site zone nodes (y offsets within zone; zone rect starts at y=10)
+const SITE_ZONE = { x: 6, y: 10, w: 326, h: 300, fill: '#0d1f3c', label: 'SITE CONTROLLER (on-premise / edge)' };
+const AWS_ZONE  = { x: 6, y: 340, w: 326, h: 222, fill: '#0d2c1e', label: 'AWS (thin read layer)' };
+
+// Site nodes — absolute y positions
+const SITE_NODES = [
+  { id:'stress_runner',  label:'Battery Devices', sub:'MQTT publish · :1883',        port:'',      y: 34,  kind:'external' },
+  { id:'mosquitto',      label:'FlashMQ',          sub:'MQTT Broker · port 1883',     port:':1883', y: 98,  kind:'managed'  },
+  { id:'nats_bridge',    label:'NATS Bridge',      sub:'MQTT → NATS',                port:'',      y: 162, kind:'managed'  },
+  { id:'nats_site',      label:'NATS JetStream',   sub:'WAL on disk · 2h retention', port:':4222', y: 226, kind:'managed'  },
+  { id:'parquet_writer', label:'Parquet Writer',   sub:'60s flush → S3',             port:'',      y: 290, kind:'managed'  },
 ];
-// Side nodes sit to the right, beside their related main node
-const NATS_SIDE = [
-  { id:'subscriber_api',label:'Subscriber API',  sub:'NATS live + DuckDB/S3 history', port:':8767', mainY:225 },
-  { id:'monitor',       label:'monitor.html',    sub:'Browser · WS live + Flux/DuckDB history',           port:'',      mainY:300, kind:'external' },
-  { id:'aws_server',    label:'AWS Store',       sub:'Parquet browser · AWS EC2',     port:':8766', mainY:375 },
+
+// AWS nodes — absolute y positions
+const AWS_NODES = [
+  { id:'nats_aws',       label:'NATS Server',      sub:'2h retention · live buffer', port:':4222', y: 360, kind:'external' },
+  { id:'subscriber_api', label:'Subscriber API',   sub:'NATS live + DuckDB/S3',      port:':8767', y: 424, kind:'managed'  },
+  { id:'aws_server',     label:'AWS Store',        sub:'Parquet browser',            port:':8766', y: 488, kind:'managed'  },
 ];
-const NATS_ARROWS_MAIN = [
-  { id:'gen-mosq',    y1:NH,  y2:75,  label:'MQTT',    flow:['generator','mosquitto'] },
-  { id:'mosq-bridge', y1:75+NH, y2:150, label:'sub',   flow:['mosquitto','nats_bridge'] },
-  { id:'bridge-nats', y1:150+NH,y2:225, label:'pub',   flow:['nats_bridge','nats'] },
-  { id:'nats-writer', y1:225+NH,y2:300, label:'pull',  flow:['nats','parquet_writer'] },
-  { id:'writer-minio',y1:300+NH,y2:375, label:'PUT',   flow:['parquet_writer','minio'] },
-];
-const NATS_ARROWS_SIDE = [
-  { id:'nats-sub',    mainY:225, label:'live', flow:['nats','subscriber_api'] },
-  { id:'minio-aws',   mainY:375, label:'list', flow:['minio','aws_server'] },
-];
-// Extra arrows between side nodes (vertical)
-const NATS_ARROWS_EXTRA = [
-  { id:'sub-monitor', flow:['subscriber_api'] },
-];
+
+// S3 / minio — side node in AWS zone
+const MINIO_NODE = { id:'minio', label:'S3', sub:'Parquet files (primary + gap-fill)', port:'', x: 228, y: 424, w: 100, h: 46, kind:'managed' };
+
+// Monitor node (browser, external)
+const MONITOR_NODE = { id:'monitor', label:'monitor.html', sub:'Browser · WS + history', port:'', x: 228, y: 488, w: 100, h: 46, kind:'external' };
 
 // ── SVG helpers ─────────────────────────────────────────────────────────────
 function $n(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
@@ -275,29 +290,73 @@ function drawNode(svg, id, label, sub, port, x, y, w, h, kind, status) {
   svg.appendChild(g);
 }
 
-function drawArrow(svg, arrowId, x1, y1, x2, y2, label, curved) {
+function drawArrow(svg, arrowId, x1, y1, x2, y2, label, opts) {
+  opts = opts || {};
   const g = $n('g'); g.setAttribute('data-arrow', arrowId);
   const path = $n('path');
-  const d = curved
-    ? `M${x1},${y1} C${x1-28},${y1} ${x2-28},${y2} ${x2},${y2}`
-    : `M${x1},${y1} L${x2},${y2}`;
+  let d;
+  if (opts.curved) {
+    d = `M${x1},${y1} C${x1-28},${y1} ${x2-28},${y2} ${x2},${y2}`;
+  } else if (opts.leafCurve) {
+    // curved path for leaf node inter-zone connection
+    const mx = (x1 + x2) / 2;
+    d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+  } else {
+    d = `M${x1},${y1} L${x2},${y2}`;
+  }
   path.setAttribute('d', d);
-  path.setAttribute('class', 'arch-arrow');
-  path.setAttribute('marker-end', 'url(#ag)');
+  if (opts.leaf) {
+    path.setAttribute('class', 'arch-arrow leaf-node');
+    path.setAttribute('marker-end', 'url(#ag-blue)');
+  } else {
+    path.setAttribute('class', 'arch-arrow');
+    path.setAttribute('marker-end', opts.upArrow ? 'url(#ag-up)' : 'url(#ag)');
+  }
   g.appendChild(path);
-  const lx = curved ? x1 - 32 : (x1 + x2) / 2 + 6;
-  const ly = curved ? (y1 + y2) / 2 : (y1 + y2) / 2 - 4;
-  const lbl = $n('text');
-  lbl.setAttribute('x', lx); lbl.setAttribute('y', ly);
-  lbl.setAttribute('class', 'arch-lbl'); lbl.textContent = label;
-  g.appendChild(lbl);
+
+  if (label) {
+    const lx = opts.curved ? x1 - 32 : opts.leafCurve ? (x1 + x2) / 2 : (x1 + x2) / 2 + (opts.labelOffset || 0);
+    const ly = opts.curved ? (y1 + y2) / 2 : opts.leafCurve ? (y1 + y2) / 2 - 6 : (y1 + y2) / 2 - 4;
+    const lbl = $n('text');
+    lbl.setAttribute('x', lx); lbl.setAttribute('y', ly);
+    lbl.setAttribute('class', opts.leaf ? 'arch-lbl leaf' : 'arch-lbl');
+    lbl.textContent = label;
+    g.appendChild(lbl);
+  }
   svg.appendChild(g);
 }
 
-// ── Build static SVG skeletons ───────────────────────────────────────────────
+function drawZone(svg, zone, labelClass) {
+  const rect = $n('rect');
+  rect.setAttribute('x', zone.x); rect.setAttribute('y', zone.y);
+  rect.setAttribute('width', zone.w); rect.setAttribute('height', zone.h);
+  rect.setAttribute('rx', 8);
+  rect.setAttribute('fill', zone.fill);
+  rect.setAttribute('fill-opacity', '0.6');
+  rect.setAttribute('stroke', labelClass === 'site' ? '#1d3a6e' : '#1a4a2e');
+  rect.setAttribute('stroke-width', '1');
+  svg.appendChild(rect);
+
+  const t = $n('text');
+  t.setAttribute('x', zone.x + 8); t.setAttribute('y', zone.y + 14);
+  t.setAttribute('class', `zone-label ${labelClass}`);
+  t.textContent = zone.label;
+  svg.appendChild(t);
+}
+
+function drawZoneDivider(svg) {
+  // dashed horizontal line between zones
+  const line = $n('line');
+  line.setAttribute('x1', 6); line.setAttribute('y1', 322);
+  line.setAttribute('x2', 332); line.setAttribute('y2', 322);
+  line.setAttribute('stroke', '#30363d'); line.setAttribute('stroke-width', '1');
+  line.setAttribute('stroke-dasharray', '6 3');
+  svg.appendChild(line);
+}
+
+// ── Build orig_aws SVG ───────────────────────────────────────────────────────
 function buildOrig(svg) {
   svg.innerHTML = '';
-  // arrows
   ORIG.arrows.forEach(a => {
     const fn = ORIG.nodes.find(n => n.id === a.from);
     const tn = ORIG.nodes.find(n => n.id === a.to);
@@ -306,62 +365,139 @@ function buildOrig(svg) {
       NX + NW/2, tn.y,
       a.label);
   });
-  // nodes
   ORIG.nodes.forEach(n => {
     drawNode(svg, n.id, n.label, n.sub, n.port, NX, n.y, NW, NH, n.kind);
   });
 }
 
-function buildNats(svg, status) {
+// ── Build Edge Parquet SVG ───────────────────────────────────────────────────
+function buildEdge(svg, status) {
   svg.innerHTML = '';
-  const W = 325, MX = 10, MW = 168, SX = 190, SW = 108;
-  const cy = y => y + NH / 2;
 
-  // main chain arrows
-  NATS_ARROWS_MAIN.forEach(a => {
-    drawArrow(svg, a.id, MX + MW/2, a.y1, MX + MW/2, a.y2, a.label);
-  });
-  // side branch arrows (horizontal, from main right edge to side column)
-  NATS_ARROWS_SIDE.forEach(a => {
-    drawArrow(svg, a.id,
-      MX + MW, cy(a.mainY),
-      SX,      cy(a.mainY),
-      a.label);
-  });
-  // vertical arrow: subscriber_api → monitor.html (WebSocket)
-  const subN = NATS_SIDE.find(n => n.id === 'subscriber_api');
-  const monN = NATS_SIDE.find(n => n.id === 'monitor');
-  if (subN && monN)
-    drawArrow(svg, 'sub-monitor', SX + SW/2, subN.mainY + NH, SX + SW/2, monN.mainY, 'WS');
-  // DuckDB history arrow: AWS S3 → Subscriber API (right side of diagram)
-  const s3N = NATS_MAIN.find(n => n.id === 'minio');
-  if (s3N && subN)
-    drawArrow(svg, 's3-duckdb', SX + SW + 10, s3N.y + NH/2, SX + SW + 10, subN.mainY + NH/2, 'DuckDB');
+  // Zone backgrounds (draw first so nodes appear on top)
+  drawZone(svg, SITE_ZONE, 'site');
+  drawZone(svg, AWS_ZONE, 'aws');
+  drawZoneDivider(svg);
 
-  // main nodes (generator is external — battery sites, not managed)
-  NATS_MAIN.forEach(n => {
-    const kind = n.id === 'generator' ? 'external' : 'managed';
-    drawNode(svg, n.id, n.label, n.sub, n.port, MX, n.y, MW, NH, kind, status[n.id]);
+  // ── Site zone arrows (vertical chain) ──
+  // Battery Devices → FlashMQ
+  drawArrow(svg, 'batt-mosq',
+    EP_NX + EP_NW/2, SITE_NODES[0].y + EP_NH,
+    EP_NX + EP_NW/2, SITE_NODES[1].y,
+    'MQTT publish');
+  // FlashMQ → NATS Bridge
+  drawArrow(svg, 'mosq-bridge',
+    EP_NX + EP_NW/2, SITE_NODES[1].y + EP_NH,
+    EP_NX + EP_NW/2, SITE_NODES[2].y,
+    'subscribe');
+  // NATS Bridge → NATS (site)
+  drawArrow(svg, 'bridge-nats',
+    EP_NX + EP_NW/2, SITE_NODES[2].y + EP_NH,
+    EP_NX + EP_NW/2, SITE_NODES[3].y,
+    'pub');
+  // NATS → Parquet Writer
+  drawArrow(svg, 'nats-writer',
+    EP_NX + EP_NW/2, SITE_NODES[3].y + EP_NH,
+    EP_NX + EP_NW/2, SITE_NODES[4].y,
+    'pull');
+
+  // Parquet Writer → S3 (upward-going arrow from site parquet to S3 in AWS zone)
+  // Draw as a line going down past the zone boundary and into AWS minio
+  drawArrow(svg, 'writer-s3',
+    MINIO_NODE.x + MINIO_NODE.w/2, SITE_NODES[4].y + EP_NH,
+    MINIO_NODE.x + MINIO_NODE.w/2, MINIO_NODE.y,
+    'PUT every 60s', { labelOffset: 28 });
+
+  // ── Leaf Node arrow (inter-zone): site NATS right edge → AWS NATS left edge ──
+  const siteNatsRX = EP_NX + EP_NW;          // right edge of site NATS node
+  const siteNatsCY = SITE_NODES[3].y + EP_NH/2;
+  const awsNatsLX  = EP_NX;                  // left edge of AWS NATS (same x col, different y)
+  const awsNatsCY  = AWS_NODES[0].y + EP_NH/2;
+  // Route: go right out of the zone, curve down, come back left
+  drawArrow(svg, 'leaf-node',
+    siteNatsRX, siteNatsCY,
+    awsNatsLX, awsNatsCY,
+    'Leaf Node · TLS',
+    { leaf: true, leafCurve: false, curved: true });
+
+  // ── AWS zone arrows ──
+  // AWS NATS → Subscriber API
+  drawArrow(svg, 'nats-sub',
+    EP_NX + EP_NW/2, AWS_NODES[0].y + EP_NH,
+    EP_NX + EP_NW/2, AWS_NODES[1].y,
+    'live');
+  // Subscriber API → AWS Store (vertical)
+  drawArrow(svg, 'sub-awsstore',
+    EP_NX + EP_NW/2, AWS_NODES[1].y + EP_NH,
+    EP_NX + EP_NW/2, AWS_NODES[2].y,
+    'browse');
+
+  // S3 → Subscriber API (horizontal from minio to sub_api)
+  drawArrow(svg, 's3-sub',
+    MINIO_NODE.x, MINIO_NODE.y + MINIO_NODE.h/2,
+    EP_NX + EP_NW, AWS_NODES[1].y + EP_NH/2,
+    'DuckDB history', { labelOffset: -10 });
+
+  // Subscriber API → monitor.html (horizontal to monitor)
+  drawArrow(svg, 'sub-monitor',
+    EP_NX + EP_NW, AWS_NODES[1].y + EP_NH/2,
+    MONITOR_NODE.x, MONITOR_NODE.y + MONITOR_NODE.h/2,
+    'WS');
+
+  // ── Site nodes ──
+  SITE_NODES.forEach(n => {
+    // Map stress_runner to status, nats_site → nats
+    const statusKey = n.id === 'nats_site' ? 'nats' : n.id;
+    drawNode(svg, n.id, n.label, n.sub, n.port,
+      EP_NX, n.y, EP_NW, EP_NH,
+      n.kind, status[statusKey]);
   });
-  // side nodes (aligned to their mainY)
-  NATS_SIDE.forEach(n => {
-    drawNode(svg, n.id, n.label, n.sub, n.port, SX, n.mainY, SW, NH,
-      n.kind || 'managed', status[n.id]);
-  });
+
+  // ── AWS nodes ──
+  // nats_aws is always external (conceptual)
+  drawNode(svg, 'nats_aws', AWS_NODES[0].label, AWS_NODES[0].sub, AWS_NODES[0].port,
+    EP_NX, AWS_NODES[0].y, EP_NW, EP_NH, 'external', 'external');
+
+  drawNode(svg, 'subscriber_api', AWS_NODES[1].label, AWS_NODES[1].sub, AWS_NODES[1].port,
+    EP_NX, AWS_NODES[1].y, EP_NW, EP_NH,
+    AWS_NODES[1].kind, status['subscriber_api']);
+
+  drawNode(svg, 'aws_server', AWS_NODES[2].label, AWS_NODES[2].sub, AWS_NODES[2].port,
+    EP_NX, AWS_NODES[2].y, EP_NW, EP_NH,
+    AWS_NODES[2].kind, status['aws_server']);
+
+  // S3 (minio) — side node
+  drawNode(svg, 'minio', MINIO_NODE.label, MINIO_NODE.sub, MINIO_NODE.port,
+    MINIO_NODE.x, MINIO_NODE.y, MINIO_NODE.w, MINIO_NODE.h,
+    MINIO_NODE.kind, status['minio']);
+
+  // monitor.html — side node
+  drawNode(svg, 'monitor', MONITOR_NODE.label, MONITOR_NODE.sub, MONITOR_NODE.port,
+    MONITOR_NODE.x, MONITOR_NODE.y, MONITOR_NODE.w, MONITOR_NODE.h,
+    'external', 'external');
 }
 
 // ── Apply live status ────────────────────────────────────────────────────────
 function applyStatus(svg, components, arrowDefs) {
   svg.querySelectorAll('[data-node]').forEach(g => {
     const id = g.getAttribute('data-node');
-    const comp = components[id];
+    // node id aliasing
+    let statusKey = id;
+    if (id === 'nats_site') statusKey = 'nats';
+    if (id === 'nats_aws')  return; // always external
+    const comp = components[statusKey];
     if (!comp) return;
     g.setAttribute('class', `arch-node ${comp.status}`);
   });
   arrowDefs.forEach(a => {
-    const g = svg.querySelector(`[data-arrow="${a.id || a.from+'-'+a.to}"]`);
+    const arrowId = a.id || `${a.from}-${a.to}`;
+    const g = svg.querySelector(`[data-arrow="${arrowId}"]`);
     if (!g) return;
-    const flowing = a.flow.every(id => components[id] && components[id].status === 'running');
+    if (a.leaf) return; // leaf node arrow stays blue always
+    const flowing = a.flow.every(id => {
+      const key = id === 'nats_site' ? 'nats' : id;
+      return components[key] && components[key].status === 'running';
+    });
     const path = g.querySelector('.arch-arrow');
     const lbl  = g.querySelector('.arch-lbl');
     if (path) {
@@ -372,11 +508,25 @@ function applyStatus(svg, components, arrowDefs) {
   });
 }
 
+// Arrow definitions for applyStatus flow checks (edge stack)
+const EDGE_ARROW_DEFS = [
+  { id:'batt-mosq',    flow:['stress_runner','mosquitto'] },
+  { id:'mosq-bridge',  flow:['mosquitto','nats_bridge'] },
+  { id:'bridge-nats',  flow:['nats_bridge','nats_site'] },
+  { id:'nats-writer',  flow:['nats_site','parquet_writer'] },
+  { id:'writer-s3',    flow:['parquet_writer','minio'] },
+  { id:'leaf-node',    flow:[], leaf:true },
+  { id:'nats-sub',     flow:['subscriber_api'] },
+  { id:'sub-awsstore', flow:['aws_server'] },
+  { id:'s3-sub',       flow:['minio','subscriber_api'] },
+  { id:'sub-monitor',  flow:['subscriber_api'] },
+];
+
 // ── WebSocket connections ────────────────────────────────────────────────────
 const conns = {};
 
 function connect(port) {
-  const h    = document.getElementById('hostInput').value.trim() || window.location.hostname;
+  const h     = document.getElementById('hostInput').value.trim() || window.location.hostname;
   const dotEl = document.getElementById(`dot${port}`);
   const lblEl = document.getElementById(`lbl${port}`);
   const svg   = document.getElementById(`svg${port}`);
@@ -384,7 +534,7 @@ function connect(port) {
   if (conns[port]) { try { conns[port].close(); } catch(e){} }
 
   if (port === 8760) buildOrig(svg);
-  else               buildNats(svg, {});
+  else               buildEdge(svg, {});
 
   const ws = new WebSocket(`ws://${h}:${port}`);
   conns[port] = ws;
@@ -408,9 +558,10 @@ function connect(port) {
       if (port === 8760) {
         applyStatus(svg, comps, ORIG.arrows.map(a => ({ ...a, id: `${a.from}-${a.to}` })));
       } else {
-        buildNats(svg, Object.fromEntries(Object.entries(comps).map(([k,v]) => [k, v])));
-        applyStatus(svg, comps,
-          [...NATS_ARROWS_MAIN, ...NATS_ARROWS_SIDE, ...NATS_ARROWS_EXTRA]);
+        buildEdge(svg, Object.fromEntries(
+          Object.entries(comps).map(([k,v]) => [k, v])
+        ));
+        applyStatus(svg, comps, EDGE_ARROW_DEFS);
       }
     } catch(e) {}
   };
@@ -418,7 +569,8 @@ function connect(port) {
 
 function reconnectAll() {
   localStorage.setItem('ds_host', document.getElementById('hostInput').value.trim());
-  connect(8760); connect(8761);
+  connect(8760);
+  connect(8762);
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -426,7 +578,7 @@ function reconnectAll() {
   document.getElementById('hostInput').value =
     localStorage.getItem('ds_host') || window.location.hostname;
   connect(8760);
-  connect(8761);
+  connect(8762);
 })();
 </script>
 </body>
