@@ -251,8 +251,10 @@ async def send_full_status(ws) -> None:
         "type":       "status",
         "components": {name: c.to_dict() for name, c in g_components.items()},
     }))
-    # Replay last 20 log lines per component
+    # Replay last 20 log lines only for running components
     for name, comp in g_components.items():
+        if comp.status != "running":
+            continue
         for line in list(comp.logs)[-20:]:
             await ws.send(json.dumps({"type": "log", "component": name, "line": line, "stream": "stdout"}))
 
