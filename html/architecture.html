@@ -10,58 +10,91 @@ body {
   background: #0d1117; color: #e6edf3;
   min-height: 100vh; display: flex; flex-direction: column;
 }
+
+/* ── Header ── */
 .header {
   background: linear-gradient(90deg, #161b22, #1c2128);
   border-bottom: 1px solid #30363d;
-  padding: 10px 20px;
+  padding: 9px 18px;
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
 }
-.header-title { font-size: 1.05rem; font-weight: 700; color: #58a6ff; }
-.header-sub   { font-size: 0.72rem; color: #8b949e; margin-top: 1px; }
-.host-row { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #8b949e; }
+.header-title { font-size: 1rem; font-weight: 700; color: #58a6ff; }
+.header-sub   { font-size: 0.70rem; color: #8b949e; margin-top: 1px; }
+.host-row { display: flex; align-items: center; gap: 8px; font-size: 0.73rem; color: #8b949e; }
 .host-row input {
   background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
-  color: #e6edf3; padding: 4px 8px; font-size: 0.75rem; width: 120px;
+  color: #e6edf3; padding: 3px 7px; font-size: 0.73rem; width: 110px;
 }
 .host-row button {
   background: #21262d; border: 1px solid #30363d; border-radius: 4px;
-  color: #58a6ff; padding: 4px 10px; font-size: 0.72rem; cursor: pointer;
+  color: #58a6ff; padding: 3px 9px; font-size: 0.70rem; cursor: pointer;
 }
 .host-row button:hover { background: #30363d; }
-.cost-bar { display: flex; border-bottom: 1px solid #30363d; flex-shrink: 0; }
-.cost-cell {
-  flex: 1; padding: 6px 16px; text-align: center;
-  font-size: 0.72rem; border-right: 1px solid #30363d;
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 18px; border-bottom: 1px solid #30363d;
+  background: #161b22; flex-shrink: 0; flex-wrap: wrap;
 }
-.cost-cell:last-child { border-right: none; }
-.cost-cell .lbl { color: #8b949e; }
-.cost-cell .amt { font-size: 1rem; font-weight: 700; margin-top: 1px; }
-.cost-cell.orig .amt { color: #f85149; }
-.cost-cell.new  .amt { color: #3fb950; }
-.cost-cell.save .amt { color: #e3b341; }
-.columns {
-  display: grid; grid-template-columns: 1fr 1fr;
-  flex: 1; overflow: hidden;
+.tab-btn {
+  background: #21262d; border: 1px solid #30363d; border-radius: 5px;
+  color: #8b949e; padding: 4px 14px; font-size: 0.73rem; cursor: pointer;
+  transition: all .15s;
 }
-.column {
-  padding: 12px 14px; border-right: 1px solid #30363d;
-  overflow: auto; display: flex; flex-direction: column;
+.tab-btn:hover  { background: #30363d; color: #e6edf3; }
+.tab-btn.active { background: #1c2f4a; border-color: #58a6ff; color: #58a6ff; font-weight: 600; }
+.tab-btn.active.green { background: #0d2c1e; border-color: #3fb950; color: #3fb950; }
+.sep { width: 1px; height: 18px; background: #30363d; margin: 0 4px; }
+.cost-btn {
+  background: #21262d; border: 1px solid #30363d; border-radius: 5px;
+  color: #e3b341; padding: 4px 13px; font-size: 0.73rem; cursor: pointer;
+  transition: all .15s; margin-left: auto;
 }
-.column:last-child { border-right: none; }
-.col-title {
-  font-size: 0.82rem; font-weight: 700; margin-bottom: 3px;
-  display: flex; align-items: center; gap: 8px;
-}
-.col-badge {
-  font-size: 0.62rem; padding: 1px 6px; border-radius: 8px;
-  background: #21262d; border: 1px solid #30363d; color: #8b949e;
-}
-.col-sub { font-size: 0.68rem; color: #8b949e; margin-bottom: 8px; }
-.ws-dot  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #484f58; }
-.ws-dot.connected { background: #3fb950; box-shadow: 0 0 5px #3fb950; }
+.cost-btn:hover  { background: #2a2300; }
+.cost-btn.active { background: #2a2300; border-color: #e3b341; font-weight: 600; }
+.ws-dot  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #484f58; margin-right: 3px; }
+.ws-dot.connected { background: #3fb950; box-shadow: 0 0 4px #3fb950; }
 .ws-dot.error     { background: #f85149; }
-svg.arch { width: 100%; overflow: visible; display: block; }
+.ws-info { font-size: 0.65rem; color: #8b949e; }
+
+/* ── Content area ── */
+.content { flex: 1; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; }
+
+svg.arch { width: 100%; max-width: 520px; display: block; margin: 0 auto; overflow: visible; }
+
+/* ── Cost summary bar ── */
+.cost-summary {
+  display: none; margin: 10px auto 0; max-width: 520px; width: 100%;
+  background: #161b22; border: 1px solid #e3b341; border-radius: 6px;
+  padding: 8px 14px;
+}
+.cost-summary.visible { display: flex; gap: 0; }
+.cost-cell { flex: 1; text-align: center; border-right: 1px solid #30363d; padding: 2px 8px; }
+.cost-cell:last-child { border-right: none; }
+.cost-cell .cl { font-size: 0.63rem; color: #8b949e; }
+.cost-cell .cv { font-size: 0.95rem; font-weight: 700; margin-top: 1px; }
+.cost-cell .cv.red  { color: #f85149; }
+.cost-cell .cv.grn  { color: #3fb950; }
+.cost-cell .cv.yel  { color: #e3b341; }
+
+.cost-note {
+  display: none; max-width: 520px; width: 100%; margin: 6px auto 0;
+  font-size: 0.62rem; color: #6a737d; text-align: center;
+}
+.cost-note.visible { display: block; }
+
+/* ── Legend ── */
+.legend {
+  display: flex; gap: 10px; margin: 10px auto 0; max-width: 520px; width: 100%;
+  font-size: 0.62rem; color: #8b949e; flex-wrap: wrap;
+}
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-dot  { width: 7px; height: 7px; border-radius: 50%; }
+.legend-line { width: 16px; height: 2px; }
+
+/* ── Node styles ── */
 .arch-node rect { stroke-width: 1.5; }
 .arch-node.stopped  rect { fill: #161b22; stroke: #30363d; }
 .arch-node.running  rect { fill: #0d2c1e; stroke: #3fb950; }
@@ -78,11 +111,17 @@ svg.arch { width: 100%; overflow: visible; display: block; }
 .arch-node.error    .ndot { fill: #f85149; }
 .arch-node.starting .ndot { fill: #e3b341; }
 .arch-node.external .ndot { fill: #388bfd; }
-.arch-arrow          { stroke: #30363d; stroke-width: 1.4; fill: none; }
-.arch-arrow.flowing  { stroke: #3fb950; stroke-dasharray: 5 4; animation: dash 0.8s linear infinite; }
-.arch-arrow.path1    { stroke: #e3b341; stroke-width: 1.6; stroke-dasharray: 4 3; fill: none; }
-.arch-arrow.path2    { stroke: #58a6ff; stroke-width: 1.4; stroke-dasharray: 4 3; fill: none; }
-.arch-arrow.query    { stroke: #a371f7; stroke-width: 1.3; stroke-dasharray: 3 3; fill: none; }
+
+/* ── Cost badge overlaid on node ── */
+.cost-badge rect { fill: #2a2300; stroke: #e3b341; stroke-width: 1; rx: 3; }
+.cost-badge text { font-size: 8px; font-weight: 700; fill: #e3b341; text-anchor: middle; }
+
+/* ── Arrows ── */
+.arch-arrow         { stroke: #30363d; stroke-width: 1.4; fill: none; }
+.arch-arrow.flowing { stroke: #3fb950; stroke-dasharray: 5 4; animation: dash 0.8s linear infinite; }
+.arch-arrow.path1   { stroke: #e3b341; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+.arch-arrow.path2   { stroke: #58a6ff; stroke-width: 1.4; stroke-dasharray: 4 3; fill: none; }
+.arch-arrow.query   { stroke: #a371f7; stroke-width: 1.3; stroke-dasharray: 3 3; fill: none; }
 @keyframes dash { to { stroke-dashoffset: -18; } }
 .arch-lbl         { font-size: 8px; fill: #8b949e; text-anchor: middle; }
 .arch-lbl.flowing { fill: #3fb950; }
@@ -92,16 +131,6 @@ svg.arch { width: 100%; overflow: visible; display: block; }
 .zone-label      { font-size: 8px; font-weight: 700; }
 .zone-label.site { fill: #58a6ff; }
 .zone-label.aws  { fill: #3fb950; }
-.path-label      { font-size: 7.5px; font-style: italic; }
-.path-label.p1   { fill: #e3b341; }
-.path-label.p2   { fill: #58a6ff; }
-.legend {
-  display: flex; gap: 10px; margin-top: 8px;
-  font-size: 0.62rem; color: #8b949e; flex-wrap: wrap;
-}
-.legend-item { display: flex; align-items: center; gap: 4px; }
-.legend-dot  { width: 7px; height: 7px; border-radius: 50%; }
-.legend-line { width: 16px; height: 2px; }
 </style>
 </head>
 <body>
@@ -114,61 +143,33 @@ svg.arch { width: 100%; overflow: visible; display: block; }
   <div class="host-row">
     Host: <input id="hostInput" autocomplete="off">
     <button onclick="reconnectAll()">Connect</button>
-    <a href="dashboard.html" style="margin-left:12px;color:#94a3b8;font-size:13px;text-decoration:none"
+    <a href="dashboard.html" style="margin-left:10px;color:#94a3b8;font-size:12px;text-decoration:none"
        onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#94a3b8'">← Dashboard</a>
   </div>
 </div>
 
-<div class="cost-bar">
-  <div class="cost-cell orig"><div class="lbl">InfluxDB / month (80 sites)</div><div class="amt">$76,200</div></div>
-  <div class="cost-cell new"> <div class="lbl">Edge Parquet / month (80 sites)</div><div class="amt">$860</div></div>
-  <div class="cost-cell save"><div class="lbl">Monthly saving</div><div class="amt">$75,340</div></div>
+<div class="toolbar">
+  <button class="tab-btn" id="tabInflux" onclick="setTab('influx')">InfluxDB Stack</button>
+  <button class="tab-btn active green" id="tabEdge" onclick="setTab('edge')">Edge Parquet</button>
+  <div class="sep"></div>
+  <span class="ws-dot" id="wsDot"></span>
+  <span class="ws-info" id="wsInfo">disconnected</span>
+  <button class="cost-btn" id="costBtn" onclick="toggleCosts()">$ Show Costs</button>
 </div>
 
-<div class="columns">
+<div class="content">
+  <svg class="arch" id="archSvg" viewBox="0 0 360 640"></svg>
 
-  <!-- InfluxDB legacy -->
-  <div class="column">
-    <div class="col-title" style="color:#fb923c">
-      InfluxDB Stack
-      <span class="col-badge">legacy · being replaced</span>
-      <span class="ws-dot" id="dot8760"></span>
-      <span style="font-size:0.65rem;color:#8b949e" id="lbl8760">disconnected</span>
-    </div>
-    <div class="col-sub">All processing in AWS · manager :8760 · no offline resilience</div>
-    <svg class="arch" id="svg8760" viewBox="0 0 300 360"></svg>
-    <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>running</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div>stopped</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>error</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>external</div>
-    </div>
+  <div class="cost-summary" id="costSummary"></div>
+  <div class="cost-note" id="costNote">
+    ⚠ Cost figures are estimates based on AWS pricing and stress-test measurements (1,152 cells · ~8,000 msg/s per site).
+    Actual costs depend on data volume, message rate, reserved instance discounts, and AWS region.
+    Verify all figures before using in business cases.
   </div>
 
-  <!-- Edge Parquet -->
-  <div class="column">
-    <div class="col-title" style="color:#3fb950">
-      Edge Parquet Architecture
-      <span class="col-badge">target · 99% cheaper · offline resilient</span>
-      <span class="ws-dot" id="dot8762"></span>
-      <span style="font-size:0.65rem;color:#8b949e" id="lbl8762">disconnected</span>
-    </div>
-    <div class="col-sub">Site controller generates parquet locally · uploads to S3 · NATS Leaf Node forwards live feed · manager :8762</div>
-    <svg class="arch" id="svg8762" viewBox="0 0 360 640"></svg>
-    <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>running</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div>stopped</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>error</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>external</div>
-      <div class="legend-item"><div class="legend-line" style="background:#e3b341"></div>PATH 1 (primary)</div>
-      <div class="legend-item"><div class="legend-line" style="background:#58a6ff"></div>PATH 2 (backup)</div>
-      <div class="legend-item"><div class="legend-line" style="background:#a371f7"></div>query paths</div>
-    </div>
-  </div>
-
+  <div class="legend" id="legend"></div>
 </div>
 
-<!-- shared SVG defs -->
 <svg width="0" height="0" style="position:absolute">
   <defs>
     <marker id="ag"      markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#30363d"/></marker>
@@ -180,283 +181,339 @@ svg.arch { width: 100%; overflow: visible; display: block; }
 </svg>
 
 <script>
-// ─── InfluxDB (orig_aws) layout ───────────────────────────────────────────────
-const NW = 200, NH = 42, NX = 50;
-const ORIG = {
-  nodes: [
-    { id:'generator', label:'Battery Sites',   sub:'Remote IoT · MQTT QoS 1',               port:'',      y:0,   kind:'external' },
-    { id:'flashmq',   label:'FlashMQ',          sub:'MQTT Broker · all sites → one broker',  port:':1883', y:68,  kind:'managed'  },
-    { id:'telegraf',  label:'Telegraf',          sub:'MQTT subscriber · transforms to line protocol', port:'', y:136, kind:'managed' },
-    { id:'influxdb',  label:'InfluxDB2 + EFS',   sub:'Time-series DB · cardinality grows with sites', port:':8086', y:204, kind:'managed' },
-    { id:'monitor',   label:'Browser (orig_aws.html)', sub:'REST/Flux queries · no offline support', port:'', y:272, kind:'external' },
-  ],
-  arrows: [
-    { from:'generator', to:'flashmq',  label:'MQTT 8k msg/s',  flow:['generator','flashmq'] },
-    { from:'flashmq',   to:'telegraf', label:'subscribe',       flow:['flashmq','telegraf']  },
-    { from:'telegraf',  to:'influxdb', label:'line protocol',   flow:['telegraf','influxdb'] },
-    { from:'influxdb',  to:'monitor',  label:'REST / Flux',     flow:['influxdb']            },
-  ],
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentTab  = 'edge';
+let showCosts   = false;
+let liveStatus  = {};   // component id → {status, pid}
+
+// ─── Cost data ────────────────────────────────────────────────────────────────
+// Per site per month at stress load (1,152 cells, ~8k msg/s)
+const COSTS_INFLUX = {
+  generator:  { label:'IoT Core + Lambda', mo: '$5,000*', note:'$0.30/M msgs + per-invocation' },
+  flashmq:    { label:'EC2 r5.xlarge',     mo: '$182',    note:'needs 4 vCPU / 32 GB for this load' },
+  telegraf:   { label:'(shared EC2)',       mo: '—',       note:'included in InfluxDB instance' },
+  influxdb:   { label:'EC2 + EBS/EFS',     mo: '$207',    note:'$182 compute + $25 storage' },
+  monitor:    { label:'Browser',           mo: '$0',      note:'' },
+  _total1:    '$226 / site / month',
+  _total80:   '$76,200 / month (80 sites)',
+};
+const COSTS_EDGE = {
+  stress_runner:  { label:'Site hardware',   mo: '~$0',   note:'runs on existing site controller' },
+  mosquitto:      { label:'Site hardware',   mo: '~$0',   note:'MQTT broker on site controller' },
+  nats_bridge:    { label:'Site hardware',   mo: '~$0',   note:'single Go binary, minimal CPU' },
+  nats_site:      { label:'Site hardware',   mo: '~$0',   note:'WAL on local disk' },
+  parquet_writer: { label:'Site hardware',   mo: '~$0',   note:'Python process, site controller' },
+  nats_aws:       { label:'EC2 t3.small',    mo: '~$0.13',note:'shared across all sites' },
+  gap_fill:       { label:'(shared EC2)',    mo: '—',     note:'same instance as NATS' },
+  minio:          { label:'S3 storage',      mo: '$10',   note:'~450 GB/site/month snappy parquet' },
+  subscriber_api: { label:'EC2 t3.small',    mo: '~$0.13',note:'shared across all sites' },
+  monitor_aws:    { label:'Browser',         mo: '$0',    note:'' },
+  _total1:   '$21 / site / month',
+  _total80:  '$860 / month (80 sites)',
 };
 
-// ─── Edge Parquet layout ──────────────────────────────────────────────────────
-// viewBox: 360 × 640
-// Left column: main data path (x=8, w=190, h=38)
-// Right column: side nodes (x=218, w=130)
-// Site zone: y 8–302   AWS zone: y 318–628
+// ─── Layout: InfluxDB ─────────────────────────────────────────────────────────
+const NW=200, NH=42, NX=80;
+const ORIG_NODES = [
+  { id:'generator', label:'Battery Sites',        sub:'Remote IoT · MQTT QoS 1',                   sub2:'retransmit until broker acks',           y:0   },
+  { id:'flashmq',   label:'FlashMQ',               sub:'MQTT Broker · all sites → one AWS broker',  sub2:'$0.30/million messages via IoT Core',    y:68  },
+  { id:'telegraf',  label:'Telegraf',               sub:'MQTT subscriber · transforms to line protocol', sub2:'runs on same EC2 as InfluxDB',      y:136 },
+  { id:'influxdb',  label:'InfluxDB2 + EFS',        sub:'Time-series DB · needs 32 GB RAM at 8k msg/s', sub2:'cardinality grows with site count → bigger EC2', y:204 },
+  { id:'monitor',   label:'Browser (orig_aws.html)', sub:'REST/Flux queries only',                  sub2:'no offline resilience · data loss on WAN drop', y:272 },
+];
+const ORIG_ARROWS = [
+  { from:'generator', to:'flashmq',  label:'MQTT 8k/s',     flow:['generator','flashmq'] },
+  { from:'flashmq',   to:'telegraf', label:'subscribe',      flow:['flashmq','telegraf']  },
+  { from:'telegraf',  to:'influxdb', label:'line protocol',  flow:['telegraf','influxdb'] },
+  { from:'influxdb',  to:'monitor',  label:'REST / Flux',    flow:['influxdb']            },
+];
 
+// ─── Layout: Edge Parquet ─────────────────────────────────────────────────────
 const MX=8, MW=190, SX=218, SW=132, NH2=38, GAP=54;
-
-// Site nodes
-const SN = [
-  { id:'stress_runner',  label:'Battery Devices',  sub:'MQTT QoS 1 · 8k msg/s',         sub2:'1,152 cells · retransmit on no-ack',     port:'',      y:26  },
-  { id:'mosquitto',      label:'FlashMQ / Mosquitto', sub:'MQTT Broker · QoS 1 guaranteed', sub2:'devices retry until broker acks',    port:':1883', y:26+GAP   },
-  { id:'nats_bridge',    label:'NATS Bridge',       sub:'MQTT → NATS subject batteries.>', sub2:'maps topic hierarchy to NATS subjects', port:'',     y:26+GAP*2 },
-  { id:'nats_site',      label:'NATS JetStream',    sub:'Write-ahead log on disk',         sub2:'replay on restart · pull consumer',     port:':4222', y:26+GAP*3 },
-  { id:'parquet_writer', label:'Parquet Writer',    sub:'batch 60s · snappy compressed',   sub2:'acks NATS only after S3 write succeeds', port:'',    y:26+GAP*4 },
+const SITE_NODES = [
+  { id:'stress_runner',  label:'Battery Devices',     sub:'MQTT QoS 1 · 8k msg/s',            sub2:'1,152 cells · retransmit on no-ack',          y:26         },
+  { id:'mosquitto',      label:'FlashMQ / Mosquitto', sub:'MQTT Broker · QoS 1 guaranteed',    sub2:'devices retry until broker acks',             y:26+GAP     },
+  { id:'nats_bridge',    label:'NATS Bridge',         sub:'MQTT → NATS subject batteries.>',   sub2:'maps topic hierarchy to NATS subjects',       y:26+GAP*2   },
+  { id:'nats_site',      label:'NATS JetStream',      sub:'Write-ahead log on disk',           sub2:'replay on restart · pull consumer · :4222',   y:26+GAP*3   },
+  { id:'parquet_writer', label:'Parquet Writer',      sub:'batch 60s · snappy compressed',     sub2:'acks NATS only after S3 write succeeds',      y:26+GAP*4   },
 ];
-
-// AWS nodes (left column)
-const AN = [
-  { id:'nats_aws',       label:'NATS Server (AWS)',  sub:'receives live feed via Leaf Node',  sub2:'2h retention · shared across all sites', port:':4222', y:334       },
-  { id:'gap_fill',       label:'Gap-fill Writer',    sub:'PATH 2 backup: writes parquet to S3', sub2:'only if site hasn\'t uploaded that window', port:'',  y:334+GAP  },
-  { id:'minio',          label:'S3 (AWS)',            sub:'receives site uploads (PATH 1)',    sub2:'+ gap-fill backup (PATH 2) · no duplicates', port:':9000', y:334+GAP*2 },
-  { id:'subscriber_api', label:'Subscriber API',     sub:'live: NATS in-memory 6min buffer',  sub2:'history: DuckDB reads S3 parquet',      port:':8767', y:334+GAP*3 },
-  { id:'monitor_aws',    label:'Browser / monitor.html', sub:'WS live feed → recent queries fast', sub2:'S3 history queries via DuckDB/Parquet', port:'', y:334+GAP*4 },
+const AWS_NODES = [
+  { id:'nats_aws',       label:'NATS Server (AWS)',   sub:'receives live feed via Leaf Node',   sub2:'2h retention · shared across all sites',     y:334        },
+  { id:'gap_fill',       label:'Gap-fill Writer',     sub:'PATH 2: writes parquet to S3',       sub2:'only if site hasn\'t uploaded that window',  y:334+GAP    },
+  { id:'minio',          label:'S3 (AWS)',            sub:'receives site uploads (PATH 1)',      sub2:'+ gap-fill backup (PATH 2) · no duplicates', y:334+GAP*2  },
+  { id:'subscriber_api', label:'Subscriber API',      sub:'live: NATS in-memory 6min buffer',   sub2:'history: DuckDB reads S3 parquet · :8767',   y:334+GAP*3  },
+  { id:'monitor_aws',    label:'Browser / monitor.html', sub:'WS live feed → recent queries fast', sub2:'S3 history queries via DuckDB/Parquet',   y:334+GAP*4  },
 ];
-
-// AWS side node: aws_server
-const AWS_STORE = { id:'aws_server', label:'AWS Store', sub:'Parquet file browser', sub2:':8766 REST API', port:':8766', x:SX, y:334+GAP*2, w:SW, h:NH2 };
+const AWS_STORE = { id:'aws_server', label:'AWS Store', sub:'Parquet file browser', sub2:':8766 REST API', x:SX, y:334+GAP*2, w:SW, h:NH2 };
 
 // ─── SVG helpers ─────────────────────────────────────────────────────────────
 function $n(t) { return document.createElementNS('http://www.w3.org/2000/svg', t); }
 
 function drawNode(svg, id, label, sub, sub2, port, x, y, w, h, kind, status) {
-  const g = $n('g');
-  g.setAttribute('class', `arch-node ${status || (kind === 'external' ? 'external' : 'stopped')}`);
+  const g=$n('g');
+  g.setAttribute('class',`arch-node ${status||(kind==='external'?'external':'stopped')}`);
   g.setAttribute('data-node', id);
-  const r = $n('rect');
-  r.setAttribute('x',x); r.setAttribute('y',y);
+  const r=$n('rect'); r.setAttribute('x',x); r.setAttribute('y',y);
   r.setAttribute('width',w); r.setAttribute('height',h); r.setAttribute('rx',5);
   g.appendChild(r);
-  const dot = $n('circle');
-  dot.setAttribute('cx', x+w-8); dot.setAttribute('cy', y+8); dot.setAttribute('r',3.5);
-  dot.setAttribute('class','ndot'); g.appendChild(dot);
-
-  // Text layout: how many rows?
-  const rows = [label, sub, sub2, port].filter(Boolean);
-  const lineH = 10;
-  const totalH = rows.length * lineH;
-  let ty = y + h/2 - totalH/2 + 9;
-
-  const t1 = $n('text'); t1.setAttribute('x', x+8); t1.setAttribute('y', ty);
-  t1.setAttribute('class','nlabel'); t1.textContent = label; g.appendChild(t1); ty += lineH;
-  if (sub)  { const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',ty); t.setAttribute('class','nsub');  t.textContent=sub;  g.appendChild(t); ty+=lineH; }
-  if (sub2) { const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',ty); t.setAttribute('class','nsub2'); t.textContent=sub2; g.appendChild(t); ty+=lineH; }
-  if (port) { const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',ty); t.setAttribute('class','nport'); t.textContent=port; g.appendChild(t); }
+  const dot=$n('circle'); dot.setAttribute('cx',x+w-8); dot.setAttribute('cy',y+8);
+  dot.setAttribute('r',3.5); dot.setAttribute('class','ndot'); g.appendChild(dot);
+  const rows=[label,sub,sub2,port].filter(Boolean);
+  const lh=10; let ty=y+h/2-(rows.length*lh)/2+9;
+  const t1=$n('text'); t1.setAttribute('x',x+8); t1.setAttribute('y',ty);
+  t1.setAttribute('class','nlabel'); t1.textContent=label; g.appendChild(t1); ty+=lh;
+  if(sub)  { const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',ty); t.setAttribute('class','nsub');  t.textContent=sub;  g.appendChild(t); ty+=lh; }
+  if(sub2) { const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',ty); t.setAttribute('class','nsub2'); t.textContent=sub2; g.appendChild(t); ty+=lh; }
+  if(port) { const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',ty); t.setAttribute('class','nport'); t.textContent=port; g.appendChild(t); }
   svg.appendChild(g);
 }
 
-function arrow(svg, id, x1,y1,x2,y2, label, cls, marker, labelCls, cx, cy) {
+function drawArrow(svg, id, x1,y1,x2,y2, label, cls, marker, lblCls, cx) {
   const g=$n('g'); g.setAttribute('data-arrow',id);
   const p=$n('path');
-  const d = (cx!==undefined)
-    ? `M${x1},${y1} C${cx},${cy||y1} ${cx},${cy||y2} ${x2},${y2}`
-    : `M${x1},${y1} L${x2},${y2}`;
+  const d=cx!==undefined ? `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}` : `M${x1},${y1} L${x2},${y2}`;
   p.setAttribute('d',d); p.setAttribute('class','arch-arrow '+(cls||''));
-  p.setAttribute('marker-end','url(#'+(marker||'ag')+')');
-  g.appendChild(p);
-  if (label) {
-    const lx = (cx!==undefined) ? cx : (x1+x2)/2+2;
-    const ly = (cx!==undefined) ? (y1+y2)/2-5 : (y1+y2)/2-4;
+  p.setAttribute('marker-end','url(#'+(marker||'ag')+')'); g.appendChild(p);
+  if(label){
+    const lx=cx!==undefined?cx:(x1+x2)/2+2;
+    const ly=cx!==undefined?(y1+y2)/2-5:(y1+y2)/2-4;
     const t=$n('text'); t.setAttribute('x',lx); t.setAttribute('y',ly);
-    t.setAttribute('class','arch-lbl '+(labelCls||'')); t.textContent=label;
-    g.appendChild(t);
+    t.setAttribute('class','arch-lbl '+(lblCls||'')); t.textContent=label; g.appendChild(t);
   }
   svg.appendChild(g);
 }
 
-function zone(svg, x,y,w,h, fill, stroke, labelText, labelCls) {
+function drawZone(svg, x,y,w,h, fill, stroke, label, cls) {
   const r=$n('rect'); r.setAttribute('x',x); r.setAttribute('y',y);
   r.setAttribute('width',w); r.setAttribute('height',h); r.setAttribute('rx',7);
   r.setAttribute('fill',fill); r.setAttribute('fill-opacity','0.55');
-  r.setAttribute('stroke',stroke); r.setAttribute('stroke-width','1');
-  svg.appendChild(r);
+  r.setAttribute('stroke',stroke); r.setAttribute('stroke-width','1'); svg.appendChild(r);
   const t=$n('text'); t.setAttribute('x',x+8); t.setAttribute('y',y+13);
-  t.setAttribute('class','zone-label '+labelCls); t.textContent=labelText;
-  svg.appendChild(t);
+  t.setAttribute('class','zone-label '+cls); t.textContent=label; svg.appendChild(t);
 }
 
-// ─── Build InfluxDB SVG ───────────────────────────────────────────────────────
-function buildOrig(svg) {
-  svg.innerHTML = '';
-  ORIG.arrows.forEach(a => {
-    const fn=ORIG.nodes.find(n=>n.id===a.from), tn=ORIG.nodes.find(n=>n.id===a.to);
-    arrow(svg, `${a.from}-${a.to}`, NX+NW/2, fn.y+NH, NX+NW/2, tn.y, a.label);
-  });
-  ORIG.nodes.forEach(n => {
-    drawNode(svg, n.id, n.label, n.sub, null, n.port, NX, n.y, NW, NH, n.kind);
-  });
+function drawCostBadge(svg, x, y, w, text) {
+  const bw=68, bh=14, bx=x+w-bw-2, by=y+h-bh-2;
+  // reuse last h in scope — use a param instead
+  const g=$n('g'); g.setAttribute('class','cost-badge'); g.setAttribute('data-cost','1');
+  const r=$n('rect'); r.setAttribute('x',bx); r.setAttribute('y',by);
+  r.setAttribute('width',bw); r.setAttribute('height',bh); r.setAttribute('rx',3); g.appendChild(r);
+  const t=$n('text'); t.setAttribute('x',bx+bw/2); t.setAttribute('y',by+10);
+  t.textContent=text; g.appendChild(t);
+  svg.appendChild(g);
 }
 
-// ─── Build Edge Parquet SVG ───────────────────────────────────────────────────
-function buildEdge(svg, st) {
+// ─── Build InfluxDB diagram ───────────────────────────────────────────────────
+function buildInflux(svg) {
+  svg.setAttribute('viewBox','0 0 360 340');
   svg.innerHTML='';
-
-  // Zone backgrounds
-  zone(svg,  5,  8, 348, 298, '#0d1f3c', '#1d3a6e', 'SITE CONTROLLER  (on-premise / edge)', 'site');
-  zone(svg,  5, 314, 348, 316, '#0d2c1e', '#1a4a2e', 'AWS  (thin read layer — shared across all sites)', 'aws');
-
-  // ── Site chain arrows ──────────────────────────────────────────────────────
-  const mc = MX+MW/2;
-  for (let i=0; i<SN.length-1; i++) {
-    arrow(svg, `sn${i}`, mc, SN[i].y+NH2, mc, SN[i+1].y, '', '', 'ag');
-  }
-
-  // PATH 1: Parquet Writer → S3 (AWS) — yellow dashed, crosses zone boundary
-  // Goes right then down as a side path
-  const p1x = SX + SW/2;
-  const p1y1 = SN[4].y + NH2/2;  // Parquet Writer mid-right
-  const p1y2 = AN[2].y + NH2/2;  // S3 mid
-  arrow(svg, 'path1-upload',
-    MX+MW, p1y1,       // right edge of Parquet Writer
-    SX,    p1y1,       // go right to side column
-    '', 'path1', 'ag-yel', 'path1');
-  arrow(svg, 'path1-down',
-    p1x, p1y1,
-    p1x, AN[2].y,
-    'PATH 1 · PUT every 60s via WAN', 'path1', 'ag-yel', 'path1',
-    p1x+35, (p1y1+AN[2].y)/2);
-
-  // PATH 2: Leaf Node (site NATS → AWS NATS) — blue, right side curved
-  const leafX = SX+SW+10;
-  const leafY1 = SN[3].y + NH2/2;   // NATS site
-  const leafY2 = AN[0].y + NH2/2;   // NATS aws
-  arrow(svg, 'leaf-node',
-    MX+MW, leafY1,
-    SX,    leafY1,
-    '', 'path2', 'ag-blue');
-  arrow(svg, 'leaf-down',
-    p1x, leafY1,
-    p1x, leafY2,
-    'Leaf Node · TLS · real-time', 'path2', 'ag-blue', 'path2',
-    p1x+40, (leafY1+leafY2)/2);
-
-  // ── AWS chain arrows ───────────────────────────────────────────────────────
-  const amc = MX+MW/2;
-
-  // PATH 2 cont: AWS NATS → Gap-fill Writer → S3
-  arrow(svg,'gap-nats', amc, AN[0].y+NH2, amc, AN[1].y, 'consume', 'path2','ag-blue','path2');
-  arrow(svg,'gap-s3',   amc, AN[1].y+NH2, amc, AN[2].y, 'PUT if no site upload', 'path2','ag-blue','path2');
-
-  // AWS NATS → Subscriber API (live query path — purple)
-  arrow(svg,'live-query',
-    MX+MW, AN[0].y+NH2/2,
-    SX,    AN[0].y+NH2/2,
-    '', 'query','ag-purp');
-  arrow(svg,'live-query2',
-    SX+SW/2, AN[0].y+NH2/2,
-    SX+SW/2, AN[3].y+NH2/2,
-    'live buffer\n(6 min)', 'query','ag-purp','query',
-    SX+SW/2+32, (AN[0].y+AN[3].y)/2);
-
-  // S3 → Subscriber API (history query path — purple)
-  arrow(svg,'hist-query',
-    SX, AN[2].y+NH2/2,
-    MX+MW, AN[3].y+NH2/2,
-    'DuckDB / S3 history', 'query','ag-purp','query');
-
-  // Subscriber API → Browser
-  arrow(svg,'sub-browser', amc, AN[3].y+NH2, amc, AN[4].y, 'WS + HTTP');
-
-  // AWS Store side arrow from S3
-  arrow(svg,'s3-store',
-    MX+MW, AN[2].y+NH2/2,
-    SX, AWS_STORE.y+NH2/2,
-    'browse files');
-
-  // ── Site nodes ─────────────────────────────────────────────────────────────
-  SN.forEach(n => {
-    const sk = n.id==='nats_site' ? 'nats' : n.id;
-    drawNode(svg, n.id, n.label, n.sub, n.sub2, n.port, MX, n.y, MW, NH2, n.id==='stress_runner'?'external':'managed', st[sk]);
+  ORIG_ARROWS.forEach(a=>{
+    const fn=ORIG_NODES.find(n=>n.id===a.from), tn=ORIG_NODES.find(n=>n.id===a.to);
+    drawArrow(svg,`${a.from}-${a.to}`, NX+NW/2,fn.y+NH, NX+NW/2,tn.y, a.label);
   });
+  ORIG_NODES.forEach(n=>{
+    const kind=n.id==='generator'||n.id==='monitor'?'external':'managed';
+    const st=liveStatus[n.id]?.status;
+    drawNode(svg,n.id,n.label,n.sub,n.sub2,'',NX,n.y,NW,NH,kind,st);
+    if(showCosts && COSTS_INFLUX[n.id])
+      drawCostBadge(svg,NX,n.y,NW,NH, COSTS_INFLUX[n.id].mo+' · '+COSTS_INFLUX[n.id].label);
+  });
+}
 
-  // ── AWS nodes (left column) ────────────────────────────────────────────────
-  drawNode(svg,'nats_aws',       AN[0].label, AN[0].sub, AN[0].sub2, AN[0].port, MX, AN[0].y, MW, NH2, 'external','external');
-  drawNode(svg,'gap_fill',       AN[1].label, AN[1].sub, AN[1].sub2, AN[1].port, MX, AN[1].y, MW, NH2, 'external','external');
-  drawNode(svg,'minio',          AN[2].label, AN[2].sub, AN[2].sub2, AN[2].port, MX, AN[2].y, MW, NH2, 'managed', st['minio']);
-  drawNode(svg,'subscriber_api', AN[3].label, AN[3].sub, AN[3].sub2, AN[3].port, MX, AN[3].y, MW, NH2, 'managed', st['subscriber_api']);
-  drawNode(svg,'monitor_aws',    AN[4].label, AN[4].sub, AN[4].sub2, AN[4].port, MX, AN[4].y, MW, NH2, 'external','external');
+// ─── Build Edge diagram ───────────────────────────────────────────────────────
+function buildEdge(svg) {
+  svg.setAttribute('viewBox','0 0 360 640');
+  svg.innerHTML='';
+  const mc=MX+MW/2, p1x=SX+SW/2;
 
-  // AWS Store (side)
-  drawNode(svg,'aws_server', AWS_STORE.label, AWS_STORE.sub, AWS_STORE.sub2, AWS_STORE.port,
-    SX, AWS_STORE.y, SW, NH2, 'managed', st['aws_server']);
+  drawZone(svg,5,8,   348,298, '#0d1f3c','#1d3a6e','SITE CONTROLLER  (on-premise / edge)','site');
+  drawZone(svg,5,314, 348,316, '#0d2c1e','#1a4a2e','AWS  (thin read layer — shared across all sites)','aws');
+
+  // Site chain
+  for(let i=0;i<SITE_NODES.length-1;i++)
+    drawArrow(svg,`sn${i}`,mc,SITE_NODES[i].y+NH2,mc,SITE_NODES[i+1].y,'');
+
+  // PATH 1: Parquet Writer → S3 (yellow, side)
+  const pw=SITE_NODES[4], s3=AWS_NODES[2];
+  drawArrow(svg,'p1a', MX+MW,pw.y+NH2/2, SX,pw.y+NH2/2, '','path1','ag-yel','path1');
+  drawArrow(svg,'p1b', p1x,pw.y+NH2/2, p1x,s3.y, 'PATH 1 · PUT every 60s via WAN','path1','ag-yel','path1', p1x+38);
+
+  // PATH 2: Leaf Node (blue, side)
+  const ns=SITE_NODES[3], na=AWS_NODES[0];
+  drawArrow(svg,'p2a', MX+MW,ns.y+NH2/2, SX,ns.y+NH2/2, '','path2','ag-blue','path2');
+  drawArrow(svg,'p2b', p1x,ns.y+NH2/2, p1x,na.y, 'Leaf Node · TLS · real-time','path2','ag-blue','path2', p1x+40);
+
+  // AWS chain (PATH 2 cont)
+  drawArrow(svg,'gap-nats',mc,na.y+NH2,mc,AWS_NODES[1].y,'consume','path2','ag-blue','path2');
+  drawArrow(svg,'gap-s3',  mc,AWS_NODES[1].y+NH2,mc,s3.y,'PUT if no site upload','path2','ag-blue','path2');
+
+  // Live query (purple): AWS NATS → Subscriber API side
+  const sa=AWS_NODES[3];
+  drawArrow(svg,'lq1', MX+MW,na.y+NH2/2, SX,na.y+NH2/2,'','query','ag-purp');
+  drawArrow(svg,'lq2', p1x,na.y+NH2/2, p1x,sa.y+NH2/2,'live buffer (6 min)','query','ag-purp','query',p1x+36);
+
+  // History query (purple): S3 → Subscriber API
+  drawArrow(svg,'hq', SX,s3.y+NH2/2, MX+MW,sa.y+NH2/2,'DuckDB / S3 history','query','ag-purp','query');
+
+  // Subscriber → Browser
+  drawArrow(svg,'sub-br',mc,sa.y+NH2,mc,AWS_NODES[4].y,'WS + HTTP');
+  // S3 → AWS Store
+  drawArrow(svg,'s3-st', MX+MW,s3.y+NH2/2, SX,AWS_STORE.y+NH2/2,'browse files');
 
   // PATH labels
-  const pl1=$n('text'); pl1.setAttribute('x', p1x+38); pl1.setAttribute('y', SN[4].y-5);
-  pl1.setAttribute('class','path-label p1'); pl1.textContent='▲ PATH 1'; svg.appendChild(pl1);
-  const pl2=$n('text'); pl2.setAttribute('x', p1x+38); pl2.setAttribute('y', SN[3].y-5);
-  pl2.setAttribute('class','path-label p2'); pl2.textContent='▲ PATH 2'; svg.appendChild(pl2);
+  ['p1','p2'].forEach((p,i)=>{
+    const n=i===0?SITE_NODES[4]:SITE_NODES[3];
+    const t=$n('text'); t.setAttribute('x',p1x+42); t.setAttribute('y',n.y-4);
+    t.setAttribute('class','arch-lbl '+(i===0?'path1':'path2'));
+    t.textContent='▲ PATH '+(i+1); svg.appendChild(t);
+  });
+
+  // Site nodes
+  SITE_NODES.forEach(n=>{
+    const sk=n.id==='nats_site'?'nats':n.id;
+    const kind=n.id==='stress_runner'?'external':'managed';
+    const st=liveStatus[sk]?.status;
+    drawNode(svg,n.id,n.label,n.sub,n.sub2,'',MX,n.y,MW,NH2,kind,st);
+    if(showCosts && COSTS_EDGE[n.id])
+      drawCostBadge(svg,MX,n.y,MW,NH2, COSTS_EDGE[n.id].mo+' · '+COSTS_EDGE[n.id].label);
+  });
+
+  // AWS nodes
+  const awsKinds={nats_aws:'external',gap_fill:'external',minio:'managed',subscriber_api:'managed',monitor_aws:'external'};
+  AWS_NODES.forEach(n=>{
+    const st=n.id==='nats_aws'||n.id==='gap_fill'||n.id==='monitor_aws'?'external':liveStatus[n.id]?.status;
+    drawNode(svg,n.id,n.label,n.sub,n.sub2,'',MX,n.y,MW,NH2,awsKinds[n.id],st);
+    if(showCosts && COSTS_EDGE[n.id])
+      drawCostBadge(svg,MX,n.y,MW,NH2, COSTS_EDGE[n.id].mo+' · '+COSTS_EDGE[n.id].label);
+  });
+  drawNode(svg,'aws_server',AWS_STORE.label,AWS_STORE.sub,AWS_STORE.sub2,'',SX,AWS_STORE.y,SW,NH2,'managed',liveStatus['aws_server']?.status);
+}
+
+// ─── Cost badge helper (fixed signature) ─────────────────────────────────────
+function drawCostBadge(svg, nx, ny, nw, nh, text) {
+  const bw=Math.min(nw-4, text.length*5+8), bh=13;
+  const bx=nx+nw-bw-3, by=ny+nh-bh-2;
+  const g=$n('g'); g.setAttribute('class','cost-badge'); g.setAttribute('data-cost','1');
+  const r=$n('rect'); r.setAttribute('x',bx); r.setAttribute('y',by);
+  r.setAttribute('width',bw); r.setAttribute('height',bh); r.setAttribute('rx',3); g.appendChild(r);
+  const t=$n('text'); t.setAttribute('x',bx+bw/2); t.setAttribute('y',by+10);
+  t.textContent=text; g.appendChild(t);
+  svg.appendChild(g);
+}
+
+// ─── Render cost summary bar ──────────────────────────────────────────────────
+function renderCostSummary() {
+  const el=document.getElementById('costSummary');
+  const note=document.getElementById('costNote');
+  if(!showCosts){ el.classList.remove('visible'); note.classList.remove('visible'); return; }
+  const cd=currentTab==='influx'?COSTS_INFLUX:COSTS_EDGE;
+  const other=currentTab==='influx'?COSTS_EDGE:COSTS_INFLUX;
+  const saving_1  = currentTab==='influx' ? 'vs ~$21 edge' : 'vs $226 InfluxDB';
+  el.innerHTML=`
+    <div class="cost-cell"><div class="cl">Per site / month</div><div class="cv ${currentTab==='influx'?'red':'grn'}">${cd._total1}</div></div>
+    <div class="cost-cell"><div class="cl">80 sites / month</div><div class="cv ${currentTab==='influx'?'red':'grn'}">${cd._total80}</div></div>
+    <div class="cost-cell"><div class="cl">Comparison</div><div class="cv yel">${saving_1}</div></div>
+    <div class="cost-cell"><div class="cl">80-site saving (vs InfluxDB)</div><div class="cv yel">~$75,340 / month</div></div>
+  `;
+  el.classList.add('visible');
+  note.classList.add('visible');
 }
 
 // ─── Apply live status ────────────────────────────────────────────────────────
-const ORIG_ADEFS = ORIG.arrows.map(a => ({...a, id:`${a.from}-${a.to}`}));
-const EDGE_ADEFS = [
-  { id:'sn0', flow:['stress_runner','mosquitto']   },
-  { id:'sn1', flow:['mosquitto','nats_bridge']     },
-  { id:'sn2', flow:['nats_bridge','nats_site']     },
-  { id:'sn3', flow:['nats_site','parquet_writer']  },
-];
-
-function applyStatus(svg, comps, adefs) {
-  svg.querySelectorAll('[data-node]').forEach(g => {
+function applyStatus() {
+  const svg=document.getElementById('archSvg');
+  svg.querySelectorAll('[data-node]').forEach(g=>{
     const id=g.getAttribute('data-node');
-    if (id==='nats_aws'||id==='gap_fill'||id==='monitor_aws'||id==='monitor') return;
-    const key = id==='nats_site'?'nats': id==='stress_runner'?'stress_runner': id;
-    const c = comps[key]; if (!c) return;
+    if(['nats_aws','gap_fill','monitor_aws','monitor'].includes(id)) return;
+    const key=id==='nats_site'?'nats':id;
+    const c=liveStatus[key]; if(!c) return;
     g.setAttribute('class',`arch-node ${c.status}`);
   });
-  adefs.forEach(a => {
-    const g=svg.querySelector(`[data-arrow="${a.id}"]`); if (!g) return;
-    const flowing = a.flow.every(id => {
-      const k = id==='nats_site'?'nats': id;
-      return comps[k] && comps[k].status==='running';
-    });
+  const adefs=currentTab==='influx'
+    ? ORIG_ARROWS.map(a=>({...a,id:`${a.from}-${a.to}`}))
+    : [{id:'sn0',flow:['stress_runner','mosquitto']},{id:'sn1',flow:['mosquitto','nats_bridge']},
+       {id:'sn2',flow:['nats_bridge','nats_site']},{id:'sn3',flow:['nats_site','parquet_writer']}];
+  adefs.forEach(a=>{
+    const g=svg.querySelector(`[data-arrow="${a.id}"]`); if(!g) return;
+    const flowing=a.flow.every(id=>{ const k=id==='nats_site'?'nats':id; return liveStatus[k]?.status==='running'; });
     const p=g.querySelector('.arch-arrow'); const l=g.querySelector('.arch-lbl');
-    if (p) { p.setAttribute('class', flowing?'arch-arrow flowing':'arch-arrow'); p.setAttribute('marker-end', flowing?'url(#ag2)':'url(#ag)'); }
-    if (l) l.setAttribute('class', flowing?'arch-lbl flowing':'arch-lbl');
+    if(p){p.setAttribute('class',flowing?'arch-arrow flowing':'arch-arrow'); p.setAttribute('marker-end',flowing?'url(#ag2)':'url(#ag)');}
+    if(l) l.setAttribute('class',flowing?'arch-lbl flowing':'arch-lbl');
   });
 }
 
-// ─── WebSocket ───────────────────────────────────────────────────────────────
-const conns={};
-function connect(port) {
+// ─── Tab + cost toggle ────────────────────────────────────────────────────────
+function setTab(tab) {
+  currentTab=tab;
+  document.getElementById('tabInflux').classList.toggle('active', tab==='influx');
+  document.getElementById('tabInflux').classList.toggle('green',  false);
+  document.getElementById('tabEdge').classList.toggle('active',   tab==='edge');
+  document.getElementById('tabEdge').classList.toggle('green',    tab==='edge');
+  rebuild();
+}
+
+function toggleCosts() {
+  showCosts=!showCosts;
+  const btn=document.getElementById('costBtn');
+  btn.classList.toggle('active', showCosts);
+  btn.textContent=showCosts?'$ Hide Costs':'$ Show Costs';
+  rebuild();
+}
+
+function rebuild() {
+  const svg=document.getElementById('archSvg');
+  if(currentTab==='influx') buildInflux(svg); else buildEdge(svg);
+  applyStatus();
+  renderCostSummary();
+  renderLegend();
+}
+
+function renderLegend() {
+  const el=document.getElementById('legend');
+  const base=`
+    <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>running</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#484f58"></div>stopped</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>error</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>external</div>`;
+  const edge=currentTab==='edge'?`
+    <div class="legend-item"><div class="legend-line" style="background:#e3b341"></div>PATH 1 primary</div>
+    <div class="legend-item"><div class="legend-line" style="background:#58a6ff"></div>PATH 2 backup</div>
+    <div class="legend-item"><div class="legend-line" style="background:#a371f7"></div>query paths</div>`:'';
+  el.innerHTML=base+edge;
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+let ws=null, wsPort=null;
+const PORT_MAP={'influx':8760,'edge':8762};
+
+function connectWs(port) {
+  if(ws){ try{ws.close();}catch(e){} }
+  wsPort=port;
   const h=document.getElementById('hostInput').value.trim()||window.location.hostname;
-  const dot=document.getElementById(`dot${port}`);
-  const lbl=document.getElementById(`lbl${port}`);
-  const svg=document.getElementById(`svg${port}`);
-  if (conns[port]) { try{conns[port].close();}catch(e){} }
-  if (port===8760) buildOrig(svg); else buildEdge(svg,{});
-  const ws=new WebSocket(`ws://${h}:${port}`);
-  conns[port]=ws;
-  ws.onopen=()=>{ dot.className='ws-dot connected'; lbl.textContent=`ws://…:${port}`; ws.send(JSON.stringify({type:'get_status'})); };
-  ws.onclose=()=>{ dot.className='ws-dot error'; lbl.textContent='disconnected'; setTimeout(()=>connect(port),5000); };
+  const dot=document.getElementById('wsDot'), info=document.getElementById('wsInfo');
+  ws=new WebSocket(`ws://${h}:${port}`);
+  ws.onopen=()=>{ dot.className='ws-dot connected'; info.textContent=`ws://…:${port}`; ws.send(JSON.stringify({type:'get_status'})); };
+  ws.onclose=()=>{ dot.className='ws-dot error'; info.textContent='disconnected'; setTimeout(()=>connectWs(port),5000); };
   ws.onerror=()=>{};
   ws.onmessage=ev=>{
-    try {
-      const msg=JSON.parse(ev.data); if (msg.type!=='status') return;
-      const c=msg.components||{};
-      if (port===8760) { applyStatus(svg,c,ORIG_ADEFS); }
-      else { buildEdge(svg,c); applyStatus(svg,c,EDGE_ADEFS); }
-    } catch(e){}
+    try{
+      const msg=JSON.parse(ev.data); if(msg.type!=='status') return;
+      Object.entries(msg.components||{}).forEach(([k,v])=>liveStatus[k]=v);
+      applyStatus();
+    }catch(e){}
   };
 }
+
 function reconnectAll() {
   localStorage.setItem('ds_host', document.getElementById('hostInput').value.trim());
-  connect(8760); connect(8762);
+  connectWs(PORT_MAP[currentTab]);
 }
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 (function(){
-  document.getElementById('hostInput').value = localStorage.getItem('ds_host')||window.location.hostname;
-  connect(8760); connect(8762);
+  document.getElementById('hostInput').value=localStorage.getItem('ds_host')||window.location.hostname;
+  setTab('edge');
+  connectWs(PORT_MAP['edge']);
 })();
 </script>
 </body>
