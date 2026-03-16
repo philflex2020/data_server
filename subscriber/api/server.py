@@ -35,6 +35,7 @@ Usage:
 
 import argparse
 import asyncio
+import collections
 import json
 import logging
 import time
@@ -66,6 +67,12 @@ g_stats = {"live_total": 0, "live_per_sec": 0, "queries_run": 0}
 g_live_window: list = []
 g_start_time = time.time()
 g_duckdb: Optional[duckdb.DuckDBPyConnection] = None
+g_stream_first_ts: float = 0.0   # unix ts of oldest retained message in NATS stream
+
+# In-memory ring buffer of live messages for fast recent-history queries.
+# At ~3000 msgs/s (3 sites), 1_080_000 entries covers ~6 minutes. Each entry is a flat dict.
+BUFFER_MAXLEN = 1_080_000
+g_live_buffer: collections.deque = collections.deque(maxlen=BUFFER_MAXLEN)
 
 
 # ---------------------------------------------------------------------------
@@ -113,22 +120,38 @@ def check_s3(cfg: dict) -> bool:
         return False
 
 
+def _date_paths(base: str, proj_id: str, site_id: str, from_ts: float, to_ts: float) -> list[str]:
+    """Return targeted S3 glob paths covering only the date dirs spanned by [from_ts, to_ts].
+    Writer lays out: project={p}/site={s}/{YYYY}/{MM}/{DD}/*.parquet
+    """
+    from datetime import datetime, timezone, timedelta
+    proj_glob = f"project={proj_id}" if proj_id else "project=*"
+    site_glob = f"site={site_id}"    if site_id else "site=*"
+    start = datetime.fromtimestamp(from_ts, tz=timezone.utc).date()
+    end   = datetime.fromtimestamp(to_ts,   tz=timezone.utc).date()
+    paths, day = [], start
+    while day <= end:
+        paths.append(
+            f"{base}{proj_glob}/{site_glob}/"
+            f"{day.year}/{day.month:02d}/{day.day:02d}/*.parquet"
+        )
+        day += timedelta(days=1)
+    return paths
+
+
 def run_history_query(cfg: dict, proj_id: str, site_id: str, from_ts: float, to_ts: float, limit: int) -> dict:
     bucket = cfg["s3"]["bucket"]
     prefix = cfg["s3"].get("prefix", "").strip("/")
     base = f"s3://{bucket}/{prefix + '/' if prefix else ''}"
-    # Glob only project=* directories so hive_partitioning sees a consistent
-    # key=value schema and can prune partitions. Old site=N/ files are skipped.
-    path = f"{base}project=*/**/*.parquet"
+
+    paths = _date_paths(base, proj_id, site_id, from_ts, to_ts)
+    # DuckDB accepts a list of globs; hive_partitioning extracts project= and site= columns.
+    path_list = "[" + ", ".join(f"'{p}'" for p in paths) + "]"
 
     where = [f"timestamp >= {from_ts}", f"timestamp <= {to_ts}"]
-    if proj_id:
-        where.append(f"CAST(project AS VARCHAR) = '{proj_id}'")
-    if site_id:
-        where.append(f"CAST(site_id AS VARCHAR) = '{site_id}'")
     sql = f"""
         SELECT *
-        FROM read_parquet('{path}', hive_partitioning=true, union_by_name=true)
+        FROM read_parquet({path_list}, hive_partitioning=true, union_by_name=true)
         WHERE {' AND '.join(where)}
         ORDER BY timestamp DESC
         LIMIT {limit}
@@ -139,7 +162,9 @@ def run_history_query(cfg: dict, proj_id: str, site_id: str, from_ts: float, to_
     raw_rows = cursor.fetchall()
     elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
     rows = [
-        [float(v) if isinstance(v, (int, float)) else str(v) if v is not None else None
+        [float(v) if isinstance(v, (int, float))
+         else v.decode("utf-8", errors="replace") if isinstance(v, bytes)
+         else str(v) if v is not None else None
          for v in row]
         for row in raw_rows
     ]
@@ -172,6 +197,7 @@ async def start_live_sub(subject: str) -> None:
                        for k, v in raw.items()}
         except Exception:
             payload = {"raw": msg.data.decode(errors="replace")}
+        g_live_buffer.append(payload)
         await broadcast({"type": "live", "subject": msg.subject, "payload": payload})
 
     # Push consumer — deliver only NEW messages (not historical backlog)
@@ -288,9 +314,15 @@ async def ws_handler(websocket) -> None:
                                g_config["history"]["max_limit"])
                 g_stats["queries_run"] += 1
                 try:
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None, run_history_query, g_config, proj_id, site_id, from_ts, to_ts, limit
-                    )
+                    buf_oldest = g_live_buffer[0].get("timestamp", 0) if g_live_buffer else 0
+                    buf_newest = g_live_buffer[-1].get("timestamp", 0) if g_live_buffer else 0
+                    use_buffer = bool(g_live_buffer) and to_ts >= buf_oldest and from_ts <= buf_newest
+                    if use_buffer:
+                        result = run_buffer_query(from_ts, to_ts, proj_id, site_id, limit)
+                    else:
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, run_history_query, g_config, proj_id, site_id, from_ts, to_ts, limit
+                        )
                     await websocket.send(json.dumps({"type": "history", "query_id": query_id, **result}, default=str))
                 except Exception as exc:
                     log.error("History query failed: %s", exc)
@@ -370,6 +402,73 @@ async def on_nats_reconnect() -> None:
 
 async def on_nats_error(e) -> None:
     log.warning("NATS error: %s", e)
+
+
+def run_buffer_query(from_ts: float, to_ts: float, proj_id: str, site_id: str, limit: int) -> dict:
+    """Serve a time-range query from the in-memory live buffer.
+    No NATS consumers, no network — just a deque scan. O(n) but fast.
+    """
+    t0       = time.monotonic()
+    all_rows = []
+    # Deque is ordered oldest→newest; iterate in reverse for newest-first.
+    for msg in reversed(g_live_buffer):
+        ts = float(msg.get("timestamp", 0))
+        if ts > to_ts:
+            continue
+        if ts < from_ts:
+            break   # time-ordered: everything older can be skipped
+        if site_id and str(msg.get("site_id", "")) != site_id:
+            continue
+        if proj_id and str(msg.get("project_id", msg.get("project", ""))) != proj_id:
+            continue
+        all_rows.append(msg)
+        if len(all_rows) >= limit:
+            break
+
+    elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+    if not all_rows:
+        return {"columns": [], "rows": [], "total": 0, "elapsed_ms": elapsed_ms}
+
+    col_set = set()
+    for row in all_rows:
+        col_set.update(row.keys())
+    columns = ["timestamp"] + sorted(col_set - {"timestamp"})
+    rows = [
+        [float(v) if isinstance(v, (int, float)) else str(v) if v is not None else None
+         for v in (row.get(c) for c in columns)]
+        for row in all_rows
+    ]
+    log.info("Buffer query: %d rows in %.0fms (%.0f–%.0f, site=%s)",
+             len(rows), elapsed_ms, from_ts, to_ts, site_id or "*")
+    return {"columns": columns, "rows": rows, "total": len(rows), "elapsed_ms": elapsed_ms}
+
+
+async def stream_first_ts_loop() -> None:
+    """Periodically refresh g_stream_first_ts from the NATS monitoring endpoint."""
+    global g_stream_first_ts
+    import urllib.request
+    from datetime import datetime, timezone
+    stream_name = g_config["nats"]["stream_name"]
+    nats_mon    = g_config["nats"].get("monitor_url", "http://localhost:8222")
+
+    while True:
+        try:
+            def _fetch():
+                url = f"{nats_mon}/jsz?streams=1"
+                with urllib.request.urlopen(url, timeout=3) as r:
+                    return json.load(r)
+            data = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+            for acc in data.get("account_details", []):
+                for s in acc.get("stream_detail", []):
+                    if s["name"] == stream_name:
+                        ts_str = s["state"].get("first_ts", "")
+                        if ts_str:
+                            g_stream_first_ts = datetime.fromisoformat(
+                                ts_str.replace("Z", "+00:00")
+                            ).timestamp()
+        except Exception as exc:
+            log.debug("stream_first_ts refresh failed: %s", exc)
+        await asyncio.sleep(30)
 
 
 async def s3_check_loop() -> None:

@@ -698,12 +698,14 @@ async function subQueryHeatmap() {
       latest.set(key, { t, v: parseFloat(row[iVolt]) });
     }
   }
-  heatData.clear();
+  if (latest.size === 0) return;
   let maxT = 0;
-  for (const [key, { t, v }] of latest) { heatData.set(key, v); if (t > maxT) maxT = t; }
+  for (const [key, { t, v }] of latest) { if (t > maxT) maxT = t; }
+  heatData.clear();
+  for (const [key, { t, v }] of latest) { heatData.set(key, v); }
   document.getElementById('sbCells').textContent = heatData.size;
   if (maxT) document.getElementById('sbLast').textContent = (Date.now() / 1000 - maxT).toFixed(1) + 's';
-  renderHeatmap(site, rack);
+  if (!liveHeatTimer) renderHeatmap(site, rack);
 }
 
 // ── Unified refresh ────────────────────────────────────────────

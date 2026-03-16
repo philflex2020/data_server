@@ -8,8 +8,8 @@ nats:
 # Buffer — flush to Parquet after this many seconds or messages (whichever first)
 buffer:
   flush_interval_seconds: 60
-  max_messages: 10000
-  fetch_batch: 500               # messages to pull from NATS per iteration
+  max_messages: 50000
+  fetch_batch: 5000              # messages to pull from NATS per iteration
 
 # S3 / MinIO target
 s3:

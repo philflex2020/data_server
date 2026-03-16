@@ -33,7 +33,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
 from botocore.exceptions import ClientError
-from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -200,6 +200,7 @@ async def run(cfg: dict) -> None:
                 stream  = stream_name,
                 config  = ConsumerConfig(
                     deliver_policy = DeliverPolicy.ALL,
+                    ack_policy     = AckPolicy.ALL,
                     ack_wait       = 60,
                     max_deliver    = 10,
                 ),
@@ -237,8 +238,8 @@ async def run(cfg: dict) -> None:
             by_partition[(str(proj), site)].append(row)
 
         now = datetime.now(timezone.utc)
-        for (proj_id, site_id), part_rows in by_partition.items():
-            # Override config project_id with the one from the data
+
+        async def _upload(proj_id, site_id, part_rows):
             part_cfg = {**cfg, "s3": {**cfg["s3"], "project_id": proj_id}}
             key  = s3_key(part_cfg, site_id, now)
             data = rows_to_parquet(list(part_rows), compression)
@@ -246,10 +247,13 @@ async def run(cfg: dict) -> None:
             log.info("Uploaded %d rows → s3://%s/%s (%d bytes)",
                      len(part_rows), bucket, key, len(data))
 
-        # Ack all messages only after successful upload
-        for msg in msgs_to_ack:
-            await msg.ack()
-        log.info("Acknowledged %d messages", len(msgs_to_ack))
+        # Upload all partitions in parallel, then ack once (AckPolicy.ALL)
+        await asyncio.gather(*[
+            _upload(proj_id, site_id, part_rows)
+            for (proj_id, site_id), part_rows in by_partition.items()
+        ])
+        await msgs_to_ack[-1].ack()
+        log.info("Acknowledged %d messages (batch)", len(msgs_to_ack))
 
     stop = asyncio.Event()
 
