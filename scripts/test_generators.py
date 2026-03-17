@@ -117,49 +117,45 @@ async def test_mqtt(host: str, port: int, sample_secs: int) -> dict:
 
     counts: dict[str, int] = defaultdict(int)   # prefix → msg count
     errors: dict[str, list] = defaultdict(list)  # prefix → error samples
-    first_payloads: dict[str, dict] = {}
+    first_payloads: dict[str, dict] = {}          # prefix → first parsed payload
+    sample_topics: dict[str, list] = defaultdict(list)  # prefix → up to 3 example topics
+    first_raw: dict[str, str] = {}                # prefix → raw payload string sample
 
     t_end = time.monotonic() + sample_secs
+
+    async def _process(topic: str, raw: bytes) -> None:
+        prefix = topic.split("/")[0]
+        counts[prefix] += 1
+        if len(sample_topics[prefix]) < 3 and topic not in sample_topics[prefix]:
+            sample_topics[prefix].append(topic)
+        try:
+            payload = json.loads(raw)
+            if prefix not in first_payloads:
+                first_payloads[prefix] = payload
+                first_raw[prefix] = raw.decode()
+        except Exception as e:
+            errors[prefix].append(str(e))
+
     try:
         async with aiomqtt.Client(hostname=host, port=port,
                                   identifier="test-generators") as client:
             await client.subscribe("#", qos=0)
-            # aiomqtt 2.x: iterate client.messages directly
-            # aiomqtt 1.x: async with client.messages as messages
             try:
-                msg_iter = client.messages
-                async for msg in msg_iter:
-                    topic = str(msg.topic)
-                    prefix = topic.split("/")[0]
-                    counts[prefix] += 1
-                    try:
-                        payload = json.loads(msg.payload)
-                        if prefix not in first_payloads:
-                            first_payloads[prefix] = payload
-                    except Exception as e:
-                        errors[prefix].append(str(e))
+                async for msg in client.messages:
+                    await _process(str(msg.topic), msg.payload)
                     if time.monotonic() >= t_end:
                         break
             except TypeError:
-                # aiomqtt 1.x fallback
                 async with client.messages as messages:  # type: ignore
                     async for msg in messages:
-                        topic = str(msg.topic)
-                        prefix = topic.split("/")[0]
-                        counts[prefix] += 1
-                        try:
-                            payload = json.loads(msg.payload)
-                            if prefix not in first_payloads:
-                                first_payloads[prefix] = payload
-                        except Exception as e:
-                            errors[prefix].append(str(e))
+                        await _process(str(msg.topic), msg.payload)
                         if time.monotonic() >= t_end:
                             break
     except Exception as e:
         record("MQTT connect", False, str(e))
         return {}
 
-    record("MQTT connect", True)
+    record("MQTT connect", True, f"broker {host}:{port}")
 
     if not counts:
         record("messages received", False, "no messages in window")
@@ -172,8 +168,14 @@ async def test_mqtt(host: str, port: int, sample_secs: int) -> dict:
         record(f"  {prefix:20s} {rate:6.1f} msg/s  {n} total",
                ok, f"{err_count} parse errors" if not ok else "")
 
-    return {"counts": dict(counts), "first_payloads": first_payloads,
-            "errors": {k: len(v) for k, v in errors.items()}}
+    return {
+        "host": host, "port": port,
+        "counts": dict(counts),
+        "first_payloads": first_payloads,
+        "first_raw": first_raw,
+        "sample_topics": dict(sample_topics),
+        "errors": {k: len(v) for k, v in errors.items()},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -239,9 +241,13 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    counts = mqtt_info.get("counts", {})
-    payloads = mqtt_info.get("first_payloads", {})
-    total_rate = round(sum(counts.values()) / args.sample_secs, 1)
+    counts        = mqtt_info.get("counts", {})
+    payloads      = mqtt_info.get("first_payloads", {})
+    first_raw     = mqtt_info.get("first_raw", {})
+    sample_topics = mqtt_info.get("sample_topics", {})
+    broker_host   = mqtt_info.get("host", args.mqtt_host)
+    broker_port   = mqtt_info.get("port", args.mqtt_port)
+    total_rate    = round(sum(counts.values()) / args.sample_secs, 1)
 
     # ── Markdown ────────────────────────────────────────────────────────────
     rows = []
@@ -262,6 +268,21 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
         )
     source_table = "\n".join(source_rows)
 
+    # sample topics section
+    topic_sections = []
+    for prefix in sorted(sample_topics):
+        topics_md = "\n".join(f"  - `{t}`" for t in sample_topics[prefix])
+        raw = first_raw.get(prefix, "")
+        try:
+            pretty = json.dumps(json.loads(raw), indent=2)
+        except Exception:
+            pretty = raw
+        topic_sections.append(
+            f"### `{prefix}` — example topics\n{topics_md}\n\n"
+            f"**Sample payload:**\n```json\n{pretty}\n```"
+        )
+    topics_section = "\n\n".join(topic_sections)
+
     gen_assets   = gen_info.get("cell_count", "?")
     gen_sources  = ", ".join(s.get("id","?") for s in gen_info.get("sources",[]))
     stress_cells = stress_info.get("cell_total", "?")
@@ -274,6 +295,7 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
 
 | | |
 |---|---|
+| **MQTT broker** | `{broker_host}:{broker_port}` (Mosquitto) |
 | **Total MQTT rate** | {total_rate} msg/s |
 | **Multi-generator assets** | {gen_assets} cells ({gen_sources}) |
 | **Stress-runner assets** | {stress_cells} cells @ {stress_mps} msg/s |
@@ -284,6 +306,10 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
 | Topic prefix | Rate | Messages | Format | Measurements |
 |---|---|---|---|---|
 {source_table}
+
+## Sample Topics & Payloads
+
+{topics_section}
 
 ## Test Results
 
@@ -325,16 +351,37 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
             f"<td style='font-size:0.85em'>{', '.join(meas[:5])}</td></tr>\n"
         )
 
+    # sample topics + payloads HTML blocks
+    samples_html = ""
+    for prefix in sorted(sample_topics):
+        topics_li = "".join(
+            f"<li><code>{t}</code></li>" for t in sample_topics[prefix]
+        )
+        raw = first_raw.get(prefix, "")
+        try:
+            pretty = json.dumps(json.loads(raw), indent=2)
+        except Exception:
+            pretty = raw
+        import html as _html
+        samples_html += f"""
+<h3><code>{prefix}</code></h3>
+<p><b>Example topics (Mosquitto broker <code>{broker_host}:{broker_port}</code>):</b></p>
+<ul>{topics_li}</ul>
+<p><b>Sample payload:</b></p>
+<pre style="background:#f8f9fa;padding:12px;border-radius:6px;overflow-x:auto;font-size:0.85em">{_html.escape(pretty)}</pre>
+"""
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Generator Test Report</title>
 <style>
-  body {{ font-family: -apple-system, sans-serif; max-width: 900px;
+  body {{ font-family: -apple-system, sans-serif; max-width: 960px;
          margin: 40px auto; padding: 0 20px; color: #222; }}
   h1 {{ border-bottom: 2px solid #ddd; padding-bottom: 8px; }}
   h2 {{ margin-top: 32px; color: #333; }}
+  h3 {{ margin-top: 20px; color: #444; }}
   .badge {{ display:inline-block; padding:6px 18px; border-radius:20px;
             color:#fff; font-weight:700; font-size:1.1em;
             background:{status_color}; }}
@@ -346,6 +393,8 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
   th {{ background:#f0f0f0; padding:8px 12px; text-align:left; }}
   td {{ padding:7px 12px; border-bottom:1px solid #eee; }}
   code {{ background:#f0f0f0; padding:2px 5px; border-radius:3px; }}
+  ul {{ margin:4px 0 12px 0; padding-left:24px; }}
+  li {{ margin:2px 0; }}
   .ts {{ color:#888; font-size:0.85em; }}
 </style>
 </head>
@@ -356,6 +405,8 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
 
 <h2>Overview</h2>
 <div class="kv">
+  <span class="label">MQTT broker</span>
+  <span class="value"><code>{broker_host}:{broker_port}</code> (Mosquitto)</span>
   <span class="label">Total MQTT rate</span>
   <span class="value">{total_rate} msg/s</span>
   <span class="label">Multi-generator</span>
@@ -372,6 +423,9 @@ def build_report(gen_info: dict, stress_info: dict, mqtt_info: dict,
       <th>Format</th><th>Measurements</th></tr>
 {source_rows_html}
 </table>
+
+<h2>Sample Topics &amp; Payloads</h2>
+{samples_html}
 
 <h2>Test Results</h2>
 <table>
