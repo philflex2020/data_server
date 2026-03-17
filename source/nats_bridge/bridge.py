@@ -44,15 +44,7 @@ async def ensure_stream(js, cfg: dict) -> None:
 
     try:
         await js.stream_info(stream_name)
-        # Update max_bytes on existing stream via NATS CLI-style direct update
-        await js.update_stream(StreamConfig(
-            name      = stream_name,
-            subjects  = subjects,
-            storage   = StorageType.FILE,
-            retention = RetentionPolicy.LIMITS,
-            max_bytes = max_bytes,
-        ))
-        log.info("Stream %s updated (max_bytes=%dGB)", stream_name, max_bytes // 1024 ** 3)
+        log.info("Stream %s already exists — skipping update", stream_name)
     except nats.js.errors.NotFoundError:
         await js.add_stream(StreamConfig(
             name      = stream_name,

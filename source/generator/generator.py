@@ -221,6 +221,7 @@ def publish_cell(client: mqtt.Client, cell: CellState, config: dict) -> int:
 
     if mode == "per_cell":
         topic = f"{cell.topic_prefix}/{cell.cell_path}"
+        flat  = config.get("payload_format", "nested") == "flat"
         payload = {
             "timestamp": timestamp,
             "source_id": cell.source_id,
@@ -228,10 +229,9 @@ def publish_cell(client: mqtt.Client, cell: CellState, config: dict) -> int:
             "rack_id":   cell.rack_id,
             "module_id": cell.module_id,
             "cell_id":   cell.cell_id,
-            **{
-                name: {"value": val, "unit": cell.cell_data_cfg[name]["unit"]}
-                for name, val in values.items()
-            },
+            **({name: val for name, val in values.items()} if flat else
+               {name: {"value": val, "unit": cell.cell_data_cfg[name]["unit"]}
+                for name, val in values.items()}),
         }
         client.publish(topic, json.dumps(payload), qos=1)
         return 1
@@ -275,6 +275,7 @@ def public_config() -> dict:
         "sources":                sources_out,
         "sample_interval_seconds": g_config.get("sample_interval_seconds", 1),
         "topic_mode":             g_config.get("topic_mode", "per_cell"),
+        "payload_format":         g_config.get("payload_format", "nested"),
     }
 
 
@@ -337,7 +338,7 @@ async def ws_handler(websocket) -> None:
                 if "sources" in updates:
                     g_config["sources"] = updates["sources"]
                 # Top-level interval / topic_mode
-                for key in ("sample_interval_seconds", "topic_mode"):
+                for key in ("sample_interval_seconds", "topic_mode", "payload_format"):
                     if key in updates:
                         g_config[key] = updates[key]
                 # Legacy flat topology keys — apply to first enabled source

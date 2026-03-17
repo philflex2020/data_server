@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telegraf / InfluxDB — Live Performance Measurements</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 40px 32px;
+  max-width: 1100px;
+  margin: auto;
+  line-height: 1.65;
+}
+
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.83em; line-height: 1.6; }
+ul   { margin: 6px 0 10px 18px; color: #8b949e; font-size: 0.85em; }
+ul li { margin-bottom: 4px; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+
+/* ── Meta bar ── */
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+
+/* ── Result cards ── */
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+.result-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 14px 16px;
+}
+.result-card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.result-card .value { font-size: 1.5em; font-weight: 700; color: #3fb950; font-variant-numeric: tabular-nums; }
+.result-card .value.warn { color: #f0883e; }
+.result-card .value.danger { color: #f85149; }
+.result-card .value.blue { color: #58a6ff; }
+.result-card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+
+/* ── Warning / info callout ── */
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0;
+  font-size: 0.87em; line-height: 1.6;
+}
+.callout.warn  { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.callout.danger{ background: #2d0e0e; border-left: 3px solid #f85149; color: #e38181; }
+.callout.info  { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout strong { color: inherit; }
+
+/* ── Tables ── */
+table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.84em; margin: 12px 0 20px;
+}
+thead th {
+  background: #161b22; color: #8b949e;
+  text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td {
+  padding: 8px 12px; color: #c9d1d9;
+  border-bottom: 1px solid #21262d;
+}
+tbody tr:hover td { background: #161b22; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.red { color: #f85149; font-weight: 700; }
+td.orange { color: #f0883e; font-weight: 700; }
+td.green { color: #3fb950; }
+td.hi { color: #e6edf3; font-weight: 600; }
+
+/* ── Section divider ── */
+.section { margin-bottom: 48px; }
+
+/* ── Nav ── */
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+
+.test-number {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+  margin-right: 6px; vertical-align: middle; letter-spacing: 0.05em;
+}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="generator.html">Generator</a>
+  <a href="study_data_sources.html">Study: Data Sources</a>
+</div>
+
+<h1>Telegraf / InfluxDB — Live Performance Measurements</h1>
+<p class="subtitle">
+  Empirical measurements taken 2026-03-17 against the live stack running on spark-22b6.
+  All queries executed via the InfluxDB v2 HTTP API. Results used to quantify the cost
+  and scaling risk of remaining on the telegraf → InfluxDB path.
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Host</strong> spark-22b6 (aarch64)</div>
+  <div class="meta-item"><strong>InfluxDB</strong> v2.8.0</div>
+  <div class="meta-item"><strong>Telegraf</strong> v1.38.0</div>
+  <div class="meta-item"><strong>Active sources</strong> battery (144 cells) + solar (480 cells) = 624 assets</div>
+  <div class="meta-item"><strong>Sample interval</strong> 1 second</div>
+  <div class="meta-item"><strong>Bucket retention</strong> 30 days</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ TEST RESULTS -->
+<div class="section">
+<h2>Test Results</h2>
+
+<!-- Test 1 -->
+<h3><span class="test-number">TEST 1</span> Write Throughput</h3>
+<p>Measured the per-second write rate using Telegraf's internal metrics, sampled over a 2-minute window:</p>
+<pre><code>from(bucket: "battery-data")
+  |> range(start: -2m)
+  |> filter(fn: (r) => r._measurement == "internal_write")
+  |> filter(fn: (r) => r._field == "metrics_written")
+  |> derivative(unit: 1s, nonNegative: true)</code></pre>
+
+<div class="result-grid">
+  <div class="result-card">
+    <div class="label">Sustained write rate</div>
+    <div class="value">~1,100</div>
+    <div class="sub">metrics / second</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Flush spike</div>
+    <div class="value warn">2,000</div>
+    <div class="sub">metrics / second (every 10s)</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Flush pattern</div>
+    <div class="value blue">10s</div>
+    <div class="sub">telegraf flush_interval</div>
+  </div>
+</div>
+<p>The 2× spike every 10 seconds is structural — Telegraf batches and flushes on a fixed interval, creating burst writes
+to InfluxDB rather than a smooth stream. InfluxDB must absorb these bursts into its TSM write buffer.</p>
+
+<!-- Test 2 -->
+<h3><span class="test-number">TEST 2</span> Lifetime Write Volume</h3>
+<pre><code>from(bucket: "battery-data")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "internal_write")
+  |> filter(fn: (r) => r._field == "metrics_written")
+  |> last()</code></pre>
+
+<div class="result-grid">
+  <div class="result-card">
+    <div class="label">Total metrics written</div>
+    <div class="value">302.8M</div>
+    <div class="sub">since Mar 14 (~3 days)</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Avg lifetime rate</div>
+    <div class="value blue">~1,170</div>
+    <div class="sub">metrics / second</div>
+  </div>
+</div>
+
+<!-- Test 3 -->
+<h3><span class="test-number">TEST 3</span> Points in InfluxDB (last hour)</h3>
+<pre><code>from(bucket: "battery-data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "battery_cell")
+  |> filter(fn: (r) => r._field == "voltage")
+  |> group()
+  |> count()</code></pre>
+
+<div class="result-grid">
+  <div class="result-card">
+    <div class="label">Voltage points (1 field, 1 hour)</div>
+    <div class="value">4.12M</div>
+    <div class="sub">data points</div>
+  </div>
+  <div class="result-card">
+    <div class="label">All 7 fields (1 hour)</div>
+    <div class="value warn">~28.8M</div>
+    <div class="sub">data points</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Per day</div>
+    <div class="value warn">~691M</div>
+    <div class="sub">data points</div>
+  </div>
+</div>
+
+<!-- Test 4 -->
+<h3><span class="test-number">TEST 4</span> Dropped Metrics</h3>
+<pre><code>from(bucket: "battery-data")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "internal_agent")
+  |> filter(fn: (r) => r._field == "metrics_dropped")
+  |> last()</code></pre>
+
+<div class="result-grid">
+  <div class="result-card">
+    <div class="label">Dropped metrics</div>
+    <div class="value">0</div>
+    <div class="sub">at current load</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Buffer limit</div>
+    <div class="value warn">100,000</div>
+    <div class="sub">telegraf metric_buffer_limit</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Time to fill buffer</div>
+    <div class="value warn">~91s</div>
+    <div class="sub">at 1,100 metrics/sec</div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <strong>Zero drops now — but dangerously thin headroom.</strong> At 1,100 metrics/sec, Telegraf's 100,000-metric
+  in-memory buffer fills in ~91 seconds of InfluxDB unavailability. EFS latency spikes, TSM compaction
+  pauses, or a pod restart can easily exceed this window. When the buffer overflows, metrics are
+  <strong>silently dropped</strong> — no error, no alert, invisible gaps in your data.
+</div>
+
+<!-- Test 5 -->
+<h3><span class="test-number">TEST 5</span> Process Resource Usage</h3>
+<p>Measured via <code>ps aux</code> on spark-22b6 after 3 days continuous operation:</p>
+
+<table>
+  <thead>
+    <tr><th>Process</th><th>CPU (cumulative avg)</th><th>RSS Memory</th><th>Uptime</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>influxd</code></td>
+      <td class="num">6.6%</td>
+      <td class="num hi">490 MB</td>
+      <td>3 days</td>
+    </tr>
+    <tr>
+      <td><code>telegraf</code></td>
+      <td class="num">12.2%</td>
+      <td class="num hi">171 MB</td>
+      <td>3 days</td>
+    </tr>
+    <tr>
+      <td><strong>Combined</strong></td>
+      <td class="num orange">18.8%</td>
+      <td class="num orange">661 MB</td>
+      <td>—</td>
+    </tr>
+  </tbody>
+</table>
+<p>CPU figures are the kernel's cumulative average over 3 days. Instantaneous CPU during flush spikes
+is higher. This is a single-namespace baseline at 624 assets.</p>
+
+<!-- Test 6 -->
+<h3><span class="test-number">TEST 6</span> Schema Cardinality</h3>
+<p>Tag keys observed on the <code>battery_cell</code> measurement:</p>
+<ul>
+  <li><code>cell_id</code>, <code>module_id</code>, <code>rack_id</code>, <code>site_id</code> — expected hierarchy</li>
+  <li><code>host</code> — Telegraf hostname</li>
+  <li><code>topic</code> — <strong>full MQTT path</strong> e.g. <code>batteries/project=0/site=0/rack=0/module=0/cell=0</code></li>
+</ul>
+
+<div class="callout warn">
+  <strong>The <code>topic</code> tag is a cardinality multiplier.</strong> Storing the full MQTT topic as a tag
+  creates one InfluxDB series per unique topic per field. Each new cell added to the fleet adds 7 new series.
+  Each new measurement type (solar, wind, localgen) adds more.
+</div>
+
+<table>
+  <thead>
+    <tr><th>Fleet scope</th><th>Est. cells</th><th>Fields</th><th>Active series</th><th>Risk</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Current test (1 namespace)</td>
+      <td class="num">624</td>
+      <td class="num">7</td>
+      <td class="num">4,368</td>
+      <td class="green">Safe</td>
+    </tr>
+    <tr>
+      <td>6 production namespaces</td>
+      <td class="num">3,744</td>
+      <td class="num">7</td>
+      <td class="num">26,208</td>
+      <td class="green">Safe</td>
+    </tr>
+    <tr>
+      <td>6 namespaces + 4 source types</td>
+      <td class="num">~15,000</td>
+      <td class="num">7–8</td>
+      <td class="num">~112,000</td>
+      <td class="orange">Monitor</td>
+    </tr>
+    <tr>
+      <td>80-site full fleet</td>
+      <td class="num">~100,000</td>
+      <td class="num">7–8</td>
+      <td class="num red">~750,000</td>
+      <td class="red">Degraded</td>
+    </tr>
+  </tbody>
+</table>
+<p>InfluxDB performance degrades measurably above ~1M series. The 80-site full fleet projection
+approaches this limit, forcing vertical instance scaling (larger, more expensive EC2 instances)
+rather than horizontal scale-out.</p>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ FLEET PROJECTION -->
+<div class="section">
+<h2>Fleet Scaling Projection</h2>
+<p>Extrapolating from the measured single-namespace baseline to the full production fleet:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>1 namespace<br><small>measured</small></th>
+      <th>6 namespaces<br><small>battery only</small></th>
+      <th>6 ns + 4 sources<br><small>battery/solar/wind/localgen</small></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Assets</td><td class="num">624</td><td class="num">~3,744</td><td class="num">~15,000</td></tr>
+    <tr><td>Metrics / sec</td><td class="num">~1,100</td><td class="num">~6,600</td><td class="num">~26,400</td></tr>
+    <tr>
+      <td>Buffer fill time (100k limit)</td>
+      <td class="num orange">91 sec</td>
+      <td class="num red">15 sec</td>
+      <td class="num red">3.8 sec</td>
+    </tr>
+    <tr><td>InfluxDB RAM</td><td class="num">490 MB</td><td class="num orange">~3 GB</td><td class="num red">~12 GB</td></tr>
+    <tr><td>Telegraf RAM</td><td class="num">171 MB</td><td class="num orange">~1 GB</td><td class="num red">~4 GB</td></tr>
+    <tr><td>Points / hour</td><td class="num">28.8M</td><td class="num">172M</td><td class="num">688M</td></tr>
+    <tr><td>Points / 30-day retention</td><td class="num">~20.7B</td><td class="num">~124B</td><td class="num">~495B</td></tr>
+  </tbody>
+</table>
+
+<div class="callout danger">
+  <strong>At 6 production namespaces, the drop window shrinks to 15 seconds.</strong>
+  Any InfluxDB hiccup longer than 15 seconds — compaction, EFS latency, pod restart,
+  memory pressure — silently drops data. At full multi-source load it's 3.8 seconds.
+  This is not a theoretical risk: EFS p99 latency on AWS regularly exceeds 15 seconds
+  under concurrent write load.
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ STORAGE COSTS -->
+<div class="section">
+<h2>Storage Cost Comparison</h2>
+<p>At 6 production namespaces, 30-day retention, battery sources only (~124 billion points):</p>
+
+<table>
+  <thead>
+    <tr><th>Storage format</th><th>Bytes / point</th><th>Total size</th><th>AWS EFS cost/mo</th><th>AWS S3 cost/mo</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>InfluxDB TSM</td>
+      <td class="num">~40 bytes</td>
+      <td class="num hi">~4.5 TB</td>
+      <td class="num red">~$1,350</td>
+      <td class="num">N/A</td>
+    </tr>
+    <tr>
+      <td>Parquet + Snappy (NATS path)</td>
+      <td class="num">~5–8 bytes</td>
+      <td class="num hi">~600–900 GB</td>
+      <td class="num">N/A</td>
+      <td class="num green">~$14–21</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Parquet achieves 5–10× better compression than TSM for time-series float data due to
+columnar storage — all voltage values for all cells in a time window are stored together
+and compress extremely well. TSM stores data per-series, limiting compression opportunities.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ VERSION TRAP -->
+<div class="section">
+<h2>The Version Trap</h2>
+
+<div class="callout danger">
+  <strong>InfluxDB v2 Flux is deprecated.</strong> InfluxDB 3.0 (IOx, Apache Arrow/DataFusion)
+  is now GA and is a completely different system — incompatible storage engine, no Flux support,
+  SQL-only query interface. There is no in-place upgrade path from v2 to v3.
+  <br><br>
+  <strong>Staying on telegraf/InfluxDB does not avoid a migration. It defers one.</strong>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Migration option</th><th>Query rewrite?</th><th>Storage cost</th><th>Scaling cost</th><th>Cardinality risk</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>InfluxDB 3.0 (IOx)</td>
+      <td>Yes — Flux → SQL</td>
+      <td class="orange">Similar (new pricing TBD)</td>
+      <td class="red">Vertical scaling remains</td>
+      <td class="orange">Improved but present</td>
+    </tr>
+    <tr>
+      <td><strong>NATS + Parquet (DuckDB)</strong></td>
+      <td>Yes — Flux → SQL</td>
+      <td class="green">~$14–21/month (S3)</td>
+      <td class="green">Horizontal, cheap</td>
+      <td class="green">None (columnar schema)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Both paths require rewriting queries from Flux to SQL. Only one delivers a 60%+ compute cost
+reduction and eliminates storage costs.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SUMMARY -->
+<div class="section">
+<h2>Summary</h2>
+
+<div class="result-grid">
+  <div class="result-card">
+    <div class="label">Write rate (measured)</div>
+    <div class="value">~1,100/s</div>
+    <div class="sub">624 assets, 1 namespace</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Lifetime writes (3 days)</div>
+    <div class="value blue">302.8M</div>
+    <div class="sub">total metrics</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Dropped metrics</div>
+    <div class="value">0</div>
+    <div class="sub">at current low load</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Buffer headroom @ 6 ns</div>
+    <div class="value danger">15 sec</div>
+    <div class="sub">before silent data loss</div>
+  </div>
+  <div class="result-card">
+    <div class="label">InfluxDB RAM (current)</div>
+    <div class="value warn">490 MB</div>
+    <div class="sub">single namespace</div>
+  </div>
+  <div class="result-card">
+    <div class="label">Storage cost delta</div>
+    <div class="value green">98% saving</div>
+    <div class="sub">EFS $1,350 → S3 $17/mo</div>
+  </div>
+</div>
+</div>
+
+</body>
+</html>

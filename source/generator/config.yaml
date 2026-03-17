@@ -17,6 +17,11 @@ sample_interval_seconds: 1
 #   per_cell_item  — one topic per measurement per asset
 topic_mode: per_cell
 
+# Payload format for per_cell mode:
+#   nested — {value, unit} objects per measurement (NATS/Parquet path)
+#   flat   — scalar values only, telegraf json_v2 compatible
+payload_format: nested
+
 # Active source configurations.
 # Set enabled: true to include a source in the publish loop.
 # The generator normalises any missing sources to disabled defaults at startup.

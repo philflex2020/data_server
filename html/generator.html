@@ -218,6 +218,13 @@
               <option value="per_cell_item">per_cell_item — one topic per measurement</option>
             </select>
           </div>
+          <div class="form-item" style="margin-top:6px">
+            <label>Payload format</label>
+            <select id="cfgPayloadFormat">
+              <option value="nested">nested — {value, unit} objects (NATS path)</option>
+              <option value="flat">flat — scalars only (telegraf compatible)</option>
+            </select>
+          </div>
         </div>
         <div style="margin-top:10px">
           <button class="btn primary" style="width:100%" onclick="applyConfig()">Apply Config</button>
@@ -471,6 +478,7 @@ function applyConfig() {
       sources:                  serverConfig.sources,
       sample_interval_seconds:  parseFloat(document.getElementById('cfgInterval').value),
       topic_mode:               document.getElementById('cfgTopicMode').value,
+      payload_format:           document.getElementById('cfgPayloadFormat').value,
     },
   }));
 }
@@ -619,9 +627,10 @@ function handleStatus(msg) {
   if (cfg) {
     serverConfig = cfg;
     renderSourceList(cfg.sources || []);
-    document.getElementById('cfgInterval').value  = cfg.sample_interval_seconds ?? 1;
-    document.getElementById('cfgTopicMode').value = cfg.topic_mode ?? 'per_cell';
-    document.getElementById('sbMode').textContent = cfg.topic_mode ?? '—';
+    document.getElementById('cfgInterval').value       = cfg.sample_interval_seconds ?? 1;
+    document.getElementById('cfgTopicMode').value      = cfg.topic_mode ?? 'per_cell';
+    document.getElementById('cfgPayloadFormat').value  = cfg.payload_format ?? 'nested';
+    document.getElementById('sbMode').textContent      = cfg.topic_mode ?? '—';
     cfgLoadFromServer(cfg);
     cfgSetStatus('Config loaded from server', true);
   }

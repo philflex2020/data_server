@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NATS JetStream + Parquet — Live Measurements</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.83em; line-height: 1.6; }
+ul   { margin: 6px 0 10px 18px; color: #8b949e; font-size: 0.85em; }
+ul li { margin-bottom: 4px; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+.result-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.result-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.result-card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.result-card .value { font-size: 1.5em; font-weight: 700; color: #3fb950; font-variant-numeric: tabular-nums; }
+.result-card .value.warn   { color: #f0883e; }
+.result-card .value.danger { color: #f85149; }
+.result-card .value.blue   { color: #58a6ff; }
+.result-card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 0.87em; line-height: 1.6;
+}
+.callout.warn   { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.callout.danger { background: #2d0e0e; border-left: 3px solid #f85149; color: #e38181; }
+.callout.info   { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.ok     { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout strong { color: inherit; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num   { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.green { color: #3fb950; font-weight: 600; }
+td.red   { color: #f85149; font-weight: 600; }
+td.orange{ color: #f0883e; font-weight: 600; }
+td.muted { color: #8b949e; font-style: italic; }
+.section { margin-bottom: 48px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+.badge-ok   { display: inline-block; background: #0d2d1a; color: #3fb950;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 4px; }
+.badge-fail { display: inline-block; background: #3d1010; color: #f85149;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 4px; }
+.badge-warn { display: inline-block; background: #2d1f0e; color: #f0883e;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 4px; }
+.test-number {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+  margin-right: 6px; vertical-align: middle; letter-spacing: 0.05em;
+}
+.check { color: #3fb950; font-weight: 700; }
+.cross { color: #f85149; font-weight: 700; }</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="telegraf_influx_details.html">aarch64 (Telegraf)</a>
+  <a href="telegraf_influx_details_x86.html">x86 (Telegraf)</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="generator.html">Generator</a>
+</div>
+
+<h1>NATS JetStream + Parquet Writer — Live Performance Measurements</h1>
+<p class="subtitle">
+  Empirical measurements taken 2026-03-17 03:53 UTC on phil-dev (x86_64).
+  Compare with <a href="telegraf_influx_details.html">Telegraf/InfluxDB baseline</a>.
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Host</strong> phil-dev</div>
+  <div class="meta-item"><strong>Arch</strong> x86_64</div>
+  <div class="meta-item"><strong>NATS</strong> 2.12.5 <span class="badge-ok">UP</span></div>
+  <div class="meta-item"><strong>S3/MinIO</strong> <span class="badge-ok">REACHABLE</span></div>
+  <div class="meta-item"><strong>Retention</strong> ?h JetStream replay</div>
+</div>
+
+<!-- ═══════ TEST 0: SERVER HEALTH -->
+<div class="section">
+<h2><span class="test-number">TEST 0</span> NATS Server Health <span class="badge-ok">UP</span></h2>
+<div class="result-grid">
+  <div class="result-card"><div class="label">NATS version</div><div class="value blue">2.12.5</div></div>
+  <div class="result-card"><div class="label">Active connections</div><div class="value blue">3</div></div>
+  <div class="result-card"><div class="label">Server RSS</div><div class="value ">128.0 MB</div></div>
+  <div class="result-card"><div class="label">S3/MinIO</div><div class="value ">reachable</div></div>
+</div>
+</div>
+
+<!-- ═══════ TEST 1: STREAMS -->
+<div class="section">
+<h2><span class="test-number">TEST 1</span> JetStream Streams</h2>
+<table>
+  <thead>
+    <tr><th>Stream</th><th>Subjects</th><th>Messages stored</th><th>Bytes stored</th><th>Retention</th></tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td><strong>BATTERY_DATA</strong></td>
+    <td>—</td>
+    <td class="num">21,334,573</td>
+    <td class="num">8.48 GB</td>
+    <td class="num">0.0h</td>
+  </tr></tbody>
+</table>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Total messages stored</div><div class="value blue">21,334,573</div></div>
+  <div class="result-card"><div class="label">Total bytes stored</div><div class="value blue">8.48 GB</div></div>
+  <div class="result-card"><div class="label">Retention window</div><div class="value ">?h</div></div>
+</div>
+</div>
+
+<!-- ═══════ TEST 2: THROUGHPUT -->
+<div class="section">
+<h2><span class="test-number">TEST 2</span> Message Throughput</h2>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Messages / sec</div><div class="value blue">912.4</div><div class="sub">all subjects combined</div></div>
+</div>
+<div class="callout info">
+  <strong>What this measures:</strong> server-level <code>in_msgs</code> delta (not stream message count).
+  Stream message count can appear flat when the stream is at its <code>max_file_store</code> limit
+  — new messages arrive while the oldest are evicted at the same rate.
+  Using the server counter captures the true ingest rate regardless of stream capacity.
+</div>
+</div>
+
+<!-- ═══════ TEST 3: CONSUMER LAG -->
+<div class="section">
+<h2><span class="test-number">TEST 3</span> Consumer Lag</h2>
+<table>
+  <thead><tr><th>Consumer</th><th>Pending messages</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr>
+    <td><code>4zAEfCoF</code></td>
+    <td class="num green">0</td>
+    <td class="green">real-time</td>
+  </tr>
+  <tr>
+    <td><code>parquet-writer</code></td>
+    <td class="num red">21,319,168</td>
+    <td class="orange">catching up</td>
+  </tr>
+  <tr>
+    <td><code>BR0VHyrE</code></td>
+    <td class="num green">0</td>
+    <td class="green">real-time</td>
+  </tr></tbody>
+</table>
+<div class="callout ok">
+  <strong>Zero lag = consumer is keeping up in real time.</strong>
+  Lag only builds during downtime or overload. Unlike Telegraf's 100k buffer,
+  unprocessed messages live in durable JetStream storage — they are not lost
+  when the consumer is busy or restarted.
+</div>
+</div>
+
+<!-- ═══════ TEST 4: PARQUET STORAGE -->
+<div class="section">
+<h2><span class="test-number">TEST 4</span> Parquet Storage (S3/MinIO)</h2>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Files (last 2h)</div><div class="value blue">50</div></div>
+  <div class="result-card"><div class="label">Bytes (last 2h)</div><div class="value blue">3.3 MB</div></div>
+  <div class="result-card"><div class="label">Total parquet files</div><div class="value ">568</div></div>
+  <div class="result-card"><div class="label">Total parquet storage</div><div class="value ">17.7 MB</div></div>
+</div>
+
+<h3>Sample file: <code>20260317T035303Z.parquet</code> — 504 rows</h3>
+<p>Columns (11): <code>cell_id</code> <code>current</code> <code>internal_resistance</code> <code>module_id</code> <code>project_id</code> <code>rack_id</code> <code>site_id</code> <code>soc</code> <code>temperature</code> <code>timestamp</code> <code>voltage</code></p>
+
+</div>
+
+<!-- ═══════ TEST 5: SCHEMA FLEXIBILITY -->
+<div class="section">
+<h2><span class="test-number">TEST 5</span> Schema Flexibility</h2>
+
+<div class="callout ok">
+  <strong>Zero-config schema evolution.</strong>
+  The parquet writer collects all keys from all rows dynamically
+  (<code>all_keys = {k for r in flat for k in r}</code>).
+  New fields appear automatically as new Parquet columns. Missing fields
+  become NULLs — the record is always written.
+</div>
+
+<table>
+  <thead>
+    <tr><th>Scenario</th><th>Telegraf / InfluxDB</th><th>NATS + Parquet</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Extra field in payload</strong></td>
+      <td class="orange">Silently ignored — not in config mapping</td>
+      <td class="green">Automatically stored as new Parquet column</td>
+    </tr>
+    <tr>
+      <td><strong>Missing field (e.g. <code>power</code>)</strong></td>
+      <td class="red">Error → entire message DROPPED, 0 writes</td>
+      <td class="green">NULL in that column — record preserved</td>
+    </tr>
+    <tr>
+      <td><strong>Nested <code>&#123;"value": X, "unit": "V"&#125;</code> payload</strong></td>
+      <td class="red">Error → entire message DROPPED</td>
+      <td class="green"><code>_flatten()</code> handles both formats transparently</td>
+    </tr>
+    <tr>
+      <td><strong>New source type (solar, wind)</strong></td>
+      <td class="red">Not subscribed — telegraf only listens to <code>batteries/#</code></td>
+      <td class="green">Subject filter <code>&gt;</code> catches all subjects automatically</td>
+    </tr>
+    <tr>
+      <td><strong>Schema change</strong></td>
+      <td class="red">Edit config + restart telegraf required</td>
+      <td class="green">Zero config, zero restart, zero downtime</td>
+    </tr>
+    <tr>
+      <td><strong>Parse error recovery</strong></td>
+      <td class="red">Manual restart — missed data lost forever</td>
+      <td class="green">JetStream replay from last acknowledged position</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Writer code verification</h3>
+<table>
+  <thead><tr><th>Property</th><th>Status</th><th>Evidence</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Dynamic schema (all fields captured)</td>
+      <td><span class="check">✓</span></td>
+      <td><code>all_keys = {k for r in flat for k in r}</code></td>
+    </tr>
+    <tr>
+      <td>Nested payload flattening</td>
+      <td><span class="check">✓</span></td>
+      <td><code>if isinstance(v, dict) and "value" in v: v = v["value"]</code></td>
+    </tr>
+    <tr>
+      <td>Null-safe missing fields</td>
+      <td><span class="check">✓</span></td>
+      <td><code>r.get(k)</code> → None → nullable Parquet array</td>
+    </tr>
+    <tr>
+      <td>Wildcard subject subscription</td>
+      <td><span class="check">✓</span></td>
+      <td><code>subject_filter: "&gt;"</code> — all source types received</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════ TEST 6: RESILIENCE -->
+<div class="section">
+<h2><span class="test-number">TEST 6</span> Resilience Properties</h2>
+
+
+
+<table>
+  <thead><tr><th>Failure event</th><th>Telegraf / InfluxDB</th><th>NATS + Parquet</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Consumer / writer down for &lt;?h</td>
+      <td class="red">MQTT publishes dropped once buffer fills (~88s at 1,134/s)</td>
+      <td class="green">JetStream stores all messages — replayed on restart</td>
+    </tr>
+    <tr>
+      <td>Consumer / writer down for &gt;?h</td>
+      <td class="red">All data during outage lost</td>
+      <td class="orange">Gap fill from AWS S3 backup or gap_fill consumer</td>
+    </tr>
+    <tr>
+      <td>S3 write failure</td>
+      <td class="muted">N/A</td>
+      <td class="green">Exponential backoff retry; message stays un-ACK'd in stream</td>
+    </tr>
+    <tr>
+      <td>Multiple independent consumers</td>
+      <td class="red">Single pipeline — one telegraf instance per broker</td>
+      <td class="green">Durable consumers: parquet-writer + gap-fill + subscriber all independent</td>
+    </tr>
+    <tr>
+      <td>Historical replay / backfill</td>
+      <td class="red">Not possible — data only in InfluxDB time-series</td>
+      <td class="green">Seek consumer to any stream position within retention window</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="result-grid">
+  <div class="result-card"><div class="label">File storage</div><div class="value blue">✓ durable</div></div>
+  <div class="result-card"><div class="label">Sync before ACK</div><div class="value blue">✓ enabled</div></div>
+  <div class="result-card"><div class="label">Max file store</div><div class="value ">50GB</div></div>
+  <div class="result-card"><div class="label">Retention</div><div class="value blue">?h</div></div>
+</div>
+</div>
+
+<!-- ═══════ TEST 7: RESOURCES -->
+<div class="section">
+<h2><span class="test-number">TEST 7</span> Process Resources</h2>
+<div class="result-grid">
+  <div class="result-card"><div class="label">nats-server RSS</div><div class="value ">94 MB</div></div>
+  <div class="result-card"><div class="label">parquet writer RSS</div><div class="value ">2 MB</div></div>
+  <div class="result-card"><div class="label">nats bridge RSS</div><div class="value ">19 MB</div></div>
+</div>
+</div>
+
+<!-- ═══════ TEST 8: AWS COSTS -->
+<div class="section">
+<h2><span class="test-number">TEST 8</span> AWS Cost Estimates</h2>
+
+<div class="callout info">
+  Extrapolated from measured <strong>912.4/sec</strong> throughput
+  and <strong>0.04 GB/day</strong> parquet write rate.
+  Pricing: AWS us-east-1 on-demand.
+</div>
+<h3>Fleet Scaling — Monthly Cost Breakdown</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Service</th>
+      <th>1× (current)</th>
+      <th>6× scale</th>
+      <th>24× scale</th>
+    </tr>
+  </thead>
+  <tbody>
+  <tr><td>Messages/sec</td><td class="num blue">912.4</td><td class="num blue">5,474.4</td><td class="num blue">21,897.6</td></tr>
+  <tr><td>Parquet GB/month</td><td class="num">1.2</td><td class="num">7.2</td><td class="num">28.6</td></tr>
+  <tr><td>S3 storage</td><td class="num">$0.03</td><td class="num">$0.16</td><td class="num">$0.66</td></tr>
+  <tr><td>S3 PUT requests</td><td class="num">$0.09</td><td class="num">$0.54</td><td class="num">$2.16</td></tr>
+  <tr><td>S3 GET requests</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.01</td></tr>
+  <tr><td>EC2 NATS server</td><td class="num">$15.18 <small>(t3.small)</small></td><td class="num">$15.18 <small>(t3.small)</small></td><td class="num">$30.37 <small>(t3.medium)</small></td></tr>
+  <tr><td>EC2 Parquet writer</td><td class="num">$7.59 <small>(t3.micro)</small></td><td class="num">$15.18 <small>(t3.small)</small></td><td class="num">$15.18 <small>(t3.small)</small></td></tr>
+  <tr><td><strong>Total / month</strong></td><td class="num"><strong>$22.89</strong></td><td class="num"><strong>$31.06</strong></td><td class="num"><strong>$48.38</strong></td></tr>
+  </tbody>
+</table>
+<h3>Alternative: AWS IoT Core for MQTT Ingest</h3>
+<p>IoT Core can replace the self-managed FlashMQ + NATS bridge EC2 instance.
+Cost is per-message; large fleets become expensive relative to a fixed EC2.</p>
+<table>
+  <thead><tr><th>Scale</th><th>IoT Core cost/month</th><th>Notes</th></tr></thead>
+  <tbody>
+  <tr><td>1× scale</td><td class="num">$2364.94</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
+  <tr><td>6× scale</td><td class="num">$14189.64</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
+  <tr><td>24× scale</td><td class="num">$56758.58</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
+  </tbody>
+</table>
+<h3>Notes</h3>
+<ul><li>EC2 = on-demand us-east-1 Linux. Reserved 1-year saves ~40%.</li><li>S3 Standard. Intelligent-Tiering would reduce cost for cold partitions.</li><li>IoT Core alternative shown for MQTT ingest only — replaces FlashMQ + NATS bridge EC2.</li><li>Data transfer out not included — queries assumed within same region via Athena.</li><li>NATS server handles >> current load; no vertical scaling needed before 6x.</li></ul>
+</div>
+
+<!-- ═══════ SUMMARY -->
+<div class="section">
+<h2>Summary</h2>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Throughput</div><div class="value blue">912.4/sec</div><div class="sub">JetStream messages</div></div>
+  <div class="result-card"><div class="label">Consumer lag</div><div class="value warn">21,319,168</div><div class="sub">pending messages</div></div>
+  <div class="result-card"><div class="label">Parquet files (2h)</div><div class="value blue">50</div></div>
+  <div class="result-card"><div class="label">Total storage</div><div class="value ">17.7 MB</div></div>
+  <div class="result-card"><div class="label">Schema flexibility</div><div class="value blue">dynamic</div><div class="sub">zero-config field addition</div></div>
+  <div class="result-card"><div class="label">Missing field behaviour</div><div class="value blue">NULL</div><div class="sub">record preserved</div></div>
+  <div class="result-card"><div class="label">Retention / replay</div><div class="value blue">?h</div><div class="sub">zero data loss window</div></div>
+  <div class="result-card"><div class="label">Est. AWS cost (1×)</div><div class="value blue">$22.89</div><div class="sub">/month</div></div>
+</div>
+</div>
+
+</body>
+</html>

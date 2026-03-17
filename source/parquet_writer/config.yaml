@@ -13,7 +13,7 @@ buffer:
 
 # S3 / MinIO target
 s3:
-  endpoint_url: "http://spark-22b6:9000"  # MinIO on spark-22b6; remove for real AWS S3
+  endpoint_url: "http://localhost:9000"  # local MinIO on x86 (was spark-22b6)
   bucket: battery-data
   region: us-east-1
   access_key: minioadmin

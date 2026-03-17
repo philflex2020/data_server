@@ -1,30 +1,18 @@
 broker:
   host: localhost
-  port: 1883           # FlashMQ on spark-22b6 (vs Mosquitto on 1884 for phil-dev)
+  port: 1883           # FlashMQ — where telegraf is listening
   username: ""
   password: ""
-  client_id: data-generator
+  client_id: data-generator-telegraf-test
 
 websocket:
   host: 0.0.0.0
-  port: 8765
+  port: 8766           # avoid clash with normal generator on 8765
 
-# How often to publish a sample for each asset (seconds)
 sample_interval_seconds: 1
-
-# Topic structure:
-#   per_cell       — one topic per asset, payload is JSON with all measurements
-#   per_cell_item  — one topic per measurement per asset
 topic_mode: per_cell
+payload_format: flat   # scalar values — telegraf json_v2 compatible
 
-# Payload format for per_cell mode:
-#   nested — {value, unit} objects per measurement (NATS/Parquet path)
-#   flat   — scalar values only, telegraf json_v2 compatible
-payload_format: nested
-
-# Active source configurations.
-# Set enabled: true to include a source in the publish loop.
-# The generator normalises any missing sources to disabled defaults at startup.
 sources:
   - id: battery
     type: battery

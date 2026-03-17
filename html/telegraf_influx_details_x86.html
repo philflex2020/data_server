@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telegraf / InfluxDB — Live Measurements (x86_64)</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.83em; line-height: 1.6; }
+ul   { margin: 6px 0 10px 18px; color: #8b949e; font-size: 0.85em; }
+ul li { margin-bottom: 4px; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+.result-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.result-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.result-card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.result-card .value { font-size: 1.5em; font-weight: 700; color: #3fb950; font-variant-numeric: tabular-nums; }
+.result-card .value.warn   { color: #f0883e; }
+.result-card .value.danger { color: #f85149; }
+.result-card .value.blue   { color: #58a6ff; }
+.result-card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 0.87em; line-height: 1.6;
+}
+.callout.warn   { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.callout.danger { background: #2d0e0e; border-left: 3px solid #f85149; color: #e38181; }
+.callout.info   { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.ok     { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout strong { color: inherit; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num    { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.red    { color: #f85149; font-weight: 700; }
+td.orange { color: #f0883e; font-weight: 700; }
+td.green  { color: #3fb950; }
+td.hi     { color: #e6edf3; font-weight: 600; }
+td.muted  { color: #8b949e; font-style: italic; }
+.section  { margin-bottom: 48px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+.badge-fail { display: inline-block; background: #3d1010; color: #f85149;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 6px; }
+.badge-pass { display: inline-block; background: #0d2d1a; color: #3fb950;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 6px; }
+.badge-warn { display: inline-block; background: #2d1f0e; color: #f0883e;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 6px; }
+.test-number {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+  margin-right: 6px; vertical-align: middle; letter-spacing: 0.05em;
+}</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="telegraf_influx_details.html">aarch64 results</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="generator.html">Generator</a>
+</div>
+
+<h1>Telegraf / InfluxDB — Live Performance Measurements
+  <small style="font-size:0.55em;color:#8b949e">(x86_64)</small></h1>
+<p class="subtitle">
+  Empirical measurements taken 2026-03-17 02:57 UTC on phil-dev (x86_64).
+  Compare with <a href="telegraf_influx_details.html">aarch64 results</a>.
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Host</strong> phil-dev</div>
+  <div class="meta-item"><strong>Arch</strong> x86_64</div>
+  <div class="meta-item"><strong>InfluxDB</strong> 2.8.0</div>
+  <div class="meta-item"><strong>Telegraf</strong> 1.38.0</div>
+  <div class="meta-item"><strong>Active series</strong> 1,297</div>
+  <div class="meta-item"><strong>Flux v2 API</strong> <span class="badge-pass">WORKING</span></div>
+</div>
+
+<!-- ═══════════ TEST 0 — FLUX API -->
+<div class="section">
+<h2><span class="test-number">TEST 0</span> Flux v2 API <span class="badge-pass">WORKING</span></h2>
+<pre><code>from(bucket: "battery-data")
+  |> range(start: -1h) |> first() |> limit(n: 1)</code></pre>
+<div class='callout ok'><strong>Flux API is working.</strong> Data returned from the v2 query endpoint.</div>
+</div>
+
+<!-- ═══════════ TEST RESULTS -->
+<div class="section">
+<h2>Test Results</h2>
+
+<h3><span class="test-number">TEST 1</span> Write Throughput</h3>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Records / sec</div><div class="value blue">—</div></div>
+  <div class="result-card"><div class="label">Field writes / sec</div><div class="value blue">—</div><div class="sub">9 fields per record</div></div>
+  <div class="result-card"><div class="label">Active assets</div><div class="value ">1,297</div></div>
+</div>
+
+<h3><span class="test-number">TEST 2</span> Lifetime Writes</h3>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Total metrics written</div><div class="value blue">108,552</div><div class="sub">since last Telegraf start</div></div>
+</div>
+
+<h3><span class="test-number">TEST 3</span> Hourly Point Count</h3>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Voltage points (1h)</div><div class="value ">600,549</div><div class="sub">1 field proxy</div></div>
+  <div class="result-card"><div class="label">All fields (1h)</div><div class="value warn">5,404,941</div><div class="sub">9 fields × voltage count</div></div>
+</div>
+
+<h3><span class="test-number">TEST 4</span> Dropped Metrics</h3>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Dropped metrics</div><div class="value ">0</div></div>
+  <div class="result-card"><div class="label">Buffer fill time</div><div class="value ">—</div><div class="sub">at current rate (100k buffer)</div></div>
+</div>
+
+
+<h3><span class="test-number">TEST 5</span> Process Resources</h3>
+<div class="result-grid">
+  <div class="result-card"><div class="label">influxd RSS</div><div class="value warn">1861 MB</div></div>
+  <div class="result-card"><div class="label">telegraf RSS</div><div class="value ">150 MB</div></div>
+  <div class="result-card"><div class="label">influxd CPU%</div><div class="value ">4.2%</div></div>
+  <div class="result-card"><div class="label">telegraf CPU%</div><div class="value ">0.9%</div></div>
+</div>
+
+<h3><span class="test-number">TEST 6</span> Series Cardinality</h3>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Unique series</div><div class="value blue">1,297</div></div>
+  <div class="result-card"><div class="label">Sites</div><div class="value blue">3</div></div>
+  <div class="result-card"><div class="label">Racks</div><div class="value blue">4</div></div>
+  <div class="result-card"><div class="label">Modules</div><div class="value blue">8</div></div>
+  <div class="result-card"><div class="label">Cells/module</div><div class="value blue">12</div></div>
+</div>
+</div>
+
+<!-- ═══════════ FAILURE MODES -->
+<div class="section">
+<h2>Test 7 — Known Silent Failure Mode Signatures</h2>
+<p>Scans <code>journalctl -u telegraf</code> and <code>/var/log/flashmq/flashmq.log</code>
+for patterns associated with known data-loss events (last 72h).</p>
+
+<table>
+  <thead><tr><th>Failure mode</th><th>Pattern checked</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Nested payload / parse error suppression</td>
+      <td><code>doesn't exist</code> in telegraf log</td>
+      <td class="red">⚠ 100800 occurrences</td>
+    </tr>
+    <tr>
+      <td>QoS queue overflow</td>
+      <td><code>Dropping QoS message</code> in FlashMQ log</td>
+      <td class="red">⚠ 12118 occurrences</td>
+    </tr>
+    <tr>
+      <td>Consumer stall (counter frozen during sample)</td>
+      <td><code>messages_received</code> delta = 0 over sample window</td>
+      <td class="red">⚠ STALLED</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<h3><span class="badge-fail">FAILURE MODE 1</span> &nbsp;Nested Payload — Error Suppression</h3>
+<p>Telegraf detected JSON paths that don't exist (e.g. <code>soh</code> as a nested object
+instead of a flat scalar). The error was logged 100800 time(s) then suppressed.
+All subsequent messages fail silently — 0 writes, 0 <code>metrics_dropped</code> increment.</p>
+<div class="callout danger">
+  <strong>Silent data loss.</strong> Once suppressed, no log entry, no metric, no Grafana gap indicator.
+  Fix: ensure generator uses <code>payload_format: flat</code>, then restart telegraf.
+</div>
+
+<h3><span class="badge-fail">FAILURE MODE 2</span> &nbsp;QoS Queue Overflow → Consumer Stall</h3>
+<p>FlashMQ logged 12118 QoS drop warning(s) for <code>telegraf-battery-consumer</code>.
+After this event, the Telegraf MQTT consumer may stall — the <code>messages_received</code> counter
+freezes while Telegraf appears healthy (connected, writing internal metrics).</p>
+<div class="callout danger">
+  <strong>Self-healing: No.</strong> Only <code>sudo systemctl restart telegraf</code> recovers the consumer.
+  Observable only by watching <code>messages_received</code> in internal metrics — not visible in Grafana
+  without a custom alert.
+</div>
+
+</div>
+
+<!-- ═══════════ FLEET PROJECTION -->
+<div class="section">
+<h2>Fleet Scaling Projection</h2>
+<p>Extrapolated from 1,297 measured assets
+(— field writes/sec,
+1861 MB influxd RAM).</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>1,297 assets<br><small>measured</small></th>
+      <th>7,782 assets<br><small>6× scale</small></th>
+      <th>31,128 assets<br><small>24× scale</small></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Field writes/sec</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td class="num">0</td></tr>
+    <tr><td>Buffer fill time</td>
+        <td class="num ">None sec</td>
+        <td class="num ">—</td>
+        <td class="num ">—</td></tr>
+    <tr><td>InfluxDB RAM</td>
+        <td class="num">1861 MB</td>
+        <td class="num red">11165 MB</td>
+        <td class="num red">44662 MB</td></tr>
+    <tr><td>Points/day (all fields)</td>
+        <td class="num">129,718,584</td>
+        <td class="num">778,311,504</td>
+        <td class="num">3,113,246,016</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════════ SUMMARY -->
+<div class="section">
+<h2>Summary</h2>
+<div class="result-grid">
+  <div class="result-card"><div class="label">Write rate</div><div class="value blue">—</div><div class="sub">records/sec</div></div>
+  <div class="result-card"><div class="label">Field writes/sec</div><div class="value blue">—</div></div>
+  <div class="result-card"><div class="label">InfluxDB RAM</div><div class="value warn">1861 MB</div></div>
+  <div class="result-card"><div class="label">Dropped metrics</div><div class="value ">0</div></div>
+  <div class="result-card"><div class="label">Buffer headroom</div><div class="value ">—</div></div>
+  <div class="result-card"><div class="label">Flux v2 API</div><div class="value ">WORKING</div></div>
+  <div class="result-card"><div class="label">Parse errors</div><div class="value danger">DETECTED</div></div>
+  <div class="result-card"><div class="label">QoS drops</div><div class="value danger">DETECTED</div></div>
+</div>
+</div>
+
+</body>
+</html>
