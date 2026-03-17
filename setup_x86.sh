@@ -23,7 +23,7 @@ SUDO_PASS="${3:-}"
 REPO="https://github.com/philflex2020/data_server.git"
 REPO_DIR="/home/${USER}/data_server"
 NATS_VERSION="v2.12.5"
-NATS_URL="https://github.com/nats-io/nats-server/releases/download/${NATS_VERSION}/nats-server-${NATS_VERSION}-linux-amd64.zip"
+NATS_URL="https://github.com/nats-io/nats-server/releases/download/${NATS_VERSION}/nats-server-${NATS_VERSION}-linux-amd64.tar.gz"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,22 +56,13 @@ sudop apt-get install -y -qq \
     python3 python3-venv python3-pip git \
     mosquitto unzip curl wget gnupg lsb-release ca-certificates
 
-# FlashMQ
-if ! command -v flashmq &>/dev/null; then
-    echo '-- FlashMQ PPA --'
-    sudop add-apt-repository -y ppa:wiebe-marten/flashmq
-    sudop apt-get update -qq
-    sudop apt-get install -y -qq flashmq
-fi
-echo \"FlashMQ: \$(flashmq --version 2>&1 | head -1)\"
-
 # InfluxDB 2 + Telegraf
 if ! command -v influx &>/dev/null || ! command -v telegraf &>/dev/null; then
     echo '-- InfluxData apt repo --'
-    curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key \
+    curl -fsSL https://repos.influxdata.com/influxdata-archive.key \
         | gpg --dearmor > /tmp/influxdb.gpg
-    sudop cp /tmp/influxdb.gpg /etc/apt/trusted.gpg.d/influxdb.gpg; rm /tmp/influxdb.gpg
-    echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdb.gpg] https://repos.influxdata.com/ubuntu stable main' \
+    sudop cp /tmp/influxdb.gpg /usr/share/keyrings/influxdb-archive-keyring.gpg; rm /tmp/influxdb.gpg
+    echo 'deb [signed-by=/usr/share/keyrings/influxdb-archive-keyring.gpg] https://repos.influxdata.com/ubuntu stable main' \
         > /tmp/influxdb.list
     sudop cp /tmp/influxdb.list /etc/apt/sources.list.d/influxdb.list; rm /tmp/influxdb.list
     sudop apt-get update -qq
@@ -83,7 +74,7 @@ echo '-- all packages OK --'
 "
 else
     echo "    (no sudo_pass supplied — skipping apt)"
-    ssh_run "for cmd in mosquitto flashmq influx telegraf; do command -v \$cmd &>/dev/null && echo \"\$cmd: OK\" || echo \"WARNING: \$cmd not found\"; done"
+    ssh_run "for cmd in mosquitto influx telegraf; do command -v \$cmd &>/dev/null && echo \"\$cmd: OK\" || echo \"WARNING: \$cmd not found\"; done"
 fi
 
 # ── 2. Clone / update repo ────────────────────────────────────────────────────
@@ -127,10 +118,10 @@ if command -v nats-server &>/dev/null; then
 else
     echo 'Downloading nats-server ${NATS_VERSION} ...'
     cd /tmp
-    curl -sSL '${NATS_URL}' -o nats-server.zip
-    unzip -q nats-server.zip
+    curl -sSL '${NATS_URL}' -o nats-server.tar.gz
+    tar -xzf nats-server.tar.gz
     echo \"\$SP\" | sudo -S mv nats-server-${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
-    rm -rf nats-server.zip nats-server-${NATS_VERSION}-linux-amd64
+    rm -rf nats-server.tar.gz nats-server-${NATS_VERSION}-linux-amd64
     echo \"nats-server installed: \$(nats-server --version)\"
 fi
 "

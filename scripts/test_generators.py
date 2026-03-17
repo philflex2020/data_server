@@ -70,7 +70,7 @@ async def test_multi_generator(gen_ws: str) -> dict:
     cell_count = d.get("cell_count", 0)
     record("has assets", cell_count > 0, f"cell_count={cell_count}")
 
-    sources = d.get("sources", [])
+    sources = d.get("sources") or d.get("config", {}).get("sources", [])
     active = [s for s in sources if s.get("enabled")]
     record("active sources", len(active) > 0,
            ", ".join(s.get("id", "?") for s in active) or "none")
@@ -124,22 +124,37 @@ async def test_mqtt(host: str, port: int, sample_secs: int) -> dict:
         async with aiomqtt.Client(hostname=host, port=port,
                                   identifier="test-generators") as client:
             await client.subscribe("#", qos=0)
-            async with client.messages as messages:
-                async for msg in messages:
+            # aiomqtt 2.x: iterate client.messages directly
+            # aiomqtt 1.x: async with client.messages as messages
+            try:
+                msg_iter = client.messages
+                async for msg in msg_iter:
                     topic = str(msg.topic)
                     prefix = topic.split("/")[0]
                     counts[prefix] += 1
-
-                    # Validate JSON payload
                     try:
                         payload = json.loads(msg.payload)
                         if prefix not in first_payloads:
                             first_payloads[prefix] = payload
                     except Exception as e:
                         errors[prefix].append(str(e))
-
                     if time.monotonic() >= t_end:
                         break
+            except TypeError:
+                # aiomqtt 1.x fallback
+                async with client.messages as messages:  # type: ignore
+                    async for msg in messages:
+                        topic = str(msg.topic)
+                        prefix = topic.split("/")[0]
+                        counts[prefix] += 1
+                        try:
+                            payload = json.loads(msg.payload)
+                            if prefix not in first_payloads:
+                                first_payloads[prefix] = payload
+                        except Exception as e:
+                            errors[prefix].append(str(e))
+                        if time.monotonic() >= t_end:
+                            break
     except Exception as e:
         record("MQTT connect", False, str(e))
         return {}
