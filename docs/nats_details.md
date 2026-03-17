@@ -1,6 +1,6 @@
 # NATS JetStream + Parquet Writer — Live Performance Measurements
 
-**Test date:** 2026-03-17 04:03 UTC
+**Test date:** 2026-03-17 04:29 UTC
 **Environment:** phil-dev (x86_64)
 **NATS Server:** 2.12.5
 **S3/MinIO reachable:** yes
@@ -11,8 +11,8 @@
 
 **Result:** Server up and responding.
 
-- Connections: 4
-- Server RSS: 104 MB
+- Connections: 3
+- Server RSS: 136 MB
 
 ---
 
@@ -21,27 +21,27 @@
 ### Stream: `BATTERY_DATA`
 
 - Subjects: `?`
-- Messages stored: **21,538,864**
+- Messages stored: **21,415,378**
 - Bytes stored: **8.59 GB**
 - Retention: **0.0h**
 
 | Consumer | Pending (lag) | Ack floor |
 |----------|:---:|:---:|
-| `4zAEfCoF` | 0 | 27,745,824 |
-| `BR0VHyrE` | 0 | 27,745,824 |
-| `parquet-writer` | 10,856 | 0 |
+| `4zAEfCoF` | 0 | 30,629,187 |
+| `BR0VHyrE` | 0 | 30,629,187 |
+| `parquet-writer` | 0 | 0 |
 
 ---
 
 ## Test 2 — Message Throughput
 
-**Result:** **913.6/sec** messages ingested to JetStream.
+**Result:** **1,306.0/sec** messages ingested to JetStream.
 
 ---
 
 ## Test 3 — Consumer Lag
 
-**Result:** 4zAEfCoF: 0 pending, BR0VHyrE: 0 pending, parquet-writer: 29575 pending
+**Result:** 4zAEfCoF: 0 pending, BR0VHyrE: 0 pending, parquet-writer: 0 pending
 
 (Lag = messages in stream not yet acknowledged by a consumer. Zero lag means the consumer is keeping up in real time.)
 
@@ -49,16 +49,16 @@
 
 ## Test 4 — Parquet Storage (S3/MinIO)
 
-- Files written (last 2h): **72**
-- Bytes written (last 2h): **9.6 MB**
-- Total parquet files: **590**
-- Total parquet storage: **24.1 MB**
+- Files written (last 2h): **151**
+- Bytes written (last 2h): **22.3 MB**
+- Total parquet files: **669**
+- Total parquet storage: **36.7 MB**
 
-**Sample file schema** (`20260317T040407Z.parquet`):
+**Sample file schema** (`20260317T043017Z.parquet`):
 
-Columns (21): `ac_power`, `capacity`, `cell_id`, `current`, `dc_current`, `dc_voltage`, `efficiency`, `internal_resistance`, `irradiance`, `module_id`, `panel_temp`, `project_id`, `rack_id`, `resistance`, `site_id`, `soc`, `soh`, `source_id`, `temperature`, `timestamp`, `voltage`
+Columns (20): `ac_power`, `capacity`, `cell_id`, `current`, `dc_current`, `dc_voltage`, `efficiency`, `irradiance`, `module_id`, `panel_temp`, `project_id`, `rack_id`, `resistance`, `site_id`, `soc`, `soh`, `source_id`, `temperature`, `timestamp`, `voltage`
 
-Rows in file: **4,256**
+Rows in file: **25,079**
 
 **Extra (non-standard) columns found:** `ac_power`, `dc_current`, `dc_voltage`, `efficiency`, `irradiance`, `panel_temp`
 
@@ -109,36 +109,36 @@ Analysis of writer.py behaviour with payload schema changes:
 
 | Process | RSS Memory |
 |---------|----------:|
-| `nats-server` | 99 MB |
-| `parquet writer` | 209 MB |
+| `nats-server` | 166 MB |
+| `parquet writer` | 2 MB |
 | `nats bridge` | 19 MB |
 
 ---
 
 ## Test 8 — AWS Cost Estimates
 
-Extrapolated from measured throughput (913.6/sec) and storage rate (0.12 GB/day parquet).
+Extrapolated from measured throughput (1,306.0/sec) and storage rate (0.27 GB/day parquet).
 
 ### Fleet Scaling — Monthly Cost Breakdown
 
 | Service | 1× (current) | 6× | 24× |
 |---------|:---:|:---:|:---:|
-| **Messages/sec** | 913.6 | 5,481.6 | 21,926.4 |
-| **Parquet GB/month** | 3.5 | 20.8 | 83.2 |
-| S3 storage | $0.08 | $0.48 | $1.91 |
-| S3 PUT requests | $0.13 | $0.78 | $3.11 |
-| S3 GET requests | $0.00 | $0.00 | $0.01 |
+| **Messages/sec** | 1,306.0 | 7,836.0 | 31,344.0 |
+| **Parquet GB/month** | 8.0 | 48.1 | 192.4 |
+| S3 storage | $0.18 | $1.11 | $4.43 |
+| S3 PUT requests | $0.27 | $1.63 | $6.52 |
+| S3 GET requests | $0.00 | $0.01 | $0.03 |
 | EC2 NATS server | $15.18 (t3.small) | $15.18 (t3.small) | $30.37 (t3.medium) |
 | EC2 Parquet writer | $7.59 (t3.micro) | $15.18 (t3.small) | $15.18 (t3.small) |
-| **Total / month** | **$22.98** | **$31.62** | **$50.58** |
+| **Total / month** | **$23.22** | **$33.11** | **$56.53** |
 
 ### Alternative: AWS IoT Core for MQTT Ingest
 
 | Scale | IoT Core cost/month | Notes |
 |-------|:---:|---|
-| 1× | $2368.05 | Replaces FlashMQ + NATS bridge + EC2 for MQTT layer |
-| 6× | $14208.31 | Replaces FlashMQ + NATS bridge + EC2 for MQTT layer |
-| 24× | $56833.23 | Replaces FlashMQ + NATS bridge + EC2 for MQTT layer |
+| 1× | $3385.15 | Replaces FlashMQ + NATS bridge + EC2 for MQTT layer |
+| 6× | $20310.91 | Replaces FlashMQ + NATS bridge + EC2 for MQTT layer |
+| 24× | $81243.65 | Replaces FlashMQ + NATS bridge + EC2 for MQTT layer |
 
 ### Notes
 
@@ -154,14 +154,14 @@ Extrapolated from measured throughput (913.6/sec) and storage rate (0.12 GB/day 
 
 | Finding | Value |
 |---------|-------|
-| Message throughput | 913.6/sec |
+| Message throughput | 1,306.0/sec |
 | Stream storage | 8.59 GB |
-| Consumer lag | 4zAEfCoF: 0 pending, BR0VHyrE: 0 pending, parquet-writer: 29575 pending |
-| Parquet files (last 2h) | 72 |
-| Parquet storage (total) | 24.1 MB |
+| Consumer lag | 4zAEfCoF: 0 pending, BR0VHyrE: 0 pending, parquet-writer: 0 pending |
+| Parquet files (last 2h) | 151 |
+| Parquet storage (total) | 36.7 MB |
 | Retention window | ?h |
 | Schema: extra fields stored | ✓ yes |
 | Schema: missing fields → NULL | ✓ yes (record preserved) |
 | Schema: nested payload handled | ✓ yes |
-| nats-server RSS | 99 MB |
-| Est. AWS cost (1× scale) | $22.98/month |
+| nats-server RSS | 166 MB |
+| Est. AWS cost (1× scale) | $23.22/month |

@@ -199,10 +199,11 @@ async def run(cfg: dict) -> None:
                 durable = consumer_name,
                 stream  = stream_name,
                 config  = ConsumerConfig(
-                    deliver_policy = DeliverPolicy.ALL,
-                    ack_policy     = AckPolicy.ALL,
-                    ack_wait       = 60,
-                    max_deliver    = 10,
+                    deliver_policy  = DeliverPolicy.ALL,
+                    ack_policy      = AckPolicy.ALL,
+                    ack_wait        = 60,
+                    max_deliver     = 10,
+                    max_ack_pending = 100_000,  # allow full flush-batch in flight
                 ),
             )
             break

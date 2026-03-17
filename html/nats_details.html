@@ -99,7 +99,7 @@ td.muted { color: #8b949e; font-style: italic; }
 
 <h1>NATS JetStream + Parquet Writer — Live Performance Measurements</h1>
 <p class="subtitle">
-  Empirical measurements taken 2026-03-17 04:03 UTC on phil-dev (x86_64).
+  Empirical measurements taken 2026-03-17 04:29 UTC on phil-dev (x86_64).
   Compare with <a href="telegraf_influx_details.html">Telegraf/InfluxDB baseline</a>.
 </p>
 
@@ -116,8 +116,8 @@ td.muted { color: #8b949e; font-style: italic; }
 <h2><span class="test-number">TEST 0</span> NATS Server Health <span class="badge-ok">UP</span></h2>
 <div class="result-grid">
   <div class="result-card"><div class="label">NATS version</div><div class="value blue">2.12.5</div></div>
-  <div class="result-card"><div class="label">Active connections</div><div class="value blue">4</div></div>
-  <div class="result-card"><div class="label">Server RSS</div><div class="value ">104.0 MB</div></div>
+  <div class="result-card"><div class="label">Active connections</div><div class="value blue">3</div></div>
+  <div class="result-card"><div class="label">Server RSS</div><div class="value ">136.0 MB</div></div>
   <div class="result-card"><div class="label">S3/MinIO</div><div class="value ">reachable</div></div>
 </div>
 </div>
@@ -133,13 +133,13 @@ td.muted { color: #8b949e; font-style: italic; }
   <tr>
     <td><strong>BATTERY_DATA</strong></td>
     <td>—</td>
-    <td class="num">21,538,864</td>
+    <td class="num">21,415,378</td>
     <td class="num">8.59 GB</td>
     <td class="num">0.0h</td>
   </tr></tbody>
 </table>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Total messages stored</div><div class="value blue">21,538,864</div></div>
+  <div class="result-card"><div class="label">Total messages stored</div><div class="value blue">21,415,378</div></div>
   <div class="result-card"><div class="label">Total bytes stored</div><div class="value blue">8.59 GB</div></div>
   <div class="result-card"><div class="label">Retention window</div><div class="value ">?h</div></div>
 </div>
@@ -149,7 +149,7 @@ td.muted { color: #8b949e; font-style: italic; }
 <div class="section">
 <h2><span class="test-number">TEST 2</span> Message Throughput</h2>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Messages / sec</div><div class="value blue">913.6</div><div class="sub">all subjects combined</div></div>
+  <div class="result-card"><div class="label">Messages / sec</div><div class="value blue">1,306.0</div><div class="sub">all subjects combined</div></div>
 </div>
 <div class="callout info">
   <strong>What this measures:</strong> server-level <code>in_msgs</code> delta (not stream message count).
@@ -177,8 +177,8 @@ td.muted { color: #8b949e; font-style: italic; }
   </tr>
   <tr>
     <td><code>parquet-writer</code></td>
-    <td class="num red">29,575</td>
-    <td class="orange">catching up</td>
+    <td class="num green">0</td>
+    <td class="green">real-time</td>
   </tr></tbody>
 </table>
 <div class="callout ok">
@@ -193,14 +193,14 @@ td.muted { color: #8b949e; font-style: italic; }
 <div class="section">
 <h2><span class="test-number">TEST 4</span> Parquet Storage (S3/MinIO)</h2>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Files (last 2h)</div><div class="value blue">72</div></div>
-  <div class="result-card"><div class="label">Bytes (last 2h)</div><div class="value blue">9.6 MB</div></div>
-  <div class="result-card"><div class="label">Total parquet files</div><div class="value ">590</div></div>
-  <div class="result-card"><div class="label">Total parquet storage</div><div class="value ">24.1 MB</div></div>
+  <div class="result-card"><div class="label">Files (last 2h)</div><div class="value blue">151</div></div>
+  <div class="result-card"><div class="label">Bytes (last 2h)</div><div class="value blue">22.3 MB</div></div>
+  <div class="result-card"><div class="label">Total parquet files</div><div class="value ">669</div></div>
+  <div class="result-card"><div class="label">Total parquet storage</div><div class="value ">36.7 MB</div></div>
 </div>
 
-<h3>Sample file: <code>20260317T040407Z.parquet</code> — 4,256 rows</h3>
-<p>Columns (21): <code>ac_power</code> <code>capacity</code> <code>cell_id</code> <code>current</code> <code>dc_current</code> <code>dc_voltage</code> <code>efficiency</code> <code>internal_resistance</code> <code>irradiance</code> <code>module_id</code> <code>panel_temp</code> <code>project_id</code> <code>rack_id</code> <code>resistance</code> <code>site_id</code> <code>soc</code> <code>soh</code> <code>source_id</code> <code>temperature</code> <code>timestamp</code> <code>voltage</code></p>
+<h3>Sample file: <code>20260317T043017Z.parquet</code> — 25,079 rows</h3>
+<p>Columns (20): <code>ac_power</code> <code>capacity</code> <code>cell_id</code> <code>current</code> <code>dc_current</code> <code>dc_voltage</code> <code>efficiency</code> <code>irradiance</code> <code>module_id</code> <code>panel_temp</code> <code>project_id</code> <code>rack_id</code> <code>resistance</code> <code>site_id</code> <code>soc</code> <code>soh</code> <code>source_id</code> <code>temperature</code> <code>timestamp</code> <code>voltage</code></p>
 
 <div class="callout ok">
   <strong>Extra columns detected in live parquet file</strong> — stored automatically without any config change:<br>
@@ -335,8 +335,8 @@ td.muted { color: #8b949e; font-style: italic; }
 <div class="section">
 <h2><span class="test-number">TEST 7</span> Process Resources</h2>
 <div class="result-grid">
-  <div class="result-card"><div class="label">nats-server RSS</div><div class="value ">99 MB</div></div>
-  <div class="result-card"><div class="label">parquet writer RSS</div><div class="value ">209 MB</div></div>
+  <div class="result-card"><div class="label">nats-server RSS</div><div class="value ">166 MB</div></div>
+  <div class="result-card"><div class="label">parquet writer RSS</div><div class="value ">2 MB</div></div>
   <div class="result-card"><div class="label">nats bridge RSS</div><div class="value ">19 MB</div></div>
 </div>
 </div>
@@ -346,8 +346,8 @@ td.muted { color: #8b949e; font-style: italic; }
 <h2><span class="test-number">TEST 8</span> AWS Cost Estimates</h2>
 
 <div class="callout info">
-  Extrapolated from measured <strong>913.6/sec</strong> throughput
-  and <strong>0.12 GB/day</strong> parquet write rate.
+  Extrapolated from measured <strong>1,306.0/sec</strong> throughput
+  and <strong>0.27 GB/day</strong> parquet write rate.
   Pricing: AWS us-east-1 on-demand.
 </div>
 <h3>Fleet Scaling — Monthly Cost Breakdown</h3>
@@ -361,14 +361,14 @@ td.muted { color: #8b949e; font-style: italic; }
     </tr>
   </thead>
   <tbody>
-  <tr><td>Messages/sec</td><td class="num blue">913.6</td><td class="num blue">5,481.6</td><td class="num blue">21,926.4</td></tr>
-  <tr><td>Parquet GB/month</td><td class="num">3.5</td><td class="num">20.8</td><td class="num">83.2</td></tr>
-  <tr><td>S3 storage</td><td class="num">$0.08</td><td class="num">$0.48</td><td class="num">$1.91</td></tr>
-  <tr><td>S3 PUT requests</td><td class="num">$0.13</td><td class="num">$0.78</td><td class="num">$3.11</td></tr>
-  <tr><td>S3 GET requests</td><td class="num">$0.00</td><td class="num">$0.00</td><td class="num">$0.01</td></tr>
+  <tr><td>Messages/sec</td><td class="num blue">1,306.0</td><td class="num blue">7,836.0</td><td class="num blue">31,344.0</td></tr>
+  <tr><td>Parquet GB/month</td><td class="num">8.0</td><td class="num">48.1</td><td class="num">192.4</td></tr>
+  <tr><td>S3 storage</td><td class="num">$0.18</td><td class="num">$1.11</td><td class="num">$4.43</td></tr>
+  <tr><td>S3 PUT requests</td><td class="num">$0.27</td><td class="num">$1.63</td><td class="num">$6.52</td></tr>
+  <tr><td>S3 GET requests</td><td class="num">$0.00</td><td class="num">$0.01</td><td class="num">$0.03</td></tr>
   <tr><td>EC2 NATS server</td><td class="num">$15.18 <small>(t3.small)</small></td><td class="num">$15.18 <small>(t3.small)</small></td><td class="num">$30.37 <small>(t3.medium)</small></td></tr>
   <tr><td>EC2 Parquet writer</td><td class="num">$7.59 <small>(t3.micro)</small></td><td class="num">$15.18 <small>(t3.small)</small></td><td class="num">$15.18 <small>(t3.small)</small></td></tr>
-  <tr><td><strong>Total / month</strong></td><td class="num"><strong>$22.98</strong></td><td class="num"><strong>$31.62</strong></td><td class="num"><strong>$50.58</strong></td></tr>
+  <tr><td><strong>Total / month</strong></td><td class="num"><strong>$23.22</strong></td><td class="num"><strong>$33.11</strong></td><td class="num"><strong>$56.53</strong></td></tr>
   </tbody>
 </table>
 <h3>Alternative: AWS IoT Core for MQTT Ingest</h3>
@@ -377,9 +377,9 @@ Cost is per-message; large fleets become expensive relative to a fixed EC2.</p>
 <table>
   <thead><tr><th>Scale</th><th>IoT Core cost/month</th><th>Notes</th></tr></thead>
   <tbody>
-  <tr><td>1× scale</td><td class="num">$2368.05</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
-  <tr><td>6× scale</td><td class="num">$14208.31</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
-  <tr><td>24× scale</td><td class="num">$56833.23</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
+  <tr><td>1× scale</td><td class="num">$3385.15</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
+  <tr><td>6× scale</td><td class="num">$20310.91</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
+  <tr><td>24× scale</td><td class="num">$81243.65</td><td>Replaces FlashMQ + NATS bridge EC2 for MQTT layer</td></tr>
   </tbody>
 </table>
 <h3>Notes</h3>
@@ -390,14 +390,14 @@ Cost is per-message; large fleets become expensive relative to a fixed EC2.</p>
 <div class="section">
 <h2>Summary</h2>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Throughput</div><div class="value blue">913.6/sec</div><div class="sub">JetStream messages</div></div>
-  <div class="result-card"><div class="label">Consumer lag</div><div class="value warn">29,575</div><div class="sub">pending messages</div></div>
-  <div class="result-card"><div class="label">Parquet files (2h)</div><div class="value blue">72</div></div>
-  <div class="result-card"><div class="label">Total storage</div><div class="value ">24.1 MB</div></div>
+  <div class="result-card"><div class="label">Throughput</div><div class="value blue">1,306.0/sec</div><div class="sub">JetStream messages</div></div>
+  <div class="result-card"><div class="label">Consumer lag</div><div class="value ">0</div><div class="sub">pending messages</div></div>
+  <div class="result-card"><div class="label">Parquet files (2h)</div><div class="value blue">151</div></div>
+  <div class="result-card"><div class="label">Total storage</div><div class="value ">36.7 MB</div></div>
   <div class="result-card"><div class="label">Schema flexibility</div><div class="value blue">dynamic</div><div class="sub">zero-config field addition</div></div>
   <div class="result-card"><div class="label">Missing field behaviour</div><div class="value blue">NULL</div><div class="sub">record preserved</div></div>
   <div class="result-card"><div class="label">Retention / replay</div><div class="value blue">?h</div><div class="sub">zero data loss window</div></div>
-  <div class="result-card"><div class="label">Est. AWS cost (1×)</div><div class="value blue">$22.98</div><div class="sub">/month</div></div>
+  <div class="result-card"><div class="label">Est. AWS cost (1×)</div><div class="value blue">$23.22</div><div class="sub">/month</div></div>
 </div>
 </div>
 
