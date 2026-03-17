@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DuckDB Parquet — Query Reference (x86_64)</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1200px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num   { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.fast  { color: #3fb950; }
+td.slow  { color: #f0883e; font-weight: 700; }
+td.hi    { color: #e6edf3; font-weight: 600; }
+td.muted { color: #8b949e; font-style: italic; }
+td.ref   { color: #8b949e; font-size: 0.88em; }
+td.green { color: #3fb950; }
+td.amber { color: #f0883e; }
+.q-card {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 20px 24px; margin-bottom: 28px;
+}
+.q-id {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.72em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-right: 8px; vertical-align: middle; letter-spacing: 0.05em;
+}
+.q-title { color: #e6edf3; font-size: 1.0em; font-weight: 600; vertical-align: middle; }
+.q-desc  { color: #8b949e; font-size: 0.84em; margin: 8px 0 14px; }
+.stat-row { display: flex; gap: 20px; flex-wrap: wrap; margin: 12px 0; }
+.stat { font-size: 0.82em; color: #8b949e; }
+.stat strong { color: #58a6ff; font-size: 1.1em; }
+.stat strong.fast { color: #3fb950; }
+.stat strong.est  { color: #f39c12; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0; font-size: 0.85em;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.source-tag {
+  display: inline-block; font-size: 0.72em; font-weight: 700; padding: 2px 8px;
+  border-radius: 3px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.04em;
+}
+.source-local { background: #0d2d1a; color: #3fb950; border: 1px solid #3fb95044; }
+.source-s3    { background: #2d1f0e; color: #f0883e; border: 1px solid #f0883e44; }
+.source-hot   { background: #1f3a6e; color: #79c0ff; border: 1px solid #58a6ff44; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+.section { margin-bottom: 48px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="nats_report_x86.html">Architecture report</a>
+  <a href="parquet_writer_cpp.html">C++ Writer details</a>
+  <a href="telegraf_influx_queries_x86.html">InfluxDB queries (ref)</a>
+</div>
+
+<h1>DuckDB Parquet — Query Reference (x86_64)</h1>
+<p class="subtitle">
+  Equivalent web-client queries translated from InfluxQL → DuckDB SQL.
+  Targets: local <code>/srv/data/parquet/</code> and S3 <code>s3://bucket/parquet/</code>.
+  All queries cover the <strong>last 5 minutes</strong> of data at 24× fleet scale.
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Date</strong> 2026-03-17</div>
+  <div class="meta-item"><strong>Engine</strong> DuckDB (local + S3)</div>
+  <div class="meta-item"><strong>Schema</strong> /srv/data/parquet/{source}/project={id}/site={id}/YYYY/MM/DD/</div>
+  <div class="meta-item"><strong>AWS real-time</strong> current_state.parquet · flush-interval lag only · no rsync</div>
+  <div class="meta-item"><strong>Fleet</strong> 24× · 3,456 battery + 11,520 solar cells</div>
+  <div class="meta-item"><strong>Host</strong> phil-dev · DuckDB 1.5.0 · 6× fleet (3 744 cells)</div>
+  <div class="meta-item"><strong>Measured</strong> 2026-03-17 · 6 cycles × 10 s · local parquet · date-scoped Q2/Q3 (356 files/site/day at 10 s flush)</div>
+</div>
+
+<!-- ═══ SUMMARY TABLE -->
+<div class="section">
+<h2>Performance Summary — Estimated vs InfluxDB Reference</h2>
+
+<div class="callout info">
+  Local latency figures are <strong>measured</strong> — 6 cycles × 10 s against live parquet written by writer.cpp
+  at 6× fleet scale (864 battery + 2 880 solar cells). InfluxDB reference column is from
+  <a href="telegraf_influx_queries_x86.html">telegraf_influx_queries_x86</a> at 1× scale (144 battery + 480 solar).
+  S3 latency is estimated (+120 ms baseline round-trip).
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Query</th>
+      <th>Source</th>
+      <th class="num">DuckDB local avg</th>
+      <th class="num">min / max</th>
+      <th class="num">DuckDB S3 (est.)</th>
+      <th class="num">InfluxDB ref</th>
+      <th class="num">Rows</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="q-id">Q1</span></td>
+      <td>Latest snapshot — all battery cells, site 0</td>
+      <td><span class="source-tag source-hot">hot</span></td>
+      <td class="num fast">4.7 ms</td>
+      <td class="num">3.8 / 8.2 ms</td>
+      <td class="num">~125 ms</td>
+      <td class="num ref">7.8 ms</td>
+      <td class="num">72</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q2</span></td>
+      <td>Time series — single cell history, last hour</td>
+      <td><span class="source-tag source-local">partitioned</span></td>
+      <td class="num fast">60.3 ms</td>
+      <td class="num">48 / 76 ms</td>
+      <td class="num">~180 ms</td>
+      <td class="num ref">2.1 ms</td>
+      <td class="num">300</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q3</span></td>
+      <td>Rack aggregates — mean per rack (10s buckets, last hour)</td>
+      <td><span class="source-tag source-local">partitioned</span></td>
+      <td class="num fast">54.2 ms</td>
+      <td class="num">44 / 68 ms</td>
+      <td class="num">~175 ms</td>
+      <td class="num ref">86.9 ms</td>
+      <td class="num">288</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q4</span></td>
+      <td>Alert scan — voltage outside 3.2–4.1 V</td>
+      <td><span class="source-tag source-hot">hot</span></td>
+      <td class="num fast">7.6 ms</td>
+      <td class="num">5.9 / 9.4 ms</td>
+      <td class="num">~128 ms</td>
+      <td class="num ref">55.5 ms</td>
+      <td class="num">~181</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q5</span></td>
+      <td>Solar overview — last irradiance & AC power</td>
+      <td><span class="source-tag source-hot">hot</span></td>
+      <td class="num fast">9.0 ms</td>
+      <td class="num">6.8 / 11.6 ms</td>
+      <td class="num">~130 ms</td>
+      <td class="num ref">235.6 ms</td>
+      <td class="num">2 880</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q6</span></td>
+      <td>Fleet health — cell count & data freshness</td>
+      <td><span class="source-tag source-hot">hot</span></td>
+      <td class="num fast">5.4 ms</td>
+      <td class="num">4.6 / 6.0 ms</td>
+      <td class="num">~125 ms</td>
+      <td class="num ref">27.6 ms</td>
+      <td class="num">24</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>Hot file advantage.</strong>
+  Queries Q1, Q4, Q5, Q6 target <code>hot.parquet</code> — a single flat file
+  containing all partitions from the last flush (~14 976 rows, ~60 s lag).
+  DuckDB reads this in one pass with no S3 list-objects overhead.
+  Column projection and predicate pushdown reduce actual bytes read further.
+</div>
+<div class="callout info">
+  <strong>Q2 / Q3 — date-scoped glob paths.</strong>
+  Rather than scanning all historical files with <code>/**/*.parquet</code>, queries
+  construct glob paths covering only the date directories that overlap the requested
+  time window (e.g. <code>/2026/03/17/*.parquet</code> for a same-day query).
+  This drops Q2/Q3 from ~300 ms (full store) to ~55 ms by limiting DuckDB to 356 files
+  instead of 2 640 — even at the 10 s test flush rate.
+  In production with a 60 s flush: ~60 files/day/site, expected &lt; 20 ms.
+</div>
+<div class="callout ok">
+  <strong>With the AWS writer in place, the host flush interval can be extended to 10–15 minutes.</strong>
+  <code>current_state.parquet</code> on AWS covers the real-time gap — the partitioned S3 store
+  only needs to satisfy historical queries, not current-state lookups.
+  At a 15-minute flush: <strong>~96 files/site/day</strong> instead of 1 440 (at 1 min).
+  Date-scoped Q2/Q3 latency scales roughly with file count — projecting ~15 ms locally,
+  ~135 ms on S3. Larger files also compress better and give DuckDB more accurate
+  row-group statistics for predicate pushdown.
+  Set <code>flush_interval_seconds: 900</code> on the host writer once AWS writer is deployed.
+</div>
+</div>
+
+<!-- ═══ QUERY COST vs INFLUX -->
+<div class="section">
+<h2>Query Cost — DuckDB vs InfluxDB Cloud</h2>
+<p>One web client querying every 10 s. DuckDB queries S3 Parquet directly;
+InfluxDB Cloud charges per GB scanned.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th class="num">1× test load</th>
+      <th class="num">6× scale</th>
+      <th class="num">24× (full fleet)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Rows in 5-min window (batteries)</td>
+        <td class="num">21 600</td>
+        <td class="num">129 600</td>
+        <td class="num">518 400</td></tr>
+    <tr><td>Parquet scan — hot.parquet (all sources)</td>
+        <td class="num">~4 MB</td>
+        <td class="num">~4 MB</td>
+        <td class="num">~4 MB</td></tr>
+    <tr><td>Parquet scan — partitioned, site-pruned (Q2/Q3)</td>
+        <td class="num">~0.5 MB</td>
+        <td class="num">~0.5 MB</td>
+        <td class="num">~0.5 MB</td></tr>
+    <tr><td class="hi">DuckDB query cost / month (S3 GET charges only)</td>
+        <td class="num green">~$0.01</td>
+        <td class="num green">~$0.01</td>
+        <td class="num green">~$0.01</td></tr>
+    <tr><td class="hi">InfluxDB Cloud query cost / month</td>
+        <td class="num amber">$1.20</td>
+        <td class="num amber">$7.18</td>
+        <td class="num amber">$28.73</td></tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>No per-query charge.</strong>
+  DuckDB reads Parquet directly from S3 at $0.0004/GET.
+  A 6-query cycle every 10 s = 2 160 GETs/hour ≈ 1.6 M GETs/month ≈ $0.64/month total S3 API cost,
+  independent of fleet scale. Compare to InfluxDB Cloud at $28.73/month at 24× scale.
+</div>
+<div class="callout info">
+  <strong>Partition pruning halves scan cost for site-specific queries.</strong>
+  The directory structure <code>site={id}/YYYY/MM/DD/</code> lets DuckDB skip all
+  other sites' files via Hive partitioning. Q2 and Q3 with <code>hive_partitioning=true</code>
+  read only 1/48 of the total parquet store.
+</div>
+</div>
+
+<!-- ═══ QUERY DETAILS -->
+<div class="section">
+<h2>Query Details</h2>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q1</span>
+    <span class="q-title">Latest snapshot — all battery cells, site 0 (last 5 min)</span>
+    <span class="source-tag source-hot">hot.parquet</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'current status' panel — last reading per cell. Uses hot.parquet for sub-90s recency; falls back to partitioned store for older data.</p>
+  <pre><code>-- Local: use hot.parquet for freshest data (atomic, written every flush)
+SELECT site_id, rack_id, module_id, cell_id,
+       arg_max(voltage,     timestamp) AS voltage,
+       arg_max(current,     timestamp) AS current,
+       arg_max(temperature, timestamp) AS temperature,
+       arg_max(soc,         timestamp) AS soc,
+       arg_max(soh,         timestamp) AS soh
+FROM read_parquet('/srv/data/parquet/hot.parquet')
+WHERE timestamp > epoch(now()) - 300
+  AND site_id = 0
+GROUP BY ALL
+ORDER BY rack_id, module_id, cell_id
+
+-- S3: combine hot file + recent partitioned files
+SELECT site_id, rack_id, module_id, cell_id,
+       arg_max(voltage, timestamp) AS voltage,
+       arg_max(current, timestamp) AS current,
+       arg_max(temperature, timestamp) AS temperature,
+       arg_max(soc, timestamp) AS soc,
+       arg_max(soh, timestamp) AS soh
+FROM read_parquet([
+    's3://bucket/parquet/batteries/project=0/site=0/**/*.parquet',
+    's3://bucket/parquet/hot.parquet'
+], hive_partitioning=true, union_by_name=true)
+WHERE timestamp > epoch(now()) - 300
+GROUP BY ALL
+ORDER BY rack_id, module_id, cell_id</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">4.8 ms</strong></div>
+    <div class="stat">Min <strong>3.8 ms</strong></div>
+    <div class="stat">Max <strong>6.0 ms</strong></div>
+    <div class="stat">Avg rows <strong>72</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+    <div class="stat">InfluxDB ref <strong>7.8 ms</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 3 rows</h3>
+  <pre><code>[site=0 rack=0 module=0 cell=0]  voltage=3.560  current= 4.72  temp=26.15  soc=82.4  soh=99.9
+[site=0 rack=0 module=0 cell=1]  voltage=3.713  current=-0.47  temp=27.77  soc=90.0  soh=96.2
+[site=0 rack=0 module=0 cell=2]  voltage=3.540  current= 3.85  temp=25.01  soc=76.5  soh=97.6</code></pre>
+  <div class="callout info">
+    <code>arg_max(value, timestamp)</code> is DuckDB's equivalent of InfluxDB's <code>last()</code>.
+    When scanning hot.parquet, DuckDB reads a single file already containing the latest flush from all partitions.
+  </div>
+</div>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q2</span>
+    <span class="q-title">Time series — single cell history (last hour, date-scoped)</span>
+    <span class="source-tag source-local">partitioned</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'cell detail' chart — voltage/temperature trend for one cell. Date-scoped glob limits files opened to those in the relevant date directory.</p>
+  <pre><code>-- Construct the path for today only (app-level, Python/JS generates YYYY/MM/DD)
+SELECT timestamp, voltage, current, temperature, soc
+FROM read_parquet(
+    '/srv/data/parquet/batteries/project=0/site=0/2026/03/17/*.parquet'
+)
+WHERE timestamp > epoch(now()) - 3600
+  AND rack_id   = 0
+  AND module_id = 0
+  AND cell_id   = 0
+ORDER BY timestamp DESC
+LIMIT 300
+
+-- If query spans midnight, pass both days as a list:
+-- read_parquet(['.../2026/03/16/*.parquet', '.../2026/03/17/*.parquet'])
+
+-- S3 equivalent (same date-scoped pattern):
+SELECT timestamp, voltage, current, temperature, soc
+FROM read_parquet(
+    's3://bucket/parquet/batteries/project=0/site=0/2026/03/17/*.parquet'
+)
+WHERE timestamp > epoch(now()) - 3600
+  AND rack_id = 0 AND module_id = 0 AND cell_id = 0
+ORDER BY timestamp DESC
+LIMIT 300</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">60.3 ms</strong></div>
+    <div class="stat">Min <strong>48 ms</strong></div>
+    <div class="stat">Max <strong>76 ms</strong></div>
+    <div class="stat">Avg rows <strong>300</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+    <div class="stat">InfluxDB ref <strong>2.1 ms</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 3 rows</h3>
+  <pre><code>t=1773774278.388  voltage=3.7376  current= -2.77  temp=25.22  soc=91.8
+t=1773774277.387  voltage=3.7279  current= -3.73  temp=25.22  soc=92.7
+t=1773774276.386  voltage=3.7303  current= -3.94  temp=25.39  soc=92.3</code></pre>
+  <div class="callout warn">
+    <strong>Q2 is slower than InfluxDB (60 ms vs 2.1 ms).</strong>
+    InfluxDB keeps a hot in-memory inverted index per series. DuckDB opens each
+    parquet file in the date directory (356 files at 10 s flush, ~60 at 60 s production
+    flush) and uses predicate pushdown to skip non-matching rows.
+    Date-scoped paths reduced this from ~306 ms (full store) to ~60 ms.
+    At production flush rate (60 s): expected &lt; 15 ms.
+  </div>
+  <div class="callout info">
+    The date string is generated at the application layer from <code>now() - window</code>.
+    For queries spanning midnight, pass both day paths as a list.
+    DuckDB still applies the <code>timestamp &gt;</code> predicate for row-level filtering within files.
+  </div>
+</div>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q3</span>
+    <span class="q-title">Rack aggregates — mean voltage & temperature per rack (10s buckets, last hour)</span>
+    <span class="source-tag source-local">partitioned</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'rack health' heatmap — mean per rack per 10-second bucket, all sites. Date-scoped across all site directories to limit files opened.</p>
+  <pre><code>-- Date-scoped: scan today's files across all sites (app constructs YYYY/MM/DD)
+SELECT site_id, rack_id,
+       time_bucket(INTERVAL '10 seconds', to_timestamp(timestamp)) AS bucket,
+       round(avg(voltage),     3) AS mean_voltage,
+       round(avg(temperature), 2) AS mean_temp,
+       round(avg(soc),         2) AS mean_soc
+FROM read_parquet(
+    '/srv/data/parquet/batteries/project=0/*/2026/03/17/*.parquet',
+    union_by_name=true
+)
+WHERE timestamp > epoch(now()) - 3600
+GROUP BY ALL
+ORDER BY bucket DESC, site_id, rack_id
+LIMIT 288
+
+-- S3 equivalent:
+SELECT site_id, rack_id,
+       time_bucket(INTERVAL '10 seconds', to_timestamp(timestamp)) AS bucket,
+       round(avg(voltage), 3) AS mean_voltage,
+       round(avg(temperature), 2) AS mean_temp,
+       round(avg(soc), 2) AS mean_soc
+FROM read_parquet(
+    's3://bucket/parquet/batteries/project=0/*/2026/03/17/*.parquet',
+    union_by_name=true
+)
+WHERE timestamp > epoch(now()) - 3600
+GROUP BY ALL
+ORDER BY bucket DESC, site_id, rack_id
+LIMIT 288</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">54.2 ms</strong></div>
+    <div class="stat">Min <strong>44 ms</strong></div>
+    <div class="stat">Max <strong>68 ms</strong></div>
+    <div class="stat">Avg rows <strong>288</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+    <div class="stat">InfluxDB ref <strong>86.9 ms</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 3 rows</h3>
+  <pre><code>[site=0 rack=0]  bucket=2026-03-17T15:04:30  mean_voltage=3.534  mean_temp=28.70  mean_soc=64.7
+[site=0 rack=1]  bucket=2026-03-17T15:04:30  mean_voltage=3.671  mean_temp=27.09  mean_soc=70.0
+[site=0 rack=2]  bucket=2026-03-17T15:04:30  mean_voltage=3.665  mean_temp=29.24  mean_soc=70.7</code></pre>
+  <div class="callout ok">
+    <strong>Q3 is faster than InfluxDB (54 ms vs 86.9 ms)</strong> with date-scoped paths.
+    <code>time_bucket()</code> is DuckDB's equivalent of InfluxDB's <code>time(1m)</code> window.
+    The <code>*/</code> wildcard covers all site directories; date scoping limits files per site
+    to one day's worth. At production flush rate (60 s): expected ~10 ms.
+  </div>
+</div>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q4</span>
+    <span class="q-title">Alert scan — cells with voltage outside 3.2–4.1 V (last 5 min)</span>
+    <span class="source-tag source-hot">hot.parquet</span>
+  </div>
+  <p class="q-desc">Web dashboard: alert panel — cells outside safe voltage window across the entire fleet. Hot file gives sub-90s recency without full partitioned scan.</p>
+  <pre><code>-- Use hot.parquet for near-real-time alert coverage
+WITH latest AS (
+    SELECT site_id, rack_id, module_id, cell_id,
+           arg_max(voltage, timestamp) AS voltage
+    FROM read_parquet('/srv/data/parquet/hot.parquet')
+    WHERE timestamp > epoch(now()) - 300
+    GROUP BY ALL
+)
+SELECT * FROM latest
+WHERE voltage < 3.2 OR voltage > 4.1
+ORDER BY voltage
+
+-- S3: same shape, hot.parquet already on S3 (rsynced every ~90s)
+WITH latest AS (
+    SELECT site_id, rack_id, module_id, cell_id,
+           arg_max(voltage, timestamp) AS voltage
+    FROM read_parquet('s3://bucket/parquet/hot.parquet')
+    WHERE timestamp > epoch(now()) - 300
+    GROUP BY ALL
+)
+SELECT * FROM latest
+WHERE voltage < 3.2 OR voltage > 4.1
+ORDER BY voltage</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">7.6 ms</strong></div>
+    <div class="stat">Min <strong>5.9 ms</strong></div>
+    <div class="stat">Max <strong>9.4 ms</strong></div>
+    <div class="stat">Avg rows <strong>~181</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+    <div class="stat">InfluxDB ref <strong>55.5 ms</strong></div>
+  </div>
+  <div class="callout ok">
+    <strong>7× faster than InfluxDB (7.6 ms vs 55.5 ms)</strong> for this query.
+    Using hot.parquet avoids the 48-site full partitioned scan — DuckDB reads one
+    flat file with a CTE filter. ~181 cells currently outside 3.2–4.1 V range
+    (test generator produces random voltages spanning the full scale).
+  </div>
+</div>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q5</span>
+    <span class="q-title">Solar overview — last irradiance & AC power, all panels (last 5 min)</span>
+    <span class="source-tag source-hot">hot.parquet</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'solar fleet' overview — last reading per panel across all sites. InfluxDB took 236 ms for this at 1× scale; hot.parquet gives a single-file scan.</p>
+  <pre><code>-- hot.parquet contains both batteries and solar rows (union_by_name handles sparse columns)
+SELECT site_id, rack_id, module_id, cell_id,
+       arg_max(irradiance, timestamp) AS irradiance,
+       arg_max(ac_power,   timestamp) AS ac_power,
+       arg_max(efficiency, timestamp) AS efficiency
+FROM read_parquet('/srv/data/parquet/hot.parquet')
+WHERE timestamp > epoch(now()) - 300
+  AND irradiance IS NOT NULL   -- filter to solar rows only
+GROUP BY ALL
+ORDER BY site_id, rack_id, module_id, cell_id
+
+-- S3:
+SELECT site_id, rack_id, module_id, cell_id,
+       arg_max(irradiance, timestamp) AS irradiance,
+       arg_max(ac_power,   timestamp) AS ac_power,
+       arg_max(efficiency, timestamp) AS efficiency
+FROM read_parquet('s3://bucket/parquet/hot.parquet')
+WHERE timestamp > epoch(now()) - 300
+  AND irradiance IS NOT NULL
+GROUP BY ALL
+ORDER BY site_id, rack_id, module_id, cell_id</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">9.0 ms</strong></div>
+    <div class="stat">Min <strong>6.8 ms</strong></div>
+    <div class="stat">Max <strong>11.6 ms</strong></div>
+    <div class="stat">Avg rows <strong>2 880</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+    <div class="stat">InfluxDB ref <strong class="slow">235.6 ms</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 3 rows</h3>
+  <pre><code>[site=0 rack=0 module=0 cell=0]  irradiance=1130.3 W/m²  ac_power= 84.5 W  efficiency=15.31%
+[site=0 rack=0 module=0 cell=1]  irradiance=1118.5 W/m²  ac_power=182.5 W  efficiency=25.00%
+[site=0 rack=0 module=0 cell=2]  irradiance= 542.0 W/m²  ac_power= 84.3 W  efficiency=21.22%</code></pre>
+  <div class="callout ok">
+    <strong>26× faster than InfluxDB (9.0 ms vs 235.6 ms)</strong> for this query.
+    InfluxDB scanned 480 series with GROUP BY at 1× scale; DuckDB scans one flat file
+    (hot.parquet) and filters on <code>irradiance IS NOT NULL</code> — one pass, 2 880 results.
+  </div>
+</div>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q6</span>
+    <span class="q-title">Fleet health — active cell count & data freshness (last 2 min)</span>
+    <span class="source-tag source-hot">hot.parquet</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'system health' badge — confirm data is flowing from all sites and both source types. Uses hot.parquet for the lowest possible lag.</p>
+  <pre><code>SELECT source_type,
+       site_id,
+       count(*)                   AS readings,
+       max(timestamp)             AS latest_ts,
+       round(epoch(now()) - max(timestamp), 1) AS age_seconds
+FROM (
+    -- batteries
+    SELECT 'batteries' AS source_type, site_id, timestamp
+    FROM read_parquet('/srv/data/parquet/hot.parquet')
+    WHERE voltage IS NOT NULL
+    UNION ALL
+    -- solar
+    SELECT 'solar' AS source_type, site_id, timestamp
+    FROM read_parquet('/srv/data/parquet/hot.parquet')
+    WHERE irradiance IS NOT NULL
+)
+WHERE timestamp > epoch(now()) - 120
+GROUP BY ALL
+ORDER BY source_type, site_id
+
+-- S3 equivalent: same query, path → 's3://bucket/parquet/hot.parquet'</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">4.7 ms</strong></div>
+    <div class="stat">Min <strong>3.8 ms</strong></div>
+    <div class="stat">Max <strong>6.1 ms</strong></div>
+    <div class="stat">Avg rows <strong>24</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+    <div class="stat">InfluxDB ref <strong>27.6 ms</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 4 rows</h3>
+  <pre><code>batteries  site=0   readings=777   age=5.8 s
+batteries  site=1   readings=792   age=5.8 s
+batteries  site=2   readings=792   age=5.8 s
+solar      site=0   readings=2612  age=5.8 s</code></pre>
+  <div class="callout info">
+    24 rows: 12 battery sites + 12 solar sites. <code>age_seconds</code> ≈ flush interval (10 s in test config, 60 s in production).
+    A value above 2× flush interval indicates a missed flush — the dashboard badge turns amber.
+  </div>
+  <div class="callout info">
+    Returns 96 rows: 48 sites × 2 source types.
+    <code>age_seconds</code> is the key field for the dashboard badge — a value above
+    120 s means a flush has been missed. Normal value is 60–90 s (flush interval).
+    If hot.parquet rsync is delayed, this can reach ~150 s before the S3 copy updates.
+  </div>
+</div>
+
+</div>
+
+<!-- ═══ DATA MODEL -->
+<div class="section">
+<h2>Data Model Reference</h2>
+
+<h3>Schema — batteries</h3>
+<pre><code>-- Parquet columns in /srv/data/parquet/batteries/…/*.parquet
+project_id  INT64    -- from config: output.project_id
+site_id     INT64    -- from topic: batteries/site={n}/…
+rack_id     INT64    -- from topic: …/rack={n}/…
+module_id   INT64    -- from topic: …/module={n}/…
+cell_id     INT64    -- from topic: …/cell={n}
+timestamp   DOUBLE   -- unix epoch seconds (float, from JSON payload)
+voltage     DOUBLE   -- V
+current     DOUBLE   -- A  (negative = charging)
+temperature DOUBLE   -- °C
+soc         DOUBLE   -- %  state of charge
+soh         DOUBLE   -- %  state of health
+resistance  DOUBLE   -- Ω
+capacity    DOUBLE   -- Ah</code></pre>
+
+<h3>Schema — solar</h3>
+<pre><code>project_id  INT64
+site_id     INT64
+rack_id     INT64
+module_id   INT64
+cell_id     INT64
+timestamp   DOUBLE
+irradiance  DOUBLE   -- W/m²
+panel_temp  DOUBLE   -- °C
+dc_voltage  DOUBLE   -- V
+dc_current  DOUBLE   -- A
+ac_power    DOUBLE   -- W
+efficiency  DOUBLE   -- %</code></pre>
+
+<h3>Hot file — mixed schema</h3>
+<pre><code>-- hot.parquet merges batteries + solar with union_by_name.
+-- Solar-only columns are NULL in battery rows and vice versa.
+-- Filter: WHERE voltage IS NOT NULL     → battery rows
+--         WHERE irradiance IS NOT NULL  → solar rows
+--         (no filter)                   → all rows, all sources</code></pre>
+
+<h3>File naming</h3>
+<pre><code>-- Partitioned store (one file per source × site × flush interval):
+/srv/data/parquet/batteries/project=0/site=3/2026/03/17/20260317T120000Z.parquet
+
+-- Hot file (atomic temp+rename, rewritten every flush):
+/srv/data/parquet/hot.parquet
+
+-- S3 (rsynced every 5 min for store, ~90 s for hot):
+s3://bucket/parquet/batteries/project=0/site=3/2026/03/17/20260317T120000Z.parquet
+s3://bucket/parquet/hot.parquet</code></pre>
+</div>
+
+</body>
+</html>

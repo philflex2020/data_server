@@ -1,0 +1,101 @@
+# FlashMQ bridge configuration
+#
+# Defines named topic groups and bridge connections.
+# Run gen_bridge_conf.py to generate the FlashMQ bridge config fragment:
+#
+#   python3 gen_bridge_conf.py bridge.yaml --output /etc/flashmq/bridge-conf.d/bridge.conf
+#   flashmq --reload-config
+#
+# FlashMQ picks up the output file via:
+#   include_dir /etc/flashmq/bridge-conf.d/
+# in flashmq.conf (see source/telegraf/flashmq.conf).
+
+# ---------------------------------------------------------------------------
+# Named topic groups
+#
+# Each group is a reusable set of MQTT topic filters.
+# Standard MQTT wildcards:  # (multi-level)  + (single-level)
+# ---------------------------------------------------------------------------
+
+groups:
+
+  batteries_all:
+    description: "All battery cell telemetry — every site, rack, module, cell"
+    topics:
+      - "batteries/#"
+
+  solar_all:
+    description: "All solar panel telemetry"
+    topics:
+      - "solar/#"
+
+  batteries_site0:
+    description: "Site 0 batteries only — for targeted partial bridging"
+    topics:
+      - "batteries/site=0/#"
+
+  batteries_site1:
+    description: "Site 1 batteries only"
+    topics:
+      - "batteries/site=1/#"
+
+  solar_site0:
+    description: "Site 0 solar only"
+    topics:
+      - "solar/site=0/#"
+
+  all_sources:
+    description: "Everything from all source types (full mirror)"
+    topics:
+      - "#"
+
+# ---------------------------------------------------------------------------
+# Bridge connections
+#
+# Each named connection becomes one bridge {} block in the FlashMQ config.
+# Multiple connections are supported (e.g. primary AWS + a monitoring system).
+#
+# Required fields:
+#   host          Remote FlashMQ hostname or IP
+#   port          Remote MQTT port (default 1883, TLS typically 8883)
+#   groups        List of group names (defined above) to bridge on this connection
+#
+# Optional fields:
+#   qos              Default QoS for all topics in this connection (default: 1)
+#   protocol_version mqtt3.1 | mqtt3.1.1 | mqtt5  (default: mqtt3.1.1)
+#   tls              off | on | unverified  (default: off)
+#   ca_file          Path to CA certificate file (required if tls: on)
+#   remote_username  Credentials for remote broker
+#   remote_password
+#   keepalive        Seconds between pings (default: 60)
+#   clientid_prefix  Prefix for auto-generated bridge client ID (default: fmqbridge)
+#   remote_clean_start  true | false — reset remote session on reconnect (default: true)
+# ---------------------------------------------------------------------------
+
+bridges:
+
+  aws_live:
+    description: "Forward live sensor data to AWS FlashMQ"
+    host: flashmq.aws.example.com
+    port: 1883
+    qos: 1
+    protocol_version: mqtt3.1.1
+    tls: off
+    # remote_username: bridge_user
+    # remote_password: bridge_pass
+    # ca_file: /etc/flashmq/certs/aws-ca.pem
+    # clientid_prefix: site0-bridge
+    groups:
+      - batteries_all
+      - solar_all
+
+  # Example: a second bridge to an internal monitoring system
+  # monitoring:
+  #   description: "Push alerts to on-site monitoring"
+  #   host: monitor.internal
+  #   port: 1883
+  #   qos: 0
+  #   protocol_version: mqtt3.1.1
+  #   tls: off
+  #   groups:
+  #     - batteries_site0

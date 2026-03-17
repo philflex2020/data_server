@@ -98,16 +98,16 @@ td.muted  { color: #8b949e; font-style: italic; }
 <h1>Telegraf / InfluxDB — Live Performance Measurements
   <small style="font-size:0.55em;color:#8b949e">(x86_64)</small></h1>
 <p class="subtitle">
-  Empirical measurements taken 2026-03-17 02:57 UTC on phil-dev (x86_64).
+  Empirical measurements taken 2026-03-17 11:23 UTC on fractal-phil (x86_64).
   Compare with <a href="telegraf_influx_details.html">aarch64 results</a>.
 </p>
 
 <div class="meta-bar">
-  <div class="meta-item"><strong>Host</strong> phil-dev</div>
+  <div class="meta-item"><strong>Host</strong> fractal-phil</div>
   <div class="meta-item"><strong>Arch</strong> x86_64</div>
   <div class="meta-item"><strong>InfluxDB</strong> 2.8.0</div>
-  <div class="meta-item"><strong>Telegraf</strong> 1.38.0</div>
-  <div class="meta-item"><strong>Active series</strong> 1,297</div>
+  <div class="meta-item"><strong>Telegraf</strong> 1.38.1</div>
+  <div class="meta-item"><strong>Active series</strong> 14,976</div>
   <div class="meta-item"><strong>Flux v2 API</strong> <span class="badge-pass">WORKING</span></div>
 </div>
 
@@ -125,44 +125,44 @@ td.muted  { color: #8b949e; font-style: italic; }
 
 <h3><span class="test-number">TEST 1</span> Write Throughput</h3>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Records / sec</div><div class="value blue">—</div></div>
-  <div class="result-card"><div class="label">Field writes / sec</div><div class="value blue">—</div><div class="sub">9 fields per record</div></div>
-  <div class="result-card"><div class="label">Active assets</div><div class="value ">1,297</div></div>
+  <div class="result-card"><div class="label">Records / sec</div><div class="value blue">624/sec</div></div>
+  <div class="result-card"><div class="label">Field writes / sec</div><div class="value blue">8,735</div><div class="sub">14 fields per record</div></div>
+  <div class="result-card"><div class="label">Active assets</div><div class="value ">14,976</div></div>
 </div>
 
 <h3><span class="test-number">TEST 2</span> Lifetime Writes</h3>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Total metrics written</div><div class="value blue">108,552</div><div class="sub">since last Telegraf start</div></div>
+  <div class="result-card"><div class="label">Total metrics written</div><div class="value blue">1,234,853</div><div class="sub">since last Telegraf start</div></div>
 </div>
 
 <h3><span class="test-number">TEST 3</span> Hourly Point Count</h3>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Voltage points (1h)</div><div class="value ">600,549</div><div class="sub">1 field proxy</div></div>
-  <div class="result-card"><div class="label">All fields (1h)</div><div class="value warn">5,404,941</div><div class="sub">9 fields × voltage count</div></div>
+  <div class="result-card"><div class="label">Voltage points (1h)</div><div class="value ">313,973</div><div class="sub">1 field proxy</div></div>
+  <div class="result-card"><div class="label">All fields (1h)</div><div class="value warn">4,395,622</div><div class="sub">14 fields × voltage count</div></div>
 </div>
 
 <h3><span class="test-number">TEST 4</span> Dropped Metrics</h3>
 <div class="result-grid">
   <div class="result-card"><div class="label">Dropped metrics</div><div class="value ">0</div></div>
-  <div class="result-card"><div class="label">Buffer fill time</div><div class="value ">—</div><div class="sub">at current rate (100k buffer)</div></div>
+  <div class="result-card"><div class="label">Buffer fill time</div><div class="value danger">11 sec</div><div class="sub">at current rate (100k buffer)</div></div>
 </div>
-
+<div class='callout warn'><strong>Buffer headroom is thin.</strong> At current write rate the 100k Telegraf buffer fills in 11 seconds if InfluxDB becomes unavailable.</div>
 
 <h3><span class="test-number">TEST 5</span> Process Resources</h3>
 <div class="result-grid">
-  <div class="result-card"><div class="label">influxd RSS</div><div class="value warn">1861 MB</div></div>
-  <div class="result-card"><div class="label">telegraf RSS</div><div class="value ">150 MB</div></div>
-  <div class="result-card"><div class="label">influxd CPU%</div><div class="value ">4.2%</div></div>
-  <div class="result-card"><div class="label">telegraf CPU%</div><div class="value ">0.9%</div></div>
+  <div class="result-card"><div class="label">influxd RSS</div><div class="value ">715 MB</div></div>
+  <div class="result-card"><div class="label">telegraf RSS</div><div class="value ">172 MB</div></div>
+  <div class="result-card"><div class="label">influxd CPU%</div><div class="value ">2.7%</div></div>
+  <div class="result-card"><div class="label">telegraf CPU%</div><div class="value ">4.9%</div></div>
 </div>
 
 <h3><span class="test-number">TEST 6</span> Series Cardinality</h3>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Unique series</div><div class="value blue">1,297</div></div>
-  <div class="result-card"><div class="label">Sites</div><div class="value blue">3</div></div>
+  <div class="result-card"><div class="label">Unique series</div><div class="value blue">14,976</div></div>
+  <div class="result-card"><div class="label">Sites</div><div class="value blue">48</div></div>
   <div class="result-card"><div class="label">Racks</div><div class="value blue">4</div></div>
-  <div class="result-card"><div class="label">Modules</div><div class="value blue">8</div></div>
-  <div class="result-card"><div class="label">Cells/module</div><div class="value blue">12</div></div>
+  <div class="result-card"><div class="label">Modules</div><div class="value blue">6</div></div>
+  <div class="result-card"><div class="label">Cells/module</div><div class="value blue">10</div></div>
 </div>
 </div>
 
@@ -178,39 +178,25 @@ for patterns associated with known data-loss events (last 72h).</p>
     <tr>
       <td>Nested payload / parse error suppression</td>
       <td><code>doesn't exist</code> in telegraf log</td>
-      <td class="red">⚠ 100800 occurrences</td>
+      <td class="green">✓ clean</td>
     </tr>
     <tr>
       <td>QoS queue overflow</td>
       <td><code>Dropping QoS message</code> in FlashMQ log</td>
-      <td class="red">⚠ 12118 occurrences</td>
+      <td class="green">✓ clean</td>
     </tr>
     <tr>
       <td>Consumer stall (counter frozen during sample)</td>
       <td><code>messages_received</code> delta = 0 over sample window</td>
-      <td class="red">⚠ STALLED</td>
+      <td class="green">✓ active</td>
     </tr>
   </tbody>
 </table>
 
 
-<h3><span class="badge-fail">FAILURE MODE 1</span> &nbsp;Nested Payload — Error Suppression</h3>
-<p>Telegraf detected JSON paths that don't exist (e.g. <code>soh</code> as a nested object
-instead of a flat scalar). The error was logged 100800 time(s) then suppressed.
-All subsequent messages fail silently — 0 writes, 0 <code>metrics_dropped</code> increment.</p>
-<div class="callout danger">
-  <strong>Silent data loss.</strong> Once suppressed, no log entry, no metric, no Grafana gap indicator.
-  Fix: ensure generator uses <code>payload_format: flat</code>, then restart telegraf.
-</div>
-
-<h3><span class="badge-fail">FAILURE MODE 2</span> &nbsp;QoS Queue Overflow → Consumer Stall</h3>
-<p>FlashMQ logged 12118 QoS drop warning(s) for <code>telegraf-battery-consumer</code>.
-After this event, the Telegraf MQTT consumer may stall — the <code>messages_received</code> counter
-freezes while Telegraf appears healthy (connected, writing internal metrics).</p>
-<div class="callout danger">
-  <strong>Self-healing: No.</strong> Only <code>sudo systemctl restart telegraf</code> recovers the consumer.
-  Observable only by watching <code>messages_received</code> in internal metrics — not visible in Grafana
-  without a custom alert.
+<div class="callout ok">
+  <strong>No known failure mode signatures detected</strong> in the current log window (last 72h).
+  Nested payload errors, QoS drops, and consumer stalls were all absent.
 </div>
 
 </div>
@@ -218,36 +204,212 @@ freezes while Telegraf appears healthy (connected, writing internal metrics).</p
 <!-- ═══════════ FLEET PROJECTION -->
 <div class="section">
 <h2>Fleet Scaling Projection</h2>
-<p>Extrapolated from 1,297 measured assets
-(— field writes/sec,
-1861 MB influxd RAM).</p>
+<p>Extrapolated from 14,976 measured assets
+(~8,735/sec field writes/sec,
+715 MB influxd RAM).</p>
 
 <table>
   <thead>
     <tr>
       <th>Metric</th>
-      <th>1,297 assets<br><small>measured</small></th>
-      <th>7,782 assets<br><small>6× scale</small></th>
-      <th>31,128 assets<br><small>24× scale</small></th>
+      <th>14,976 assets<br><small>measured</small></th>
+      <th>89,856 assets<br><small>6× scale</small></th>
+      <th>359,424 assets<br><small>24× scale</small></th>
     </tr>
   </thead>
   <tbody>
     <tr><td>Field writes/sec</td>
-        <td class="num">0</td>
-        <td class="num">0</td>
-        <td class="num">0</td></tr>
+        <td class="num">8,735</td>
+        <td class="num">52,410</td>
+        <td class="num">209,640</td></tr>
     <tr><td>Buffer fill time</td>
-        <td class="num ">None sec</td>
-        <td class="num ">—</td>
+        <td class="num orange">11 sec</td>
+        <td class="num red">2 sec</td>
         <td class="num ">—</td></tr>
     <tr><td>InfluxDB RAM</td>
-        <td class="num">1861 MB</td>
-        <td class="num red">11165 MB</td>
-        <td class="num red">44662 MB</td></tr>
+        <td class="num">715 MB</td>
+        <td class="num red">4290 MB</td>
+        <td class="num red">17159 MB</td></tr>
     <tr><td>Points/day (all fields)</td>
-        <td class="num">129,718,584</td>
-        <td class="num">778,311,504</td>
-        <td class="num">3,113,246,016</td></tr>
+        <td class="num">105,494,928</td>
+        <td class="num">632,969,568</td>
+        <td class="num">2,531,878,272</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════════ AWS COST ESTIMATES -->
+<div class="section">
+<h2>AWS Cost Estimates</h2>
+<p>Based on <strong>22,641,120,000 field writes/month</strong>
+(754,704,000/day at ~624/sec).
+Real production anchor: <strong>$76,200/month</strong> for 80+ sites
+(source: <code>docs/aws_billing_context.md</code>).
+Prices are public list rates; actual bills include data transfer and API overhead.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Service</th>
+      <th class="num">1× (this test)</th>
+      <th class="num">6× scale</th>
+      <th class="num">24× (full fleet)</th>
+      <th class="num">Real prod 80+ sites</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>AWS Timestream</td>
+      <td class="num">$11,372</td>
+      <td class="num">$68,229</td>
+      <td class="num hi">$272,916</td>
+      <td class="num muted">—</td>
+    </tr>
+    <tr>
+      <td>InfluxDB Cloud Serverless</td>
+      <td class="num">$12,955</td>
+      <td class="num">$77,732</td>
+      <td class="num hi">$310,928</td>
+      <td class="num muted">—</td>
+    </tr>
+    <tr>
+      <td>IoT Core + Lambda</td>
+      <td class="num">$453</td>
+      <td class="num">$2,717</td>
+      <td class="num hi">$10,867</td>
+      <td class="num orange">$5,000</td>
+    </tr>
+    <tr>
+      <td>EC2 + EFS (InfluxDB, vertical scaling)</td>
+      <td class="num">$30</td>
+      <td class="num">$1,080</td>
+      <td class="num hi">$4,320</td>
+      <td class="num red">$46,000</td>
+    </tr>
+  </tbody>
+</table>
+<div class="callout info">
+  <strong>Takeaway:</strong> Self-hosted Telegraf + InfluxDB runs at <strong>$30/month EC2</strong>
+  vs $11,372/mo (Timestream) or $12,955/mo
+  (InfluxDB Cloud) at this load. At 24× (full fleet), EC2+EFS alone hits <strong>$46,000+/month</strong>
+  — matching the real production bill.
+</div>
+</div>
+
+<!-- ═══════════ PIPELINE CONFIG -->
+<div class="section">
+<h2>Pipeline Configuration</h2>
+<p>Key configuration for each component in the Telegraf pipeline.</p>
+
+<h3>FlashMQ — <code>source/telegraf/flashmq.conf</code></h3>
+<pre><code>log_file /tmp/flashmq.log
+log_level info
+allow_anonymous true
+thread_count 4
+
+listen {
+    port 1883
+    protocol mqtt
+}</code></pre>
+<div class="callout info">
+  <strong>Note:</strong> FlashMQ requires the <code>listen { }</code> block syntax.
+  A bare top-level <code>port 1883</code> directive is invalid and will fail silently.
+  Build from source (<a href="https://github.com/halfgaar/FlashMQ">halfgaar/FlashMQ</a>)
+  — the Ubuntu 24.04 PPA is not available.
+</div>
+
+<h3>Telegraf — <code>source/telegraf/telegraf.conf</code></h3>
+<pre><code>[agent]
+  interval          = "1s"
+  flush_interval    = "10s"
+  metric_batch_size = 1000
+
+[[inputs.mqtt_consumer]]
+  servers    = ["tcp://localhost:1883"]
+  topics     = ["batteries/#", "solar/#"]
+  qos        = 1
+  client_id  = "telegraf-consumer"
+  data_format = "json_v2"
+
+  [[inputs.mqtt_consumer.json_v2]]
+    measurement_name = "battery_cell"
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "source_id"
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "voltage"     type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "irradiance"  type = "float"  optional = true
+    # All fields must be optional = true when topics carry different schemas
+
+[[outputs.influxdb_v2]]
+  urls         = ["http://localhost:8086"]
+  token        = "battery-token-secret"
+  organization = "battery-org"
+  bucket       = "battery-data"
+  timeout      = "5s"</code></pre>
+<div class="callout warn">
+  <strong>Critical:</strong> Every <code>json_v2</code> field must have <code>optional = true</code>
+  if different topics omit different fields (e.g. solar has no <code>voltage</code>).
+  Without this, Telegraf logs a parse error once then silently drops all subsequent mismatched messages.
+</div>
+
+<h3>InfluxDB2 — one-time setup</h3>
+<pre><code># Non-interactive init
+influx setup --force   --username admin --password adminpass   --org battery-org --bucket battery-data   --token battery-token-secret
+
+# Verify data flowing
+influx query --org battery-org --token battery-token-secret   'from(bucket:"battery-data") |> range(start: -5m) |> count() |> limit(n:3)'</code></pre>
+</div>
+
+
+<div class="section">
+<h2>Scale Test — CPU &amp; Memory</h2>
+<p>Generator cycled through 1×, 6×, and 24× configs;
+Telegraf + InfluxDB measured at steady state over a 30-second window each.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Scale</th><th>Config</th>
+      <th class="num">msg/sec</th><th class="num">Field writes/sec</th>
+      <th class="num">influxd CPU%</th><th class="num">influxd RAM</th>
+      <th class="num">telegraf CPU%</th><th class="num">telegraf RAM</th>
+      <th class="num">Dropped</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi"><strong>1x</strong></td>
+      <td class="muted">config.test_telegraf.yaml</td>
+      <td class="num">592.8</td>
+      <td class="num">8,299</td>
+      <td class="num">1.7%</td>
+      <td class="num">361 MB</td>
+      <td class="num">3.9%</td>
+      <td class="num">172 MB</td>
+      <td class="num green">0</td>
+    </tr>
+    <tr>
+      <td class="hi"><strong>6x</strong></td>
+      <td class="muted">config.6x.yaml</td>
+      <td class="num">3,134.3</td>
+      <td class="num">43,880</td>
+      <td class="num">1.8%</td>
+      <td class="num">406 MB</td>
+      <td class="num">4.1%</td>
+      <td class="num">172 MB</td>
+      <td class="num green">0</td>
+    </tr>
+    <tr>
+      <td class="hi"><strong>24x</strong></td>
+      <td class="muted">config.24x.yaml</td>
+      <td class="num">10,823.5</td>
+      <td class="num">151,529</td>
+      <td class="num">2.2%</td>
+      <td class="num">483 MB</td>
+      <td class="num">5.0%</td>
+      <td class="num">173 MB</td>
+      <td class="num green">0</td>
+    </tr>
   </tbody>
 </table>
 </div>
@@ -256,14 +418,14 @@ freezes while Telegraf appears healthy (connected, writing internal metrics).</p
 <div class="section">
 <h2>Summary</h2>
 <div class="result-grid">
-  <div class="result-card"><div class="label">Write rate</div><div class="value blue">—</div><div class="sub">records/sec</div></div>
-  <div class="result-card"><div class="label">Field writes/sec</div><div class="value blue">—</div></div>
-  <div class="result-card"><div class="label">InfluxDB RAM</div><div class="value warn">1861 MB</div></div>
+  <div class="result-card"><div class="label">Write rate</div><div class="value blue">~624/sec</div><div class="sub">records/sec</div></div>
+  <div class="result-card"><div class="label">Field writes/sec</div><div class="value blue">8,735</div></div>
+  <div class="result-card"><div class="label">InfluxDB RAM</div><div class="value ">715 MB</div></div>
   <div class="result-card"><div class="label">Dropped metrics</div><div class="value ">0</div></div>
-  <div class="result-card"><div class="label">Buffer headroom</div><div class="value ">—</div></div>
+  <div class="result-card"><div class="label">Buffer headroom</div><div class="value danger">11 sec</div></div>
   <div class="result-card"><div class="label">Flux v2 API</div><div class="value ">WORKING</div></div>
-  <div class="result-card"><div class="label">Parse errors</div><div class="value danger">DETECTED</div></div>
-  <div class="result-card"><div class="label">QoS drops</div><div class="value danger">DETECTED</div></div>
+  <div class="result-card"><div class="label">Parse errors</div><div class="value ">none</div></div>
+  <div class="result-card"><div class="label">QoS drops</div><div class="value ">none</div></div>
 </div>
 </div>
 

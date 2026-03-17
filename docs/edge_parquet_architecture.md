@@ -3,9 +3,14 @@
 ## Overview
 
 Move parquet file generation to the site controller (edge) rather than the cloud.
-Each site runs the full NATS pipeline locally, generates compressed parquet files,
-and uploads them directly to S3. AWS becomes a thin query layer rather than a
-message processing pipeline.
+Each site runs `writer.cpp` locally, generates compressed parquet files, and rsyncs
+them directly to S3. AWS becomes a thin query layer.
+
+> **Implementation update:** the original design used NATS JetStream + bridge.py +
+> writer.py.  These have been replaced by `writer.cpp` (C++17, Arrow, simdjson) which
+> subscribes directly to FlashMQ and writes parquet locally.  The NATS Leaf Node
+> forwarding role is now handled by the FlashMQ bridge.  Cost figures and resilience
+> analysis below remain valid — the implementation is simpler (fewer processes).
 
 ---
 
@@ -15,42 +20,39 @@ message processing pipeline.
 SITE CONTROLLER (on-premise / edge)
 ┌─────────────────────────────────────────────────────────┐
 │                                                         │
-│  FlashMQ (MQTT broker, QoS 1)                           │
-│       │                                                 │
-│       ▼                                                 │
-│  NATS Bridge                                            │
-│       │                                                 │
-│       ▼                                                 │
-│  NATS JetStream (WAL on disk)                           │
+│  FlashMQ :1883 (MQTT broker, QoS-1, persistent session) │
 │       │                          │                      │
-│       ▼                          │ Leaf Node            │
-│  Parquet Writer                  │ (real-time forward)  │
+│       ▼                          │ FlashMQ bridge       │
+│  writer.cpp                      │ (real-time forward)  │
+│  (C++17 · Arrow · simdjson)      │                      │
 │       │                          │                      │
 │       ▼                          ▼                      │
-│  S3 upload (every 60s) ─────────────────────────────►  │
+│  /srv/data/parquet/          AWS FlashMQ                │
+│  rsync → S3 (every 15 min)                              │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
                                    │
                          ┌─────────┘
-                         │ NATS Leaf Node (TLS, single TCP conn)
-                         │ every message forwarded in real time
+                         │ FlashMQ bridge (TLS, single TCP conn)
+                         │ selected topic groups forwarded live
                          ▼
 AWS
 ┌─────────────────────────────────────────────────────────┐
 │                                                         │
-│  NATS Server + JetStream (short retention, e.g. 2h)     │
+│  FlashMQ (AWS) :1883                                    │
 │       │                                                 │
-│       ├──► Subscriber API (in-memory buffer, live queries)
+│       ▼                                                 │
+│  writer.cpp (AWS, current_state mode)                   │
 │       │                                                 │
-│       └──► Gap-fill Parquet Writer (backup, see below)  │
-│                          │                              │
-│                          ▼                              │
-│  S3  ◄────────────────────────────────────────────────  │
+│       ▼                                                 │
+│  current_state.parquet  (local · no rsync lag)          │
+│                                                         │
+│  S3  ◄── rsync from site every 15 min                   │
 │   │                                                     │
-│   └──► Subscriber API (history queries)                 │
+│   └──► DuckDB (S3 history + current_state.parquet)      │
 │                          │                              │
 │                          ▼                              │
-│  Monitor / Viewer (browser)                             │
+│  Subscriber API / Monitor / Viewer (browser)            │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -61,65 +63,52 @@ AWS
 
 ### Edge (site controller)
 
-The full pipeline already proven on spark-22b6 runs locally on each site:
+Each site runs the writer.cpp pipeline locally:
 
-- **FlashMQ** — unchanged, receives MQTT from battery/solar/wind/grid devices
-- **NATS Bridge** — bridges MQTT topics to NATS JetStream subjects
-- **NATS JetStream** — local buffer (1–2 hour retention), provides replay on restart
-- **Parquet Writer** — flushes to local disk every 60 seconds, then uploads to S3
-- **NATS Leaf Node** — forwards live messages to the AWS NATS server in real time
+- **FlashMQ :1883** — receives MQTT from battery/solar/wind/grid devices (QoS-1,
+  persistent session — queues messages during writer downtime)
+- **writer.cpp** — subscribes to FlashMQ, parses JSON, buffers per (source, site),
+  flushes to local parquet every 15 min; also writes `current_state.parquet` if configured
+- **FlashMQ bridge** — forwards selected topic groups to AWS FlashMQ over a single
+  outbound TLS connection (replaces NATS Leaf Node)
+- **rsync cron** — rsyncs `/srv/data/parquet/` to S3 every 15 min (can be extended
+  further once AWS writer is live and `current_state.parquet` covers the gap)
 
 The site controller continues operating fully offline if the WAN link drops.
-Parquet files queue locally and upload when connectivity resumes — no data loss.
+Parquet files accumulate locally and rsync when connectivity resumes — no data loss.
 
 ### Cloud (AWS)
 
-AWS becomes a thin read layer with a built-in gap-fill safety net:
-
-- **NATS Server + JetStream** — receives live messages via Leaf Node from every site.
-  Short retention (2 hours) is enough. Fills the Subscriber API in-memory buffer for
-  fast recent-history queries
-- **Gap-fill Parquet Writer** — a second parquet writer runs on AWS consuming from
-  AWS NATS JetStream. It only writes a parquet file for a time window if the site
-  has not already uploaded one (detected by checking S3 key existence before writing).
-  Under normal operation it writes nothing — it activates automatically on site
-  power loss or WAN outage
-- **Subscriber API** — serves history queries from S3 parquet, recent queries from
-  the live buffer. Identical code to the current implementation
-- **S3** — receives parquet files from both the site (primary) and the gap-fill writer
-  (backup). No duplicate files under normal operation
+- **FlashMQ (AWS) :1883** — receives bridge from site FlashMQ
+- **writer.cpp (AWS, current_state mode)** — subscribes to AWS FlashMQ, writes
+  `current_state.parquet` locally (one row per sensor, always latest reading).
+  Covers the gap between S3 rsync cycles with no rsync lag of its own
+- **S3** — receives rsynced parquet from the site every 15 min
+- **DuckDB** — queries S3 (historical) + local `current_state.parquet` (current state)
+- **Subscriber API** — serves history and current-state queries
 
 ---
 
-## NATS Leaf Nodes
+## FlashMQ Bridge (replaces NATS Leaf Node)
 
-NATS has built-in support for leaf node connections. A site NATS server connects
-outbound to the AWS NATS server over a single TLS connection and forwards subjects
-matching a configured filter (e.g. `batteries.>`).
+FlashMQ supports outbound MQTT bridges. The site FlashMQ connects outbound to the
+AWS FlashMQ over a single TLS connection and forwards selected topic groups.
 
-No code changes required — leaf node is configured in `nats-server.conf`:
+Configured in `source/bridge/bridge.yaml` — regenerate and reload live:
 
-```
-# Site nats-server.conf
-leafnodes {
-  remotes [
-    {
-      url: "nats://aws-nats.example.com:7422"
-      credentials: "/etc/nats/site.creds"
-      account: "BATTERY_DATA"
-    }
-  ]
-}
+```bash
+python3 source/bridge/gen_bridge_conf.py bridge.yaml \
+        --output /etc/flashmq/bridge-conf.d/bridge.conf
+flashmq --reload-config
 ```
 
-The AWS NATS server receives messages from all sites on the same subject space,
-exactly as if they were published locally. The Subscriber API sees no difference.
+No inbound firewall rules needed on the site — the bridge dials out.
 
 ---
 
 ## Data Flow Comparison
 
-### Current architecture (cloud pipeline)
+### Current architecture (cloud pipeline — being replaced)
 
 ```
 Site MQTT → [WAN] → AWS IoT Core → Lambda → InfluxDB
@@ -127,15 +116,15 @@ Site MQTT → [WAN] → AWS IoT Core → Lambda → InfluxDB
                   = ~700 GB/day transfer per site
 ```
 
-### Edge parquet architecture
+### Edge parquet architecture (current implementation)
 
 ```
-Site MQTT → Local NATS → Parquet Writer → [WAN] → S3
-                         60s flush × ~12 MB = ~17 GB/day
-                         (same data, 40× less transfer)
+Site MQTT → FlashMQ → writer.cpp → [rsync, 15 min] → S3
+                      15 min flush × ~12 MB = ~17 GB/day
+                      (same data, 40× less transfer)
 
-Site NATS → [Leaf Node, single TCP connection] → AWS NATS
-                         live messages only, no persistence cost
+Site FlashMQ → [bridge, single TCP connection] → AWS FlashMQ
+                      live messages only → writer.cpp (AWS) → current_state.parquet
 ```
 
 ---
@@ -259,8 +248,9 @@ The edge architecture is a pure extension of the current proof-of-concept:
 
 | File | Purpose |
 |------|---------|
-| `source/parquet_writer/writer.py` | Parquet writer — runs unchanged on edge |
-| `source/nats_bridge/bridge.py` | NATS bridge — runs unchanged on edge |
-| `subscriber/api/server.py` | Subscriber API — runs on AWS, unchanged |
-| `source/parquet_writer/config.yaml` | Writer config — change `endpoint_url` to real S3 |
-| `subscriber/api/config.yaml` | Subscriber config — change `endpoint_url` to real S3 |
+| `source/parquet_writer_cpp/writer.cpp` | C++ parquet writer — runs on edge and AWS |
+| `source/parquet_writer_cpp/Makefile` | Build with `make` |
+| `source/parquet_writer_cpp/config.yaml` | Writer config — set `flush_interval_seconds`, `current_state_path` |
+| `source/bridge/bridge.yaml` | FlashMQ bridge config — topic group selection |
+| `source/bridge/gen_bridge_conf.py` | Generates FlashMQ bridge conf from bridge.yaml |
+| `subscriber/api/server.py` | Subscriber API — runs on AWS, queries S3 + current_state.parquet |

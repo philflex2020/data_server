@@ -288,6 +288,21 @@ pre {
   requirements, and benchmark query response times against the running stack.
 </p>
 
+<div style="background:#0d2d1a;border-left:3px solid #3fb950;border-radius:6px;padding:14px 18px;margin-bottom:28px;font-size:0.87em;color:#7fba84;line-height:1.6;">
+  <strong>Architecture update — 2026-03-17.</strong>
+  The NATS JetStream / MinIO pipeline described in this study has been replaced by
+  <code>writer.cpp</code> (FlashMQ → C++ writer → local parquet → rsync → S3).
+  The three-tier model remains valid; the implementation has changed:<br><br>
+  Tier 1 (real-time) — FlashMQ bridge → Subscriber API push.<br>
+  Tier 2 (current-state) — <code>current_state.parquet</code> written locally on AWS by writer.cpp
+  in current_state mode; one row per sensor, updated every flush (~60 s), no rsync lag.<br>
+  Tier 3 (long-term) — S3 parquet rsynced from host every 15 min; queried via DuckDB
+  with date-scoped glob paths.<br><br>
+  Benchmark results: see
+  <a href="nats_query_x86.html">DuckDB query reference</a> and
+  <a href="parquet_writer_cpp.html">C++ writer details</a>.
+</div>
+
 <!-- ── Section 1: What to research ── -->
 <h2>What to Research</h2>
 <div class="card deliverable">

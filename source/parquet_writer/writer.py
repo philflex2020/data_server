@@ -33,7 +33,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
 from botocore.exceptions import ClientError
-from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, RetentionPolicy, StorageType, StreamConfig
+import nats.js.errors
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -191,7 +192,23 @@ async def run(cfg: dict) -> None:
     js = nc.jetstream()
     log.info("Connected to NATS at %s", nats_url)
 
-    # Retry until the stream exists (created by nats_bridge on its startup)
+    # Create stream if it doesn't exist yet
+    stream_subjects = cfg["nats"].get("stream_subjects", ["batteries.>", "solar.>", "wind.>", "localgen.>"])
+    max_bytes = int(cfg["nats"].get("max_bytes", 8 * 1024 ** 3))
+    try:
+        await js.stream_info(stream_name)
+        log.info("Stream %s already exists", stream_name)
+    except nats.js.errors.NotFoundError:
+        await js.add_stream(StreamConfig(
+            name      = stream_name,
+            subjects  = stream_subjects,
+            storage   = StorageType.FILE,
+            retention = RetentionPolicy.LIMITS,
+            max_bytes = max_bytes,
+        ))
+        log.info("Created stream %s  max_bytes=%dGB  subjects=%s",
+                 stream_name, max_bytes // 1024 ** 3, stream_subjects)
+
     while True:
         try:
             sub = await js.pull_subscribe(

@@ -1,5 +1,112 @@
 # Deploying to AWS (EC2 + S3)
 
+## Current deployment — writer.cpp (AWS writer mode)
+
+The current AWS deployment runs `writer.cpp` in current_state mode alongside the
+Subscriber API.  NATS and MinIO are no longer needed.
+
+**Components on AWS EC2:**
+
+- **`writer.cpp`** — subscribes to the local AWS FlashMQ (which receives the bridge
+  from the host), writes `current_state.parquet` (one row per sensor, always latest
+  reading) to local disk. No NATS, no S3 writes from this process.
+- **`subscriber/api/server.py`** — queries S3 (historical parquet rsynced from host)
+  and reads `current_state.parquet` (local, no rsync lag) for current-state queries.
+
+**Data flow:**
+```
+Host writer.cpp → /srv/data/parquet/ ──rsync──► S3 (every 15 min)
+                                                      │
+Host FlashMQ ──bridge──► AWS FlashMQ                 │
+                              │                       │
+                         writer.cpp (AWS)             │
+                              │                       │
+                         current_state.parquet         │
+                         (local, no rsync lag)        │
+                              │                       │
+                         DuckDB ◄─────────────────────┘
+```
+
+### AWS writer config (`config.yaml`)
+
+```yaml
+mqtt:
+  host: localhost       # AWS FlashMQ receiving the bridge
+  port: 1883
+  client_id: parquet-writer-aws
+  topic: "#"
+  qos: 1
+
+output:
+  base_path: /data/parquet-aws
+  current_state_path: /data/parquet-aws/current_state.parquet
+  hot_file_path: ""                   # not needed — current_state covers the gap
+  flush_interval_seconds: 60
+```
+
+### Build and install on EC2
+
+```bash
+# Install Arrow + dependencies (Ubuntu 24.04)
+sudo apt install -y libmosquitto-dev libyaml-cpp-dev libsimdjson-dev \
+    libparquet-dev libarrow-dev pkg-config g++
+
+git clone git@github.com:philflex2020/data_server.git
+cd data_server/source/parquet_writer_cpp
+make
+
+mkdir -p /data/parquet-aws
+./parquet_writer --config config.yaml
+```
+
+### Systemd service
+
+```ini
+[Unit]
+Description=Parquet Writer (AWS current_state mode)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/data_server/source/parquet_writer_cpp
+ExecStart=/home/ubuntu/data_server/source/parquet_writer_cpp/parquet_writer --config config.yaml
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=parquet-writer
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Security group rules (AWS)
+
+| Port | Protocol | Source       | Purpose                    |
+|------|----------|--------------|----------------------------|
+| 8767 | TCP      | 0.0.0.0/0    | Subscriber WebSocket       |
+| 8768 | TCP      | 0.0.0.0/0    | Flux-compat HTTP API       |
+| 1883 | TCP      | host only    | FlashMQ (bridge inbound)   |
+| 22   | TCP      | your IP      | SSH                        |
+
+### Checklist
+
+- [ ] EC2 Ubuntu 24.04 launched
+- [ ] Arrow + dependencies installed (`make deps` in parquet_writer_cpp/)
+- [ ] writer.cpp built (`make`)
+- [ ] AWS FlashMQ running and bridge configured from host
+- [ ] `config.yaml` updated: `current_state_path` set, `hot_file_path` empty
+- [ ] writer.cpp systemd service enabled and started
+- [ ] S3 bucket accessible from EC2 (instance role or IAM keys)
+- [ ] Subscriber API config updated to read `current_state.parquet` locally
+
+---
+
+## Legacy deployment — Python writer.py + NATS (superseded)
+
+> **Superseded.** The following describes the old `NATS JetStream → writer.py → MinIO`
+> deployment.  Retained for reference only.  New deployments should use writer.cpp above.
+
 The two Python programs that need AWS infrastructure are:
 
 - **`source/parquet_writer/writer.py`** — consumes from NATS JetStream, writes Parquet to S3

@@ -2,34 +2,21 @@ websocket:
   host: 0.0.0.0
   port: 8761
 
-# Start order: broker → NATS → bridge → writers → subscribers
+# Start order: NATS (with native MQTT on 1883) → writers → subscribers → generator
 # minio and aws_server run on spark-22b6 (see manager/config.spark.yaml)
 order:
-  - mosquitto
   - nats
-  - nats_bridge
-  - generator
   - parquet_writer
   - subscriber_api
+  - generator
 
 components:
-
-  mosquitto:
-    label: "MQTT Broker (Mosquitto)"
-    cmd: ["/usr/sbin/mosquitto", "-p", "1884", "-v"]
-    cwd: "."
-    ports: [1884]
 
   nats:
     label: "NATS JetStream"
     cmd: ["nats-server", "-c", "nats-server.conf"]
     cwd: "manager"
     ports: [4222]
-
-  nats_bridge:
-    label: "MQTT → NATS Bridge"
-    cmd: [".venv/bin/python","bridge.py", "--config", "config.yaml"]
-    cwd: "source/nats_bridge"
 
   generator:
     label: "Data Generator"

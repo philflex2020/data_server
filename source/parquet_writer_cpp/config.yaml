@@ -1,0 +1,43 @@
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer
+  topic: "#"
+  qos: 1
+
+  # Maps topic kv key → row column name (all stored as int64).
+  # Omit to use the defaults below. Add or rename keys for other sensor topologies.
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+
+  # Which column (from topic_kv_map values) to use as the buffer partition key.
+  # Must match one of the values above and appear in the partitions path below.
+  partition_field: site_id
+
+output:
+  base_path: /srv/data/parquet
+  project_id: 0
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy          # snappy | zstd | gzip | none
+  flush_interval_seconds: 60
+  max_messages_per_part: 50000
+
+  # Current-state file — one row per unique sensor, always the latest reading.
+  # Intended for the AWS writer instance: writer.cpp subscribes to the FlashMQ
+  # bridge on AWS and writes this file locally so DuckDB on AWS has sub-flush-
+  # interval current state without any rsync lag.  Leave empty to disable.
+  current_state_path: ""
+
+  # Rolling hot file — flat parquet rewritten on every flush.
+  # Rsynced to S3 on a short cron (every 60-90s) to cover the gap between
+  # partitioned-file rsyncs for DuckDB near-real-time queries.
+  # Leave empty to disable.  Not recommended on memory-constrained targets.
+  hot_file_path: /srv/data/parquet/hot.parquet

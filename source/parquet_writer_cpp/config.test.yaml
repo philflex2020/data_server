@@ -1,0 +1,32 @@
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer-test
+  topic: "#"
+  qos: 1
+
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+
+  partition_field: site_id
+
+output:
+  base_path: /home/phil/data/parquet
+  project_id: 0
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 10        # short for testing — get data quickly
+  max_messages_per_part: 50000
+
+  hot_file_path: /home/phil/data/parquet/hot.parquet
+
+  # current_state: one row per sensor, for AWS writer mode
+  current_state_path: /home/phil/data/parquet/current_state.parquet

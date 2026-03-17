@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfluxDB Query Performance — Web Client (x86_64)</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1200px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num  { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.fast { color: #3fb950; }
+td.slow { color: #f0883e; font-weight: 700; }
+td.err  { color: #f85149; font-weight: 700; }
+td.hi   { color: #e6edf3; font-weight: 600; }
+td.muted { color: #8b949e; font-style: italic; }
+.q-card {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 20px 24px; margin-bottom: 28px;
+}
+.q-id {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.72em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-right: 8px; vertical-align: middle; letter-spacing: 0.05em;
+}
+.q-title { color: #e6edf3; font-size: 1.0em; font-weight: 600; vertical-align: middle; }
+.q-desc  { color: #8b949e; font-size: 0.84em; margin: 8px 0 14px; }
+.stat-row { display: flex; gap: 20px; flex-wrap: wrap; margin: 12px 0; }
+.stat { font-size: 0.82em; color: #8b949e; }
+.stat strong { color: #58a6ff; font-size: 1.1em; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0; font-size: 0.85em;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.callout.err  { background: #2d0e0e; border-left: 3px solid #f85149; color: #e38181; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+.section { margin-bottom: 48px; }</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="telegraf_influx_details_x86.html">Telegraf details</a>
+  <a href="subscriber.html">Subscriber</a>
+</div>
+
+<h1>InfluxDB — Simulated Web Client Queries</h1>
+<p class="subtitle">
+  Query loop against live InfluxDB2 instance — 6 cycles,
+  every 10s, over 60s.
+  All queries target the <strong>last 5 minutes</strong> of data.
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Date</strong> 2026-03-17 11:41 UTC</div>
+  <div class="meta-item"><strong>Host</strong> localhost</div>
+  <div class="meta-item"><strong>Bucket</strong> battery-data</div>
+  <div class="meta-item"><strong>Duration</strong> 60s</div>
+  <div class="meta-item"><strong>Interval</strong> 10s</div>
+  <div class="meta-item"><strong>Cycles</strong> 6</div>
+</div>
+
+<div class="section">
+<h2>Performance Summary</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th><th>Query</th>
+      <th class="num">Avg latency</th>
+      <th class="num">Min</th>
+      <th class="num">Max</th>
+      <th class="num">Avg rows</th>
+      <th class="num">Errors</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="q-id">Q1</span></td>
+      <td>Latest snapshot — all battery cells, site 0 (last 5 min)</td>
+      <td class="num fast">7.8 ms</td>
+      <td class="num">6.7 ms</td>
+      <td class="num">8.7 ms</td>
+      <td class="num">72.0</td>
+      <td class="num fast">0</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q2</span></td>
+      <td>Time series — single cell history (last 5 min)</td>
+      <td class="num fast">2.1 ms</td>
+      <td class="num">1.5 ms</td>
+      <td class="num">3.2 ms</td>
+      <td class="num">299.2</td>
+      <td class="num fast">0</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q3</span></td>
+      <td>Rack aggregates — mean voltage & temperature per rack (last 5 min, 1-min buckets)</td>
+      <td class="num ">86.9 ms</td>
+      <td class="num">76.3 ms</td>
+      <td class="num">106.8 ms</td>
+      <td class="num">36.0</td>
+      <td class="num fast">0</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q4</span></td>
+      <td>Alert scan — cells with voltage outside 3.2–4.1 V (last 5 min)</td>
+      <td class="num ">55.5 ms</td>
+      <td class="num">50.1 ms</td>
+      <td class="num">65.0 ms</td>
+      <td class="num">144.0</td>
+      <td class="num fast">0</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q5</span></td>
+      <td>Solar overview — last irradiance & AC power, all panels (last 5 min)</td>
+      <td class="num slow">235.6 ms</td>
+      <td class="num">211.1 ms</td>
+      <td class="num">268.1 ms</td>
+      <td class="num">480.0</td>
+      <td class="num fast">0</td>
+    </tr>
+    <tr>
+      <td><span class="q-id">Q6</span></td>
+      <td>Fleet health — active cell count & data freshness (last 1 min)</td>
+      <td class="num ">27.6 ms</td>
+      <td class="num">25.3 ms</td>
+      <td class="num">30.7 ms</td>
+      <td class="num">2.0</td>
+      <td class="num fast">0</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+<div class="section">
+<h2>Query Cost Impact on AWS</h2>
+<p>Based on ~0.6 MB scanned per cycle
+(1,033 rows × 15× scan multiplier for GROUP BY queries).
+One web client querying every 10s.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th class="num">1× test load</th>
+      <th class="num">6× scale</th>
+      <th class="num">24× (full fleet)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Rows returned / cycle</td>
+        <td class="num">1,033</td>
+        <td class="num">6,199</td>
+        <td class="num">24,797</td></tr>
+    <tr><td>MB scanned / cycle</td>
+        <td class="num">0.6 MB</td>
+        <td class="num">3.5 MB</td>
+        <td class="num">14.2 MB</td></tr>
+    <tr><td>GB scanned / month (1 client)</td>
+        <td class="num">150 GB</td>
+        <td class="num">898 GB</td>
+        <td class="num">3592 GB</td></tr>
+    <tr><td>AWS Timestream query cost / month</td>
+        <td class="num hi">$1.50</td>
+        <td class="num hi">$8.98</td>
+        <td class="num hi">$35.92</td></tr>
+    <tr><td>InfluxDB Cloud query cost / month</td>
+        <td class="num hi">$1.20</td>
+        <td class="num hi">$7.18</td>
+        <td class="num hi">$28.73</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <strong>Heavy queries: Q3 (87 ms) + Q5 (236 ms)</strong> —
+  GROUP BY aggregations over all series in a time window. These dominate scan cost.
+  At 80 sites with 5 concurrent web clients, Timestream query charges reach
+  <strong>~$180/month</strong>
+  on top of write charges — on top of an already large bill.
+  Pre-aggregated continuous queries or materialized views can reduce scan cost 10–50×.
+</div>
+<div class="callout ok">
+  <strong>Self-hosted Telegraf + InfluxDB:</strong> query load is CPU-only — no per-GB charge.
+  Q3+Q5 together take 322 ms per cycle, well within single-node capacity.
+</div>
+</div>
+
+
+<div class="section">
+<h2>Query Details &amp; Sample Output</h2>
+
+<div class="q-card">
+  <div>
+    <span class="q-id">Q1</span>
+    <span class="q-title">Latest snapshot — all battery cells, site 0 (last 5 min)</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'current status' panel — last reading per cell.</p>
+  <pre><code>SELECT last(voltage), last(current), last(temperature), last(soc), last(soh) FROM battery_cell WHERE time > now()-5m AND site_id='0' AND source_id='battery' GROUP BY site_id, rack_id, module_id, cell_id</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">7.8 ms</strong></div>
+    <div class="stat">Min <strong>6.7 ms</strong></div>
+    <div class="stat">Max <strong>8.7 ms</strong></div>
+    <div class="stat">Avg rows <strong>72.0</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 5 rows</h3>
+  <pre><code>[cell_id=0 module_id=0 rack_id=0 site_id=0] t=1773747384  last=3.4546  last_1=20.8343  last_2=26.9923  last_3=85.0773  last_4=97.6730
+[cell_id=0 module_id=0 rack_id=1 site_id=0] t=1773747384  last=3.4714  last_1=33.5195  last_2=23.4183  last_3=94.9455  last_4=97.7074
+[cell_id=0 module_id=0 rack_id=2 site_id=0] t=1773747384  last=3.6589  last_1=19.7608  last_2=25.1748  last_3=77.8936  last_4=94.5093
+[cell_id=0 module_id=1 rack_id=0 site_id=0] t=1773747384  last=3.6200  last_1=17.3462  last_2=28.2446  last_3=81.8885  last_4=96.6510
+[cell_id=0 module_id=1 rack_id=1 site_id=0] t=1773747384  last=3.5602  last_1=-17.1313  last_2=33.4724  last_3=70.3714  last_4=98.3975</code></pre>
+</div>
+<div class="q-card">
+  <div>
+    <span class="q-id">Q2</span>
+    <span class="q-title">Time series — single cell history (last 5 min)</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'cell detail' chart — voltage/temp trend.</p>
+  <pre><code>SELECT voltage, current, temperature, soc FROM battery_cell WHERE time > now()-5m   AND site_id='0' AND rack_id='0' AND module_id='0' AND cell_id='0' ORDER BY time DESC LIMIT 300</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="fast">2.1 ms</strong></div>
+    <div class="stat">Min <strong>1.5 ms</strong></div>
+    <div class="stat">Max <strong>3.2 ms</strong></div>
+    <div class="stat">Avg rows <strong>299.2</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 5 rows</h3>
+  <pre><code>t=1773747683  voltage=3.4546  current=20.8343  temperature=26.9923  soc=85.0773
+t=1773747682  voltage=3.4646  current=20.4470  temperature=27.2097  soc=84.3786
+t=1773747681  voltage=3.4648  current=19.7049  temperature=27.3218  soc=83.3798
+t=1773747680  voltage=3.4754  current=20.5134  temperature=27.4210  soc=83.7420
+t=1773747679  voltage=3.4700  current=19.8187  temperature=27.1905  soc=83.3815</code></pre>
+</div>
+<div class="q-card">
+  <div>
+    <span class="q-id">Q3</span>
+    <span class="q-title">Rack aggregates — mean voltage & temperature per rack (last 5 min, 1-min buckets)</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'rack health' heatmap — averaged per 1-minute window.</p>
+  <pre><code>SELECT mean(voltage), mean(temperature), mean(soc) FROM battery_cell WHERE time > now()-5m AND source_id='battery' GROUP BY site_id, rack_id, time(1m) FILL(none)</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="">86.9 ms</strong></div>
+    <div class="stat">Min <strong>76.3 ms</strong></div>
+    <div class="stat">Max <strong>106.8 ms</strong></div>
+    <div class="stat">Avg rows <strong>36.0</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 5 rows</h3>
+  <pre><code>[rack_id=0 site_id=0] t=1773747360  mean=3.6825  mean_1=24.8658  mean_2=80.4075
+[rack_id=0 site_id=0] t=1773747420  mean=3.6931  mean_1=24.7820  mean_2=79.3090
+[rack_id=0 site_id=0] t=1773747480  mean=3.6838  mean_1=24.8233  mean_2=77.8818
+[rack_id=0 site_id=0] t=1773747540  mean=3.6848  mean_1=24.9550  mean_2=76.4305
+[rack_id=0 site_id=0] t=1773747600  mean=3.6973  mean_1=25.0389  mean_2=75.3738</code></pre>
+</div>
+<div class="q-card">
+  <div>
+    <span class="q-id">Q4</span>
+    <span class="q-title">Alert scan — cells with voltage outside 3.2–4.1 V (last 5 min)</span>
+  </div>
+  <p class="q-desc">Web dashboard: alert panel — any cell outside safe voltage window.</p>
+  <pre><code>SELECT last(voltage) FROM battery_cell WHERE time > now()-5m AND source_id='battery' GROUP BY site_id, rack_id, module_id, cell_id</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="">55.5 ms</strong></div>
+    <div class="stat">Min <strong>50.1 ms</strong></div>
+    <div class="stat">Max <strong>65.0 ms</strong></div>
+    <div class="stat">Avg rows <strong>144.0</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 5 rows</h3>
+  <pre><code>[cell_id=0 module_id=0 rack_id=0 site_id=0] t=1773747683  last=3.4546
+[cell_id=0 module_id=0 rack_id=0 site_id=1] t=1773747683  last=3.4185
+[cell_id=0 module_id=0 rack_id=1 site_id=0] t=1773747683  last=3.4714
+[cell_id=0 module_id=0 rack_id=1 site_id=1] t=1773747683  last=3.6160
+[cell_id=0 module_id=0 rack_id=2 site_id=0] t=1773747683  last=3.6589</code></pre><div class="callout ok">After filter (<em>filtered to voltage < 3.2 V or > 4.1 V</em>): <strong>6 rows matched</strong></div>
+</div>
+<div class="q-card">
+  <div>
+    <span class="q-id">Q5</span>
+    <span class="q-title">Solar overview — last irradiance & AC power, all panels (last 5 min)</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'solar fleet' overview panel.</p>
+  <pre><code>SELECT last(irradiance), last(ac_power), last(efficiency) FROM battery_cell WHERE time > now()-5m AND source_id='solar' GROUP BY site_id, rack_id, module_id, cell_id</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="slow">235.6 ms</strong></div>
+    <div class="stat">Min <strong>211.1 ms</strong></div>
+    <div class="stat">Max <strong>268.1 ms</strong></div>
+    <div class="stat">Avg rows <strong>480.0</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 5 rows</h3>
+  <pre><code>[cell_id=0 module_id=0 rack_id=0 site_id=0] t=1773747384  last=749.6363  last_1=176.9199  last_2=24.6550
+[cell_id=0 module_id=0 rack_id=0 site_id=1] t=1773747384  last=794.6028  last_1=165.9921  last_2=17.2589
+[cell_id=0 module_id=0 rack_id=1 site_id=0] t=1773747384  last=985.4084  last_1=157.4547  last_2=19.8388
+[cell_id=0 module_id=0 rack_id=1 site_id=1] t=1773747384  last=562.4818  last_1=157.7562  last_2=24.6921
+[cell_id=0 module_id=0 rack_id=2 site_id=0] t=1773747384  last=767.8668  last_1=233.3280  last_2=22.8760</code></pre>
+</div>
+<div class="q-card">
+  <div>
+    <span class="q-id">Q6</span>
+    <span class="q-title">Fleet health — active cell count & data freshness (last 1 min)</span>
+  </div>
+  <p class="q-desc">Web dashboard: 'system health' badge — confirm data is flowing.</p>
+  <pre><code>SELECT count(voltage) FROM battery_cell WHERE time > now()-1m AND source_id='battery' GROUP BY site_id</code></pre>
+  <div class="stat-row">
+    <div class="stat">Avg latency <strong class="">27.6 ms</strong></div>
+    <div class="stat">Min <strong>25.3 ms</strong></div>
+    <div class="stat">Max <strong>30.7 ms</strong></div>
+    <div class="stat">Avg rows <strong>2.0</strong></div>
+    <div class="stat">Cycles <strong>6</strong></div>
+    <div class="stat">Errors <strong class="fast">0</strong></div>
+  </div>
+  <h3>Sample output — last cycle, first 5 rows</h3>
+  <pre><code>[site_id=0] t=1773747624  count=4248
+[site_id=1] t=1773747624  count=4248</code></pre>
+</div>
+</div>
+
+</body>
+</html>

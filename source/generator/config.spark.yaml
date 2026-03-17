@@ -1,6 +1,6 @@
 broker:
   host: localhost
-  port: 1883           # FlashMQ on spark-22b6 (vs Mosquitto on 1884 for phil-dev)
+  port: 1883           # NATS native MQTT (nats-server)
   username: ""
   password: ""
   client_id: data-generator

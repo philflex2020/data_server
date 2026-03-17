@@ -1,13 +1,26 @@
 # System Faults & Known Problems
 
-Summary of data loss risks, recall failures, known bugs, and operational gaps in the
-current pipeline. Cost issues are excluded — see `docs/aws_billing_context.md`.
+Summary of data loss risks, recall failures, known bugs, and operational gaps.
+Cost issues are excluded — see `docs/aws_billing_context.md`.
+
+> **Pipeline status (2026-03-17):** The `bridge.py → NATS JetStream → writer.py → MinIO`
+> pipeline has been replaced by `writer.cpp` (FlashMQ → C++ writer → local parquet → rsync → S3).
+> Faults 1, 2, and 5 below are resolved by this change.  Fault 3 and 8 are addressed by
+> the Telegraf → DuckDB migration (parallel operation in progress).  Remaining active faults
+> are 4, 7, 9, 10, and 11.
 
 ---
 
 ## Data Loss / Dropping
 
-### 1. NATS stream size cap (active risk)
+### 1. NATS stream size cap ~~(active risk)~~ — RESOLVED
+
+> **Resolved by writer.cpp.** NATS JetStream is no longer in the data path.
+> writer.cpp uses a FlashMQ QoS-1 persistent session — FlashMQ queues messages
+> in memory during writer downtime (up to `max_qos_msg_pending_per_client`).
+> The 8 GB stream cap no longer applies.
+
+### 1. NATS stream size cap (historical — old pipeline only)
 
 **Symptom:** Parquet writer falls behind, older NATS messages are purged before being written to S3.
 
@@ -29,7 +42,15 @@ constraint, size cap takes ~63 hours to fill).
 
 ---
 
-### 2. 60-second gap in historical recall (design limitation)
+### 2. Query gap — RESOLVED (writer.cpp + current_state.parquet)
+
+> **Resolved.** writer.cpp writes `current_state.parquet` on AWS (one row per sensor,
+> always the latest reading, updated every flush interval ~60 s).  DuckDB on AWS reads
+> it locally — no rsync lag.  The effective gap for current-state queries is one flush
+> interval, covered by `current_state.parquet`.  The full historical gap is covered by
+> the S3 parquet store (rsync every 15 min) combined with date-scoped DuckDB queries.
+
+### 2. 60-second gap in historical recall (historical — old pipeline only)
 
 **Symptom:** `query_history` returns zero rows for data written in the last 60 seconds,
 even though the data is clearly in the live stream.
@@ -94,7 +115,7 @@ message reaches NATS, it is persisted to disk regardless of FlashMQ state.
 
 ## Recall Problems
 
-### 5. NATS bridge crash — wrong MQTT topic (fixed, git: b261119)
+### 5. NATS bridge crash — wrong MQTT topic (fixed, git: b261119 — component removed)
 
 **Symptom:** NATS bridge crashed on startup.
 
@@ -216,8 +237,8 @@ publishes nested `{value, unit}` payloads.
 Telegraf's `json_v2` parser in `telegraf.conf` maps `voltage` as a top-level float.
 Nested objects are silently ignored — the field is written as null or omitted entirely.
 
-The NATS/Parquet path handles this correctly — `writer.py` explicitly flattens nested
-`{value, unit}` objects before writing Parquet.
+The parquet writer.cpp path handles this correctly — `parse_payload()` in writer.cpp
+explicitly flattens nested `{value, unit}` objects before writing Parquet.
 
 **Affected path:** InfluxDB path only (if generator is in nested mode).
 
@@ -230,14 +251,14 @@ path, or update the `telegraf.conf` `json_v2` block to use `path = "voltage.valu
 
 | # | Problem | Path affected | Status | Risk |
 |---|---------|---------------|--------|------|
-| 1 | NATS stream size cap — data purged if writer stalls > 7.8 hr | NATS | Active | High |
-| 2 | 60-second query gap — recent data not in S3 | NATS | By design | Medium |
-| 3 | Telegraf buffer overflow at high rate | InfluxDB | Active | High |
-| 4 | FlashMQ no persistence on restart | Both | By design | Low |
-| 5 | NATS bridge crash — wrong topic | NATS | Fixed | — |
-| 6 | Hive partitioning schema mismatch | NATS | Fixed | — |
-| 7 | Flux shim regex parser — unsupported queries silently wrong | NATS Flux | Active | Medium |
-| 8 | InfluxDB 30-day rolling delete | InfluxDB | By design | High |
+| 1 | NATS stream size cap — data purged if writer stalls > 7.8 hr | Old NATS pipeline | **Resolved** — NATS removed | — |
+| 2 | 60-second query gap — recent data not in S3 | Old NATS pipeline | **Resolved** — current_state.parquet on AWS | — |
+| 3 | Telegraf buffer overflow at high rate | InfluxDB | Active (migration in progress) | High |
+| 4 | FlashMQ no persistence on restart | writer.cpp path | By design — QoS-1 session mitigates | Low |
+| 5 | NATS bridge crash — wrong topic | Old NATS pipeline | **Resolved** — bridge.py removed | — |
+| 6 | Hive partitioning schema mismatch | Parquet/DuckDB | Fixed (git: 6dae1ba) | — |
+| 7 | Flux shim regex parser — unsupported queries silently wrong | Subscriber API Flux | Active (Flux path being replaced by DuckDB) | Medium |
+| 8 | InfluxDB 30-day rolling delete | InfluxDB | Active (migration in progress) | High |
 | 9 | No completeness verification — silent cell dropout | Both | Active gap | High |
 | 10 | No FlashMQ HTTP health endpoint | Both | Active gap | Medium |
-| 11 | Nested payload not parsed by Telegraf | InfluxDB | Active | Medium |
+| 11 | Nested payload not parsed by Telegraf | InfluxDB only | Active (writer.cpp handles correctly) | Medium |

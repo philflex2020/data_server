@@ -5,11 +5,10 @@ websocket:
 auto_start: true
 
 # Full NATS stack on spark-22b6
-# Generator runs via config.spark-orig.yaml (shared Mosquitto on port 1883)
+# Generator publishes via NATS native MQTT (port 1883)
 order:
   - minio
   - nats
-  - nats_bridge
   - parquet_writer
   - aws_server
   - subscriber_api
@@ -32,11 +31,6 @@ components:
     cmd: ["nats-server", "-c", "nats-server.conf"]
     cwd: "manager"
     ports: [4222]
-
-  nats_bridge:
-    label: "MQTT → NATS Bridge"
-    cmd: [".venv/bin/python", "bridge.py", "--config", "config.spark.yaml"]
-    cwd: "source/nats_bridge"
 
   parquet_writer:
     label: "Parquet Writer (NATS → S3)"

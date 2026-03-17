@@ -1,6 +1,6 @@
 broker:
   host: localhost
-  port: 1884
+  port: 1883  # NATS native MQTT (nats-server)
   username: ""
   password: ""
   client_id: data-generator

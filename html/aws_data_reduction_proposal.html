@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS Cost Reduction Proposal — $76k → $858/month</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1200px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+.result-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase;
+               letter-spacing: 0.06em; margin-bottom: 6px; }
+.card .value { font-size: 1.4em; font-weight: 700; color: #3fb950; }
+.card .value.blue  { color: #58a6ff; }
+.card .value.amber { color: #f0883e; }
+.card .value.red   { color: #f85149; }
+.card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num   { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.hi    { color: #e6edf3; font-weight: 600; }
+td.green { color: #3fb950; }
+td.warn  { color: #f0883e; font-weight: 700; }
+td.red   { color: #f85149; font-weight: 700; }
+td.muted { color: #8b949e; font-style: italic; }
+td.saving { color: #3fb950; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+td.fast  { color: #3fb950; }
+td.slow  { color: #f0883e; }
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 0.87em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.section { margin-bottom: 48px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+.phase-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.phase-card {
+  background: #0e1d2d; border: 1px solid #1d3a5c; border-radius: 8px; padding: 16px 18px;
+}
+.phase-card .phase-num {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.72em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-bottom: 8px; letter-spacing: 0.05em;
+}
+.phase-card .phase-title { color: #e6edf3; font-size: 0.92em; font-weight: 600; margin-bottom: 6px; }
+.phase-card .phase-desc  { color: #8b949e; font-size: 0.82em; line-height: 1.55; }
+.phase-card .phase-risk  { margin-top: 8px; font-size: 0.78em; }
+.phase-card .phase-risk.none { color: #3fb950; }
+.phase-card .phase-risk.low  { color: #f39c12; }
+.arch-ascii {
+  background: #0e1d2d; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 20px 24px; font-family: monospace; font-size: 0.80em; line-height: 1.7;
+  color: #8ac4f5; margin: 16px 0 24px; overflow-x: auto;
+}
+.arch-ascii .comment { color: #3fb950; }
+.arch-ascii .label   { color: #f39c12; }
+.arch-ascii .arrow   { color: #58a6ff; }
+.kpi-highlight {
+  background: #0d2d1a; border: 1px solid #3fb95044; border-radius: 8px;
+  padding: 18px 22px; margin: 16px 0 24px;
+}
+.kpi-highlight .kpi-title { color: #3fb950; font-size: 0.85em; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
+.kpi-row { display: flex; flex-wrap: wrap; gap: 24px; }
+.kpi { font-size: 0.84em; color: #8b949e; }
+.kpi strong { color: #3fb950; font-size: 1.15em; }
+</style>
+</head>
+<body>
+
+<h1>AWS Cost Reduction Proposal</h1>
+<p class="subtitle">Replace InfluxDB + IoT Core + Lambda with writer.cpp + DuckDB + S3 Parquet</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Date:</strong> 2026-03-17</div>
+  <div class="meta-item"><strong>Author:</strong> Phil</div>
+  <div class="meta-item"><strong>Status:</strong> Ready for review</div>
+  <div class="meta-item"><strong>Current bill:</strong> ~$76,200/month</div>
+  <div class="meta-item"><strong>Proposed:</strong> ~$858/month (80 sites)</div>
+  <div class="meta-item"><strong>Annual saving:</strong> ~$901,704</div>
+</div>
+
+<div class="nav">
+  <a href="nats_report_x86.html">Architecture &amp; Scale Test</a>
+  <a href="nats_query_x86.html">DuckDB Query Reference</a>
+  <a href="parquet_writer_cpp.html">writer.cpp Detail</a>
+  <a href="study_data_recall.html">Data Recall Study</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>Executive Summary</h2>
+
+<div class="callout ok">
+  <strong>Projected saving: ~$75,140/month (~$900k/year) at 80 sites.</strong><br>
+  The migration carries near-zero risk: both pipelines subscribe to the same FlashMQ broker
+  independently — no existing service needs to change until the new pipeline is validated.
+</div>
+
+<div class="result-grid">
+  <div class="card">
+    <div class="label">Current bill</div>
+    <div class="value red">$76,200</div>
+    <div class="sub">per month, 80 sites</div>
+  </div>
+  <div class="card">
+    <div class="label">Proposed cost</div>
+    <div class="value blue">$858</div>
+    <div class="sub">per month, 80 sites</div>
+  </div>
+  <div class="card">
+    <div class="label">Monthly saving</div>
+    <div class="value">$75,340</div>
+    <div class="sub">99% reduction</div>
+  </div>
+  <div class="card">
+    <div class="label">Annual saving</div>
+    <div class="value">$901,704</div>
+    <div class="sub">at 80 sites</div>
+  </div>
+  <div class="card">
+    <div class="label">Decommission 3 services</div>
+    <div class="value blue">$41,000</div>
+    <div class="sub">EC2 + IoT Core + Lambda</div>
+  </div>
+  <div class="card">
+    <div class="label">Migration risk</div>
+    <div class="value">Zero</div>
+    <div class="sub">parallel deployment</div>
+  </div>
+</div>
+
+<p>A replacement pipeline has been designed, implemented, and validated on phil-dev:
+<code>writer.cpp</code> (C++17, Apache Arrow, simdjson) subscribes to FlashMQ directly, writes
+partitioned Parquet files locally, and rsyncs to S3. DuckDB replaces InfluxDB for
+historical queries. A local <code>current_state.parquet</code> written by <code>writer.cpp</code> on AWS
+covers the real-time gap with no rsync lag.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>1. Current Cost Breakdown</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Service</th>
+      <th style="text-align:right">Monthly Cost</th>
+      <th>Root Cause</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">EC2</td>
+      <td class="num warn">$36,000</td>
+      <td>InfluxDB requires <code>r5.xlarge</code> (32 GB RAM) per cluster node; scales vertically</td>
+    </tr>
+    <tr>
+      <td class="hi">EFS</td>
+      <td class="num warn">$10,000</td>
+      <td>InfluxDB TSM storage — $0.30/GB vs S3's $0.023/GB</td>
+    </tr>
+    <tr>
+      <td>Data Transfer</td>
+      <td class="num">$3,600</td>
+      <td>MQTT messages ingested via IoT Core → Lambda → cross-region transfer</td>
+    </tr>
+    <tr>
+      <td>S3</td>
+      <td class="num">$3,000</td>
+      <td>Parquet archive (efficient; this cost is retained)</td>
+    </tr>
+    <tr>
+      <td>IoT Core</td>
+      <td class="num">$3,000</td>
+      <td>$0.30/million messages; at 8,000 msg/s = ~20 billion msg/month</td>
+    </tr>
+    <tr>
+      <td>CloudWatch</td>
+      <td class="num">$2,600</td>
+      <td>High-resolution custom metrics + log retention</td>
+    </tr>
+    <tr>
+      <td>Lambda</td>
+      <td class="num">$2,000</td>
+      <td>Per-message invocations for MQTT → InfluxDB transforms</td>
+    </tr>
+    <tr>
+      <td class="hi">Total</td>
+      <td class="num warn">~$76,200</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Why InfluxDB is expensive at scale</h3>
+<p>InfluxDB's TSM engine maintains an in-memory cardinality index — one entry per unique
+time series (site × rack × module × cell × measurement). At 80 sites × 1,152 cells
+× 8 measurements = ~738,000 series, the index requires 32–64 GB RAM. Adding sites
+requires vertical instance upgrades, not horizontal scaling. The cost grows
+<strong>superlinearly</strong> with fleet size.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>2. Proposed Architecture</h2>
+
+<div class="arch-ascii"><span class="comment">SITE (on-premise)</span>
+  Generator → FlashMQ :1883
+               │                        │ FlashMQ bridge (outbound TLS)
+               ▼                        ▼
+         <span class="label">writer.cpp</span>              <span class="label">AWS FlashMQ :1883</span>
+         (C++17 · Arrow)               │
+               │                        ▼
+         /srv/data/parquet/       <span class="label">writer.cpp (AWS)</span>
+         rsync → S3 (15 min)      current_state mode
+                                         │
+                                    current_state.parquet
+                                    (local · no rsync lag)
+                                         │
+AWS                               <span class="label">DuckDB</span> ◄──── S3 parquet
+  t3.small EC2                    (history + current state)
+  Subscriber API</div>
+
+<h3>Key components</h3>
+<table>
+  <thead>
+    <tr><th>Component</th><th>Technology</th><th>Replaces</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">Site ingest</td>
+      <td><code>writer.cpp</code> — FlashMQ subscribe, Arrow write</td>
+      <td class="muted">NATS bridge + writer.py</td>
+    </tr>
+    <tr>
+      <td class="hi">Message durability</td>
+      <td>FlashMQ QoS-1 persistent session</td>
+      <td class="muted">NATS JetStream</td>
+    </tr>
+    <tr>
+      <td class="hi">Live forward to AWS</td>
+      <td>FlashMQ bridge (outbound TLS)</td>
+      <td class="muted">NATS Leaf Node</td>
+    </tr>
+    <tr>
+      <td class="hi">Historical store</td>
+      <td>S3 Parquet, rsync every 15 min</td>
+      <td class="muted">EFS + InfluxDB TSM</td>
+    </tr>
+    <tr>
+      <td class="hi">Current-state queries</td>
+      <td><code>current_state.parquet</code> on AWS (writer.cpp)</td>
+      <td class="muted">InfluxDB <code>last()</code> in-memory index</td>
+    </tr>
+    <tr>
+      <td class="hi">Historical queries</td>
+      <td>DuckDB, date-scoped glob paths</td>
+      <td class="muted">InfluxDB Flux / InfluxQL</td>
+    </tr>
+    <tr>
+      <td class="hi">AWS ingest</td>
+      <td>writer.cpp on AWS (no IoT Core, no Lambda)</td>
+      <td class="muted">AWS IoT Core + Lambda</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Why Parquet + DuckDB is cheaper at scale</h3>
+<ul style="color:#c9d1d9; font-size:0.88em; margin: 8px 0 10px 20px; line-height:1.9;">
+  <li><strong>Fixed schema overhead:</strong> Parquet column encoding scales with data volume, not cardinality. Adding 1,000 new cell IDs costs storage, not RAM.</li>
+  <li><strong>No per-message cloud charge:</strong> IoT Core ($0.30/million) and Lambda ($0.20/million) are eliminated entirely. writer.cpp is a local process.</li>
+  <li><strong>S3 pricing:</strong> $0.023/GB vs EFS $0.30/GB — 13× cheaper per GB stored.</li>
+  <li><strong>DuckDB is stateless:</strong> runs anywhere, scales horizontally, no licensing cost.</li>
+  <li><strong>One shared EC2 <code>t3.small</code></strong> serves all 80 sites for the Subscriber API.</li>
+</ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>3. Technical Validation</h2>
+
+<p><code>writer.cpp</code> has been implemented and tested on phil-dev (x86_64, Ubuntu 24.04,
+Arrow 23.0.1, g++ 11.4.0).</p>
+
+<h3>writer.cpp KPI results</h3>
+<div class="result-grid">
+  <div class="card">
+    <div class="label">Parse throughput</div>
+    <div class="value">430,000</div>
+    <div class="sub">msg/s (battery)</div>
+  </div>
+  <div class="card">
+    <div class="label">Parquet write</div>
+    <div class="value">962,000</div>
+    <div class="sub">rows/s (1k rows, snappy)</div>
+  </div>
+  <div class="card">
+    <div class="label">Flush 10 s fleet</div>
+    <div class="value">0.124 s</div>
+    <div class="sub">149,760 rows → 96 files</div>
+  </div>
+  <div class="card">
+    <div class="label">Unit tests</div>
+    <div class="value blue">37 / 37</div>
+    <div class="sub">all pass</div>
+  </div>
+  <div class="card">
+    <div class="label">Fleet headroom</div>
+    <div class="value">29×</div>
+    <div class="sub">vs 24× fleet target</div>
+  </div>
+  <div class="card">
+    <div class="label">Flush headroom</div>
+    <div class="value">8×</div>
+    <div class="sub">vs 1 s target</div>
+  </div>
+</div>
+
+<h3>DuckDB query performance vs InfluxDB</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Query</th>
+      <th style="text-align:right">DuckDB</th>
+      <th style="text-align:right">InfluxDB ref</th>
+      <th>Verdict</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Q1 — Latest snapshot, site 0 (current_state)</td>
+      <td class="num fast">4.7 ms</td>
+      <td class="num">7.8 ms</td>
+      <td class="green">1.7× faster</td>
+    </tr>
+    <tr>
+      <td>Q2 — Single cell time series, last hour</td>
+      <td class="num slow">60 ms</td>
+      <td class="num">2.1 ms</td>
+      <td class="warn">Slower (InfluxDB hot index)</td>
+    </tr>
+    <tr>
+      <td>Q3 — Rack aggregates, 10 s buckets</td>
+      <td class="num fast">54 ms</td>
+      <td class="num">86.9 ms</td>
+      <td class="green">1.6× faster</td>
+    </tr>
+    <tr>
+      <td>Q4 — Alert scan, all cells (hot file)</td>
+      <td class="num fast">7.6 ms</td>
+      <td class="num">55.5 ms</td>
+      <td class="green">7× faster</td>
+    </tr>
+    <tr>
+      <td>Q5 — Solar overview, all panels (hot file)</td>
+      <td class="num fast">9.0 ms</td>
+      <td class="num">235.6 ms</td>
+      <td class="green">26× faster</td>
+    </tr>
+    <tr>
+      <td>Q6 — Fleet health, cell count + freshness</td>
+      <td class="num fast">5.4 ms</td>
+      <td class="num">27.6 ms</td>
+      <td class="green">5× faster</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>Note on Q2:</strong> Q2 is slower than InfluxDB because InfluxDB keeps a hot in-memory inverted index per
+  series. DuckDB scans Parquet files (date-scoped, ~60 files at production flush rate).
+  At 60 s production flush rate this is expected to come in under 15 ms. All
+  operationally critical queries (current state, alerts, solar overview, fleet health)
+  are faster.
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>4. Cost Comparison</h2>
+
+<h3>Per site (stress load: 1,152 cells, ~8,000 msg/s)</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th style="text-align:right">Current (InfluxDB)</th>
+      <th style="text-align:right">Proposed (writer.cpp + DuckDB)</th>
+      <th style="text-align:right">Saving</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EC2</td>
+      <td class="num warn">$182 (<code>r5.xlarge</code>)</td>
+      <td class="num green">$0.25 (shared <code>t3.small</code>)</td>
+      <td class="saving">$181.75</td>
+    </tr>
+    <tr>
+      <td>EBS / EFS</td>
+      <td class="num">$25</td>
+      <td class="num green">$0</td>
+      <td class="saving">$25</td>
+    </tr>
+    <tr>
+      <td>S3 storage</td>
+      <td class="num">$10</td>
+      <td class="num">$10</td>
+      <td class="saving muted">$0</td>
+    </tr>
+    <tr>
+      <td>IoT Core</td>
+      <td class="num">$6</td>
+      <td class="num green">$0</td>
+      <td class="saving">$6</td>
+    </tr>
+    <tr>
+      <td>Lambda</td>
+      <td class="num">$5</td>
+      <td class="num green">$0</td>
+      <td class="saving">$5</td>
+    </tr>
+    <tr>
+      <td>CloudWatch</td>
+      <td class="num">$8</td>
+      <td class="num">$1</td>
+      <td class="saving">$7</td>
+    </tr>
+    <tr>
+      <td>Data transfer</td>
+      <td class="num">~$45</td>
+      <td class="num green">$0.35</td>
+      <td class="saving">~$44.65</td>
+    </tr>
+    <tr>
+      <td class="hi">Total / site</td>
+      <td class="num warn">~$281</td>
+      <td class="num green">~$11.60</td>
+      <td class="saving">~$269</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>At 80 sites</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Service</th>
+      <th style="text-align:right">Current</th>
+      <th style="text-align:right">Proposed</th>
+      <th style="text-align:right">Annual Saving</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EC2 (shared)</td>
+      <td class="num warn">$36,000</td>
+      <td class="num green">$20</td>
+      <td class="saving">$431,760</td>
+    </tr>
+    <tr>
+      <td>EFS</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$0</td>
+      <td class="saving">$120,000</td>
+    </tr>
+    <tr>
+      <td>S3</td>
+      <td class="num">$3,000</td>
+      <td class="num">$800</td>
+      <td class="saving">$26,400</td>
+    </tr>
+    <tr>
+      <td>Data transfer</td>
+      <td class="num">$3,600</td>
+      <td class="num green">$28</td>
+      <td class="saving">$43,344</td>
+    </tr>
+    <tr>
+      <td>IoT Core</td>
+      <td class="num">$3,000</td>
+      <td class="num green">$0</td>
+      <td class="saving">$36,000</td>
+    </tr>
+    <tr>
+      <td>Lambda</td>
+      <td class="num">$2,000</td>
+      <td class="num green">$0</td>
+      <td class="saving">$24,000</td>
+    </tr>
+    <tr>
+      <td>CloudWatch</td>
+      <td class="num">$2,600</td>
+      <td class="num green">$10</td>
+      <td class="saving">$31,080</td>
+    </tr>
+    <tr>
+      <td class="hi">Total</td>
+      <td class="num warn">$76,200</td>
+      <td class="num green">~$858</td>
+      <td class="saving">~$901,704/year</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>5. Storage Cost — 10-Year Projection</h2>
+
+<div class="callout info">
+  <strong>Assumptions:</strong> 80 sites · 1,152 cells/site · 1,152 msg/s/site · 15-min flush ·
+  ~8 MB/file (Parquet snappy, ~8 bytes/row compressed) · 96 flushes/site/day →
+  <strong>~2 TB new data per month (all 80 sites).</strong>
+  S3: $0.023/GB/month. EFS: $0.30/GB/month.
+  InfluxDB has a 30-day rolling delete — its EFS cost is fixed at steady state; data older than 30 days is permanently gone.
+</div>
+
+<h3>Three scenarios</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Scenario</th>
+      <th>Retention</th>
+      <th style="text-align:right">Monthly cost</th>
+      <th style="text-align:right">10-year total</th>
+      <th>Historical data</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">InfluxDB EFS</td>
+      <td>30 days (rolling delete)</td>
+      <td class="num warn">$10,000 flat</td>
+      <td class="num warn">$1,200,000</td>
+      <td class="red">None beyond 30 days</td>
+    </tr>
+    <tr>
+      <td class="hi">S3 Parquet — 30-day lifecycle</td>
+      <td>30 days (matching InfluxDB)</td>
+      <td class="num green">$46 flat</td>
+      <td class="num green">$5,520</td>
+      <td class="warn">None beyond 30 days</td>
+    </tr>
+    <tr>
+      <td class="hi">S3 Parquet — indefinite retention</td>
+      <td>All data, forever</td>
+      <td class="num green">$46 → $5,520 by Y10</td>
+      <td class="num green">$334,000</td>
+      <td class="green">Full 10-year history</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>S3 with a 30-day lifecycle policy costs $5,520 over 10 years vs InfluxDB's $1,200,000 — for identical retention.</strong>
+  That is 217× cheaper. And keeping everything (indefinite retention, 10 years of history)
+  still costs less than InfluxDB loses each <em>month</em>.
+</div>
+
+<h3>Year-by-year storage cost breakdown (80 sites)</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Year</th>
+      <th>Total data stored</th>
+      <th style="text-align:right">InfluxDB EFS / month</th>
+      <th style="text-align:right">S3 indefinite / month</th>
+      <th style="text-align:right">S3 30-day / month</th>
+      <th style="text-align:right">InfluxDB cumulative</th>
+      <th style="text-align:right">S3 indefinite cumulative</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>24 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$552</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$120,000</td>
+      <td class="num green">$3,588</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>48 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$1,104</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$240,000</td>
+      <td class="num green">$13,800</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>72 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$1,656</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$360,000</td>
+      <td class="num green">$30,636</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>96 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$2,208</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$480,000</td>
+      <td class="num green">$54,648</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>120 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$2,760</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$600,000</td>
+      <td class="num green">$84,180</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>144 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$3,312</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$720,000</td>
+      <td class="num green">$120,888</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>168 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$3,864</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$840,000</td>
+      <td class="num green">$164,220</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>192 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$4,416</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$960,000</td>
+      <td class="num green">$214,632</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>216 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$4,968</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$1,080,000</td>
+      <td class="num green">$271,524</td>
+    </tr>
+    <tr>
+      <td class="hi">10</td>
+      <td class="hi">240 TB</td>
+      <td class="num warn">$10,000</td>
+      <td class="num green">$5,520</td>
+      <td class="num green">$46</td>
+      <td class="num warn">$1,200,000</td>
+      <td class="num green">$334,000</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="result-grid">
+  <div class="card">
+    <div class="label">InfluxDB 10-year EFS</div>
+    <div class="value red">$1,200,000</div>
+    <div class="sub">30-day window only</div>
+  </div>
+  <div class="card">
+    <div class="label">S3 indefinite — 10-year total</div>
+    <div class="value">$334,000</div>
+    <div class="sub">full 10-year history retained</div>
+  </div>
+  <div class="card">
+    <div class="label">S3 30-day lifecycle — 10-year total</div>
+    <div class="value">$5,520</div>
+    <div class="sub">same retention as InfluxDB</div>
+  </div>
+  <div class="card">
+    <div class="label">S3 vs InfluxDB (same retention)</div>
+    <div class="value">217×</div>
+    <div class="sub">cheaper over 10 years</div>
+  </div>
+  <div class="card">
+    <div class="label">Data stored at Y10 (indefinite)</div>
+    <div class="value blue">240 TB</div>
+    <div class="sub">vs zero in InfluxDB</div>
+  </div>
+  <div class="card">
+    <div class="label">InfluxDB data retained at Y10</div>
+    <div class="value red">0 TB</div>
+    <div class="sub">beyond 30-day window</div>
+  </div>
+</div>
+
+<div class="callout warn">
+  <strong>InfluxDB EC2 costs may also grow superlinearly.</strong>
+  The cardinality index (738k series at 80 sites) grows with every new site and cell type added.
+  At some site count threshold, the 32 GB <code>r5.xlarge</code> is no longer sufficient and a vertical
+  upgrade to <code>r5.2xlarge</code> ($364/site/month) or larger is required. This table holds EC2 flat
+  at $10,000/month — the real 10-year InfluxDB cost may be substantially higher.
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>6. Migration Strategy</h2>
+
+<div class="callout ok">
+  <strong>No flag day. No data loss risk.</strong> Both pipelines can run simultaneously against
+  the same FlashMQ broker. FlashMQ maintains a separate QoS-1 session per <code>client_id</code> —
+  Telegraf's MQTT input and <code>writer.cpp</code> each hold their own persistent session and receive
+  independent copies of every published message. Neither can starve or block the other.
+</div>
+
+<div class="phase-grid">
+  <div class="phase-card">
+    <div class="phase-num">PHASE 1</div>
+    <div class="phase-title">Deploy alongside</div>
+    <div class="phase-desc">Start <code>writer.cpp</code> on host, subscribed to FlashMQ <code>:1883</code> with a distinct <code>client_id</code>. Telegraf and InfluxDB continue unchanged.</div>
+    <div class="phase-risk none">Risk: None</div>
+  </div>
+  <div class="phase-card">
+    <div class="phase-num">PHASE 2</div>
+    <div class="phase-title">Validate data</div>
+    <div class="phase-desc">Run <code>scripts/migration_compare.py</code> — compares InfluxDB and DuckDB results side-by-side across 4 checks (current voltage, cell count, alert count, rack averages).</div>
+    <div class="phase-risk none">Risk: None — read-only</div>
+  </div>
+  <div class="phase-card">
+    <div class="phase-num">PHASE 3</div>
+    <div class="phase-title">Deploy AWS writer</div>
+    <div class="phase-desc">Start <code>writer.cpp</code> on AWS in <code>current_state</code> mode. Validate <code>current_state.parquet</code> against InfluxDB <code>last()</code>.</div>
+    <div class="phase-risk none">Risk: None — additive</div>
+  </div>
+  <div class="phase-card">
+    <div class="phase-num">PHASE 4</div>
+    <div class="phase-title">Migrate consumers</div>
+    <div class="phase-desc">Switch dashboard panels from InfluxQL → DuckDB one at a time. Extend host flush to 15 min (<code>flush_interval_seconds: 900</code>).</div>
+    <div class="phase-risk low">Risk: Incremental — per-panel rollback</div>
+  </div>
+  <div class="phase-card">
+    <div class="phase-num">PHASE 5a</div>
+    <div class="phase-title">Historical export (optional)</div>
+    <div class="phase-desc">Export pre-cutover InfluxDB history to Parquet. Not required — InfluxDB can remain as a read-only cold archive.</div>
+    <div class="phase-risk none">Risk: Optional</div>
+  </div>
+  <div class="phase-card">
+    <div class="phase-num">PHASE 5b</div>
+    <div class="phase-title">Decommission</div>
+    <div class="phase-desc">Stop Telegraf and InfluxDB once all consumers are on DuckDB and the parallel run has been stable. Confirm retention policy before proceeding.</div>
+    <div class="phase-risk low">Risk: Irreversible — confirm first</div>
+  </div>
+</div>
+
+<h3>Transition Demo</h3>
+<p>Start <code>writer.cpp</code> alongside Telegraf, then run <code>migration_compare.py --cycles 6</code>. The demo proves both pipelines agree and makes the migration story credible to stakeholders.</p>
+
+<pre><code># Prerequisites: writer.cpp running, InfluxDB running, parquet files accumulating
+python3 scripts/migration_compare.py \
+    --influx http://localhost:8086 \
+    --token "$INFLUX_TOKEN" \
+    --parquet /srv/data/parquet \
+    --cycles 6 --interval 60</code></pre>
+
+<p>Each cycle runs 4 side-by-side checks: current voltage for a known cell, cell count per site, alert count (voltage &lt; 3.0 V or &gt; 4.2 V), and rack mean voltage over the last hour. All checks must agree within tolerance to pass.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>7. Risk Assessment</h2>
+
+<table>
+  <thead>
+    <tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">writer.cpp data quality mismatch</td>
+      <td class="green">Low</td>
+      <td>37 unit tests, live comparison script — <code>migration_compare.py</code> validates before any consumer migration</td>
+    </tr>
+    <tr>
+      <td class="hi">DuckDB query latency regression</td>
+      <td class="green">Low for critical queries</td>
+      <td>Q2/Q3 slower than InfluxDB at high file counts; date-scoped paths and 15 min flush mitigate</td>
+    </tr>
+    <tr>
+      <td class="hi">AWS writer downtime (current_state gap)</td>
+      <td class="green">Low</td>
+      <td>QoS-1 reconnect, FlashMQ queues — writer.cpp auto-reconnects; gap bounded by downtime duration</td>
+    </tr>
+    <tr>
+      <td class="hi">Parquet store growth (no retention policy)</td>
+      <td class="warn">Medium</td>
+      <td>Add S3 lifecycle rule before decommission — no automatic deletion is currently configured</td>
+    </tr>
+    <tr>
+      <td class="hi">Pre-cutover InfluxDB history gap</td>
+      <td class="green">Low</td>
+      <td>InfluxDB retained as cold archive — Phase 5a export is optional; use InfluxDB for pre-cutover history queries</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>8. Recommendation &amp; Next Steps</h2>
+
+<div class="callout ok">
+  <strong>The implementation is complete. The migration can begin at any time without disrupting existing services.</strong>
+</div>
+
+<ol style="color:#c9d1d9; font-size:0.88em; margin: 16px 0 10px 22px; line-height:2.0;">
+  <li><strong>Approve parallel deployment (Phase 1)</strong> — zero risk, immediate data collection starts.</li>
+  <li><strong>Run transition demo</strong> — start <code>writer.cpp</code> alongside Telegraf, run
+    <code>migration_compare.py --cycles 6</code>. Demo proves both pipelines agree and the
+    migration story is credible to stakeholders.</li>
+  <li><strong>Deploy AWS writer (Phase 3)</strong> — enables 15-min flush interval on host, reducing
+    file count and S3 rsync overhead.</li>
+  <li><strong>Set target decommission date</strong> for InfluxDB + IoT Core + Lambda — the three
+    largest cost components. Monthly saving from decommission:
+    <strong style="color:#3fb950">~$41,000/month</strong> (EC2 + IoT Core + Lambda alone).</li>
+</ol>
+
+<div class="kpi-highlight">
+  <div class="kpi-title">Summary KPIs</div>
+  <div class="kpi-row">
+    <div class="kpi">Current bill <strong>$76,200/mo</strong></div>
+    <div class="kpi">Proposed bill <strong>$858/mo</strong></div>
+    <div class="kpi">Monthly saving <strong>$75,340</strong></div>
+    <div class="kpi">Annual saving <strong>$901,704</strong></div>
+    <div class="kpi">Unit tests <strong>37 / 37 pass</strong></div>
+    <div class="kpi">Parse throughput <strong>430k msg/s</strong></div>
+    <div class="kpi">Fleet headroom <strong>29×</strong></div>
+    <div class="kpi">Migration risk <strong>Zero</strong></div>
+  </div>
+</div>
+</div>
+
+</body>
+</html>

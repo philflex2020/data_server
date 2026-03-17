@@ -2,13 +2,21 @@
 
 **HTML version:** [`html/study_data_recall.html`](../html/study_data_recall.html)
 
+> **Architecture update (2026-03-17):** The NATS JetStream / MinIO pipeline described
+> below has been replaced by `writer.cpp` (FlashMQ → C++ writer → local parquet → rsync → S3).
+> The three-tier model is still valid but the implementation has changed — see updated
+> tier descriptions below.  Benchmark figures (open questions 1–5) are now answered;
+> see [`docs/parquet_writer_cpp.md`](parquet_writer_cpp.md) and
+> [`html/nats_query_x86.html`](../html/nats_query_x86.html).
+
 ---
 
 ## Overview and Deliverable
 
-The pipeline stores data in two places: NATS JetStream (short-term stream) and MinIO/S3 as
-Parquet files (long-term). The Subscriber API exposes both via a single WebSocket interface
-on port 8767 and a Flux-compatible HTTP interface on port 8768.
+The pipeline stores data in two places: local parquet (flushed every 15 min) and S3
+(rsynced from host every 15 min). `current_state.parquet` on AWS covers the sub-15-min
+gap for current-state queries. The Subscriber API exposes all via WebSocket on port 8767
+and a Flux-compatible HTTP interface on port 8768.
 
 **Your deliverable:**
 
@@ -24,7 +32,7 @@ on port 8767 and a Flux-compatible HTTP interface on port 8768.
 
 ### Tier 1 — Real-time (latency: < 1 second)
 
-Data flows: Generator → FlashMQ (MQTT :1883) → NATS Bridge → NATS JetStream :4222 →
+Data flows: Generator → FlashMQ (MQTT :1883) → FlashMQ bridge → AWS FlashMQ →
 Subscriber API → WebSocket client.
 
 The Subscriber API maintains a NATS push consumer on the JetStream stream. When a client
@@ -55,35 +63,33 @@ from publish to browser is under 100ms under normal load.
 
 ---
 
-### Tier 2 — Medium-term (window: 1 second – 48 hours)
+### Tier 2 — Current-state (latency: ≤ flush interval, ~60 s)
 
-Data is retained in NATS JetStream for 48 hours (rolling) up to 8 GB. This tier covers
-replay of recent history that has not yet been flushed to S3, and overlaps with Tier 3
-for data older than 60 seconds.
+`current_state.parquet` on AWS — one row per unique sensor (source_type + all int
+identity fields), always holding the latest reading.  Written locally on AWS by
+`writer.cpp` running in current_state mode; updated on every flush (every 60 s).
+No rsync lag — DuckDB on AWS reads it directly from local disk.
 
-**Critical:** the Subscriber API `query_history` call reads from S3 Parquet only. For data
-in the last ~60 seconds (or ~9 seconds at 1,152 msgs/s), NATS is the only source. There is
-no `query_history` equivalent that reads directly from the NATS stream through the current
-API — use the live subscribe path or implement a direct NATS replay consumer.
+This replaces the NATS JetStream medium-term buffer.  The effective gap for
+current-state queries is one flush interval.
 
-**Retention configuration (NATS bridge config):**
-- `max_age`: 48 hours
-- `max_bytes`: 8 GB
-- At limit: oldest messages are purged first
-
-**At 1,152 msgs/s** (~285 KB/s ingest): 8 GB ÷ 285 KB/s ≈ 28,070 seconds ≈ **7.8 hours**
-before the size cap is hit. The 48-hour time window is not the binding constraint at this rate.
-
-**At 144 msgs/s** (~35 KB/s ingest): 8 GB ÷ 35 KB/s ≈ 228,571 seconds ≈ 63 hours before
-size cap. The 48-hour time window is the binding constraint.
+**DuckDB query:**
+```sql
+SELECT site_id, rack_id, module_id, cell_id,
+       arg_max(voltage, timestamp) AS voltage, ...
+FROM read_parquet('/data/parquet-aws/current_state.parquet', union_by_name=true)
+WHERE voltage IS NOT NULL
+GROUP BY ALL
+```
 
 ---
 
-### Tier 3 — Long-term (window: > ~60 seconds)
+### Tier 3 — Long-term (window: > ~15 minutes)
 
-The Parquet writer buffers messages and flushes to MinIO/S3 every 60 seconds or every
-10,000 messages, whichever comes first. Once flushed, data is queryable via DuckDB through
-the `query_history` WebSocket command.
+`writer.cpp` on the host flushes to local parquet every 15 min (900 s) and rsyncs to S3
+every 15 min. Once in S3, data is queryable via DuckDB using date-scoped glob paths.
+The flush interval is extended from the original 60 s now that `current_state.parquet`
+on AWS covers the sub-15-min gap.
 
 **S3 partition layout:**
 ```
@@ -174,9 +180,9 @@ The effective gap is the full **60 seconds**.
 
 | Tier | Storage layer | Retention window | Max size | At limit |
 |------|--------------|------------------|----------|----------|
-| 1 — Real-time | NATS JetStream (push delivery) | No window — push only | — | Messages missed if consumer disconnected |
-| 2 — Medium-term | NATS JetStream (stream replay) | 48 hours rolling | 8 GB | Oldest messages purged first |
-| 3 — Long-term | MinIO / S3 Parquet | Indefinite | Unconfigured | No automatic deletion |
+| 1 — Real-time | FlashMQ bridge → Subscriber API push | No window — push only | — | Messages missed if consumer disconnected |
+| 2 — Current-state | `current_state.parquet` (AWS local) | 1 row / sensor (always latest) | ~217 KB at 6× scale | Replaced on each flush |
+| 3 — Long-term | S3 Parquet (rsync from host) | Indefinite | Unconfigured | No automatic deletion |
 
 ---
 

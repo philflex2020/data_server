@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C++ Parquet Writer — Architecture &amp; Scale Test (x86_64)</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1200px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+.result-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase;
+               letter-spacing: 0.06em; margin-bottom: 6px; }
+.card .value { font-size: 1.4em; font-weight: 700; color: #3fb950; }
+.card .value.blue { color: #58a6ff; }
+.card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num  { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.hi   { color: #e6edf3; font-weight: 600; }
+td.green { color: #3fb950; }
+td.warn  { color: #f0883e; font-weight: 700; }
+td.muted { color: #8b949e; font-style: italic; }
+td.strike { color: #8b949e; text-decoration: line-through; font-style: italic; }
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 0.87em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.section { margin-bottom: 48px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+/* Architecture diagram */
+.arch {
+  display: flex; gap: 0; align-items: stretch;
+  background: #0d1117; overflow-x: auto; padding: 4px 0;
+}
+.arch-col {
+  display: flex; flex-direction: column; gap: 0;
+  min-width: 220px;
+}
+.arch-col.host  { flex: 0 0 250px; }
+.arch-col.mid   { flex: 0 0 160px; display: flex; flex-direction: column;
+                  justify-content: space-between; align-items: center; padding: 0 8px; }
+.arch-col.aws   { flex: 0 0 250px; }
+.arch-zone {
+  border: 1px solid #30363d; border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 0;
+}
+.arch-zone.host-zone { border-color: #58a6ff44; background: #0e1d2d; }
+.arch-zone.aws-zone  { border-color: #30363d88; background: #161b22; }
+.arch-zone-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 14px;
+}
+.arch-zone.host-zone .arch-zone-title { color: #58a6ff; }
+.arch-zone.aws-zone  .arch-zone-title { color: #8b949e; }
+.arch-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 7px;
+  padding: 9px 13px; font-size: 0.82em;
+}
+.arch-box .bname { font-weight: 700; color: #e6edf3; font-size: 0.95em; }
+.arch-box .bsub  { color: #8b949e; font-size: 0.82em; margin-top: 2px; }
+.arch-box .bport { color: #f39c12; font-size: 0.80em; font-family: monospace; }
+.arch-box.accent-blue   { border-color: #58a6ff66; }
+.arch-box.accent-green  { border-color: #3fb95066; }
+.arch-box.accent-orange { border-color: #f0883e66; }
+.arch-box.accent-dim    { border-color: #30363d; opacity: 0.55; }
+.arch-box.removed {
+  border-color: #f0883e44; background: #1a1008;
+  position: relative;
+}
+.arch-box.removed .bname { color: #8b949e; text-decoration: line-through; }
+.arch-box.removed .bsub  { color: #6e7681; }
+.removed-badge {
+  display: inline-block; font-size: 0.68em; font-weight: 700;
+  background: #f0883e22; color: #f0883e; border: 1px solid #f0883e44;
+  border-radius: 3px; padding: 1px 5px; margin-left: 6px; letter-spacing: 0.05em;
+  vertical-align: middle; text-decoration: none;
+}
+.arch-arr {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 2px 0 2px 22px; gap: 1px;
+}
+.arch-arr .arr-line {
+  width: 2px; height: 14px; background: #30363d; margin-left: 3px;
+}
+.arch-arr .arr-label {
+  font-size: 0.72em; color: #8b949e; font-family: monospace;
+}
+.arch-arr .arr-tip { font-size: 0.82em; color: #555; margin-left: -1px; }
+/* horizontal connector */
+.mid-conn {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; position: relative; width: 100%;
+}
+.mid-conn .mc-line {
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, #58a6ff88, #3fb95088);
+  position: relative;
+}
+.mid-conn .mc-line::after {
+  content: '▶'; position: absolute; right: -7px; top: -9px;
+  color: #3fb95088; font-size: 0.9em;
+}
+.mid-conn .mc-label {
+  font-size: 0.70em; color: #6e7681; text-align: center;
+  font-family: monospace; white-space: nowrap;
+}
+.mid-conn .mc-label.planned {
+  color: #f39c12; font-weight: 600;
+}
+.mid-conn.dim .mc-line {
+  background: linear-gradient(90deg, #30363d, #30363d);
+  opacity: 0.4;
+}
+.mid-conn.dim .mc-line::after { opacity: 0.3; }
+/* rsync connector */
+.mid-conn.rsync .mc-line {
+  background: linear-gradient(90deg, #f0883e88, #f39c1288);
+}
+.mid-conn.rsync .mc-line::after { color: #f39c1288; }
+.mid-conn.rsync .mc-label { color: #f0883e; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="telegraf_influx_details_x86.html">Telegraf details</a>
+  <a href="telegraf_influx_queries_x86.html">Query performance</a>
+  <a href="parquet_writer_cpp.html">C++ Writer details</a>
+  <a href="nats_query_x86.html">DuckDB queries</a>
+</div>
+
+<h1>C++ Parquet Writer — Architecture &amp; Scale Test (x86_64)</h1>
+<p class="subtitle">
+  2026-03-17 · phil-dev · Arrow 23.0.1 · g++ 11.4.0 · C++17 · simdjson 1.0.2
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Ingest</strong> Generator → FlashMQ:1883 → writer.cpp → /srv/data/parquet/</div>
+  <div class="meta-item"><strong>Live</strong> FlashMQ bridge → AWS FlashMQ (topic groups via bridge.yaml)</div>
+  <div class="meta-item"><strong>Historical</strong> rsync /srv/data/parquet/ → S3 every 5 min</div>
+  <div class="meta-item"><strong>Removed</strong> bridge.py · NATS JetStream · writer.py · MinIO</div>
+</div>
+
+<!-- ═══ ARCHITECTURE DIAGRAM -->
+<div class="section">
+<h2>Data Path Architecture</h2>
+
+<div class="arch">
+
+  <!-- HOST COLUMN -->
+  <div class="arch-col host">
+    <div class="arch-zone host-zone">
+      <div class="arch-zone-title">Host (on-site)</div>
+
+      <div class="arch-box">
+        <div class="bname">Generator</div>
+        <div class="bsub">624 – 14,976 cells · 1 msg/s/cell</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">MQTT publish</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-blue">
+        <div class="bname">FlashMQ</div>
+        <div class="bport">:1883 · QoS-1 · persistent session</div>
+        <div class="bsub">queues messages during writer downtime</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">subscribe # (QoS-1)</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-blue">
+        <div class="bname">writer.cpp</div>
+        <div class="bsub">simdjson parse → per-(source, site) buffer</div>
+        <div class="bsub">mutex swap · flush thread every 60 s</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">flush_partition() → Arrow</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-green">
+        <div class="bname">Local Parquet Store</div>
+        <div class="bsub">/srv/data/parquet/{source}/</div>
+        <div class="bsub">project={id}/site={id}/YYYY/MM/DD/</div>
+      </div>
+
+      <div style="height: 24px"></div>
+
+      <div class="arch-box removed">
+        <div class="bname">bridge.py <span class="removed-badge">REMOVED</span></div>
+        <div class="bsub">serial js.publish() bottleneck (~4k msg/s)</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line" style="background:#30363d55"></div><div class="arr-tip" style="color:#30363d">↓</div></div>
+      <div class="arch-box removed">
+        <div class="bname">NATS JetStream <span class="removed-badge">REMOVED</span></div>
+        <div class="bsub">host:4222 · stream BATTERY_DATA</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line" style="background:#30363d55"></div><div class="arr-tip" style="color:#30363d">↓</div></div>
+      <div class="arch-box removed">
+        <div class="bname">writer.py + MinIO <span class="removed-badge">REMOVED</span></div>
+        <div class="bsub">Python writer → local S3</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MIDDLE CONNECTORS -->
+  <div class="arch-col mid">
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:flex-start; padding: 30px 0; gap: 40px;">
+
+      <!-- FlashMQ bridge — live MQTT data -->
+      <div class="mid-conn" style="margin-top: 90px;">
+        <div class="mc-label" style="color:#58a6ff; font-weight:600;">FlashMQ bridge</div>
+        <div class="mc-line"></div>
+        <div class="mc-label" style="color:#58a6ff;">MQTT · QoS-1</div>
+        <div class="mc-label">selected topics</div>
+        <div class="mc-label">bridge.yaml</div>
+      </div>
+
+      <!-- rsync parquet → S3 -->
+      <div class="mid-conn rsync" style="margin-top: 110px;">
+        <div class="mc-label">rsync parquet</div>
+        <div class="mc-line"></div>
+        <div class="mc-label">5 min (store)</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- AWS COLUMN -->
+  <div class="arch-col aws">
+    <div class="arch-zone aws-zone" style="border-color:#3fb95044; background:#0d2d1a;">
+      <div class="arch-zone-title" style="color:#3fb950;">AWS Cloud</div>
+
+      <div class="arch-box accent-blue">
+        <div class="bname">FlashMQ (AWS)</div>
+        <div class="bport">:1883 · receives bridge from host</div>
+        <div class="bsub">topic groups configured in bridge.yaml</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">subscribe #  (QoS-1)</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-blue">
+        <div class="bname">writer.cpp (AWS)</div>
+        <div class="bsub">same binary · current_state mode</div>
+        <div class="bsub">config: current_state_path only</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">flush every 60 s (local)</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-green">
+        <div class="bname">current_state.parquet</div>
+        <div class="bsub">1 row / sensor · always latest reading</div>
+        <div class="bsub">~14k rows · ~217 KB · no rsync lag</div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="arch-box accent-green">
+        <div class="bname">Web Clients / Subscriber API</div>
+        <div class="bsub">live dashboard · alerts · streaming data</div>
+        <div class="bsub">push via MQTT — no polling</div>
+      </div>
+
+      <div style="height:14px"></div>
+
+      <div class="arch-box accent-orange">
+        <div class="bname">S3 Parquet Store</div>
+        <div class="bsub">rsync'd from /srv/data/parquet/ every 5 min</div>
+        <div class="bsub">project={id}/site={id}/YYYY/MM/DD/*.parquet</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">read_parquet() — combined query</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-green">
+        <div class="bname">DuckDB</div>
+        <div class="bsub">S3 history + current_state.parquet (local)</div>
+        <div class="bsub">hot.parquet gap eliminated on AWS</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+<div class="callout ok" style="margin-top:16px">
+  <strong>Two outbound paths, zero inbound rules.</strong>
+  The FlashMQ bridge dials out to AWS — no site firewall changes needed.
+  rsync is one-way, append-only. Both run independently of the host writer.cpp.
+  The AWS writer.cpp instance eliminates the hot.parquet rsync gap: it writes
+  <code>current_state.parquet</code> locally on AWS, directly from live bridge data —
+  no rsync delay, no S3 round-trip for current-state queries.
+</div>
+</div>
+
+<!-- ═══ SUMMARY CARDS -->
+<div class="section">
+<h2>writer.cpp — KPI Results (24× fleet, simdjson)</h2>
+<div class="result-grid">
+  <div class="card"><div class="label">Parse throughput</div><div class="value blue">430k</div><div class="sub">msg/s · 29× fleet headroom (best: 607k)</div></div>
+  <div class="card"><div class="label">Fleet target (24×)</div><div class="value blue">14,976</div><div class="sub">msg/s · 3,456 bat + 11,520 solar</div></div>
+  <div class="card"><div class="label">Flush 10 s of fleet data</div><div class="value">0.124 s</div><div class="sub">149,760 rows → 96 parquet files</div></div>
+  <div class="card"><div class="label">Parquet write (1k rows)</div><div class="value">962k</div><div class="sub">rows/s · 18.8 MB/s · snappy</div></div>
+  <div class="card"><div class="label">Unit tests</div><div class="value blue">37</div><div class="sub">37 passed · 0 failed</div></div>
+  <div class="card"><div class="label">AWS cost removed</div><div class="value green">$76k</div><div class="sub">NATS + MinIO no longer needed</div></div>
+</div>
+</div>
+
+<!-- ═══ BENCHMARK TABLE -->
+<div class="section">
+<h2>KPI Benchmarks — nlohmann vs simdjson</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th class="num">nlohmann</th>
+      <th class="num">simdjson</th>
+      <th class="num">Target</th>
+      <th class="num">Headroom</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>parse_topic only (1M calls)</td>
+      <td class="num muted">—</td>
+      <td class="num">2,404,000 ops/s</td>
+      <td class="num">&gt; 14,976 msg/s</td>
+      <td class="num green"><strong>160×</strong></td>
+    </tr>
+    <tr>
+      <td>parse_topic + parse_payload battery (1M)</td>
+      <td class="num">153,000 msg/s</td>
+      <td class="num">430,257 msg/s</td>
+      <td class="num">&gt; 14,976 msg/s</td>
+      <td class="num green"><strong>29×</strong></td>
+    </tr>
+    <tr>
+      <td>parse_topic + parse_payload solar (1M)</td>
+      <td class="num">170,000 msg/s</td>
+      <td class="num">478,122 msg/s</td>
+      <td class="num">&gt; 14,976 msg/s</td>
+      <td class="num green"><strong>32×</strong></td>
+    </tr>
+    <tr>
+      <td>flush_partition snappy batch=1k rows</td>
+      <td class="num">1,003,000 rows/s</td>
+      <td class="num">962,449 rows/s</td>
+      <td class="num">&gt; 500,000 rows/s</td>
+      <td class="num green"><strong>1.9×</strong></td>
+    </tr>
+    <tr>
+      <td>flush_partition snappy batch=10k rows</td>
+      <td class="num muted">—</td>
+      <td class="num">970,408 rows/s</td>
+      <td class="num">&gt; 500,000 rows/s</td>
+      <td class="num green"><strong>1.9×</strong></td>
+    </tr>
+    <tr>
+      <td>Flush 10 s of fleet data (149,760 rows → 96 files)</td>
+      <td class="num muted">—</td>
+      <td class="num">0.124 s</td>
+      <td class="num">&lt; 1 s</td>
+      <td class="num green"><strong>8×</strong></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══ MIGRATION STRATEGY -->
+<div class="section">
+<h2>Migration Strategy — Parallel Operation</h2>
+
+<p>Because FlashMQ delivers messages independently to each subscriber, the new
+writer.cpp pipeline can run <strong>alongside</strong> the existing Telegraf → InfluxDB
+system with zero changes to the existing service.  Cutover risk is minimal.</p>
+
+<table>
+  <thead>
+    <tr><th>Phase</th><th>Action</th><th>Risk</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">1 · Deploy alongside</td>
+      <td>Start writer.cpp on the host, subscribed to FlashMQ :1883 with a distinct
+          <code>client_id</code>.  Telegraf continues running unchanged.  Both receive
+          every message independently — MQTT fan-out, no interference.</td>
+      <td class="green">None — Telegraf / InfluxDB untouched</td>
+    </tr>
+    <tr>
+      <td class="hi">2 · Validate data</td>
+      <td>Run both systems in parallel.  Compare parquet output to InfluxDB via
+          spot-check queries: row counts, field values, timestamps.
+          Run the DuckDB query suite alongside the InfluxDB equivalent queries and
+          confirm results agree.</td>
+      <td class="green">None — read-only comparison</td>
+    </tr>
+    <tr>
+      <td class="hi">3 · Deploy AWS writer</td>
+      <td>Start writer.cpp on AWS in current_state mode, subscribed to the local
+          FlashMQ (bridge from host).  Validate <code>current_state.parquet</code>
+          matches InfluxDB <code>last()</code> values.</td>
+      <td class="green">None — additive</td>
+    </tr>
+    <tr>
+      <td class="hi">4 · Migrate consumers</td>
+      <td>Switch dashboard panels and alert queries from InfluxQL → DuckDB one at a
+          time.  Old queries remain available during transition.
+          Extend host <code>flush_interval_seconds</code> to 900 (15 min) at this point.</td>
+      <td class="green">Incremental — per-panel rollback available</td>
+    </tr>
+    <tr>
+      <td class="hi">5a · Historical export <span style="color:#8b949e;font-weight:400">(optional)</span></td>
+      <td>Export pre-cutover InfluxDB history to parquet so DuckDB has a single
+          continuous store.  Not required — the two stores can coexist and a DuckDB
+          query can union S3 parquet with an InfluxDB query at the application layer
+          if long-tail history is needed.  Simplest approach: leave InfluxDB in read-only
+          mode as a cold archive and only query it for data older than the parquet start date.</td>
+      <td class="muted">Optional — skip if historical continuity is not required</td>
+    </tr>
+    <tr>
+      <td class="hi">5b · Decommission</td>
+      <td>Once all consumers are on DuckDB and the parallel run has been stable for
+          an agreed period, stop Telegraf and InfluxDB.
+          Remove <code>bridge.py</code>, NATS, MinIO if still present.</td>
+      <td class="warn">Irreversible — confirm data retention policy first</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>No flag day.</strong>
+  Phases 1–3 are fully additive — nothing is changed or removed.
+  The existing Telegraf → InfluxDB path continues to run and serve production traffic
+  throughout.  Phase 5b is the only destructive step and can be deferred indefinitely.
+</div>
+<div class="callout info">
+  <strong>Why parallel operation works:</strong>
+  FlashMQ maintains a separate QoS-1 session per <code>client_id</code>.
+  Telegraf's MQTT input and writer.cpp each have their own session and receive
+  independent copies of every published message.  Neither can starve or block the other.
+  The only shared resource is the FlashMQ broker itself, which is already handling
+  the full fleet load.
+</div>
+</div>
+
+<!-- ═══ TRANSITION DEMO -->
+<div class="section">
+<h2>Transition Demo</h2>
+
+<p>The parallel operation story can be demonstrated live on phil-dev using the existing
+generator, FlashMQ, Telegraf, and writer.cpp — all running simultaneously.  The demo
+shows both pipelines receiving the same data, then a side-by-side query comparison
+proving result equivalence before any cutover decision is made.</p>
+
+<h3>Prerequisites</h3>
+<table>
+  <thead><tr><th>Service</th><th>Status</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>FlashMQ :1883</td>       <td class="green">already running</td><td>no change needed</td></tr>
+    <tr><td>Generator (6× fleet)</td><td class="green">already available</td><td><code>python3 generator.py --config config.6x.yaml</code></td></tr>
+    <tr><td>Telegraf → InfluxDB2</td><td class="green">already running</td><td>no change — continues as-is</td></tr>
+    <tr><td>writer.cpp</td>          <td class="green">already built</td><td><code>./parquet_writer --config config.test.yaml</code></td></tr>
+    <tr><td>duckdb_queries_x86.py</td><td class="green">already written</td><td>matches InfluxDB query set exactly</td></tr>
+    <tr><td>telegraf_influx_queries_x86.py</td><td class="green">already written</td><td>reference baseline</td></tr>
+  </tbody>
+</table>
+
+<h3>Demo script</h3>
+<pre><code># Terminal 1 — generator (already running, or start fresh)
+cd source/generator
+python3 generator.py --config config.6x.yaml
+
+# Terminal 2 — writer.cpp (new — subscribes alongside Telegraf)
+cd source/parquet_writer_cpp
+./parquet_writer --config config.test.yaml
+# → both Telegraf and writer.cpp now receive every message from FlashMQ
+
+# Terminal 3 — side-by-side query comparison
+cd scripts
+python3 migration_compare.py --cycles 3 --interval 10
+# → runs equivalent queries against both stores and shows results side by side</code></pre>
+
+<h3>Comparison script — <code>scripts/migration_compare.py</code></h3>
+<p>A single script that runs equivalent queries against both InfluxDB and DuckDB
+concurrently and prints a diff-style comparison: field values, row counts, and latency.
+Designed to make the "both systems agree" story visible in a live demo.</p>
+
+<table>
+  <thead><tr><th>Check</th><th>InfluxDB query</th><th>DuckDB equivalent</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="hi">Current voltage — site 0, cell 0</td>
+      <td><code>last(voltage) WHERE site=0 cell=0</code></td>
+      <td><code>arg_max(voltage, timestamp) FROM current_state</code></td>
+    </tr>
+    <tr>
+      <td class="hi">Fleet cell count</td>
+      <td><code>count(distinct series)</code></td>
+      <td><code>count(*) FROM current_state WHERE voltage IS NOT NULL</code></td>
+    </tr>
+    <tr>
+      <td class="hi">Site 0 latest rack averages</td>
+      <td><code>mean(voltage) GROUP BY rack</code></td>
+      <td><code>avg(voltage) FROM hot.parquet GROUP BY rack_id</code></td>
+    </tr>
+    <tr>
+      <td class="hi">Out-of-range cells</td>
+      <td><code>WHERE voltage &lt; 3.2 OR voltage &gt; 4.1</code></td>
+      <td>Q4 alert scan on hot.parquet</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>The demo is a dry run of the full migration.</strong>
+  If the comparison script shows agreement across all checks for a full generator run,
+  that is the evidence needed to proceed with Phase 4 (consumer migration) with confidence.
+</div>
+</div>
+
+<!-- ═══ COMPONENTS REMOVED -->
+<div class="section">
+<h2>Components Removed vs Old Pipeline</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th>Old role</th>
+      <th>Replaced by</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="strike">bridge.py</td>
+      <td class="muted">MQTT → NATS subject per cell; serial await</td>
+      <td class="green">writer.cpp subscribes to FlashMQ directly</td>
+    </tr>
+    <tr>
+      <td class="strike">NATS JetStream (host)</td>
+      <td class="muted">message durability · batteries.&gt; solar.&gt; stream</td>
+      <td class="green">FlashMQ QoS-1 persistent session</td>
+    </tr>
+    <tr>
+      <td class="strike">NATS JetStream (AWS)</td>
+      <td class="muted">12-min reconnect buffer · leaf node hub</td>
+      <td class="green">FlashMQ bridge (source/bridge/bridge.yaml)</td>
+    </tr>
+    <tr>
+      <td class="strike">writer.py</td>
+      <td class="muted">Python parquet writer, 5-min flush</td>
+      <td class="green">writer.cpp — C++17, Arrow, simdjson</td>
+    </tr>
+    <tr>
+      <td class="strike">MinIO / local S3</td>
+      <td class="muted">S3-compatible object store on host</td>
+      <td class="green">/srv/data/parquet/ — local filesystem</td>
+    </tr>
+  </tbody>
+</table>
+<div class="callout warn">
+  <strong>bridge.py bottleneck:</strong> the old pipeline issued one <code>await js.publish()</code> per message,
+  gating throughput to a single NATS round-trip at a time. Measured ceiling was ~4k msg/s at 24× scale.
+  writer.cpp decouples MQTT receive from disk I/O entirely via a mutex-swap buffer pattern.
+</div>
+</div>
+
+<!-- ═══ ARCHITECTURE NOTES -->
+<div class="section">
+<h2>Architecture Notes</h2>
+<div class="callout info">
+  <strong>QoS-1 persistent session:</strong> <code>mosquitto_new(id, clean_session=false)</code> with
+  exponential reconnect (2 s → 30 s). FlashMQ queues messages while writer.cpp is offline and drains
+  them automatically on reconnect — the same durability guarantee NATS JetStream provided, without
+  the infrastructure overhead.
+</div>
+<div class="callout info">
+  <strong>FlashMQ bridge — topic group selection:</strong> <code>source/bridge/bridge.yaml</code> defines
+  named topic groups (<code>batteries_all</code>, <code>solar_all</code>, per-site groups, etc.) and one
+  or more bridge connections, each selecting which groups to forward. Regenerate and reload live:
+</div>
+<pre><code>python3 source/bridge/gen_bridge_conf.py bridge.yaml \
+        --output /etc/flashmq/bridge-conf.d/bridge.conf
+flashmq --reload-config</code></pre>
+<div class="callout info">
+  <strong>rsync parquet → S3:</strong> a cron or systemd timer rsyncs the local parquet store to S3
+  every 5 minutes. Only completed files are transferred (writer.cpp atomically creates each file).
+  DuckDB on AWS queries S3 for all historical data.
+</div>
+<pre><code># host cron — every 5 minutes
+*/5 * * * * aws s3 sync /srv/data/parquet/ s3://bucket/parquet/ --storage-class STANDARD_IA</code></pre>
+<div class="callout ok">
+  <strong>AWS writer eliminates the hot.parquet gap.</strong>
+  Deploy writer.cpp on the AWS instance subscribed to the local FlashMQ (which receives
+  the bridge from the host). It writes <code>current_state.parquet</code> — one row per sensor,
+  always the latest reading — directly to local disk on AWS. DuckDB queries it without any
+  rsync delay. The <code>hot.parquet</code> rsync is no longer needed on AWS.
+</div>
+<div class="callout ok">
+  <strong>Extend the host flush interval to 10–15 minutes.</strong>
+  With <code>current_state.parquet</code> covering real-time queries on AWS, the partitioned
+  S3 store is only needed for historical data — not for current state.
+  A 15-minute flush interval produces ~96 files/site/day instead of 1 440 (at 1 min),
+  reducing DuckDB scan time for date-scoped historical queries proportionally,
+  and improving per-file compression and row-group statistics.
+  rsync can also run on the same extended cadence.
+  Set <code>flush_interval_seconds: 900</code> (and match rsync cron) once the AWS writer is live.
+</div>
+<pre><code># AWS writer config (current_state mode — no partitioned store needed)
+output:
+  base_path: /data/parquet-aws        # local to AWS instance
+  current_state_path: /data/parquet-aws/current_state.parquet
+  hot_file_path: ""                   # not needed — current_state covers the gap
+  flush_interval_seconds: 60</code></pre>
+<div class="callout info">
+  <strong>Lock-release before I/O:</strong> the mutex is held only during the buffer swap
+  (<code>std::exchange(g_buffers, {})</code>), never during parquet writes.
+  The MQTT receive thread never blocks on disk I/O regardless of flush duration.
+</div>
+<p>Output path structure (host):</p>
+<pre><code>/srv/data/parquet/batteries/project=0/site=3/2026/03/17/20260317T120000Z.parquet
+/srv/data/parquet/solar/project=0/site=3/2026/03/17/20260317T120000Z.parquet</code></pre>
+<p>DuckDB query on AWS — S3 history + local current_state (no rsync gap):</p>
+<pre><code>-- Current state: directly from AWS writer (local file, flush-interval lag only)
+SELECT site_id, rack_id, module_id, cell_id, voltage, temperature, soc
+FROM read_parquet('/data/parquet-aws/current_state.parquet', union_by_name=true)
+WHERE voltage IS NOT NULL
+
+-- Combined: full history + current state
+SELECT * FROM read_parquet([
+    's3://bucket/parquet/batteries/**/*.parquet',
+    '/data/parquet-aws/current_state.parquet'
+], union_by_name=true, hive_partitioning=true)
+WHERE timestamp > epoch(now()) - 3600
+ORDER BY timestamp</code></pre>
+</div>
+
+</body>
+</html>

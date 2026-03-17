@@ -1,0 +1,51 @@
+broker:
+  host: localhost
+  port: 1883  # NATS native MQTT (nats-server)
+  username: ""
+  password: ""
+  client_id: data-generator-nats-24x
+
+websocket:
+  host: 0.0.0.0
+  port: 8765
+
+sample_interval_seconds: 1
+topic_mode: per_cell
+payload_format: nested   # {value, unit} objects — NATS/Parquet path
+
+# 24× scale: battery 48 sites (144→3456 cells), solar 48 sites (480→11520 cells)
+# Total: ~14,976 msg/sec — approximates full 80-site fleet load
+
+sources:
+  - id: battery
+    type: battery
+    enabled: true
+    topic_prefix: batteries
+    sites: 48
+    racks_per_site: 3
+    modules_per_rack: 4
+    cells_per_module: 6
+    cell_data:
+      voltage:     {min: 3.0,   max: 4.2,   nominal: 3.7,   unit: V,   drift: 0.005}
+      current:     {min: -50.0, max: 50.0,  nominal: 0.0,   unit: A,   drift: 0.5}
+      temperature: {min: 20.0,  max: 45.0,  nominal: 25.0,  unit: C,   drift: 0.1}
+      soc:         {min: 0.0,   max: 100.0, nominal: 80.0,  unit: "%", drift: 0.05}
+      soh:         {min: 80.0,  max: 100.0, nominal: 98.0,  unit: "%", drift: 0.01}
+      resistance:  {min: 0.001, max: 0.05,  nominal: 0.01,  unit: ohm, drift: 0.0001}
+      capacity:    {min: 80.0,  max: 105.0, nominal: 100.0, unit: Ah,  drift: 0.01}
+
+  - id: solar
+    type: solar
+    enabled: true
+    topic_prefix: solar
+    sites: 48
+    racks_per_site: 4
+    modules_per_rack: 6
+    cells_per_module: 10
+    cell_data:
+      irradiance: {min: 0,    max: 1200, nominal: 800, unit: "W/m2", drift: 5.0}
+      panel_temp: {min: -10,  max: 85,   nominal: 35,  unit: C,      drift: 0.2}
+      dc_voltage: {min: 250,  max: 1000, nominal: 600, unit: V,      drift: 2.0}
+      dc_current: {min: 0,    max: 20,   nominal: 8,   unit: A,      drift: 0.1}
+      ac_power:   {min: 0,    max: 250,  nominal: 180, unit: W,      drift: 2.0}
+      efficiency: {min: 10,   max: 25,   nominal: 20,  unit: "%",    drift: 0.05}
