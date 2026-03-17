@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # setup_x86.sh — provision a fresh x86 Ubuntu machine and run the NATS pipeline test
 #
-# Usage: bash setup_x86.sh <host> <user> <password>
+# Usage: bash setup_x86.sh <host> <user> [sudo_pass]
+#        (key-based SSH auth — run ssh-copy-id first if needed)
+#        sudo_pass is only needed for apt install; omit if packages are pre-installed
 #
 # What it does:
-#   1. Installs apt packages (python3, git, mosquitto, sshpass)
+#   1. Installs apt packages: python3, git, mosquitto, FlashMQ, Telegraf, InfluxDB 2
 #   2. Clones / updates the data_server repo
 #   3. Creates Python venv and installs requirements
 #   4. Downloads nats-server binary if not already present
@@ -14,9 +16,9 @@
 
 set -euo pipefail
 
-HOST="${1:?Usage: $0 <host> <user> <password>}"
-USER="${2:?Usage: $0 <host> <user> <password>}"
-PASS="${3:?Usage: $0 <host> <user> <password>}"
+HOST="${1:?Usage: $0 <host> <user> [sudo_pass]}"
+USER="${2:?Usage: $0 <host> <user> [sudo_pass]}"
+SUDO_PASS="${3:-}"
 
 REPO="https://github.com/philflex2020/data_server.git"
 REPO_DIR="/home/${USER}/data_server"
@@ -25,33 +27,64 @@ NATS_URL="https://github.com/nats-io/nats-server/releases/download/${NATS_VERSIO
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-# Check sshpass is available locally
-if ! command -v sshpass &>/dev/null; then
-    echo "ERROR: sshpass not found locally. Install with: sudo apt install sshpass"
-    exit 1
-fi
-
 ssh_run() {
-    sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
         "${USER}@${HOST}" "$@"
 }
 
-ssh_bg() {
-    # Run a command in the background on the remote, detached from the SSH session
-    sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-        "${USER}@${HOST}" "nohup $* &>/tmp/$(echo $1 | tr '/' '_' | tr ' ' '_').log & echo \$!"
-}
-
 echo "==> Connecting to ${USER}@${HOST} ..."
-ssh_run "echo 'SSH OK — $(uname -m) $(lsb_release -sd 2>/dev/null || cat /etc/os-release | grep PRETTY | cut -d= -f2 | tr -d \")'"
+ssh_run "uname -m && lsb_release -sd 2>/dev/null || grep PRETTY /etc/os-release | cut -d= -f2 | tr -d '\"'"
 
 # ── 1. System packages ────────────────────────────────────────────────────────
 
 echo ""
 echo "==> Installing system packages ..."
-ssh_run "sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    python3 python3-venv python3-pip git mosquitto unzip curl 2>&1 | tail -5"
+if [ -n "$SUDO_PASS" ]; then
+    # base64-encode to avoid all special-char / history-expansion issues
+    B64_PASS=$(printf '%s' "$SUDO_PASS" | base64)
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${USER}@${HOST}" "
+set -e
+SP=\$(echo ${B64_PASS} | base64 -d)
+sudop() { echo \"\$SP\" | sudo -S \"\$@\"; }
+export DEBIAN_FRONTEND=noninteractive
+
+echo '-- apt update --'
+sudop apt-get update -qq
+
+echo '-- base packages --'
+sudop apt-get install -y -qq \
+    python3 python3-venv python3-pip git \
+    mosquitto unzip curl wget gnupg lsb-release ca-certificates
+
+# FlashMQ
+if ! command -v flashmq &>/dev/null; then
+    echo '-- FlashMQ PPA --'
+    sudop add-apt-repository -y ppa:wiebe-marten/flashmq
+    sudop apt-get update -qq
+    sudop apt-get install -y -qq flashmq
+fi
+echo \"FlashMQ: \$(flashmq --version 2>&1 | head -1)\"
+
+# InfluxDB 2 + Telegraf
+if ! command -v influx &>/dev/null || ! command -v telegraf &>/dev/null; then
+    echo '-- InfluxData apt repo --'
+    curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key \
+        | gpg --dearmor > /tmp/influxdb.gpg
+    sudop cp /tmp/influxdb.gpg /etc/apt/trusted.gpg.d/influxdb.gpg; rm /tmp/influxdb.gpg
+    echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdb.gpg] https://repos.influxdata.com/ubuntu stable main' \
+        > /tmp/influxdb.list
+    sudop cp /tmp/influxdb.list /etc/apt/sources.list.d/influxdb.list; rm /tmp/influxdb.list
+    sudop apt-get update -qq
+    sudop apt-get install -y -qq influxdb2 telegraf
+fi
+echo \"InfluxDB: \$(influxd version 2>&1 | head -1)\"
+echo \"Telegraf: \$(telegraf --version 2>&1 | head -1)\"
+echo '-- all packages OK --'
+"
+else
+    echo "    (no sudo_pass supplied — skipping apt)"
+    ssh_run "for cmd in mosquitto flashmq influx telegraf; do command -v \$cmd &>/dev/null && echo \"\$cmd: OK\" || echo \"WARNING: \$cmd not found\"; done"
+fi
 
 # ── 2. Clone / update repo ────────────────────────────────────────────────────
 
@@ -86,7 +119,9 @@ echo 'pip install done'
 
 echo ""
 echo "==> Checking nats-server ..."
-ssh_run "
+if [ -n "$SUDO_PASS" ]; then
+    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${USER}@${HOST}" "
+SP=\$(echo ${B64_PASS} | base64 -d)
 if command -v nats-server &>/dev/null; then
     echo \"nats-server already installed: \$(nats-server --version)\"
 else
@@ -94,11 +129,14 @@ else
     cd /tmp
     curl -sSL '${NATS_URL}' -o nats-server.zip
     unzip -q nats-server.zip
-    sudo mv nats-server-${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
+    echo \"\$SP\" | sudo -S mv nats-server-${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
     rm -rf nats-server.zip nats-server-${NATS_VERSION}-linux-amd64
     echo \"nats-server installed: \$(nats-server --version)\"
 fi
 "
+else
+    ssh_run "nats-server --version 2>/dev/null || echo 'WARNING: nats-server not found — re-run with sudo_pass'"
+fi
 
 # ── 5. MinIO binary ───────────────────────────────────────────────────────────
 
@@ -115,7 +153,7 @@ fi
 echo \"MinIO: \$(aws/data_store/minio --version 2>&1 | head -1)\"
 "
 
-# ── 6. Create MinIO bucket ────────────────────────────────────────────────────
+# ── 6. Start MinIO + create bucket ───────────────────────────────────────────
 
 echo ""
 echo "==> Starting MinIO ..."
@@ -160,10 +198,10 @@ sleep 2
 curl -sf http://localhost:8222/varz | python3 -c \"import sys,json; d=json.load(sys.stdin); print('NATS', d['version'], 'OK')\"
 "
 
-# ── 8. Mosquitto ──────────────────────────────────────────────────────────────
+# ── 8. Mosquitto (MQTT broker for test) ──────────────────────────────────────
 
 echo ""
-echo "==> Starting Mosquitto ..."
+echo "==> Starting Mosquitto (port 1884) ..."
 ssh_run "
 pkill -f 'mosquitto -p 1884' 2>/dev/null || true; sleep 1
 nohup /usr/sbin/mosquitto -p 1884 &>/tmp/mosquitto.log &
@@ -172,19 +210,30 @@ sleep 1
 echo 'Mosquitto started on port 1884'
 "
 
-# ── 9. Parquet writer config patch (localhost MinIO) ─────────────────────────
+# ── 9. InfluxDB 2 ─────────────────────────────────────────────────────────────
+
+echo ""
+echo "==> Starting InfluxDB 2 ..."
+ssh_run "
+pkill -f 'influxd' 2>/dev/null || true; sleep 1
+nohup influxd &>/tmp/influxd.log &
+echo \"InfluxDB PID: \$!\"
+sleep 5
+curl -sf http://localhost:8086/health | python3 -c \"import sys,json; d=json.load(sys.stdin); print('InfluxDB', d.get('version','?'), d.get('status','?'))\" || echo 'InfluxDB health check failed'
+"
+
+# ── 10. Parquet writer config patch (localhost MinIO) ────────────────────────
 
 echo ""
 echo "==> Patching parquet writer config for localhost MinIO ..."
 ssh_run "
 cd '${REPO_DIR}'
-# Ensure writer points to local MinIO
 sed -i 's|endpoint_url:.*|endpoint_url: \"http://localhost:9000\"  # local MinIO|' \
     source/parquet_writer/config.yaml
 grep 'endpoint_url' source/parquet_writer/config.yaml
 "
 
-# ── 10. Generator ─────────────────────────────────────────────────────────────
+# ── 11. Generator ─────────────────────────────────────────────────────────────
 
 echo ""
 echo "==> Starting generator ..."
@@ -216,7 +265,7 @@ asyncio.run(start())
 \"
 "
 
-# ── 11. NATS bridge ───────────────────────────────────────────────────────────
+# ── 12. NATS bridge ───────────────────────────────────────────────────────────
 
 echo ""
 echo "==> Starting NATS bridge ..."
@@ -230,7 +279,7 @@ sleep 3
 grep -a 'INFO\|ERROR' /tmp/bridge.log | tail -3
 "
 
-# ── 12. Parquet writer ────────────────────────────────────────────────────────
+# ── 13. Parquet writer ────────────────────────────────────────────────────────
 
 echo ""
 echo "==> Starting parquet writer ..."
@@ -244,7 +293,33 @@ sleep 3
 grep -a 'INFO\|ERROR' /tmp/writer.log | tail -3
 "
 
-# ── 13. Verify pipeline ───────────────────────────────────────────────────────
+# ── 14. Stress runner ────────────────────────────────────────────────────────
+
+echo ""
+echo "==> Starting stress runner ..."
+ssh_run "
+pkill -f 'stress_runner.py' 2>/dev/null || true; sleep 1
+cd '${REPO_DIR}/source/stress_runner'
+nohup /home/${USER}/data_server/.venv/bin/python stress_runner.py --config config.yaml \
+    &>/tmp/stress_runner.log &
+echo \"Stress runner PID: \$!\"
+sleep 3
+grep -a 'INFO\|ERROR\|started\|Listening' /tmp/stress_runner.log | tail -3
+"
+
+# ── 15. Verify generators via test_generators.py ─────────────────────────────
+
+echo ""
+echo "==> Running test_generators.py ..."
+ssh_run "
+cd '${REPO_DIR}'
+.venv/bin/python scripts/test_generators.py \
+    --mqtt-host localhost \
+    --mqtt-port 1884 \
+    --gen-ws    ws://localhost:8765 \
+    --stress-ws ws://localhost:8769 \
+    --sample-secs 10
+"
 
 echo ""
 echo "==> Verifying pipeline (10s sample) ..."
@@ -257,7 +332,7 @@ RATE=\$(python3 -c \"print(round((\$IN2-\$IN1)/10, 1))\")
 echo \"NATS throughput: \${RATE} msg/sec\"
 "
 
-# ── 14. Run nats_test.py ──────────────────────────────────────────────────────
+# ── 15. Run nats_test.py ──────────────────────────────────────────────────────
 
 echo ""
 echo "==> Running nats_test.py (30s sample) ..."
@@ -271,5 +346,6 @@ cd '${REPO_DIR}'
 
 echo ""
 echo "==> Setup complete on ${HOST}"
-echo "    Logs: /tmp/{minio,nats-server,mosquitto,generator,bridge,writer}.log"
+echo "    Logs: /tmp/{minio,nats-server,mosquitto,influxd,generator,stress_runner,bridge,writer}.log"
+echo "    InfluxDB UI: http://${HOST}:8086"
 echo "    Results: ${REPO_DIR}/docs/nats_details.md"
