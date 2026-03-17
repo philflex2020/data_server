@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <title>Generator Test Report</title>
 <style>
-  body { font-family: -apple-system, sans-serif; max-width: 900px;
+  body { font-family: -apple-system, sans-serif; max-width: 960px;
          margin: 40px auto; padding: 0 20px; color: #222; }
   h1 { border-bottom: 2px solid #ddd; padding-bottom: 8px; }
   h2 { margin-top: 32px; color: #333; }
+  h3 { margin-top: 20px; color: #444; }
   .badge { display:inline-block; padding:6px 18px; border-radius:20px;
             color:#fff; font-weight:700; font-size:1.1em;
             background:#2ecc71; }
@@ -19,22 +20,26 @@
   th { background:#f0f0f0; padding:8px 12px; text-align:left; }
   td { padding:7px 12px; border-bottom:1px solid #eee; }
   code { background:#f0f0f0; padding:2px 5px; border-radius:3px; }
+  ul { margin:4px 0 12px 0; padding-left:24px; }
+  li { margin:2px 0; }
   .ts { color:#888; font-size:0.85em; }
 </style>
 </head>
 <body>
 <h1>Generator Test Report
   <span class="badge">ALL PASS</span></h1>
-<p class="ts">2026-03-17 10:36 UTC — sample window 10s</p>
+<p class="ts">2026-03-17 10:42 UTC — sample window 10s</p>
 
 <h2>Overview</h2>
 <div class="kv">
+  <span class="label">MQTT broker</span>
+  <span class="value"><code>localhost:1884</code> (Mosquitto)</span>
   <span class="label">Total MQTT rate</span>
   <span class="value">1392.1 msg/s</span>
   <span class="label">Multi-generator</span>
   <span class="value">624 cells (battery, solar)</span>
   <span class="label">Stress-runner</span>
-  <span class="value">768 cells @ 768 msg/s</span>
+  <span class="value">768 cells @ 767 msg/s</span>
   <span class="label">Test result</span>
   <span class="value">14 passed · 0 failed · 0 warnings</span>
 </div>
@@ -48,6 +53,87 @@
 
 </table>
 
+<h2>Sample Topics &amp; Payloads</h2>
+
+<h3><code>batteries</code></h3>
+<p><b>Example topics (Mosquitto broker <code>localhost:1884</code>):</b></p>
+<ul><li><code>batteries/battery/site=0/rack=0/module=0/cell=0</code></li><li><code>batteries/battery/site=0/rack=0/module=0/cell=1</code></li><li><code>batteries/battery/site=0/rack=0/module=0/cell=2</code></li></ul>
+<p><b>Sample payload:</b></p>
+<pre style="background:#f8f9fa;padding:12px;border-radius:6px;overflow-x:auto;font-size:0.85em">{
+  &quot;timestamp&quot;: 1773744144.2223377,
+  &quot;source_id&quot;: &quot;battery&quot;,
+  &quot;site_id&quot;: 0,
+  &quot;rack_id&quot;: 0,
+  &quot;module_id&quot;: 0,
+  &quot;cell_id&quot;: 0,
+  &quot;voltage&quot;: {
+    &quot;value&quot;: 3.627,
+    &quot;unit&quot;: &quot;V&quot;
+  },
+  &quot;current&quot;: {
+    &quot;value&quot;: 6.2766,
+    &quot;unit&quot;: &quot;A&quot;
+  },
+  &quot;temperature&quot;: {
+    &quot;value&quot;: 24.1518,
+    &quot;unit&quot;: &quot;C&quot;
+  },
+  &quot;soc&quot;: {
+    &quot;value&quot;: 84.5839,
+    &quot;unit&quot;: &quot;%&quot;
+  },
+  &quot;soh&quot;: {
+    &quot;value&quot;: 98.2054,
+    &quot;unit&quot;: &quot;%&quot;
+  },
+  &quot;resistance&quot;: {
+    &quot;value&quot;: 0.0024,
+    &quot;unit&quot;: &quot;ohm&quot;
+  },
+  &quot;capacity&quot;: {
+    &quot;value&quot;: 100.0333,
+    &quot;unit&quot;: &quot;Ah&quot;
+  }
+}</pre>
+
+<h3><code>solar</code></h3>
+<p><b>Example topics (Mosquitto broker <code>localhost:1884</code>):</b></p>
+<ul><li><code>solar/solar/site=0/rack=0/module=0/cell=0</code></li><li><code>solar/solar/site=0/rack=0/module=0/cell=1</code></li><li><code>solar/solar/site=0/rack=0/module=0/cell=2</code></li></ul>
+<p><b>Sample payload:</b></p>
+<pre style="background:#f8f9fa;padding:12px;border-radius:6px;overflow-x:auto;font-size:0.85em">{
+  &quot;timestamp&quot;: 1773744144.225893,
+  &quot;source_id&quot;: &quot;solar&quot;,
+  &quot;site_id&quot;: 0,
+  &quot;rack_id&quot;: 0,
+  &quot;module_id&quot;: 0,
+  &quot;cell_id&quot;: 0,
+  &quot;irradiance&quot;: {
+    &quot;value&quot;: 616.6283,
+    &quot;unit&quot;: &quot;W/m2&quot;
+  },
+  &quot;panel_temp&quot;: {
+    &quot;value&quot;: 53.0881,
+    &quot;unit&quot;: &quot;C&quot;
+  },
+  &quot;dc_voltage&quot;: {
+    &quot;value&quot;: 631.4051,
+    &quot;unit&quot;: &quot;V&quot;
+  },
+  &quot;dc_current&quot;: {
+    &quot;value&quot;: 8.4363,
+    &quot;unit&quot;: &quot;A&quot;
+  },
+  &quot;ac_power&quot;: {
+    &quot;value&quot;: 184.4936,
+    &quot;unit&quot;: &quot;W&quot;
+  },
+  &quot;efficiency&quot;: {
+    &quot;value&quot;: 21.7815,
+    &quot;unit&quot;: &quot;%&quot;
+  }
+}</pre>
+
+
 <h2>Test Results</h2>
 <table>
   <tr><th></th><th>Test</th><th>Detail</th></tr>
@@ -57,14 +143,14 @@
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>active sources</td><td style="color:#555">battery, solar</td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>reachable</td><td style="color:#555"></td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>active tasks</td><td style="color:#555">active_tasks=2</td></tr>
-<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>publishing</td><td style="color:#555">mps=768  total=124416</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>publishing</td><td style="color:#555">mps=767  total=420864</td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>project topology</td><td style="color:#555">1 project(s), 768 cells</td></tr>
-<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>MQTT connect</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>MQTT connect</td><td style="color:#555">broker localhost:1884</td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  batteries             912.1 msg/s  9121 total</td><td style="color:#555"></td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  solar                 480.0 msg/s  4800 total</td><td style="color:#555"></td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  batteries: nested (7 measurements)</td><td style="color:#555"></td></tr>
 <tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  solar: nested (6 measurements)</td><td style="color:#555"></td></tr>
-<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>data flowing on batteries</td><td style="color:#555">WS mps=768  MQTT batteries≈9121/s</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>data flowing on batteries</td><td style="color:#555">WS mps=767  MQTT batteries≈9121/s</td></tr>
 
 </table>
 
