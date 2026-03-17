@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Generator Test Report</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 900px;
+         margin: 40px auto; padding: 0 20px; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 8px; }
+  h2 { margin-top: 32px; color: #333; }
+  .badge { display:inline-block; padding:6px 18px; border-radius:20px;
+            color:#fff; font-weight:700; font-size:1.1em;
+            background:#2ecc71; }
+  .kv { display:grid; grid-template-columns:220px 1fr; gap:6px 16px;
+         background:#f8f9fa; padding:16px; border-radius:8px; margin:16px 0; }
+  .kv .label { color:#666; font-size:0.9em; }
+  .kv .value { font-weight:600; }
+  table { border-collapse:collapse; width:100%; }
+  th { background:#f0f0f0; padding:8px 12px; text-align:left; }
+  td { padding:7px 12px; border-bottom:1px solid #eee; }
+  code { background:#f0f0f0; padding:2px 5px; border-radius:3px; }
+  .ts { color:#888; font-size:0.85em; }
+</style>
+</head>
+<body>
+<h1>Generator Test Report
+  <span class="badge">ALL PASS</span></h1>
+<p class="ts">2026-03-17 10:36 UTC — sample window 10s</p>
+
+<h2>Overview</h2>
+<div class="kv">
+  <span class="label">Total MQTT rate</span>
+  <span class="value">1392.1 msg/s</span>
+  <span class="label">Multi-generator</span>
+  <span class="value">624 cells (battery, solar)</span>
+  <span class="label">Stress-runner</span>
+  <span class="value">768 cells @ 768 msg/s</span>
+  <span class="label">Test result</span>
+  <span class="value">14 passed · 0 failed · 0 warnings</span>
+</div>
+
+<h2>MQTT Sources</h2>
+<table>
+  <tr><th>Topic prefix</th><th>Rate</th><th>Messages</th>
+      <th>Format</th><th>Measurements</th></tr>
+<tr><td><code>batteries</code></td><td><b>912.1</b> msg/s</td><td>9121</td><td>nested</td><td style='font-size:0.85em'>voltage, current, temperature, soc, soh</td></tr>
+<tr><td><code>solar</code></td><td><b>480.0</b> msg/s</td><td>4800</td><td>nested</td><td style='font-size:0.85em'>irradiance, panel_temp, dc_voltage, dc_current, ac_power</td></tr>
+
+</table>
+
+<h2>Test Results</h2>
+<table>
+  <tr><th></th><th>Test</th><th>Detail</th></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>reachable</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>running</td><td style="color:#555">running=True</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>has assets</td><td style="color:#555">cell_count=624</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>active sources</td><td style="color:#555">battery, solar</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>reachable</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>active tasks</td><td style="color:#555">active_tasks=2</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>publishing</td><td style="color:#555">mps=768  total=124416</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>project topology</td><td style="color:#555">1 project(s), 768 cells</td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>MQTT connect</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  batteries             912.1 msg/s  9121 total</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  solar                 480.0 msg/s  4800 total</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  batteries: nested (7 measurements)</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>  solar: nested (6 measurements)</td><td style="color:#555"></td></tr>
+<tr style="background:#eafaf1"><td style="text-align:center">✅</td><td>data flowing on batteries</td><td style="color:#555">WS mps=768  MQTT batteries≈9121/s</td></tr>
+
+</table>
+
+</body>
+</html>
