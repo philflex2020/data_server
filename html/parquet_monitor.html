@@ -470,7 +470,7 @@ h2.section-title {
           </select>
         </div>
         <div style="margin-top:6px;position:relative">
-          <pre id="flux-curl-cmd" style="font-size:0.72em;color:#8b949e;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:6px 32px 6px 8px;margin:0;white-space:pre-wrap;word-break:break-all;cursor:text">—</pre>
+          <pre id="flux-curl-cmd" style="font-size:0.72em;color:#8b949e;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:6px 32px 6px 8px;margin:0;white-space:pre-wrap;word-break:break-all;cursor:text;max-height:4.5em;overflow-y:auto">—</pre>
           <button id="btn-flux-copy" onclick="navigator.clipboard.writeText(document.getElementById('flux-curl-cmd').textContent).then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)})" style="position:absolute;top:4px;right:4px;background:#30363d;border:none;border-radius:3px;color:#8b949e;cursor:pointer;font-size:0.8em;padding:2px 5px">⎘</button>
         </div>
       </div>
