@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Monitor — fractal-phil</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 24px 28px; max-width: 1300px; margin: auto; line-height: 1.5;
+}
+h1   { color: #58a6ff; font-size: 1.6em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.88em; margin-bottom: 20px; }
+
+/* ── Config bar ── */
+.config-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 12px 18px; margin-bottom: 24px;
+}
+.config-bar label { font-size: 0.83em; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+.config-bar input[type=text] {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  color: #e6edf3; font-size: 0.85em; padding: 4px 8px; width: 140px;
+}
+.config-bar input[type=checkbox] { cursor: pointer; }
+.config-bar button {
+  background: #1f6feb; border: none; border-radius: 6px;
+  color: #fff; font-size: 0.83em; padding: 6px 16px; cursor: pointer;
+}
+.config-bar button:hover { background: #388bfd; }
+.connect-time { font-size: 0.76em; color: #8b949e; margin-left: auto; }
+
+/* ── Monitor grid ── */
+.monitor-grid {
+  display: grid;
+  grid-template-columns: 1fr 110px 1fr;
+  gap: 0;
+  align-items: start;
+}
+
+/* ── Column labels ── */
+.col-label {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 10px; padding: 4px 0;
+}
+.col-label.host  { color: #58a6ff; border-bottom: 1px solid #58a6ff44; }
+.col-label.aws   { color: #3fb950; border-bottom: 1px solid #3fb95044; }
+.col-label.mid   { color: #6e7681; text-align: center; }
+
+/* ── Component boxes ── */
+.comp-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 10px; transition: border-color 0.3s;
+}
+.comp-box.ok    { border-color: #3fb95066; }
+.comp-box.warn  { border-color: #f0883e66; }
+.comp-box.error { border-color: #f8514966; }
+.comp-box.dim   { opacity: 0.55; }
+
+.box-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.88em; font-weight: 600; color: #e6edf3;
+  margin-bottom: 8px;
+}
+.box-port {
+  font-size: 0.75em; color: #f39c12; font-family: monospace;
+  background: #0d1117; padding: 1px 6px; border-radius: 3px; margin-left: auto;
+}
+.box-sub { font-size: 0.77em; color: #8b949e; margin-bottom: 6px; }
+
+/* Status dot */
+.dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  background: #30363d; transition: background 0.3s;
+}
+.dot.ok    { background: #3fb950; box-shadow: 0 0 6px #3fb95088; animation: pulse 2s infinite; }
+.dot.warn  { background: #f0883e; box-shadow: 0 0 6px #f0883e88; }
+.dot.error { background: #f85149; }
+.dot.dim   { background: #30363d; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 4px #3fb95088} 50%{box-shadow:0 0 10px #3fb950cc} }
+
+/* Metrics grid inside box */
+.metrics {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
+}
+.metric { font-size: 0.78em; color: #8b949e; }
+.metric span { color: #e6edf3; font-family: monospace; font-size: 0.95em; }
+.metric span.ok   { color: #3fb950; }
+.metric span.warn { color: #f0883e; }
+.metric span.dim  { color: #8b949e; }
+
+/* Per-site breakdown */
+.sites-grid {
+  margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;
+}
+.site-chip {
+  font-size: 0.72em; font-family: monospace;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  padding: 2px 7px; color: #8b949e;
+}
+.site-chip.ok { border-color: #3fb95044; color: #3fb950; }
+
+/* ── Middle column ── */
+.mid-col {
+  display: flex; flex-direction: column;
+  align-items: center; padding: 0 6px;
+  padding-top: 32px; gap: 0;
+}
+.bridge-block {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; margin-bottom: 28px; width: 100%;
+}
+.bridge-line {
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, #58a6ff66, #3fb95066);
+  position: relative; transition: background 0.4s;
+}
+.bridge-line.active {
+  background: linear-gradient(90deg, #58a6ff, #3fb950);
+  animation: flow 1.5s linear infinite;
+  background-size: 200%;
+}
+@keyframes flow { 0%{background-position:0%} 100%{background-position:200%} }
+.bridge-line::after {
+  content: '▶'; position: absolute; right: -8px; top: -9px;
+  color: #3fb95066; font-size: 0.9em; transition: color 0.3s;
+}
+.bridge-line.active::after { color: #3fb950; }
+.bridge-label {
+  font-size: 0.68em; color: #6e7681; text-align: center;
+  font-family: monospace; white-space: nowrap;
+}
+.bridge-rate {
+  font-size: 0.78em; color: #58a6ff; font-family: monospace; font-weight: 600;
+}
+
+/* ── Status bar at bottom ── */
+.status-bar {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 10px 18px; margin-top: 20px; font-size: 0.80em;
+}
+.status-item { color: #8b949e; }
+.status-item strong { color: #c9d1d9; }
+
+/* Nav */
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+  text-decoration: none;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; }
+.nav a.active { border-color: #58a6ff; color: #58a6ff; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="parquet_transition.html">Transition plan</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="parquet_monitor.html" class="active">Monitor</a>
+</div>
+
+<h1>Parquet Pipeline Monitor</h1>
+<p class="subtitle">Live status · fractal-phil Phase 1 sim · auto-refresh 2 s</p>
+
+<!-- ── Config bar ── -->
+<div class="config-bar">
+  <label>Host IP
+    <input type="text" id="cfg-host" value="192.168.86.51" placeholder="192.168.86.x">
+  </label>
+  <label>
+    <input type="checkbox" id="cfg-same" checked>
+    AWS-sim = Host
+  </label>
+  <label>AWS-sim IP
+    <input type="text" id="cfg-aws" value="192.168.86.51" placeholder="192.168.86.x" disabled>
+  </label>
+  <button id="btn-connect">Connect</button>
+  <button id="btn-disconnect" style="background:#30363d;display:none">Disconnect</button>
+  <span class="connect-time" id="connect-time"></span>
+</div>
+
+<!-- ── Main monitor grid ── -->
+<div class="monitor-grid">
+
+  <!-- ═══ HOST column ═══ -->
+  <div>
+    <div class="col-label host">Host (edge / on-site sim)</div>
+
+    <!-- stress_runner / generator -->
+    <div class="comp-box dim" id="box-gen">
+      <div class="box-title">
+        <span class="dot dim" id="dot-gen"></span>
+        Generator / stress_runner
+        <span class="box-port">:8769</span>
+      </div>
+      <div class="box-sub">aiomqtt → FlashMQ :1883 · simulates field devices</div>
+      <div class="metrics">
+        <div class="metric">Rate  <span id="gen-mps">—</span> msg/s</div>
+        <div class="metric">Total <span id="gen-total">—</span></div>
+        <div class="metric">Tasks <span id="gen-tasks">—</span></div>
+        <div class="metric">Last  <span id="gen-age">—</span></div>
+      </div>
+      <div class="sites-grid" id="gen-sites"></div>
+    </div>
+
+    <!-- FlashMQ :1883 -->
+    <div class="comp-box dim" id="box-fmq-host">
+      <div class="box-title">
+        <span class="dot dim" id="dot-fmq-host"></span>
+        FlashMQ host
+        <span class="box-port">:1883</span>
+      </div>
+      <div class="box-sub">QoS-1 · bridges all traffic to aws-sim :1884</div>
+      <div class="metrics">
+        <div class="metric">Bridge <span id="fmq-bridge">—</span></div>
+        <div class="metric">Config <span class="dim">flashmq.conf</span></div>
+      </div>
+    </div>
+
+    <!-- writer.cpp (host) -->
+    <div class="comp-box dim" id="box-writer-host">
+      <div class="box-title">
+        <span class="dot dim" id="dot-writer-host"></span>
+        writer.cpp (host)
+      </div>
+      <div class="box-sub">subscribe :1883 · flush 60 s · /srv/data/parquet/</div>
+      <div class="metrics">
+        <div class="metric">Inflow <span id="wh-rate">—</span> msg/s</div>
+        <div class="metric">Status <span id="wh-status">—</span></div>
+      </div>
+    </div>
+
+    <!-- /srv/data/parquet store -->
+    <div class="comp-box dim" id="box-store-host">
+      <div class="box-title">
+        <span class="dot dim" id="dot-store-host"></span>
+        Host Parquet Store
+      </div>
+      <div class="box-sub">/srv/data/parquet/ · rsync-sim copies → aws-sim every 5 s</div>
+      <div class="metrics">
+        <div class="metric">rsync <span id="rsync-status">—</span></div>
+        <div class="metric">Lag   <span class="dim">≤ 5 s</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Middle connectors ═══ -->
+  <div class="mid-col">
+    <!-- MQTT bridge -->
+    <div class="bridge-block" style="margin-top:72px">
+      <div class="bridge-label" style="color:#58a6ff;font-weight:600">FlashMQ bridge</div>
+      <div class="bridge-line" id="bridge-mqtt-line"></div>
+      <div class="bridge-label">MQTT · QoS-1</div>
+      <div class="bridge-label">:1883 → :1884</div>
+      <div class="bridge-rate" id="bridge-mqtt-rate">—</div>
+    </div>
+
+    <!-- rsync-sim -->
+    <div class="bridge-block" style="margin-top:60px">
+      <div class="bridge-label">rsync-sim</div>
+      <div class="bridge-line" id="bridge-rsync-line" style="background:linear-gradient(90deg,#f0883e66,#f39c1266)"></div>
+      <div class="bridge-label">every 5 s</div>
+      <div class="bridge-label">history path</div>
+    </div>
+  </div>
+
+  <!-- ═══ AWS-SIM column ═══ -->
+  <div>
+    <div class="col-label aws">AWS-sim</div>
+
+    <!-- FlashMQ :1884 -->
+    <div class="comp-box dim" id="box-fmq-aws">
+      <div class="box-title">
+        <span class="dot dim" id="dot-fmq-aws"></span>
+        FlashMQ aws-sim
+        <span class="box-port">:1884</span>
+      </div>
+      <div class="box-sub">real-time hub · receives bridge from host</div>
+      <div class="metrics">
+        <div class="metric">Status <span id="fmq-aws-status">—</span></div>
+        <div class="metric">Config <span class="dim">flashmq-aws-sim.conf</span></div>
+      </div>
+    </div>
+
+    <!-- subscriber_api (live) -->
+    <div class="comp-box dim" id="box-sub">
+      <div class="box-title">
+        <span class="dot dim" id="dot-sub"></span>
+        subscriber_api
+        <span class="box-port">:8767</span>
+      </div>
+      <div class="box-sub">aiomqtt live · DuckDB history · WebSocket clients</div>
+      <div class="metrics">
+        <div class="metric">MQTT   <span id="sub-mqtt">—</span></div>
+        <div class="metric">Live   <span id="sub-mps">—</span> msg/s</div>
+        <div class="metric">Total  <span id="sub-total">—</span></div>
+        <div class="metric">WS cli <span id="sub-wsclients">—</span></div>
+      </div>
+    </div>
+
+    <!-- Telegraf → InfluxDB2 -->
+    <div class="comp-box dim" id="box-influx">
+      <div class="box-title">
+        <span class="dot dim" id="dot-influx"></span>
+        Telegraf → InfluxDB2
+        <span class="box-port">:8086</span>
+      </div>
+      <div class="box-sub">legacy path · always running · Flux / InfluxQL</div>
+      <div class="metrics">
+        <div class="metric">Health <span id="influx-health">—</span></div>
+        <div class="metric">Config <span class="dim">telegraf-aws-sim.conf</span></div>
+      </div>
+    </div>
+
+    <!-- Gap writer (optional) -->
+    <div class="comp-box dim" id="box-gap">
+      <div class="box-title">
+        <span class="dot dim" id="dot-gap"></span>
+        Gap writer
+        <span class="box-port">optional</span>
+      </div>
+      <div class="box-sub">writer.cpp current_state mode · covers ≤60 s rsync lag</div>
+      <div class="metrics">
+        <div class="metric">cs.parquet <span id="gap-age">—</span></div>
+        <div class="metric">Status     <span id="gap-status">—</span></div>
+      </div>
+    </div>
+
+    <!-- aws-sim Parquet Store -->
+    <div class="comp-box dim" id="box-store-aws">
+      <div class="box-title">
+        <span class="dot dim" id="dot-store-aws"></span>
+        aws-sim Parquet Store
+      </div>
+      <div class="box-sub">/srv/data/parquet-aws-sim/ · DuckDB **/*.parquet</div>
+      <div class="metrics">
+        <div class="metric">Source <span class="dim">rsync-sim + gap writer</span></div>
+        <div class="metric">Query  <span id="store-queries">—</span> total</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- monitor-grid -->
+
+<!-- Status bar -->
+<div class="status-bar">
+  <div class="status-item">Host <strong id="sb-host">—</strong></div>
+  <div class="status-item">AWS-sim <strong id="sb-aws">—</strong></div>
+  <div class="status-item">Generator WS <strong id="sb-gen-ws">disconnected</strong></div>
+  <div class="status-item">Subscriber WS <strong id="sb-sub-ws">disconnected</strong></div>
+  <div class="status-item">InfluxDB2 <strong id="sb-influx">—</strong></div>
+  <div class="status-item" style="margin-left:auto">Updated <strong id="sb-updated">—</strong></div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const cfgHost = document.getElementById('cfg-host');
+const cfgAws  = document.getElementById('cfg-aws');
+const cfgSame = document.getElementById('cfg-same');
+const btnConnect    = document.getElementById('btn-connect');
+const btnDisconnect = document.getElementById('btn-disconnect');
+
+cfgSame.addEventListener('change', () => {
+  cfgAws.disabled = cfgSame.checked;
+  if (cfgSame.checked) cfgAws.value = cfgHost.value;
+});
+cfgHost.addEventListener('input', () => {
+  if (cfgSame.checked) cfgAws.value = cfgHost.value;
+});
+
+// Load saved config
+const saved = JSON.parse(localStorage.getItem('pm-config') || '{}');
+if (saved.host) cfgHost.value = saved.host;
+if (saved.aws)  cfgAws.value  = saved.aws;
+if (saved.same !== undefined) { cfgSame.checked = saved.same; cfgAws.disabled = saved.same; }
+
+function getConfig() {
+  return {
+    host: cfgHost.value.trim() || 'localhost',
+    aws:  cfgSame.checked ? cfgHost.value.trim() : (cfgAws.value.trim() || 'localhost'),
+  };
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let genWS   = null;   // stress_runner :8769
+let subWS   = null;   // subscriber_api :8767
+let pollTimer = null;
+let genLastTs = 0;
+let subLastTs = 0;
+let genData   = null;
+let subData   = null;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function setText(id, v) { const el = $(id); if (el) el.textContent = v; }
+function setClass(id, cls) {
+  const el = $(id);
+  if (!el) return;
+  el.className = el.className.replace(/\bok\b|\bwarn\b|\berror\b|\bdim\b/g, '').trim();
+  if (cls) el.className += ' ' + cls;
+}
+function setBoxState(boxId, dotId, state) { // state: ok | warn | error | dim
+  setClass(boxId, state);
+  setClass(dotId, state);
+}
+function fmtNum(n) {
+  if (n == null) return '—';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'k';
+  return String(n);
+}
+function age(ts) {
+  if (!ts) return '—';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5)  return 'just now';
+  if (s < 60) return s + 's ago';
+  return Math.floor(s/60) + 'm ago';
+}
+
+// ── Generator WS (:8769) ─────────────────────────────────────────────────────
+function connectGen(host) {
+  if (genWS) { try { genWS.close(); } catch(e){} }
+  const url = `ws://${host}:8769`;
+  try { genWS = new WebSocket(url); } catch(e) { return; }
+
+  genWS.onopen = () => {
+    setText('sb-gen-ws', 'connected');
+    setBoxState('box-gen','dot-gen','ok');
+  };
+  genWS.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.type !== 'stats') return;
+      genData   = d;
+      genLastTs = Date.now();
+      updateGen(d);
+    } catch(e) {}
+  };
+  genWS.onclose = genWS.onerror = () => {
+    setText('sb-gen-ws', 'disconnected');
+    setBoxState('box-gen','dot-gen','error');
+    setText('gen-mps','—'); setText('gen-total','—'); setText('gen-tasks','—');
+    genData = null;
+    genWS = null;
+  };
+}
+
+function updateGen(d) {
+  const mps = d.mps ?? 0;
+  setText('gen-mps',   mps > 0 ? mps.toLocaleString() : '0');
+  setText('gen-total', fmtNum(d.total_published));
+  setText('gen-tasks', d.active_tasks ?? '—');
+  setText('gen-age',   'now');
+  setBoxState('box-gen','dot-gen', mps > 0 ? 'ok' : 'warn');
+
+  // FlashMQ :1883 & host writer — inferred from generator + bridge
+  const bridgeOk = subData && subData.mqtt_connected && mps > 0;
+  setBoxState('box-fmq-host','dot-fmq-host', mps > 0 ? 'ok' : 'warn');
+  setText('fmq-bridge', bridgeOk ? 'active' : (mps > 0 ? 'pending…' : 'idle'));
+  setBoxState('box-writer-host','dot-writer-host', mps > 0 ? 'ok' : 'warn');
+  setText('wh-rate', mps > 0 ? mps.toLocaleString() : '0');
+  setText('wh-status', mps > 0 ? 'writing' : 'idle');
+  setBoxState('box-store-host','dot-store-host', mps > 0 ? 'ok' : 'warn');
+  setText('rsync-status', mps > 0 ? 'active' : 'idle');
+
+  // Bridge arrow
+  const line = $('bridge-mqtt-line');
+  if (line) {
+    line.className = 'bridge-line' + (bridgeOk ? ' active' : '');
+  }
+  setText('bridge-mqtt-rate', bridgeOk ? mps.toLocaleString() + ' msg/s' : '—');
+
+  // rsync inferred from data flow
+  const rsyncLine = $('bridge-rsync-line');
+  if (rsyncLine) rsyncLine.className = 'bridge-line' + (mps > 0 ? ' active' : '');
+
+  // Per-site chips
+  const sitesEl = $('gen-sites');
+  if (sitesEl && d.projects) {
+    const chips = [];
+    for (const proj of d.projects) {
+      for (const site of proj.sites) {
+        chips.push(`<span class="site-chip ${site.published > 0 ? 'ok' : ''}">`
+          + `P${proj.project_id}/S${site.site_id} `
+          + `${fmtNum(site.published)}`
+          + `</span>`);
+      }
+    }
+    sitesEl.innerHTML = chips.join('');
+  }
+}
+
+// ── Subscriber WS (:8767) ─────────────────────────────────────────────────────
+function connectSub(aws) {
+  if (subWS) { try { subWS.close(); } catch(e){} }
+  const url = `ws://${aws}:8767`;
+  try { subWS = new WebSocket(url); } catch(e) { return; }
+
+  subWS.onopen = () => {
+    setText('sb-sub-ws', 'connected');
+    setBoxState('box-sub','dot-sub','ok');
+    setBoxState('box-fmq-aws','dot-fmq-aws','ok');
+    setText('fmq-aws-status', 'reachable');
+    // Request status immediately
+    subWS.send(JSON.stringify({type: 'get_status'}));
+  };
+  subWS.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      subLastTs = Date.now();
+      if (d.type === 'status') {
+        subData = d;
+        updateSubStatus(d);
+      } else if (d.type === 'stats') {
+        updateSubStats(d);
+      }
+    } catch(e) {}
+  };
+  subWS.onclose = subWS.onerror = () => {
+    setText('sb-sub-ws', 'disconnected');
+    setBoxState('box-sub','dot-sub','error');
+    setBoxState('box-fmq-aws','dot-fmq-aws','error');
+    setText('fmq-aws-status', 'unreachable');
+    setText('sub-mqtt','—'); setText('sub-mps','—'); setText('sub-total','—');
+    subData = null;
+    subWS = null;
+  };
+}
+
+function updateSubStatus(d) {
+  const mqttOk = d.mqtt_connected;
+  setText('sub-mqtt', mqttOk ? 'connected' : 'disconnected');
+  setClass('sub-mqtt', mqttOk ? 'ok' : 'error');
+  setBoxState('box-fmq-aws','dot-fmq-aws', mqttOk ? 'ok' : 'warn');
+  setText('fmq-aws-status', mqttOk ? 'connected' : 'no MQTT');
+  setBoxState('box-sub','dot-sub', mqttOk ? 'ok' : 'warn');
+}
+
+function updateSubStats(d) {
+  const mps = d.live_per_sec ?? 0;
+  setText('sub-mps',     mps > 0 ? mps.toLocaleString() : '0');
+  setText('sub-total',   fmtNum(d.live_total));
+  setText('sub-wsclients', d.ws_clients ?? '—');
+  setText('store-queries', fmtNum(d.queries_run));
+  setBoxState('box-store-aws','dot-store-aws', d.queries_run > 0 ? 'ok' : 'warn');
+  setBoxState('box-sub','dot-sub', mps > 0 || (subData && subData.mqtt_connected) ? 'ok' : 'warn');
+}
+
+// ── InfluxDB2 health (CORS fetch) ─────────────────────────────────────────────
+async function checkInflux(aws) {
+  try {
+    const r = await fetch(`http://${aws}:8086/health`, {signal: AbortSignal.timeout(3000)});
+    const j = await r.json().catch(() => ({}));
+    const ok = j.status === 'pass' || r.ok;
+    setText('influx-health', ok ? 'healthy' : 'degraded');
+    setClass('influx-health', ok ? 'ok' : 'warn');
+    setBoxState('box-influx','dot-influx', ok ? 'ok' : 'warn');
+    setText('sb-influx', ok ? 'healthy' : 'degraded');
+  } catch(e) {
+    setText('influx-health', 'unreachable');
+    setClass('influx-health', 'error');
+    setBoxState('box-influx','dot-influx','error');
+    setText('sb-influx','unreachable');
+  }
+}
+
+// ── Gap writer inference ──────────────────────────────────────────────────────
+// No direct API — we infer from subscriber status msgs if current_state exists.
+// Subscriber stats would need a "gap_writer_present" field; for now show unknown.
+function updateGapStatus() {
+  // Future: could check via a subscriber query or a dedicated health endpoint
+  setText('gap-age',    'unknown');
+  setText('gap-status', 'no direct API');
+  setBoxState('box-gap','dot-gap','dim');
+}
+
+// ── Periodic refresh ─────────────────────────────────────────────────────────
+function tick() {
+  const ts = new Date().toLocaleTimeString();
+  setText('sb-updated', ts);
+  setText('connect-time', '');
+
+  // Re-request status from subscriber
+  if (subWS && subWS.readyState === WebSocket.OPEN) {
+    subWS.send(JSON.stringify({type: 'get_status'}));
+  }
+
+  // Stale detection
+  if (genData && Date.now() - genLastTs > 10000) {
+    setBoxState('box-gen','dot-gen','warn');
+  }
+  if (subData && Date.now() - subLastTs > 10000) {
+    setBoxState('box-sub','dot-sub','warn');
+  }
+
+  updateGapStatus();
+}
+
+// ── Connect / disconnect ──────────────────────────────────────────────────────
+let connected = false;
+
+function doConnect() {
+  const cfg = getConfig();
+  localStorage.setItem('pm-config', JSON.stringify({
+    host: cfg.host, aws: cfg.aws, same: cfgSame.checked
+  }));
+  setText('sb-host', cfg.host);
+  setText('sb-aws', cfg.aws);
+
+  connectGen(cfg.host);
+  connectSub(cfg.aws);
+  checkInflux(cfg.aws);
+
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => {
+    tick();
+    checkInflux(getConfig().aws);
+  }, 2000);
+
+  connected = true;
+  btnConnect.style.display    = 'none';
+  btnDisconnect.style.display = '';
+  setText('connect-time', 'Connected ' + new Date().toLocaleTimeString());
+}
+
+function doDisconnect() {
+  if (genWS) { try { genWS.close(); } catch(e){} genWS = null; }
+  if (subWS) { try { subWS.close(); } catch(e){} subWS = null; }
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  connected = false;
+  btnConnect.style.display    = '';
+  btnDisconnect.style.display = 'none';
+  // Reset all to dim
+  ['gen','fmq-host','writer-host','store-host','fmq-aws','sub','influx','gap','store-aws']
+    .forEach(id => setBoxState(`box-${id}`, `dot-${id}`, 'dim'));
+  setText('sb-gen-ws','disconnected');
+  setText('sb-sub-ws','disconnected');
+  setText('sb-influx','—');
+}
+
+btnConnect.addEventListener('click', doConnect);
+btnDisconnect.addEventListener('click', doDisconnect);
+
+// Auto-connect on load
+window.addEventListener('load', () => setTimeout(doConnect, 300));
+</script>
+
+</body>
+</html>

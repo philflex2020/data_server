@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Transition — fractal-phil Phase 1</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1200px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #c9d1d9; font-size: 0.95em; margin: 20px 0 10px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num  { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.hi   { color: #e6edf3; font-weight: 600; }
+td.green { color: #3fb950; }
+td.warn  { color: #f0883e; font-weight: 700; }
+td.muted { color: #8b949e; font-style: italic; }
+td.strike { color: #8b949e; text-decoration: line-through; font-style: italic; }
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 0.87em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.section { margin-bottom: 48px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+/* Architecture diagram */
+.arch {
+  display: flex; gap: 0; align-items: stretch;
+  background: #0d1117; overflow-x: auto; padding: 4px 0;
+}
+.arch-col {
+  display: flex; flex-direction: column; gap: 0;
+  min-width: 220px;
+}
+.arch-col.host  { flex: 0 0 250px; }
+.arch-col.mid   { flex: 0 0 160px; display: flex; flex-direction: column;
+                  justify-content: space-between; align-items: center; padding: 0 8px; }
+.arch-col.aws   { flex: 0 0 270px; }
+.arch-zone {
+  border: 1px solid #30363d; border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 0;
+}
+.arch-zone.host-zone { border-color: #58a6ff44; background: #0e1d2d; }
+.arch-zone.aws-zone  { border-color: #3fb95044; background: #0d2d1a; }
+.arch-zone.legacy-zone { border-color: #f0883e33; background: #1a1008; }
+.arch-zone-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 14px;
+}
+.arch-zone.host-zone .arch-zone-title { color: #58a6ff; }
+.arch-zone.aws-zone  .arch-zone-title { color: #3fb950; }
+.arch-zone.legacy-zone .arch-zone-title { color: #f0883e; }
+.arch-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 7px;
+  padding: 9px 13px; font-size: 0.82em;
+}
+.arch-box .bname { font-weight: 700; color: #e6edf3; font-size: 0.95em; }
+.arch-box .bsub  { color: #8b949e; font-size: 0.82em; margin-top: 2px; }
+.arch-box .bport { color: #f39c12; font-size: 0.80em; font-family: monospace; }
+.arch-box.accent-blue   { border-color: #58a6ff66; }
+.arch-box.accent-green  { border-color: #3fb95066; }
+.arch-box.accent-orange { border-color: #f0883e66; }
+.arch-box.accent-purple { border-color: #bc8cff66; }
+.arch-box.accent-dim    { border-color: #30363d; opacity: 0.55; }
+.arch-arr {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 2px 0 2px 22px; gap: 1px;
+}
+.arch-arr .arr-line {
+  width: 2px; height: 14px; background: #30363d; margin-left: 3px;
+}
+.arch-arr .arr-label {
+  font-size: 0.72em; color: #8b949e; font-family: monospace;
+}
+.arch-arr .arr-tip { font-size: 0.82em; color: #555; margin-left: -1px; }
+/* horizontal connector */
+.mid-conn {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; position: relative; width: 100%;
+}
+.mid-conn .mc-line {
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, #58a6ff88, #3fb95088);
+  position: relative;
+}
+.mid-conn .mc-line::after {
+  content: '▶'; position: absolute; right: -7px; top: -9px;
+  color: #3fb95088; font-size: 0.9em;
+}
+.mid-conn .mc-label {
+  font-size: 0.70em; color: #6e7681; text-align: center;
+  font-family: monospace; white-space: nowrap;
+}
+.mid-conn.rsync .mc-line {
+  background: linear-gradient(90deg, #f0883e88, #f39c1288);
+}
+.mid-conn.rsync .mc-line::after { color: #f39c1288; }
+.mid-conn.rsync .mc-label { color: #f0883e; }
+.mid-conn.dim .mc-line { background: #30363d; opacity: 0.4; }
+.mid-conn.dim .mc-line::after { opacity: 0.3; }
+.gap-badge {
+  display: inline-block; font-size: 0.68em; font-weight: 700;
+  background: #bc8cff22; color: #bc8cff; border: 1px solid #bc8cff44;
+  border-radius: 3px; padding: 1px 5px; margin-left: 6px; letter-spacing: 0.05em;
+  vertical-align: middle;
+}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="dashboard.html">Dashboard</a>
+  <a href="nats_report_x86.html">writer.cpp scale test</a>
+  <a href="nats_query_x86.html">DuckDB queries</a>
+  <a href="subscriber.html">Subscriber</a>
+  <a href="tuesday.html">Tuesday deck</a>
+</div>
+
+<h1>Parquet Transition — fractal-phil Phase 1</h1>
+<p class="subtitle">
+  2026-03-17 · fractal-phil simulation · FlashMQ bridge → writer.cpp → rsync-sim → DuckDB
+</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Host</strong> generators → FlashMQ :1883 → writer.cpp → /srv/data/parquet</div>
+  <div class="meta-item"><strong>Bridge</strong> FlashMQ :1883 → FlashMQ aws-sim :1884 (MQTT QoS-1)</div>
+  <div class="meta-item"><strong>Sim</strong> rsync-sim 5 s → /srv/data/parquet-aws-sim</div>
+  <div class="meta-item"><strong>Gap writer</strong> writer.cpp (aws-sim) → current_state.parquet (optional)</div>
+  <div class="meta-item"><strong>Legacy</strong> FlashMQ :1884 → Telegraf → InfluxDB2 (still running)</div>
+</div>
+
+<!-- ═══ ARCHITECTURE DIAGRAM -->
+<div class="section">
+<h2>Data Path Architecture</h2>
+
+<div class="arch">
+
+  <!-- HOST COLUMN -->
+  <div class="arch-col host">
+    <div class="arch-zone host-zone">
+      <div class="arch-zone-title">Host (on-site / sim)</div>
+
+      <div class="arch-box">
+        <div class="bname">Generator / stress_runner</div>
+        <div class="bsub">batteries · solar · wind · grid</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">MQTT publish</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-blue">
+        <div class="bname">FlashMQ</div>
+        <div class="bport">:1883 · QoS-1 persistent session</div>
+        <div class="bsub">bridges live data to aws-sim FlashMQ :1884</div>
+        <div class="bsub">also queues for writer.cpp during downtime</div>
+      </div>
+
+      <!-- Two outputs from FlashMQ: writer.cpp AND bridge -->
+      <div style="display:flex; gap:10px; margin: 6px 0 6px 0;">
+        <div style="flex:1; font-size:0.72em; color:#8b949e; font-family:monospace; padding-left:4px;">
+          ↓ subscribe # (QoS-1)
+        </div>
+        <div style="flex:1; font-size:0.72em; color:#58a6ff; font-family:monospace; text-align:right; padding-right:4px;">
+          bridge → :1884 →
+        </div>
+      </div>
+
+      <div class="arch-box accent-blue">
+        <div class="bname">writer.cpp</div>
+        <div class="bsub">simdjson · mutex-swap buffer</div>
+        <div class="bsub">flush every 60 s · atomic Parquet files</div>
+        <div class="bport">config.fractal.yaml</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">partitioned history files</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <div class="arch-box accent-green">
+        <div class="bname">Host Parquet Store</div>
+        <div class="bsub">/srv/data/parquet/</div>
+        <div class="bsub">project={id}/site={id}/YYYY/MM/DD/</div>
+        <div class="bsub">rsync-sim copies this to aws-sim every 5 s</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MIDDLE CONNECTORS -->
+  <div class="arch-col mid">
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:flex-start; padding: 30px 0; gap: 40px;">
+
+      <!-- FlashMQ bridge — live MQTT path -->
+      <div class="mid-conn" style="margin-top: 70px;">
+        <div class="mc-label" style="color:#58a6ff; font-weight:600;">FlashMQ bridge</div>
+        <div class="mc-line"></div>
+        <div class="mc-label" style="color:#58a6ff;">MQTT · QoS-1</div>
+        <div class="mc-label">:1883 → :1884</div>
+        <div class="mc-label">real-time path</div>
+      </div>
+
+      <!-- rsync-sim — history path -->
+      <div class="mid-conn rsync" style="margin-top: 90px;">
+        <div class="mc-label">rsync-sim</div>
+        <div class="mc-line"></div>
+        <div class="mc-label">every 5 s</div>
+        <div class="mc-label">history path</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- AWS-SIM COLUMN -->
+  <div class="arch-col aws">
+    <div class="arch-zone aws-zone">
+      <div class="arch-zone-title">AWS-sim</div>
+
+      <!-- Real-time hub -->
+      <div class="arch-box accent-blue">
+        <div class="bname">FlashMQ aws-sim</div>
+        <div class="bport">:1884 · receives bridge from host :1883</div>
+        <div class="bsub">real-time data hub · QoS-1 per subscriber</div>
+      </div>
+      <div style="font-size:0.72em; color:#8b949e; padding: 6px 0 4px 22px; font-family:monospace;">
+        ↓ three independent MQTT subscribers
+      </div>
+
+      <!-- Subscriber A: subscriber_api live -->
+      <div class="arch-box accent-green" style="margin-bottom:6px;">
+        <div class="bname">subscriber_api — live</div>
+        <div class="bsub">aiomqtt · live MQTT stream → WebSocket clients</div>
+      </div>
+
+      <!-- Subscriber B: Telegraf → InfluxDB2 -->
+      <div class="arch-box accent-orange" style="margin-bottom:6px;">
+        <div class="bname">Telegraf → InfluxDB2</div>
+        <div class="bsub">telegraf-aws-sim.conf · always running · no toggle</div>
+        <div class="bsub">browser queries InfluxDB2 HTTP directly (Flux)</div>
+        <div class="bsub">subscriber.html Source button: DuckDB | InfluxDB2</div>
+      </div>
+
+      <!-- Subscriber C: gap writer -->
+      <div class="arch-box accent-purple" style="margin-bottom: 14px;">
+        <div class="bname">writer.cpp <span class="gap-badge">GAP WRITER</span></div>
+        <div class="bsub">current_state mode — 1 row/sensor (latest reading)</div>
+        <div class="bsub">fills the ≤60 s rsync lag window · optional</div>
+        <div class="bsub">→ /srv/data/parquet-aws-sim/current_state.parquet</div>
+      </div>
+
+      <!-- Parquet store — receives from BOTH rsync-sim and gap writer -->
+      <div class="arch-box accent-green">
+        <div class="bname">aws-sim Parquet Store</div>
+        <div class="bsub">/srv/data/parquet-aws-sim/</div>
+        <div class="bsub">← rsync-sim: partitioned history (project/site/date)</div>
+        <div class="bsub">← gap writer: current_state.parquet (root)</div>
+        <div class="bsub">DuckDB globs **/*.parquet — both sources transparent</div>
+      </div>
+      <div class="arch-arr"><div class="arr-line"></div><div class="arr-label">read_parquet(**/*.parquet)</div><div class="arr-line"></div><div class="arr-tip">↓</div></div>
+
+      <!-- subscriber_api history -->
+      <div class="arch-box accent-green">
+        <div class="bname">subscriber_api — history</div>
+        <div class="bsub">DuckDB · no S3 · no gap-fill logic in code</div>
+        <div class="bsub">same local.path covers all data transparently</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="callout ok" style="margin-top:16px">
+  <strong>Two independent paths into the aws-sim Parquet Store, one query path out.</strong>
+  The host writer.cpp creates full partitioned Parquet files and rsync-sim delivers them as
+  history.  The gap writer (optional) fills the most recent ≤60 s by writing
+  <code>current_state.parquet</code> into the same directory.
+  DuckDB globs <code>**/*.parquet</code> and sees everything — the subscriber API has
+  no knowledge of which files came from rsync and which from the gap writer.
+</div>
+</div>
+
+<!-- ═══ GAP WRITER -->
+<div class="section">
+<h2>Gap Writer — Filling the rsync Lag</h2>
+
+<p>The rsync-sim loop copies completed Parquet files every 5 seconds, but writer.cpp
+flushes a new file only every 60 seconds.  This means the most recent 60 seconds of
+data is never in <code>/srv/data/parquet-aws-sim/</code> — it is still buffered in
+writer.cpp on the host.</p>
+
+<p>The gap writer is a second instance of writer.cpp running on the aws-sim side,
+subscribed to FlashMQ :1884.  It runs in <strong>current_state mode</strong>: instead of
+writing partitioned history files, it maintains a single <code>current_state.parquet</code>
+that always holds the latest reading for every sensor.  DuckDB finds it automatically
+when globbing <code>**/*.parquet</code>.</p>
+
+<table>
+  <thead>
+    <tr><th>Data</th><th>Source</th><th>Lag</th><th>Path in /srv/data/parquet-aws-sim/</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">History (&gt; 60 s old)</td>
+      <td>rsync-sim from host writer.cpp</td>
+      <td class="green">5 s rsync cadence</td>
+      <td><code>project=*/site=*/YYYY/MM/DD/*.parquet</code></td>
+    </tr>
+    <tr>
+      <td class="hi">Current state (gap)</td>
+      <td>gap writer — writer.cpp subscribed to :1884</td>
+      <td class="green">≤ 60 s flush interval</td>
+      <td><code>current_state.parquet</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>Gap writer is optional at startup.</strong>
+  The rsync-sim path works immediately without it — history queries just have a
+  &lt; 60-second blind spot at the leading edge.  Start the gap writer when you want
+  real-time completeness without changing any subscriber code.
+</div>
+
+<h3>Gap writer config — <code>aws/gap_fill/config.yaml</code></h3>
+<pre><code>mqtt:
+  host: localhost
+  port: 1884                    # FlashMQ aws-sim
+  client_id: gap-fill-writer    # distinct from subscriber-api
+  topic: "#"
+  qos: 1
+
+output:
+  base_path: /srv/data/parquet-aws-sim   # same dir as rsync destination
+  current_state_path: /srv/data/parquet-aws-sim/current_state.parquet
+  hot_file_path: ""                      # not needed — current_state covers the gap
+  flush_interval_seconds: 60</code></pre>
+
+<div class="callout ok">
+  <strong>No subscriber changes required.</strong>
+  The subscriber's <code>local.path: /srv/data/parquet-aws-sim</code> covers everything.
+  <code>current_state.parquet</code> sits at the root of that directory and is found
+  automatically by DuckDB's <code>**/*.parquet</code> glob alongside all historical files.
+</div>
+</div>
+
+<!-- ═══ MIGRATION PHASES -->
+<div class="section">
+<h2>Migration Phases — fractal-phil</h2>
+
+<table>
+  <thead>
+    <tr><th>Phase</th><th>Action</th><th>Status</th><th>Risk</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">1 · Two-FlashMQ topology</td>
+      <td>Host FlashMQ :1883 bridges to aws-sim FlashMQ :1884.
+          Telegraf and subscriber_api both subscribe to :1884.
+          writer.cpp on host writes to /srv/data/parquet.
+          rsync-sim copies to /srv/data/parquet-aws-sim every 5 s.</td>
+      <td class="green">Done</td>
+      <td class="green">None — legacy path untouched</td>
+    </tr>
+    <tr>
+      <td class="hi">2 · subscriber_api on DuckDB</td>
+      <td>subscriber_api subscribes to MQTT :1884 for live data.
+          History queries DuckDB on /srv/data/parquet-aws-sim.
+          subscriber.html has DuckDB ↔ InfluxDB2 toggle to compare.</td>
+      <td class="green">Done</td>
+      <td class="green">Read-only comparison</td>
+    </tr>
+    <tr>
+      <td class="hi">3 · Gap writer (optional)</td>
+      <td>Start writer.cpp on aws-sim in current_state mode.
+          Writes /srv/data/parquet-aws-sim/current_state.parquet.
+          DuckDB finds it automatically — no subscriber changes.</td>
+      <td class="warn">Start when ready</td>
+      <td class="green">Additive — no conflicts</td>
+    </tr>
+    <tr>
+      <td class="hi">4 · Validate equivalence</td>
+      <td>Run DuckDB and InfluxDB2 queries in parallel via subscriber.html toggle.
+          Confirm row counts, field values, and timestamps agree across the full
+          simulated fleet load.</td>
+      <td class="muted">Pending phase 3</td>
+      <td class="green">Read-only</td>
+    </tr>
+    <tr>
+      <td class="hi">5 · Production deploy</td>
+      <td>Apply the same two-FlashMQ topology to Phase 1 production sites (3–4 sites).
+          writer.cpp on-site + rsync to AWS + gap writer on AWS instance.
+          InfluxDB2 continues as warm standby.</td>
+      <td class="muted">Pending validation</td>
+      <td class="warn">Staged — one site at a time</td>
+    </tr>
+    <tr>
+      <td class="hi">6 · Decommission InfluxDB</td>
+      <td>Once DuckDB history is confirmed complete and stable, stop Telegraf.
+          InfluxDB2 enters read-only cold archive mode or is decommissioned.</td>
+      <td class="muted">Deferred</td>
+      <td class="warn">Irreversible — confirm retention first</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>No flag day.</strong>
+  Phases 1–4 are fully additive.  The InfluxDB2 path runs continuously throughout.
+  Phase 6 is the only destructive step and can be deferred indefinitely.
+</div>
+<div class="callout info">
+  <strong>How the DuckDB ↔ InfluxDB2 toggle works in subscriber.html:</strong>
+  Telegraf always runs — it subscribes to FlashMQ :1884 and imports data into InfluxDB2
+  continuously.  There is no toggle at the Telegraf or ingestion layer.
+  The <em>Source</em> button in subscriber.html chooses the history query path only:
+  <strong>DuckDB</strong> sends a <code>query_history</code> message via WebSocket →
+  subscriber_api → local Parquet files;
+  <strong>InfluxDB2</strong> queries the InfluxDB2 HTTP API directly from the browser
+  using Flux — subscriber_api is not involved.  Both paths see the same underlying data.
+</div>
+</div>
+
+<!-- ═══ START COMMANDS -->
+<div class="section">
+<h2>Start Commands — fractal-phil sim</h2>
+
+<h3>Edge (host side)</h3>
+<pre><code># FlashMQ host :1883 with bridge to aws-sim :1884
+flashmq --config /etc/flashmq/flashmq.conf
+
+# writer.cpp — subscribes to :1883, writes /srv/data/parquet
+cd source/parquet_writer_cpp
+./parquet_writer --config config.fractal.yaml
+
+# rsync-sim — copies to /srv/data/parquet-aws-sim every 5 s
+while true; do
+  rsync -a --delete /srv/data/parquet/ /srv/data/parquet-aws-sim/
+  sleep 5
+done</code></pre>
+
+<h3>AWS-sim side</h3>
+<pre><code># FlashMQ aws-sim :1884 — receives bridge from host
+flashmq --config /etc/flashmq/flashmq-aws-sim.conf
+
+# Telegraf → InfluxDB2 (legacy, unchanged)
+telegraf --config source/telegraf/telegraf-aws-sim.conf
+
+# subscriber_api — MQTT live + DuckDB history
+cd subscriber/api
+python server.py --config config.fractal.yaml</code></pre>
+
+<h3>Gap writer (optional — start when ready)</h3>
+<pre><code>cd source/parquet_writer_cpp
+./parquet_writer --config ../../aws/gap_fill/config.yaml
+# → writes /srv/data/parquet-aws-sim/current_state.parquet
+# → DuckDB picks it up automatically on next query</code></pre>
+</div>
+
+<!-- ═══ QUERY PATHS -->
+<div class="section">
+<h2>DuckDB Query Paths — Date-Scoped</h2>
+
+<p>Parquet files are named with the flush timestamp (<code>20260317T120000Z.parquet</code>)
+and organised into date directories (<code>YYYY/MM/DD/</code>).  Rather than globbing
+<code>**/*.parquet</code> across the entire store, the subscriber API constructs
+<strong>date-scoped paths</strong> from the query time window — limiting DuckDB to only
+the date directories that overlap the requested range.  This is the single biggest
+query performance lever: at a 60 s flush rate a one-day query opens ~60 files instead
+of the full store.</p>
+
+<pre><code>-- History query — date-scoped (server.py _date_paths() generates this)
+-- Query window 2026-03-17 maps to exactly one date directory per site:
+SELECT *
+FROM read_parquet(
+  ['/srv/data/parquet-aws-sim/project=0/site=3/2026/03/17/*.parquet',
+   '/srv/data/parquet-aws-sim/current_state.parquet'],   -- gap writer (if present)
+  hive_partitioning=true, union_by_name=true
+)
+WHERE timestamp >= 1742000000 AND timestamp &lt;= 1742003600
+ORDER BY timestamp DESC
+LIMIT 1000
+
+-- Query spanning midnight — two date directories passed as a list:
+-- ['.../2026/03/16/*.parquet', '.../2026/03/17/*.parquet', '.../current_state.parquet']
+
+-- DO NOT use **/*.parquet for history queries — opens every file in the store.</code></pre>
+
+<div class="callout info">
+  <strong>Why date-scoped paths?</strong>
+  The Parquet <em>filename</em> encodes the flush timestamp, not individual message timestamps.
+  A file flushed at 12:00:00 contains messages from ~11:59:00–12:00:00.
+  DuckDB uses the date directory to prune which files it opens (file-level pruning),
+  then the <code>WHERE timestamp &gt;= X</code> predicate for row-level filtering within those files.
+  Without date scoping, DuckDB would open every file and rely solely on row-level predicates —
+  far more I/O for the same result.
+</div>
+
+<div class="callout ok">
+  <strong>current_state.parquet is added explicitly, not via glob.</strong>
+  The gap writer writes <code>/srv/data/parquet-aws-sim/current_state.parquet</code> at the
+  store root — outside all date directories.  server.py checks for this file and appends it
+  to every history query path list when present.  <code>union_by_name=true</code> handles
+  any column differences automatically.  No other gap-fill logic exists in the subscriber.
+</div>
+</div>
+
+<!-- ═══ FLUSH INTERVAL -->
+<div class="section">
+<h2>Host Flush Interval — Extend Once Gap Writer Is Running</h2>
+
+<p>The host writer.cpp currently flushes every 60 seconds.  With the gap writer on aws-sim
+writing <code>current_state.parquet</code> directly from live MQTT data, the rsync'd
+partitioned files are only needed for <em>historical</em> queries — not for current state.</p>
+
+<table>
+  <thead>
+    <tr><th>Flush interval</th><th>Files/site/day</th><th>DuckDB Q2/Q3 (est.)</th><th>rsync cadence</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="hi">60 s (current)</td>
+      <td class="num">1 440</td>
+      <td class="num">~60 ms local</td>
+      <td>every 5 s</td>
+    </tr>
+    <tr>
+      <td class="hi">5 min</td>
+      <td class="num">288</td>
+      <td class="num fast">~12 ms local</td>
+      <td>every 60 s</td>
+    </tr>
+    <tr>
+      <td class="hi">15 min</td>
+      <td class="num">96</td>
+      <td class="num fast">~4 ms local</td>
+      <td>every 5 min</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>Gap writer makes extended flush safe.</strong>
+  <code>current_state.parquet</code> always holds the latest reading per sensor with at most
+  one 60-second flush lag.  Historical queries use the date-scoped partitioned files; current-state
+  queries use <code>current_state.parquet</code>.  The host flush interval and rsync cadence
+  can be extended together once the gap writer is confirmed stable.
+</div>
+<pre><code># host writer.cpp — extend flush interval (config.fractal.yaml)
+output:
+  flush_interval_seconds: 300   # 5 min — 288 files/site/day
+
+# rsync-sim — match cadence (no point rsyncing faster than flush rate)
+while true; do
+  rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/
+  sleep 60
+done</code></pre>
+</div>
+
+<!-- ═══ COMPONENTS REMOVED (vs old NATS path) -->
+<div class="section">
+<h2>Components Removed vs Old NATS Pipeline</h2>
+<table>
+  <thead>
+    <tr><th>Component</th><th>Old role</th><th>Replaced by</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="strike">NATS JetStream (host)</td>
+      <td class="muted">message durability · batteries.&gt; stream</td>
+      <td class="green">FlashMQ QoS-1 persistent session</td>
+    </tr>
+    <tr>
+      <td class="strike">NATS JetStream (AWS)</td>
+      <td class="muted">12-min reconnect buffer · leaf node</td>
+      <td class="green">FlashMQ bridge :1883 → :1884</td>
+    </tr>
+    <tr>
+      <td class="strike">bridge.py</td>
+      <td class="muted">MQTT → NATS per-cell publish · serial bottleneck</td>
+      <td class="green">writer.cpp subscribes directly to FlashMQ</td>
+    </tr>
+    <tr>
+      <td class="strike">writer.py (NATS consumer)</td>
+      <td class="muted">Python parquet writer · NATS pull consumer · S3 upload</td>
+      <td class="green">writer.cpp (C++17) · local filesystem</td>
+    </tr>
+    <tr>
+      <td class="strike">aws/gap_fill config (NATS)</td>
+      <td class="muted">Separate durable consumer on NATS JetStream</td>
+      <td class="green">writer.cpp in current_state mode on aws-sim</td>
+    </tr>
+    <tr>
+      <td class="strike">MinIO / S3 (local)</td>
+      <td class="muted">S3-compatible object store on host</td>
+      <td class="green">/srv/data/parquet/ — local filesystem</td>
+    </tr>
+    <tr>
+      <td class="strike">subscriber NATS client</td>
+      <td class="muted">nats-py live stream consumer</td>
+      <td class="green">aiomqtt · persistent MQTT connection to :1884</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</body>
+</html>
