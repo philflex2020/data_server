@@ -40,6 +40,9 @@ _server_state: dict = {}
 def update_server_state(d: dict) -> None:
     _server_state.update(d)
 
+# Flux query stats — read by server.py stats_loop
+flux_stats: dict = {"flux_queries_run": 0, "flux_last_ms": 0.0, "flux_avg_ms": 0.0}
+
 
 # ---------------------------------------------------------------------------
 # Flux parser helpers
@@ -264,6 +267,10 @@ def run_flux_query(flux: str, cfg: dict, duckdb_conn) -> str:
     rows = cur.fetchall()
     elapsed = round((time.monotonic() - t0) * 1000, 1)
     log.info("Flux %s  rows=%d  %.1fms", qtype, len(rows), elapsed)
+    flux_stats["flux_queries_run"] += 1
+    n = flux_stats["flux_queries_run"]
+    flux_stats["flux_last_ms"] = elapsed
+    flux_stats["flux_avg_ms"] = round(flux_stats["flux_avg_ms"] * (n - 1) / n + elapsed / n, 1)
     return to_influx_csv(qtype, col_names, rows, fields)
 
 
