@@ -137,6 +137,54 @@ h1   { color: #58a6ff; font-size: 1.6em; margin-bottom: 4px; }
   font-size: 0.78em; color: #58a6ff; font-family: monospace; font-weight: 600;
 }
 
+/* ── Query paths section ── */
+h2.section-title {
+  color: #79c0ff; font-size: 0.95em; margin: 28px 0 12px;
+  border-bottom: 1px solid #30363d; padding-bottom: 6px;
+}
+.qpath-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.qpath-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 12px 14px;
+}
+.qpath-box.flux-path  { border-color: #f0883e44; }
+.qpath-box.duck-path  { border-color: #58a6ff44; }
+.qpath-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.86em; font-weight: 700; margin-bottom: 8px;
+}
+.qpath-title .dot { flex-shrink: 0; }
+.path-tag {
+  font-size: 0.70em; font-weight: 700; padding: 1px 7px; border-radius: 3px;
+  letter-spacing: 0.06em; text-transform: uppercase; margin-left: 4px;
+}
+.path-tag.flux  { background: #f0883e22; color: #f0883e; border: 1px solid #f0883e44; }
+.path-tag.duck  { background: #58a6ff22; color: #58a6ff; border: 1px solid #58a6ff44; }
+.path-tag.live  { background: #3fb95022; color: #3fb950; border: 1px solid #3fb95044; }
+.path-tag.note  { background: #bc8cff22; color: #bc8cff; border: 1px solid #bc8cff44; }
+.path-row {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 0.79em; color: #8b949e; padding: 3px 0;
+  border-bottom: 1px solid #21262d;
+}
+.path-row:last-child { border-bottom: none; }
+.path-row .arrow { color: #444; flex-shrink: 0; }
+.path-row .ep {
+  font-family: monospace; font-size: 0.92em;
+  color: #e6edf3; white-space: nowrap;
+}
+.path-row .ep.dim { color: #6e7681; }
+.path-row .status-val { margin-left: auto; font-family: monospace; font-size: 0.88em; }
+.path-row .status-val.ok   { color: #3fb950; }
+.path-row .status-val.warn { color: #f0883e; }
+.path-row .status-val.err  { color: #f85149; }
+.path-row .status-val.dim  { color: #6e7681; }
+
 /* ── Status bar at bottom ── */
 .status-bar {
   display: flex; gap: 16px; flex-wrap: wrap;
@@ -348,6 +396,89 @@ h1   { color: #58a6ff; font-size: 1.6em; margin-bottom: 4px; }
   </div>
 
 </div><!-- monitor-grid -->
+
+<!-- ── Query paths ── -->
+<h2 class="section-title">Browser Query Paths</h2>
+<div class="qpath-grid">
+
+  <!-- Flux / InfluxDB2 path -->
+  <div class="qpath-box flux-path">
+    <div class="qpath-title">
+      <span class="dot dim" id="dot-qflux"></span>
+      Flux (InfluxDB2) path
+      <span class="path-tag flux">Flux</span>
+    </div>
+
+    <div class="path-row">
+      <span class="arrow">▶</span>
+      <span class="ep">orig_aws.html</span>
+      <span>→ HTTP POST Flux →</span>
+      <span class="ep">InfluxDB2 :8086</span>
+      <span class="path-tag flux">working</span>
+      <span class="status-val" id="qf-influx-status">—</span>
+    </div>
+
+    <div class="path-row">
+      <span class="arrow">▶</span>
+      <span class="ep">orig_aws.html</span>
+      <span>→ HTTP POST Flux →</span>
+      <span class="ep">flux_compat :8768</span>
+      <span class="path-tag note">shim</span>
+      <span class="status-val" id="qf-shim-status">—</span>
+    </div>
+
+    <div class="path-row" style="padding-top:6px; color:#6e7681; font-size:0.76em;">
+      ⚠ flux_compat :8768 translates Flux → DuckDB SQL, but
+      <code style="color:#f39c12;font-size:0.9em">_flux_source()</code>
+      still builds S3 paths — local Parquet not yet wired.
+      Point orig_aws.html at :8086 for now.
+    </div>
+  </div>
+
+  <!-- DuckDB / WebSocket path -->
+  <div class="qpath-box duck-path">
+    <div class="qpath-title">
+      <span class="dot dim" id="dot-qduck"></span>
+      DuckDB (Parquet) path
+      <span class="path-tag duck">DuckDB</span>
+    </div>
+
+    <div class="path-row">
+      <span class="arrow">▶</span>
+      <span class="ep">subscriber.html</span>
+      <span>→ WS :8767</span>
+      <span class="ep">subscriber_api</span>
+      <span class="path-tag live">live MQTT</span>
+      <span class="status-val" id="qd-live-status">—</span>
+    </div>
+
+    <div class="path-row">
+      <span class="arrow">▶</span>
+      <span class="ep">subscriber.html</span>
+      <span>→ WS :8767 query_history →</span>
+      <span class="ep">DuckDB</span>
+      <span class="path-tag duck">history</span>
+      <span class="status-val" id="qd-hist-status">—</span>
+    </div>
+
+    <div class="path-row">
+      <span class="arrow">▷</span>
+      <span class="ep dim">DuckDB</span>
+      <span>reads</span>
+      <span class="ep">/srv/data/parquet-aws-sim/**/*.parquet</span>
+      <span class="status-val" id="qd-store-status">—</span>
+    </div>
+
+    <div class="path-row">
+      <span class="arrow">▷</span>
+      <span class="ep dim">flux_compat :8768</span>
+      <span>→ DuckDB → Parquet</span>
+      <span class="path-tag note">pending</span>
+      <span style="color:#6e7681;font-size:0.9em;margin-left:4px">local path fix needed</span>
+    </div>
+  </div>
+
+</div>
 
 <!-- Status bar -->
 <div class="status-bar">
@@ -571,6 +702,47 @@ async function checkInflux(aws) {
   }
 }
 
+// ── flux_compat shim check (:8768) ───────────────────────────────────────────
+async function checkFluxShim(aws) {
+  try {
+    const r = await fetch(`http://${aws}:8768/ping`, {signal: AbortSignal.timeout(3000)});
+    const ok = r.status === 204 || r.ok;
+    setText('qf-shim-status', ok ? 'reachable' : 'error');
+    setClass('qf-shim-status', ok ? 'warn' : 'err');  // warn = up but not wired to local
+  } catch(e) {
+    setText('qf-shim-status', 'down');
+    setClass('qf-shim-status', 'err');
+  }
+}
+
+// ── Query path status update ──────────────────────────────────────────────────
+function updateQueryPaths() {
+  // Flux → InfluxDB2 direct
+  const influxOk = $('influx-health') && $('influx-health').textContent === 'healthy';
+  setText('qf-influx-status', influxOk ? 'healthy' : '—');
+  setClass('qf-influx-status', influxOk ? 'ok' : 'dim');
+
+  // DuckDB live path — inferred from subscriber_api MQTT + live msgs
+  const subMqttOk = subData && subData.mqtt_connected;
+  const liveMps   = parseInt($('sub-mps') && $('sub-mps').textContent) || 0;
+  setText('qd-live-status', subMqttOk ? (liveMps > 0 ? liveMps + ' msg/s' : 'connected') : '—');
+  setClass('qd-live-status', subMqttOk ? (liveMps > 0 ? 'ok' : 'warn') : 'dim');
+
+  // DuckDB history path — inferred from query count
+  const queries = parseInt($('store-queries') && $('store-queries').textContent) || 0;
+  setText('qd-hist-status', subWS && subWS.readyState === WebSocket.OPEN ? 'ready' : '—');
+  setClass('qd-hist-status', subWS && subWS.readyState === WebSocket.OPEN ? 'ok' : 'dim');
+
+  // DuckDB store
+  setText('qd-store-status', subMqttOk ? 'mounted' : '—');
+  setClass('qd-store-status', subMqttOk ? 'ok' : 'dim');
+
+  // Section dot: Flux path ok if InfluxDB2 is healthy
+  setClass('dot-qflux', influxOk ? 'ok' : 'dim');
+  // Section dot: DuckDB path ok if subscriber_api WS is open
+  setClass('dot-qduck', (subWS && subWS.readyState === WebSocket.OPEN) ? 'ok' : 'dim');
+}
+
 // ── Gap writer inference ──────────────────────────────────────────────────────
 // No direct API — we infer from subscriber status msgs if current_state exists.
 // Subscriber stats would need a "gap_writer_present" field; for now show unknown.
@@ -601,6 +773,7 @@ function tick() {
   }
 
   updateGapStatus();
+  updateQueryPaths();
 }
 
 // ── Connect / disconnect ──────────────────────────────────────────────────────
@@ -617,11 +790,15 @@ function doConnect() {
   connectGen(cfg.host);
   connectSub(cfg.aws);
   checkInflux(cfg.aws);
+  checkFluxShim(cfg.aws);
 
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
     tick();
-    checkInflux(getConfig().aws);
+    const c = getConfig();
+    checkInflux(c.aws);
+    checkFluxShim(c.aws);
+    updateQueryPaths();
   }, 2000);
 
   connected = true;
