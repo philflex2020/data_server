@@ -516,10 +516,10 @@ static void handle_sync_message(const std::string& payload) {
 
     std::string_view session_sv;
     int64_t seq = 0, interval_pub = 0, total_pub = 0;
-    doc["session_id"].get(session_sv);
-    doc["seq"].get(seq);
-    doc["interval_published"].get(interval_pub);
-    doc["total_published"].get(total_pub);
+    if (doc["session_id"].get(session_sv)        != simdjson::SUCCESS) return;
+    if (doc["seq"].get(seq)                       != simdjson::SUCCESS) return;
+    if (doc["interval_published"].get(interval_pub) != simdjson::SUCCESS) return;
+    (void)doc["total_published"].get(total_pub);  // optional, used only for logging
 
     std::string session(session_sv);
 
