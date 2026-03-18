@@ -24,9 +24,12 @@ flux_http:
 # passthrough: true  = Phase 1 (proxy Flux queries to InfluxDB, track stats)
 # passthrough: false = Phase 3+ (translate Flux → DuckDB SQL)
 influx:
-  host: localhost
-  port: 8086
+  host:        localhost
+  port:        8086
   passthrough: true
+  token:       battery-token-secret
+  org:         battery-org
+  bucket:      battery-data
 
 # S3 / MinIO store (boto3 upload — Start/Stop button in parquet_monitor)
 # Set endpoint_url to real AWS endpoint or leave for MinIO local sim
