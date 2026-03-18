@@ -1169,7 +1169,7 @@ function doConnect() {
   setText('sb-host', cfg.host);
   setText('sb-aws', cfg.aws);
 
-  connectGen(cfg.host);
+  connectGen(cfg.aws);   // stress_runner runs on aws-sim (fractal-phil), not host
   connectSub(cfg.aws);
   checkInflux(cfg.aws);
   checkFluxShim(cfg.aws);
