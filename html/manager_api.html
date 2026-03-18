@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manager API — WebSocket :8760</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.type  { color: #f39c12; font-family: monospace; white-space: nowrap; }
+td.opt   { color: #8b949e; font-size: 0.85em; }
+td.req   { color: #3fb950; font-size: 0.85em; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0 20px; font-size: 0.85em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.msg-card {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 18px 22px; margin-bottom: 20px;
+}
+.msg-type {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.75em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-bottom: 8px; letter-spacing: 0.05em; font-family: monospace;
+}
+.msg-type.server { background: #1a3a2a; color: #3fb950; }
+.msg-dir  { color: #8b949e; font-size: 0.80em; margin-left: 8px; }
+.msg-desc { color: #8b949e; font-size: 0.84em; margin: 6px 0 10px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<h1>Manager API</h1>
+<p class="subtitle">Process manager WebSocket — start, stop, and monitor all pipeline components</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Protocol:</strong> WebSocket (JSON)</div>
+  <div class="meta-item"><strong>Port:</strong> 8760</div>
+  <div class="meta-item"><strong>URL:</strong> ws://&lt;host&gt;:8760</div>
+  <div class="meta-item"><strong>Source:</strong> manager/manager.py</div>
+  <div class="meta-item"><strong>Config:</strong> manager/config.yaml</div>
+</div>
+
+<div class="nav">
+  <a href="ttd.html">TTD Hub</a>
+  <a href="dashboard.html">Manager Dashboard</a>
+  <a href="generator_api.html">Generator API</a>
+  <a href="stress_runner_api.html">Stress Runner API</a>
+  <a href="aws_server_api.html">AWS Server API</a>
+</div>
+
+<div class="callout info">
+  The manager controls all pipeline processes defined in <code>config.yaml</code>.
+  Each component runs as a subprocess with stdout/stderr streamed to connected WebSocket clients.
+  On <strong>phil-dev</strong> the manager listens on <code>:8761</code>; on <strong>spark-22b6 / .51</strong> on <code>:8762</code>.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Client → Server</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type">get_status</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Request current status of all registered components.</div>
+  <pre><code>{"type": "get_status"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">start</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Start a single component by name. Component name must match a key in <code>config.yaml → components</code>.</div>
+  <pre><code>{"type": "start", "component": "generator"}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>component</code></td><td class="type">string</td><td class="req">required</td><td>Component name from config (e.g. <code>generator</code>, <code>parquet_writer</code>, <code>subscriber_api</code>)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">stop</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Stop a single running component. SIGTERM is sent; process is waited on.</div>
+  <pre><code>{"type": "stop", "component": "generator"}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>component</code></td><td class="type">string</td><td class="req">required</td><td>Component name to stop</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">start_all</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Start all components in the order defined by <code>config.yaml → order</code>.</div>
+  <pre><code>{"type": "start_all"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">stop_all</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Stop all running components in reverse start order.</div>
+  <pre><code>{"type": "stop_all"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">rescan</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Adopt processes already running on the host that match component definitions (by command name match). Useful after a manager restart when pipeline processes are still alive.</div>
+  <pre><code>{"type": "rescan"}</code></pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Server → Client</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type server">status</span><span class="msg-dir">← server</span></div>
+  <div class="msg-desc">Sent immediately on connect and after any start/stop operation. Contains state of all components.</div>
+  <pre><code>{
+  "type": "status",
+  "components": {
+    "generator":       {"status": "running", "pid": 14480, "label": "Data Generator"},
+    "parquet_writer":  {"status": "stopped", "pid": null,  "label": "Parquet Writer (NATS → S3)"},
+    "subscriber_api":  {"status": "error",   "pid": null,  "label": "Subscriber API (NATS + DuckDB)"}
+  }
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>components</code></td><td class="type">object</td><td>Map of component name → component state</td></tr>
+      <tr><td><code>components[name].status</code></td><td class="type">"running" | "stopped" | "error"</td><td>Current lifecycle state</td></tr>
+      <tr><td><code>components[name].pid</code></td><td class="type">int | null</td><td>OS process ID; null when not running</td></tr>
+      <tr><td><code>components[name].label</code></td><td class="type">string</td><td>Human-readable label from config</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">log</span><span class="msg-dir">← server</span></div>
+  <div class="msg-desc">Streamed in real time as a component writes to stdout or stderr.</div>
+  <pre><code>{
+  "type":      "log",
+  "component": "parquet_writer",
+  "line":      "[flush] 1152 rows → project=0/site=0/2026/03/18/20260318T210000Z.parquet",
+  "stream":    "stdout"
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>component</code></td><td class="type">string</td><td>Component that produced the line</td></tr>
+      <tr><td><code>line</code></td><td class="type">string</td><td>Log line (newline stripped)</td></tr>
+      <tr><td><code>stream</code></td><td class="type">"stdout" | "stderr"</td><td>Which output stream</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Configuration Reference</h2>
+<p>Manager config lives in <code>manager/config.yaml</code>. The <code>order</code> list controls start sequence; each entry is a key in <code>components</code>.</p>
+<pre><code>websocket:
+  host: 0.0.0.0
+  port: 8760          # change per machine (8761 phil-dev, 8762 spark)
+
+order:
+  - flashmq           # or mosquitto
+  - nats              # if using NATS pipeline
+  - generator
+  - parquet_writer
+  - subscriber_api
+
+components:
+  generator:
+    label: "Data Generator"
+    cmd:   [".venv/bin/python", "generator.py", "--config", "config.yaml"]
+    cwd:   "source/generator"
+
+  parquet_writer:
+    label: "Parquet Writer (MQTT → Parquet)"
+    cmd:   ["source/parquet_writer_cpp/parquet_writer",
+            "--config", "source/parquet_writer_cpp/config.spark.yaml"]
+    cwd:   "."
+    ports: []</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Example: Connecting and Monitoring</h2>
+<pre><code>const ws = new WebSocket("ws://192.168.86.51:8760");
+
+ws.onopen = () => ws.send(JSON.stringify({type: "get_status"}));
+
+ws.onmessage = ({data}) => {
+  const msg = JSON.parse(data);
+  if (msg.type === "status") {
+    for (const [name, state] of Object.entries(msg.components))
+      console.log(name, state.status, state.pid);
+  }
+  if (msg.type === "log")
+    console.log(`[${msg.component}] ${msg.line}`);
+};
+
+// Start the writer
+ws.send(JSON.stringify({type: "start", component: "parquet_writer"}));</code></pre>
+
+</body>
+</html>

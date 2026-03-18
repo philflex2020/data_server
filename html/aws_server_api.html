@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS Data Store API — WebSocket :8766</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.type { color: #f39c12; font-family: monospace; white-space: nowrap; }
+td.opt  { color: #8b949e; font-size: 0.85em; }
+td.req  { color: #3fb950; font-size: 0.85em; }
+td.def  { color: #58a6ff; font-size: 0.85em; font-family: monospace; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0 20px; font-size: 0.85em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.msg-card {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 18px 22px; margin-bottom: 20px;
+}
+.msg-type {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.75em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-bottom: 8px; letter-spacing: 0.05em; font-family: monospace;
+}
+.msg-type.server { background: #1a3a2a; color: #3fb950; }
+.msg-dir  { color: #8b949e; font-size: 0.80em; margin-left: 8px; }
+.msg-desc { color: #8b949e; font-size: 0.84em; margin: 6px 0 10px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<h1>AWS Data Store API</h1>
+<p class="subtitle">S3/MinIO monitor and test-data generator — WebSocket :8766</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Protocol:</strong> WebSocket (JSON)</div>
+  <div class="meta-item"><strong>Port:</strong> 8766</div>
+  <div class="meta-item"><strong>URL:</strong> ws://&lt;host&gt;:8766</div>
+  <div class="meta-item"><strong>Source:</strong> aws/data_store/server.py</div>
+  <div class="meta-item"><strong>S3 target:</strong> MinIO :9000 (or real AWS S3)</div>
+</div>
+
+<div class="nav">
+  <a href="ttd.html">TTD Hub</a>
+  <a href="aws.html">AWS Data Store Dashboard</a>
+  <a href="monitor.html">Monitor</a>
+  <a href="manager_api.html">Manager API</a>
+</div>
+
+<div class="callout info">
+  This server monitors a S3/MinIO bucket for new Parquet files and optionally generates
+  synthetic test data. It is used for testing the Subscriber API and DuckDB query layer
+  without needing a running pipeline. On production, <code>writer.cpp</code> writes the Parquet
+  files directly — this server is not in the data path.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Client → Server</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type">get_status</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Request current S3 connection status and configuration.</div>
+  <pre><code>{"type": "get_status"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">set_interval</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Change how often the server polls S3 for new Parquet files. Minimum 1 second.</div>
+  <pre><code>{"type": "set_interval", "seconds": 5}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>seconds</code></td><td class="type">int</td><td class="req">required</td><td>Poll interval in seconds; clamped to ≥ 1</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">generate</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Generate synthetic Parquet files directly into S3/MinIO. Useful for seeding the bucket for DuckDB query tests. Emits <code>generate_progress</code> events during generation, then <code>generate_done</code> on completion.</div>
+  <pre><code>{
+  "type":              "generate",
+  "sites":             2,
+  "racks_per_site":    3,
+  "modules_per_rack":  4,
+  "cells_per_module":  6,
+  "rows_per_file":     500,
+  "num_files":         1,
+  "hours_ago":         1.0
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>sites</code></td><td class="type">int</td><td class="opt">optional</td><td class="def">2</td><td>Number of sites to generate data for</td></tr>
+      <tr><td><code>racks_per_site</code></td><td class="type">int</td><td class="opt">optional</td><td class="def">3</td><td>Racks per site</td></tr>
+      <tr><td><code>modules_per_rack</code></td><td class="type">int</td><td class="opt">optional</td><td class="def">4</td><td>Modules per rack</td></tr>
+      <tr><td><code>cells_per_module</code></td><td class="type">int</td><td class="opt">optional</td><td class="def">6</td><td>Cells per module</td></tr>
+      <tr><td><code>rows_per_file</code></td><td class="type">int</td><td class="opt">optional</td><td class="def">500</td><td>Rows in each generated Parquet file</td></tr>
+      <tr><td><code>num_files</code></td><td class="type">int</td><td class="opt">optional</td><td class="def">1</td><td>Number of Parquet files to write</td></tr>
+      <tr><td><code>hours_ago</code></td><td class="type">float</td><td class="opt">optional</td><td class="def">1.0</td><td>Timestamp offset — data will appear to be from this many hours in the past</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Server → Client</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type server">status</span><span class="msg-dir">← server</span></div>
+  <div class="msg-desc">Sent on connect and in response to <code>get_status</code>.</div>
+  <pre><code>{
+  "type":          "status",
+  "s3_connected":  true,
+  "bucket":        "battery-data",
+  "endpoint":      "http://localhost:9000",
+  "poll_interval": 5
+}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">stats</span><span class="msg-dir">← server (on each poll)</span></div>
+  <div class="msg-desc">Emitted after every S3 poll with aggregate bucket statistics.</div>
+  <pre><code>{
+  "type":        "stats",
+  "file_count":  1247,
+  "total_rows":  45619200,
+  "total_bytes": 384901120
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>file_count</code></td><td class="type">int</td><td>Total Parquet files in bucket</td></tr>
+      <tr><td><code>total_rows</code></td><td class="type">int</td><td>Sum of row counts across all files</td></tr>
+      <tr><td><code>total_bytes</code></td><td class="type">int</td><td>Total bytes used in bucket</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">file</span><span class="msg-dir">← server (on new file detected)</span></div>
+  <div class="msg-desc">Emitted for each Parquet file that appears in S3 since the last poll. Includes a sample row for quick inspection.</div>
+  <pre><code>{
+  "type":       "file",
+  "key":        "project=0/site=0/2026/03/18/20260318T210000Z.parquet",
+  "size":       12480,
+  "rows":       1152,
+  "columns":    ["timestamp", "site_id", "rack_id", "module_id", "cell_id",
+                 "voltage", "current", "temperature", "soc", "soh",
+                 "resistance", "capacity", "power", "project_id"],
+  "sample":     {"timestamp": 1742336400.0, "site_id": 0, "voltage": 3.714, ...},
+  "arrived_at": "21:00:05"
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>key</code></td><td class="type">string</td><td>S3 object key (path within bucket)</td></tr>
+      <tr><td><code>size</code></td><td class="type">int</td><td>File size in bytes</td></tr>
+      <tr><td><code>rows</code></td><td class="type">int</td><td>Row count in this file</td></tr>
+      <tr><td><code>columns</code></td><td class="type">string[]</td><td>Column names in file</td></tr>
+      <tr><td><code>sample</code></td><td class="type">object</td><td>First row as column→value map</td></tr>
+      <tr><td><code>arrived_at</code></td><td class="type">string</td><td>Local time when the file was first seen (HH:MM:SS)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">generate_progress</span><span class="msg-dir">← server (during generate)</span></div>
+  <div class="msg-desc">Emitted for each file written during a <code>generate</code> request.</div>
+  <pre><code>{
+  "type":  "generate_progress",
+  "done":  1,
+  "total": 5,
+  "key":   "project=0/site=0/2026/03/18/20260318T200000Z.parquet"
+}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">generate_done</span><span class="msg-dir">← server (after generate completes)</span></div>
+  <div class="msg-desc">Emitted once when a <code>generate</code> request finishes (success or error).</div>
+  <pre><code>// Success:
+{"type": "generate_done", "files_written": 5, "total_rows": 2500}
+
+// Failure:
+{"type": "generate_done", "files_written": 2, "total_rows": 1000, "error": "S3 connection timeout"}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>files_written</code></td><td class="type">int</td><td>Number of files successfully written before completion or error</td></tr>
+      <tr><td><code>total_rows</code></td><td class="type">int</td><td>Total rows written</td></tr>
+      <tr><td><code>error</code></td><td class="type">string | absent</td><td>Error message if generation failed; absent on success</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>S3 Partition Layout</h2>
+<p>Parquet files — whether written by <code>writer.cpp</code> or generated by this server — follow the same partition path:</p>
+<pre><code>s3://{bucket}/project={project_id}/site={site_id}/{YYYY}/{MM}/{DD}/{YYYYMMDDTHHMMSSz}.parquet</code></pre>
+<p>DuckDB uses hive partitioning to prune to the relevant <code>project=</code> and <code>site=</code> directories. See <a href="nats_query_x86.html">DuckDB Query Reference</a> for query examples.</p>
+
+</body>
+</html>

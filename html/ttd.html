@@ -289,7 +289,7 @@
 <h1>Battery Data Server · TTD</h1>
 <p class="subtitle">
   Test · Train · Document hub for the battery cell telemetry pipeline —
-  MQTT → NATS JetStream → Parquet → MinIO/S3 → Subscriber API,
+  MQTT → writer.cpp → Parquet → S3 → DuckDB + Subscriber API,
   with an off-the-shelf orig_aws stack (Telegraf → InfluxDB2) running in parallel.
 </p>
 
@@ -312,34 +312,24 @@
 <!-- Process indicators -->
 <div class="status-row">
   <div class="sind">
-    <div class="dot grey" id="dot-minio"></div>
-    <span class="label">minio</span>
-    <span class="value" id="val-minio">—</span>
+    <div class="dot grey" id="dot-generator"></div>
+    <span class="label">generator</span>
+    <span class="value" id="val-generator">—</span>
   </div>
   <div class="sind">
-    <div class="dot grey" id="dot-nats"></div>
-    <span class="label">nats</span>
-    <span class="value" id="val-nats">—</span>
-  </div>
-  <div class="sind">
-    <div class="dot grey" id="dot-nats_bridge"></div>
-    <span class="label">nats_bridge</span>
-    <span class="value" id="val-nats_bridge">—</span>
-  </div>
-  <div class="sind">
-    <div class="dot grey" id="dot-parquet_writer"></div>
-    <span class="label">parquet_writer</span>
-    <span class="value" id="val-parquet_writer">—</span>
-  </div>
-  <div class="sind">
-    <div class="dot grey" id="dot-aws_server"></div>
-    <span class="label">aws_server</span>
-    <span class="value" id="val-aws_server">—</span>
+    <div class="dot grey" id="dot-writer_cpp"></div>
+    <span class="label">writer_cpp</span>
+    <span class="value" id="val-writer_cpp">—</span>
   </div>
   <div class="sind">
     <div class="dot grey" id="dot-subscriber_api"></div>
     <span class="label">subscriber_api</span>
     <span class="value" id="val-subscriber_api">—</span>
+  </div>
+  <div class="sind">
+    <div class="dot grey" id="dot-aws_server"></div>
+    <span class="label">aws_server</span>
+    <span class="value" id="val-aws_server">—</span>
   </div>
   <div class="sind">
     <div class="dot grey" id="dot-stress_runner"></div>
@@ -350,139 +340,144 @@
 
 <!-- SVG Pipeline Topology -->
 <div class="topo-wrap">
-  <svg viewBox="0 0 860 250" width="860" height="250" xmlns="http://www.w3.org/2000/svg"
+  <svg viewBox="0 0 860 268" width="860" height="268" xmlns="http://www.w3.org/2000/svg"
        style="font-family:monospace; max-width:100%;">
 
     <defs>
-      <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-        <path d="M0,0 L0,6 L8,3 z" fill="#30363d"/>
-      </marker>
       <marker id="arr-grn" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
         <path d="M0,0 L0,6 L8,3 z" fill="#3fb950"/>
+      </marker>
+      <marker id="arr-blu" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#58a6ff"/>
       </marker>
       <marker id="arr-dim" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
         <path d="M0,0 L0,6 L8,3 z" fill="#484f58"/>
       </marker>
     </defs>
 
-    <!-- ══ NATS STACK (main pipeline, top half) ══════════════════════════ -->
+    <!-- ══ MAIN PIPELINE (top) ═══════════════════════════════════════════ -->
 
-    <!-- Stress Runner / Generator — stacked boxes -->
+    <!-- Stress Runner -->
     <rect x="10" y="18" width="100" height="32" rx="4"
           fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
     <text x="60" y="31" text-anchor="middle" fill="#8b949e" font-size="9">Stress Runner</text>
     <text x="60" y="43" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="bold">24/7 load test</text>
 
+    <!-- Generator -->
     <rect x="10" y="58" width="100" height="32" rx="4"
           fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
     <text x="60" y="71" text-anchor="middle" fill="#8b949e" font-size="9">Generator</text>
     <text x="60" y="83" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="bold">cell telemetry</text>
 
     <!-- → FlashMQ -->
-    <line x1="110" y1="34" x2="163" y2="60" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <line x1="110" y1="34" x2="163" y2="54" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
     <line x1="110" y1="74" x2="163" y2="74" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
 
     <!-- FlashMQ :1883 -->
-    <rect x="165" y="50" width="110" height="44" rx="4"
+    <rect x="165" y="42" width="110" height="52" rx="4"
           fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="220" y="68" text-anchor="middle" fill="#8b949e" font-size="9">MQTT broker</text>
-    <text x="220" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">FlashMQ :1883</text>
+    <text x="220" y="60" text-anchor="middle" fill="#8b949e" font-size="9">MQTT broker</text>
+    <text x="220" y="74" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">FlashMQ :1883</text>
+    <text x="220" y="86" text-anchor="middle" fill="#8b949e" font-size="8">QoS 1</text>
 
-    <!-- → NATS Bridge (MQTT→NATS) -->
-    <line x1="275" y1="72" x2="318" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
-    <text x="296" y="66" text-anchor="middle" fill="#3fb950" font-size="8">MQTT→NATS</text>
+    <!-- → writer.cpp -->
+    <line x1="275" y1="68" x2="316" y2="68" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <text x="295" y="62" text-anchor="middle" fill="#3fb950" font-size="8">MQTT sub</text>
 
-    <!-- NATS Bridge -->
-    <rect x="320" y="50" width="100" height="44" rx="4"
+    <!-- writer.cpp -->
+    <rect x="318" y="48" width="118" height="44" rx="4"
           fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="370" y="68" text-anchor="middle" fill="#8b949e" font-size="9">bridge</text>
-    <text x="370" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">NATS Bridge</text>
+    <text x="377" y="66" text-anchor="middle" fill="#8b949e" font-size="9">C++ MQTT→Parquet</text>
+    <text x="377" y="80" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">writer.cpp</text>
 
-    <!-- → NATS JetStream -->
-    <line x1="420" y1="72" x2="463" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <!-- → S3/Parquet -->
+    <line x1="436" y1="70" x2="476" y2="70" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <text x="456" y="63" text-anchor="middle" fill="#3fb950" font-size="8">60 s flush</text>
 
-    <!-- NATS JetStream :4222 -->
-    <rect x="465" y="50" width="120" height="44" rx="4"
+    <!-- S3/Parquet + DuckDB -->
+    <rect x="478" y="48" width="108" height="44" rx="4"
           fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="525" y="68" text-anchor="middle" fill="#8b949e" font-size="9">JetStream</text>
-    <text x="525" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">NATS :4222</text>
+    <text x="532" y="66" text-anchor="middle" fill="#8b949e" font-size="9">S3 / Parquet</text>
+    <text x="532" y="80" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">+ DuckDB</text>
 
-    <!-- → Parquet Writer (pull consumer) -->
-    <line x1="585" y1="72" x2="628" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
-    <text x="606" y="66" text-anchor="middle" fill="#3fb950" font-size="8">pull consumer</text>
-
-    <!-- Parquet Writer -->
-    <rect x="630" y="50" width="100" height="44" rx="4"
-          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="680" y="68" text-anchor="middle" fill="#8b949e" font-size="9">writer</text>
-    <text x="680" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">Parquet Writer</text>
-
-    <!-- → MinIO/S3 :9000 -->
-    <line x1="730" y1="72" x2="773" y2="72" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
-
-    <!-- MinIO/S3 :9000 -->
-    <rect x="775" y="50" width="76" height="44" rx="4"
-          fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="813" y="68" text-anchor="middle" fill="#8b949e" font-size="9">MinIO/S3</text>
-    <text x="813" y="82" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">:9000</text>
-
-    <!-- ↓ Subscriber API (below MinIO, connected via arrow up/right from parquet) -->
-    <!-- Subscriber API gets data from MinIO — arrow down from MinIO to subscriber box -->
-    <line x1="813" y1="94" x2="813" y2="114" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <!-- → Subscriber API -->
+    <line x1="586" y1="70" x2="626" y2="70" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
 
     <!-- Subscriber API :8767/:8768 -->
-    <rect x="740" y="116" width="145" height="44" rx="4"
+    <rect x="628" y="48" width="145" height="44" rx="4"
           fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="812" y="134" text-anchor="middle" fill="#8b949e" font-size="9">Subscriber API</text>
-    <text x="812" y="148" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">:8767 / :8768</text>
+    <text x="700" y="66" text-anchor="middle" fill="#8b949e" font-size="9">Subscriber API</text>
+    <text x="700" y="80" text-anchor="middle" fill="#79c0ff" font-size="10" font-weight="bold">:8767 / :8768</text>
+
+    <!-- ══ LIVE FORWARDING PATH (middle) ═════════════════════════════════ -->
+
+    <!-- ↓ arrow from FlashMQ down to bridge -->
+    <line x1="220" y1="94" x2="220" y2="118" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blu)"/>
+
+    <!-- FlashMQ bridge -->
+    <rect x="165" y="120" width="115" height="38" rx="4"
+          fill="#0e1d2d" stroke="#1d3a5c" stroke-width="1.5"/>
+    <text x="222" y="136" text-anchor="middle" fill="#8b949e" font-size="9">outbound TLS</text>
+    <text x="222" y="149" text-anchor="middle" fill="#58a6ff" font-size="10" font-weight="bold">FlashMQ bridge</text>
+
+    <!-- → AWS MQTT broker -->
+    <line x1="280" y1="139" x2="318" y2="139" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blu)"/>
+
+    <!-- AWS MQTT -->
+    <rect x="320" y="120" width="125" height="38" rx="4"
+          fill="#0e1d2d" stroke="#1d3a5c" stroke-width="1.5"/>
+    <text x="382" y="136" text-anchor="middle" fill="#8b949e" font-size="9">live stream</text>
+    <text x="382" y="149" text-anchor="middle" fill="#58a6ff" font-size="10" font-weight="bold">AWS MQTT :8883</text>
 
     <!-- ══ orig_aws STACK (bottom, dimmer) ═══════════════════════════════ -->
 
-    <text x="10" y="195" fill="#484f58" font-size="9" font-style="italic">orig_aws stack:</text>
+    <text x="10" y="200" fill="#484f58" font-size="9" font-style="italic">orig_aws stack:</text>
 
     <!-- Generator (dim) -->
-    <rect x="10" y="203" width="80" height="30" rx="3"
+    <rect x="10" y="208" width="80" height="28" rx="3"
           fill="#161b22" stroke="#30363d" stroke-width="1"/>
-    <text x="50" y="222" text-anchor="middle" fill="#484f58" font-size="9">Generator</text>
+    <text x="50" y="226" text-anchor="middle" fill="#484f58" font-size="9">Generator</text>
 
     <!-- → FlashMQ (dim) -->
-    <line x1="90" y1="218" x2="128" y2="218" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
+    <line x1="90" y1="222" x2="128" y2="222" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
 
     <!-- FlashMQ (dim) -->
-    <rect x="130" y="203" width="80" height="30" rx="3"
+    <rect x="130" y="208" width="80" height="28" rx="3"
           fill="#161b22" stroke="#30363d" stroke-width="1"/>
-    <text x="170" y="222" text-anchor="middle" fill="#484f58" font-size="9">FlashMQ</text>
+    <text x="170" y="226" text-anchor="middle" fill="#484f58" font-size="9">FlashMQ</text>
 
     <!-- → Telegraf (dim) -->
-    <line x1="210" y1="218" x2="248" y2="218" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
+    <line x1="210" y1="222" x2="248" y2="222" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
 
     <!-- Telegraf (dim) -->
-    <rect x="250" y="203" width="80" height="30" rx="3"
+    <rect x="250" y="208" width="80" height="28" rx="3"
           fill="#161b22" stroke="#30363d" stroke-width="1"/>
-    <text x="290" y="222" text-anchor="middle" fill="#484f58" font-size="9">Telegraf</text>
+    <text x="290" y="226" text-anchor="middle" fill="#484f58" font-size="9">Telegraf</text>
 
     <!-- → InfluxDB2 (dim) -->
-    <line x1="330" y1="218" x2="368" y2="218" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
+    <line x1="330" y1="222" x2="368" y2="222" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)"/>
 
     <!-- InfluxDB2 :8086 (dim) -->
-    <rect x="370" y="203" width="100" height="30" rx="3"
+    <rect x="370" y="208" width="100" height="28" rx="3"
           fill="#161b22" stroke="#30363d" stroke-width="1"/>
-    <text x="420" y="222" text-anchor="middle" fill="#484f58" font-size="9">InfluxDB2 :8086</text>
+    <text x="420" y="226" text-anchor="middle" fill="#484f58" font-size="9">InfluxDB2 :8086</text>
 
     <!-- ══ LEGEND ═══════════════════════════════════════════════════════ -->
-    <rect x="10" y="245" width="840" height="0" rx="3" fill="#161b22" stroke="#21262d" stroke-width="0"/>
 
-    <line x1="10" y1="238" x2="30" y2="238" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
-    <text x="34" y="242" fill="#8b949e" font-size="8">NATS stack (active)</text>
+    <line x1="10" y1="259" x2="30" y2="259" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arr-grn)"/>
+    <text x="34" y="263" fill="#8b949e" font-size="8">writer.cpp stack (active)</text>
 
-    <line x1="170" y1="238" x2="190" y2="238" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)" stroke-dasharray="4 3"/>
-    <text x="194" y="242" fill="#8b949e" font-size="8">orig_aws stack</text>
+    <line x1="190" y1="259" x2="210" y2="259" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arr-blu)"/>
+    <text x="214" y="263" fill="#8b949e" font-size="8">live bridge</text>
 
-    <rect x="310" y="232" width="10" height="8" rx="2" fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
-    <text x="324" y="242" fill="#8b949e" font-size="8">Core component</text>
+    <line x1="300" y1="259" x2="320" y2="259" stroke="#484f58" stroke-width="1" marker-end="url(#arr-dim)" stroke-dasharray="4 3"/>
+    <text x="324" y="263" fill="#8b949e" font-size="8">orig_aws stack</text>
 
-    <rect x="430" y="232" width="10" height="8" rx="2" fill="#161b22" stroke="#30363d" stroke-width="1"/>
-    <text x="444" y="242" fill="#8b949e" font-size="8">Supporting component</text>
+    <rect x="430" y="253" width="10" height="8" rx="2" fill="#161b22" stroke="#1e4a6e" stroke-width="1.5"/>
+    <text x="444" y="263" fill="#8b949e" font-size="8">Core component</text>
+
+    <rect x="560" y="253" width="10" height="8" rx="2" fill="#0e1d2d" stroke="#1d3a5c" stroke-width="1.5"/>
+    <text x="574" y="263" fill="#8b949e" font-size="8">Live bridge</text>
 
   </svg>
 </div>
@@ -526,13 +521,14 @@
 <h2>Pipeline Overview</h2>
 <div class="concept-grid">
   <div class="concept-card">
-    <h3>NATS Stack (custom Python)</h3>
+    <h3>writer.cpp Stack (C++17)</h3>
     <ul>
-      <li>Generator publishes synthetic cell telemetry over MQTT</li>
-      <li>FlashMQ :1883 brokers MQTT; NATS Bridge converts to JetStream subjects</li>
-      <li>NATS JetStream :4222 provides durable, replayable message store</li>
-      <li>Parquet Writer (pull consumer) batches and writes columnar files to MinIO/S3 :9000</li>
-      <li>Subscriber API :8767 (WebSocket) and :8768 (Flux HTTP) serve live + historical data</li>
+      <li>Generator publishes synthetic cell telemetry over MQTT (QoS 1)</li>
+      <li>FlashMQ :1883 brokers MQTT; writer.cpp subscribes directly — no bridge process needed</li>
+      <li>writer.cpp (C++17, Arrow/Parquet, simdjson) batches and writes columnar Parquet files to S3 every 60 s</li>
+      <li>Also writes <code>current_state.parquet</code> on every flush — one row per sensor for real-time queries</li>
+      <li>FlashMQ bridge forwards live stream to AWS MQTT :8883 over outbound TLS</li>
+      <li>Subscriber API :8767 (WebSocket) and :8768 (Flux HTTP) serve live + historical data via DuckDB</li>
       <li>Stress Runner runs 24/7 on spark-22b6 to validate pipeline under load</li>
     </ul>
   </div>
@@ -549,7 +545,7 @@
     <h3>Two Machines</h3>
     <ul>
       <li><strong style="color:#79c0ff;">phil-dev</strong> — development machine, generator source, pipeline work</li>
-      <li><strong style="color:#79c0ff;">spark-22b6</strong> — full NATS stack running 24/7, stress runner active</li>
+      <li><strong style="color:#79c0ff;">spark-22b6 / .51</strong> — writer.cpp running 24/7, stress runner active, Parquet accumulating in <code>/home/phil/data_server/parquet/</code></li>
       <li>Process manager WebSocket :8761 (phil-dev) and :8762 (spark-22b6)</li>
       <li>Host defaults stored in <code>localStorage</code> keys <code>ds_host</code> / <code>aws_host</code></li>
     </ul>
@@ -557,19 +553,20 @@
   <div class="concept-card">
     <h3>Subscriber API Surface</h3>
     <ul>
-      <li>WebSocket :8767 — live cell stream, NATS subject subscribe, history queries</li>
-      <li>HTTP :8768 — Flux-compatible query endpoint for InfluxDB2 clients</li>
+      <li>WebSocket :8767 — live cell stream, history queries via DuckDB over S3 Parquet</li>
+      <li>HTTP :8768 — Flux-compatible query endpoint for InfluxDB2 clients (shim over DuckDB)</li>
       <li>api_test.html provides raw WS command panel and Flux HTTP tester</li>
       <li>subscriber.html wraps the most common history queries in a UI</li>
+      <li>See <a href="manager_api.html">Manager API</a>, <a href="generator_api.html">Generator API</a>, <a href="stress_runner_api.html">Stress Runner API</a>, <a href="aws_server_api.html">AWS Server API</a> for full API references</li>
     </ul>
   </div>
   <div class="concept-card">
     <h3>Monitoring</h3>
     <ul>
-      <li><strong style="color:#79c0ff;">NATS :8222</strong> — built-in HTTP monitoring API: <code>/varz</code> (server stats), <code>/jsz</code> (JetStream streams &amp; consumers), <code>/connz</code> (connections)</li>
-      <li>nats.html connects to :8222 and shows stream message counts, consumer lag, and per-client throughput</li>
+      <li><strong style="color:#79c0ff;">writer.cpp log</strong> — logs every flush: row count, Parquet path, and bytes written; logs <code>[cs]</code> on every current_state update</li>
       <li><strong style="color:#79c0ff;">FlashMQ :1883</strong> — no HTTP API; publishes stats to <code>$SYS/#</code> MQTT topics every 10 s (client count, publish rates, byte totals)</li>
-      <li>FlashMQ process status visible in dashboard.html; NATS message rate in nats.html reflects bridge throughput indirectly</li>
+      <li>Process manager WebSocket :8760 — real-time stdout/stderr stream from all managed components</li>
+      <li>FlashMQ process status visible in dashboard.html; writer.cpp status via <code>writer_cpp</code> indicator above</li>
     </ul>
   </div>
 </div>
@@ -663,57 +660,57 @@
 <!-- ─── Edge Parquet Architecture ─────────────────────────── -->
 <h2>Edge Parquet Architecture</h2>
 <p>
-  Instead of streaming raw messages to AWS, each site controller runs the full NATS pipeline locally,
+  Instead of streaming raw messages to AWS, each site controller runs writer.cpp locally,
   generates compressed Parquet files, and uploads them directly to S3.
   AWS is reduced to S3 + a single shared Subscriber API instance.
-  Live monitoring is served via a <strong>NATS Leaf Node</strong> — a single outbound TLS connection
-  that forwards messages to the AWS NATS server in real time.
+  Live monitoring is served via the <strong>FlashMQ bridge</strong> — a single outbound TLS MQTT connection
+  that forwards messages to the AWS MQTT broker in real time.
 </p>
 
 <div class="concept-grid" style="margin-bottom:20px;">
   <div class="concept-card">
     <h3>Site Controller (edge)</h3>
     <ul>
-      <li>Full NATS stack: FlashMQ → Bridge → JetStream → Parquet Writer</li>
-      <li>Parquet Writer uploads to S3 every 60 seconds (primary path)</li>
-      <li>NATS Leaf Node forwards every message to AWS in real time (live path)</li>
-      <li>Continues operating fully offline — queues locally, uploads on recovery</li>
-      <li>NATS JetStream WAL on disk — survives power cycle, replays on restart</li>
+      <li>FlashMQ :1883 → writer.cpp → Parquet files → S3 (primary path, every 60 s)</li>
+      <li>writer.cpp also writes <code>current_state.parquet</code> on every flush — latest row per sensor</li>
+      <li>FlashMQ bridge forwards every message to AWS MQTT :8883 in real time (live path)</li>
+      <li>Continues operating fully offline — writer.cpp queues in memory, uploads on WAN recovery</li>
+      <li>QoS 1 on the MQTT broker — broker retransmits to writer.cpp if it reconnects after a crash</li>
     </ul>
   </div>
   <div class="concept-card">
     <h3>AWS (thin read layer)</h3>
     <ul>
-      <li>NATS Server receives live messages via Leaf Node from all sites</li>
-      <li>Gap-fill Parquet Writer consumes from AWS NATS — writes to S3 <em>only</em> if site hasn't uploaded that window (S3 key check)</li>
-      <li>Subscriber API: history from S3, recent from in-memory buffer</li>
+      <li>AWS MQTT broker receives live messages via FlashMQ bridge from all sites</li>
+      <li>Gap-fill writer (if deployed) consumes from AWS MQTT — writes to S3 <em>only</em> if site hasn't uploaded that window (S3 key check)</li>
+      <li>Subscriber API: history from S3 via DuckDB, recent from <code>current_state.parquet</code></li>
       <li>One <code>t3.small</code> serves all 80 sites — cost doesn't scale with site count</li>
     </ul>
   </div>
   <div class="concept-card">
     <h3>Dual-path Resilience</h3>
     <ul>
-      <li><strong>Path 1</strong> — Site Parquet Writer → S3 (every 60s, primary)</li>
-      <li><strong>Path 2</strong> — Leaf Node → AWS NATS → Gap-fill Writer → S3 (backup)</li>
+      <li><strong>Path 1</strong> — writer.cpp → S3 Parquet (every 60 s, primary)</li>
+      <li><strong>Path 2</strong> — FlashMQ bridge → AWS MQTT → Gap-fill Writer → S3 (backup)</li>
       <li>Power loss mid-buffer: messages already on AWS via Path 2 — not lost</li>
       <li>WAN link drops: site continues, S3 already has data via Path 1</li>
-      <li>Power + WAN simultaneous: NATS WAL on local disk, replay on recovery</li>
+      <li>Best practice: small UPS gives 30 s clean shutdown so writer.cpp flushes before power off</li>
       <li>More resilient than current cloud pipeline on every failure mode</li>
     </ul>
   </div>
   <div class="concept-card">
-    <h3>NATS Leaf Node Config</h3>
+    <h3>FlashMQ Bridge Config</h3>
     <ul>
-      <li>Single outbound TLS connection, configured in <code>nats-server.conf</code></li>
-      <li>No code changes — purely infrastructure config</li>
-      <li>All sites appear on the same subject space at AWS</li>
-      <li>~40× less data transfer than raw MQTT streaming</li>
+      <li>Outbound TLS MQTT bridge — configured in <code>source/telegraf/flashmq.conf</code></li>
+      <li>No application code — purely FlashMQ broker config</li>
+      <li>All sites appear on the same topic space at AWS</li>
+      <li>~40× less data transfer than raw MQTT streaming (Parquet compression)</li>
     </ul>
-    <pre style="margin-top:8px;background:#0d1117;border:1px solid #21262d;border-radius:3px;padding:8px;font-size:0.78em;color:#c9d1d9;">leafnodes {
-  remotes [{
-    url: "nats://aws:7422"
-    credentials: "/etc/nats/site.creds"
-  }]
+    <pre style="margin-top:8px;background:#0d1117;border:1px solid #21262d;border-radius:3px;padding:8px;font-size:0.78em;color:#c9d1d9;">bridge {
+  hostname  aws-mqtt.example.com
+  port      8883
+  tls       true
+  topic     batteries/#  out  1
 }</pre>
   </div>
 </div>
@@ -728,32 +725,32 @@
   <tr>
     <td>Site power loss (mid-buffer)</td>
     <td style="color:#f85149">Data loss</td>
-    <td class="yes">Covered by Leaf Node (Path 2)</td>
+    <td class="yes">Covered by FlashMQ bridge (Path 2); UPS covers the flush window</td>
   </tr>
   <tr>
     <td>WAN link drops</td>
     <td style="color:#f85149">Data loss — IoT Core drops</td>
-    <td class="yes">No loss — parquet queues locally</td>
+    <td class="yes">No loss — Parquet queues locally, uploads on recovery</td>
   </tr>
   <tr>
     <td>Power loss + WAN down</td>
     <td style="color:#f85149">Total loss</td>
-    <td class="yes">NATS WAL replay on recovery</td>
+    <td class="yes">QoS 1 retransmit on recovery; Path 2 data already at AWS</td>
   </tr>
   <tr>
     <td>AWS outage</td>
     <td style="color:#f85149">Total failure</td>
-    <td class="yes">Site continues unaffected</td>
+    <td class="yes">Site continues unaffected; S3 upload retries on recovery</td>
   </tr>
   <tr>
-    <td>Site controller restart (clean)</td>
+    <td>writer.cpp restart (clean)</td>
     <td class="part">Replay if NATS retained</td>
-    <td class="yes">Replay from local JetStream</td>
+    <td class="yes">FlashMQ QoS 1 retransmits in-flight messages; bridge covers live gap</td>
   </tr>
 </table>
 
 <p style="font-size:0.82em;color:#8b949e;margin-bottom:28px;">
-  See <code>docs/edge_parquet_architecture.md</code> for full design including migration path, hardware requirements, and NATS Leaf Node configuration reference.
+  See <code>docs/edge_parquet_architecture.md</code> for full design including migration path, hardware requirements, and FlashMQ bridge configuration reference.
 </p>
 
 <!-- ─── MQTT Publishing ───────────────────────────────────── -->
@@ -860,8 +857,8 @@ client_initial_buffer_size  <span class="hl">65536</span>    <span class="hi"># 
 max_packet_size             <span class="hl">1048576</span>  <span class="hi"># 1 MB max MQTT packet</span>
 max_qos_msg_pending_per_client  <span class="hl">1000</span> <span class="hi"># QoS-1 in-flight queue per client</span></pre>
 <ul>
-  <li>No persistence is configured — FlashMQ is intentionally stateless; durability is NATS JetStream's job downstream.</li>
-  <li>Three clients connect: the <strong>generator</strong> (publishes), the <strong>NATS bridge</strong> (subscribes <code>batteries/#</code>, QoS 1), and <strong>Telegraf</strong> in the orig_aws stack (also subscribes <code>batteries/#</code>, QoS 1).</li>
+  <li>No persistence is configured — FlashMQ is intentionally stateless; durability is writer.cpp's responsibility (Parquet flush) and the FlashMQ bridge (live path).</li>
+  <li>Three clients connect: the <strong>generator / stress runner</strong> (publishes), <strong>writer.cpp</strong> (subscribes <code>#</code>, QoS 1), and <strong>Telegraf</strong> in the orig_aws stack (also subscribes <code>batteries/#</code>, QoS 1). The FlashMQ bridge is a broker-level outbound forwarder, not an MQTT client.</li>
   <li>On spark-22b6 FlashMQ runs as an OS systemd service, not via the process manager — it is always running before the pipeline starts.</li>
   <li>To enable per-publish logging (useful when debugging): uncomment <code>log_subscriptions true</code> in the config, then <code>systemctl reload flashmq</code>.</li>
 </ul>
@@ -875,12 +872,13 @@ max_qos_msg_pending_per_client  <span class="hl">1000</span> <span class="hi"># 
   <span class="faq-arrow">›</span>
 </div>
 <div class="faq-a">
-<p>FlashMQ itself does not connect to AWS directly. Data leaves the machine via two separate downstream consumers that both subscribe to it:</p>
+<p>Data leaves the machine via two separate mechanisms:</p>
 <ul>
-  <li><strong>NATS stack path:</strong> The <code>nats_bridge</code> (Python, <code>aiomqtt</code>) subscribes to FlashMQ on <code>localhost:1883</code>, converts each message to a NATS subject, and publishes it to the local NATS JetStream. The <code>parquet_writer</code> then drains that stream and uploads Parquet files to S3 — either MinIO locally (<code>http://spark-22b6:9000</code>) or real AWS S3 (remove <code>endpoint_url</code> from <code>parquet_writer/config.yaml</code> and supply real AWS credentials).</li>
-  <li><strong>orig_aws path:</strong> Telegraf subscribes to FlashMQ (<code>servers = ["tcp://flashmq:1883"]</code> in Docker, or <code>tcp://localhost:1883</code> natively) and writes to InfluxDB2, which can be a local container or an AWS EC2 instance. Change the Telegraf output URL from <code>http://influxdb:8086</code> to <code>http://&lt;ec2-host&gt;:8086</code> to point at a remote InfluxDB2.</li>
+  <li><strong>Parquet path (primary):</strong> writer.cpp subscribes to FlashMQ on <code>localhost:1883</code> (QoS 1), batches messages into Arrow record batches, and flushes a Snappy-compressed Parquet file to S3 every 60 seconds. To point at AWS S3 instead of local storage, update <code>output.base_path</code> and add AWS credentials in <code>config.spark.yaml</code>.</li>
+  <li><strong>Live path (FlashMQ bridge):</strong> A <code>bridge</code> block in <code>flashmq.conf</code> instructs FlashMQ to open a single outbound TLS MQTT connection to the AWS MQTT broker (<code>:8883</code>) and forward all matching topics in real time. This is broker-level config — no application code, no extra process.</li>
+  <li><strong>orig_aws path:</strong> Telegraf subscribes to FlashMQ (<code>tcp://localhost:1883</code>) and writes to InfluxDB2 :8086. Change the Telegraf output URL to point at a remote InfluxDB2 instance if needed.</li>
 </ul>
-<p>There is no MQTT bridge configured (FlashMQ-to-FlashMQ forwarding). All AWS connectivity is in the consuming services, not in the broker.</p>
+<p>All three mechanisms receive the same MQTT messages from the same broker simultaneously with no interference (distinct client IDs and QoS-1 subscriptions).</p>
 </div>
 </div>
 
@@ -1000,45 +998,45 @@ jetstream {
   <span class="faq-arrow">›</span>
 </div>
 <div class="faq-a">
-<p>The Parquet Writer (<code>source/parquet_writer/writer.py</code>) runs as a durable NATS pull consumer. The pipeline is:</p>
+<p><code>writer.cpp</code> (<code>source/parquet_writer_cpp/</code>) is a C++17 process that subscribes directly to the MQTT broker and writes Parquet files. The pipeline is:</p>
 <ol style="margin:4px 0 10px 20px;color:#8b949e;line-height:1.8">
-  <li>Connect to NATS <code>:4222</code> and register durable consumer <code>parquet-writer</code> on stream <code>BATTERY_DATA</code>, subject filter <code>batteries.></code>.</li>
-  <li>Pull messages in batches of <code>fetch_batch</code> (default <strong>500</strong>) with a 1 s timeout — fills an in-memory buffer of <code>(payload_dict, nats_msg)</code> tuples.</li>
-  <li>Flush the buffer when either <code>flush_interval_seconds</code> (default <strong>60 s</strong>) elapses or the buffer reaches <code>max_messages</code> (default <strong>10 000</strong>).</li>
-  <li>On flush: JSON-decode each message; flatten nested <code>{value, unit}</code> objects to scalars; coerce id columns to <code>int64</code> and measurement columns to <code>float64</code>; add <code>project_id = 0</code> if absent.</li>
-  <li>Group rows by <code>(project_id, site_id)</code> — one Parquet file per group per flush.</li>
-  <li>Build the S3 key from the <code>partitions</code> template (default: <code>project={p}/site={s}/{year}/{month}/{day}/{timestamp}.parquet</code>).</li>
-  <li>Upload to S3/MinIO with up to 5 exponential-backoff retries.</li>
-  <li>Acknowledge NATS messages <em>only after</em> successful upload — if the writer crashes mid-flush, NATS replays the unacknowledged batch on restart.</li>
+  <li>Connect to FlashMQ/Mosquitto via <code>libmosquitto</code> (QoS 1), subscribe to <code>#</code>.</li>
+  <li>For each message: parse the topic with <code>topic_kv_map</code> to extract <code>site_id</code>, <code>rack_id</code>, <code>module_id</code>, <code>cell_id</code>; parse the JSON payload with <code>simdjson</code>.</li>
+  <li>Buffer rows in a per-<code>(project_id, site_id)</code> Arrow record batch.</li>
+  <li>Flush when either <code>flush_interval_seconds</code> (default <strong>60 s</strong>) elapses or the buffer reaches <code>max_messages_per_part</code> (default <strong>50 000</strong>).</li>
+  <li>On flush: write Snappy-compressed Parquet file to <code>base_path/project={p}/site={s}/{year}/{month}/{day}/{timestamp}.parquet</code>.</li>
+  <li>Also write <code>current_state.parquet</code> atomically — one row per unique (project, site, rack, module, cell) with the latest values. Enables real-time queries without reading historical files.</li>
 </ol>
-<p><strong>Key config items</strong> in <code>source/parquet_writer/config.yaml</code>:</p>
-<pre><span class="hw">nats</span>:
-  url:           nats://localhost:4222
-  stream_name:   BATTERY_DATA
-  consumer_name: <span class="hl">parquet-writer</span>   <span class="hi"># durable — survives restarts</span>
-  subject_filter: <span class="hl">"batteries.>"</span>
+<p><strong>Key config items</strong> in <code>source/parquet_writer_cpp/config.spark.yaml</code>:</p>
+<pre><span class="hw">mqtt</span>:
+  host:      localhost
+  port:      <span class="hl">1884</span>                 <span class="hi"># Mosquitto on spark/.51; 1883 = FlashMQ</span>
+  client_id: parquet-writer-cpp   <span class="hi"># distinct from Telegraf / bridge</span>
+  topic:     <span class="hl">"#"</span>
+  qos:       <span class="hl">1</span>
 
-<span class="hw">buffer</span>:
-  flush_interval_seconds: <span class="hl">60</span>   <span class="hi"># max age of any buffered message before flush</span>
-  max_messages:           <span class="hl">10000</span> <span class="hi"># flush early if buffer fills first</span>
-  fetch_batch:            <span class="hl">500</span>  <span class="hi"># NATS pull batch size per iteration</span>
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
 
-<span class="hw">parquet</span>:
-  compression: <span class="hl">snappy</span>          <span class="hi"># snappy | zstd | gzip</span>
+  partition_field: <span class="hl">site_id</span>
 
-<span class="hw">s3</span>:
-  endpoint_url: http://spark-22b6:9000  <span class="hi"># remove for real AWS S3</span>
-  bucket:       battery-data
-  access_key:   minioadmin
-  secret_key:   minioadmin
-  project_id:   0
+<span class="hw">output</span>:
+  base_path: /home/phil/data_server/parquet
+  project_id: 0
   partitions:
     - <span class="hl">"project={project_id}"</span>
     - <span class="hl">"site={site_id}"</span>
     - <span class="hl">"{year}"</span>
     - <span class="hl">"{month}"</span>
-    - <span class="hl">"{day}"</span></pre>
-<p>The <code>partitions</code> list is the full list of path segments in order — reorder or add <code>{hour}</code> to change granularity. Available variables: <code>{project_id}</code>, <code>{site_id}</code>, <code>{year}</code>, <code>{month}</code>, <code>{day}</code>, <code>{hour}</code>.</p>
+    - <span class="hl">"{day}"</span>
+  compression: <span class="hl">snappy</span>
+  flush_interval_seconds: <span class="hl">60</span>
+  max_messages_per_part:  <span class="hl">50000</span>
+  current_state_path: <span class="hl">"/home/phil/data_server/parquet/current_state.parquet"</span></pre>
+<p>Both flat payloads (<code>{"voltage": 3.71}</code>) and nested payloads (<code>{"voltage": {"value": 3.71, "unit": "V"}}</code>) are handled by <code>parse_payload()</code> — nested objects are flattened automatically.</p>
 </div>
 </div>
 
@@ -1178,29 +1176,27 @@ jetstream {
 </div>
 <div class="faq-a">
 <p>
-  The 60-second buffer in the Parquet Writer is in RAM — a hard power cut before the flush would
+  The 60-second buffer in writer.cpp is in RAM — a hard power cut before the flush would
   normally lose it. However, the Edge Parquet architecture provides two independent protections:
 </p>
-<p><strong>Protection 1 — NATS Leaf Node (Path 2)</strong></p>
+<p><strong>Protection 1 — FlashMQ bridge (Path 2)</strong></p>
 <ul>
-  <li>The NATS Leaf Node forwards every message to AWS in real time — well before the 60-second flush.</li>
-  <li>On power loss, those messages are already sitting in AWS NATS JetStream.</li>
-  <li>The AWS gap-fill Parquet Writer detects the missing S3 window and writes it from the AWS NATS data.</li>
+  <li>The FlashMQ bridge forwards every message to AWS MQTT in real time — well before the 60-second flush.</li>
+  <li>On power loss, those messages are already at AWS and can be consumed by a gap-fill writer.</li>
+  <li>The AWS gap-fill writer detects the missing S3 window and writes it from the AWS MQTT data.</li>
   <li>No data loss — the gap-fill writer activates automatically, no manual intervention.</li>
 </ul>
-<p><strong>Protection 2 — NATS JetStream WAL on disk</strong></p>
+<p><strong>Protection 2 — MQTT QoS 1 retransmit</strong></p>
 <ul>
-  <li>NATS JetStream writes every message to a write-ahead log on local disk before acknowledging to the bridge.</li>
-  <li>The Parquet Writer only acknowledges messages to NATS <em>after</em> a successful S3 upload.</li>
-  <li>On restart, NATS replays all unacknowledged messages from the last committed position.</li>
-  <li>The writer uploads the missing window to S3 on its first flush after restart.</li>
+  <li>FlashMQ holds unacknowledged QoS 1 messages until writer.cpp reconnects after a clean restart.</li>
+  <li>On restart, writer.cpp receives the retransmitted messages and includes them in the next flush.</li>
+  <li>This covers the crash-restart scenario but not a hard power cut (FlashMQ also goes down).</li>
 </ul>
 <p><strong>Remaining risks and mitigations:</strong></p>
 <ul>
-  <li><strong>NATS disk corruption:</strong> use a journaling filesystem (ext4/xfs — Linux default). Optionally add <code>sync: always</code> in <code>nats-server.conf</code> for fsync-per-message durability (~20% throughput cost).</li>
-  <li><strong>MQTT → NATS bridge window (~milliseconds):</strong> devices using QoS 1 retransmit automatically if the broker didn't ack.</li>
-  <li><strong>Simultaneous power loss + WAN failure:</strong> covered by the NATS WAL — replays to S3 when both recover.</li>
-  <li><strong>Best practice:</strong> a small UPS ($50–100) gives a 30-second clean shutdown — NATS flushes its WAL and the writer acks cleanly. With a UPS the power cycle risk is effectively zero.</li>
+  <li><strong>Hard power cut:</strong> FlashMQ is also down, so no QoS-1 retransmit is possible. Path 2 (FlashMQ bridge) covers this — data was already forwarded to AWS before the cut.</li>
+  <li><strong>Simultaneous power loss + WAN failure:</strong> data in RAM is lost for the last flush window. Mitigate with a small UPS ($50–100) that gives 30 s clean shutdown — writer.cpp flushes before power off.</li>
+  <li><strong>Best practice:</strong> UPS + FlashMQ bridge together give zero data loss for every realistic failure mode.</li>
 </ul>
 <p>
   This makes the edge architecture <strong>more resilient than the current cloud pipeline</strong> for every failure mode — the InfluxDB stack has no equivalent recovery mechanism if IoT Core drops messages during a WAN outage.
@@ -1666,6 +1662,30 @@ await js.publish(subject, message.payload)   <span class="hl"># bytes — untouc
       <td>Static architecture diagram — full stack overview with component descriptions</td>
       <td><span class="tag d">doc</span></td>
     </tr>
+    <tr>
+      <td><a href="manager_api.html">manager_api.html</a></td>
+      <td><code>8760</code></td>
+      <td>Manager API reference — start/stop/rescan components, status object schema, log stream, config reference, JS example</td>
+      <td><span class="tag d">doc</span></td>
+    </tr>
+    <tr>
+      <td><a href="generator_api.html">generator_api.html</a></td>
+      <td><code>8765</code></td>
+      <td>Generator API reference — start/stop, update_config schema, status/stats/samples messages, MQTT output format (flat &amp; nested)</td>
+      <td><span class="tag d">doc</span></td>
+    </tr>
+    <tr>
+      <td><a href="stress_runner_api.html">stress_runner_api.html</a></td>
+      <td><code>8769</code></td>
+      <td>Stress Runner API reference — read-only stats broadcast, per-project/site breakdown, MQTT topic format, config reference</td>
+      <td><span class="tag d">doc</span></td>
+    </tr>
+    <tr>
+      <td><a href="aws_server_api.html">aws_server_api.html</a></td>
+      <td><code>8766</code></td>
+      <td>AWS Data Store API reference — S3 monitor, generate command, file/stats/progress events, S3 partition layout</td>
+      <td><span class="tag d">doc</span></td>
+    </tr>
   </table>
 </div>
 
@@ -1815,6 +1835,10 @@ await js.publish(subject, message.payload)   <span class="hl"># bytes — untouc
   <a href="study_aws_monitoring.html">Study 3: AWS Monitoring</a>
   <a href="api_test.html">API Test</a>
   <a href="architecture.html">Architecture</a>
+  <a href="manager_api.html">Manager API</a>
+  <a href="generator_api.html">Generator API</a>
+  <a href="stress_runner_api.html">Stress Runner API</a>
+  <a href="aws_server_api.html">AWS Server API</a>
 </div>
 
 <script>
@@ -1822,8 +1846,8 @@ await js.publish(subject, message.payload)   <span class="hl"># bytes — untouc
 let mgr = null, mgrPort = null;
 
 const COMPONENT_KEYS = [
-  'minio', 'nats', 'nats_bridge', 'parquet_writer',
-  'aws_server', 'subscriber_api', 'stress_runner'
+  'generator', 'writer_cpp',
+  'subscriber_api', 'aws_server', 'stress_runner'
 ];
 
 function getHost() {

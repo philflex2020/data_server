@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stress Runner API — WebSocket :8769</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.type { color: #f39c12; font-family: monospace; white-space: nowrap; }
+td.opt  { color: #8b949e; font-size: 0.85em; }
+td.req  { color: #3fb950; font-size: 0.85em; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0 20px; font-size: 0.85em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.msg-card {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 18px 22px; margin-bottom: 20px;
+}
+.msg-type {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.75em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-bottom: 8px; letter-spacing: 0.05em; font-family: monospace;
+}
+.msg-type.server { background: #1a3a2a; color: #3fb950; }
+.msg-dir  { color: #8b949e; font-size: 0.80em; margin-left: 8px; }
+.msg-desc { color: #8b949e; font-size: 0.84em; margin: 6px 0 10px; }
+.result-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase;
+               letter-spacing: 0.06em; margin-bottom: 6px; }
+.card .value { font-size: 1.4em; font-weight: 700; color: #3fb950; }
+.card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<h1>Stress Runner API</h1>
+<p class="subtitle">24/7 load generator WebSocket — read-only stats on sustained MQTT publishing</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Protocol:</strong> WebSocket (JSON)</div>
+  <div class="meta-item"><strong>Port:</strong> 8769</div>
+  <div class="meta-item"><strong>URL:</strong> ws://&lt;host&gt;:8769</div>
+  <div class="meta-item"><strong>Source:</strong> source/stress_runner/stress_runner.py</div>
+  <div class="meta-item"><strong>Config:</strong> source/stress_runner/config.yaml</div>
+  <div class="meta-item"><strong>MQTT target:</strong> localhost:1883 (FlashMQ / Mosquitto)</div>
+</div>
+
+<div class="nav">
+  <a href="ttd.html">TTD Hub</a>
+  <a href="stress.html">Stress Runner Dashboard</a>
+  <a href="manager_api.html">Manager API</a>
+  <a href="generator_api.html">Generator API</a>
+</div>
+
+<div class="callout info">
+  The stress runner is a <strong>read-only</strong> API — it cannot be started or stopped via WebSocket.
+  It runs 24/7 on spark-22b6 / .51 and broadcasts stats every second to all connected clients.
+  To start or stop it, use the <a href="manager_api.html">Manager API</a>.
+</div>
+
+<div class="result-grid">
+  <div class="card">
+    <div class="label">Default topology</div>
+    <div class="value">1,152</div>
+    <div class="sub">cells (1 proj × 3 sites × 4 racks × 8 mod × 12 cells)</div>
+  </div>
+  <div class="card">
+    <div class="label">Sustained rate</div>
+    <div class="value">~1,152</div>
+    <div class="sub">msg/s at 1 loop/s/site</div>
+  </div>
+  <div class="card">
+    <div class="label">Task model</div>
+    <div class="value" style="font-size:1.0em;padding-top:4px">asyncio</div>
+    <div class="sub">one task per (project, site)</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Client → Server</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type">get_status</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Request an immediate <code>stats</code> reply. The server also broadcasts stats automatically every second, so this is only needed on initial connect if you cannot wait for the next broadcast.</div>
+  <pre><code>{"type": "get_status"}</code></pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Server → Client</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type server">stats</span><span class="msg-dir">← server (broadcast every 1 s)</span></div>
+  <div class="msg-desc">Emitted every second to all connected clients. Also sent immediately on connect and in response to <code>get_status</code>.</div>
+  <pre><code>{
+  "type":            "stats",
+  "total_published": 4147200,
+  "mps":             1152,
+  "active_tasks":    3,
+  "projects": [
+    {
+      "project_id": 0,
+      "sites": [
+        {"site_id": 0, "cells": 384, "published": 1382400},
+        {"site_id": 1, "cells": 384, "published": 1382400},
+        {"site_id": 2, "cells": 384, "published": 1382400}
+      ]
+    }
+  ]
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>total_published</code></td><td class="type">int</td><td>Total messages published since process start</td></tr>
+      <tr><td><code>mps</code></td><td class="type">int</td><td>Messages published in the last second</td></tr>
+      <tr><td><code>active_tasks</code></td><td class="type">int</td><td>Number of running asyncio publish tasks (one per project+site)</td></tr>
+      <tr><td><code>projects</code></td><td class="type">array</td><td>Per-project breakdown</td></tr>
+      <tr><td><code>projects[].project_id</code></td><td class="type">int</td><td>Project identifier</td></tr>
+      <tr><td><code>projects[].sites</code></td><td class="type">array</td><td>Per-site breakdown within project</td></tr>
+      <tr><td><code>projects[].sites[].site_id</code></td><td class="type">int</td><td>Site identifier</td></tr>
+      <tr><td><code>projects[].sites[].cells</code></td><td class="type">int</td><td>Number of cells this site publishes</td></tr>
+      <tr><td><code>projects[].sites[].published</code></td><td class="type">int</td><td>Messages published by this site since process start</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>MQTT Output Format</h2>
+
+<h3>Topic format</h3>
+<pre><code>{topic_prefix}/project={project_id}/site={site_id}/rack={rack_id}/module={module_id}/cell={cell_id}
+# Example:
+batteries/project=0/site=0/rack=1/module=2/cell=3</code></pre>
+
+<div class="callout info">
+  Unlike the generator, the stress runner <strong>always includes <code>project=</code></strong> in the topic.
+  This is required by <code>writer.cpp</code>'s default <code>topic_kv_map</code> when <code>project_id</code>
+  is used as a partition field.
+</div>
+
+<h3>Payload — flat format</h3>
+<pre><code>{
+  "timestamp":   1741234567.891,
+  "project_id":  0,
+  "site_id":     0,
+  "rack_id":     1,
+  "module_id":   2,
+  "cell_id":     3,
+  "voltage":     3.714,
+  "current":    -0.42,
+  "temperature": 28.3,
+  "soc":         71.2,
+  "soh":         97.8,
+  "resistance":  0.0118,
+  "capacity":    99.4,
+  "power":      -1.560
+}</code></pre>
+
+<p><code>power</code> is a derived field — computed as <code>voltage × current</code> when both are present in the schema.</p>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Configuration Reference</h2>
+<pre><code>mqtt:
+  host:      localhost
+  port:      1883          # FlashMQ on spark/.51
+  client_id: stress-runner
+
+sample_interval_seconds: 1   # one full topology publish per second per (project, site) task
+
+topic_prefix: batteries      # root of MQTT topic hierarchy
+
+projects:
+  - project_id: 0
+    sites:
+      - site_id: 0
+        racks:             4
+        modules_per_rack:  8
+        cells_per_module: 12
+      - site_id: 1
+        racks:             4
+        modules_per_rack:  8
+        cells_per_module: 12
+      - site_id: 2
+        racks:             4
+        modules_per_rack:  8
+        cells_per_module: 12
+
+cell_data:
+  voltage:     {min: 3.0, max: 4.2, nominal: 3.7}
+  current:     {min: -5.0, max: 5.0, nominal: 0.0}
+  temperature: {min: 15.0, max: 45.0, nominal: 25.0}
+  soc:         {min: 0.0, max: 100.0, nominal: 75.0}
+  soh:         {min: 80.0, max: 100.0, nominal: 97.0}
+  resistance:  {min: 0.005, max: 0.05, nominal: 0.012}
+  capacity:    {min: 85.0, max: 105.0, nominal: 99.0}
+
+websocket:
+  host: 0.0.0.0
+  port: 8769</code></pre>
+
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generator API — WebSocket :8765</title>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 20px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.type { color: #f39c12; font-family: monospace; white-space: nowrap; }
+td.opt  { color: #8b949e; font-size: 0.85em; }
+td.req  { color: #3fb950; font-size: 0.85em; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0 20px; font-size: 0.85em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.msg-card {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 18px 22px; margin-bottom: 20px;
+}
+.msg-type {
+  display: inline-block; background: #1f3a6e; color: #79c0ff;
+  font-size: 0.75em; font-weight: 700; padding: 2px 10px; border-radius: 4px;
+  margin-bottom: 8px; letter-spacing: 0.05em; font-family: monospace;
+}
+.msg-type.server { background: #1a3a2a; color: #3fb950; }
+.msg-dir  { color: #8b949e; font-size: 0.80em; margin-left: 8px; }
+.msg-desc { color: #8b949e; font-size: 0.84em; margin: 6px 0 10px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<h1>Generator API</h1>
+<p class="subtitle">Data generator WebSocket — control synthetic MQTT publishing for all source types</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Protocol:</strong> WebSocket (JSON)</div>
+  <div class="meta-item"><strong>Port:</strong> 8765</div>
+  <div class="meta-item"><strong>URL:</strong> ws://&lt;host&gt;:8765</div>
+  <div class="meta-item"><strong>Source:</strong> source/generator/generator.py</div>
+  <div class="meta-item"><strong>Config:</strong> source/generator/config.yaml</div>
+  <div class="meta-item"><strong>MQTT target:</strong> localhost:1883 (FlashMQ) or :1884 (Mosquitto)</div>
+</div>
+
+<div class="nav">
+  <a href="ttd.html">TTD Hub</a>
+  <a href="generator.html">Generator Dashboard</a>
+  <a href="manager_api.html">Manager API</a>
+  <a href="stress_runner_api.html">Stress Runner API</a>
+</div>
+
+<div class="callout info">
+  The generator publishes synthetic cell telemetry to an MQTT broker.
+  It supports <strong>battery</strong>, <strong>solar</strong>, <strong>wind</strong>, and <strong>localgen</strong> source types.
+  The WebSocket API provides live control and sample data previews.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Client → Server</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type">start</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Begin publishing MQTT messages at the configured interval for all enabled sources.</div>
+  <pre><code>{"type": "start"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">stop</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Stop publishing. Already-published messages are not recalled.</div>
+  <pre><code>{"type": "stop"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">get_status</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Request current configuration and running state. Server replies with a <code>status</code> message.</div>
+  <pre><code>{"type": "get_status"}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type">update_config</span><span class="msg-dir">→ server</span></div>
+  <div class="msg-desc">Hot-update generator configuration. Only supplied fields are changed; omitted fields retain their current values. Takes effect on the next publish loop.</div>
+  <pre><code>{
+  "type": "update_config",
+  "config": {
+    "sample_interval_seconds": 1,
+    "topic_mode":              "per_cell",
+    "payload_format":          "flat",
+    "sources": [
+      {
+        "id":               "battery",
+        "type":             "battery",
+        "enabled":          true,
+        "topic_prefix":     "batteries",
+        "sites":            2,
+        "racks_per_site":   3,
+        "modules_per_rack": 4,
+        "cells_per_module": 6
+      }
+    ]
+  }
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>config.sample_interval_seconds</code></td><td class="type">int</td><td class="opt">optional</td><td>Seconds between publish loops</td></tr>
+      <tr><td><code>config.topic_mode</code></td><td class="type">string</td><td class="opt">optional</td><td><code>"per_cell"</code> — one message per cell; <code>"per_cell_item"</code> — one per measurement</td></tr>
+      <tr><td><code>config.payload_format</code></td><td class="type">string</td><td class="opt">optional</td><td><code>"flat"</code> — <code>{"voltage": 3.71}</code>; <code>"nested"</code> — <code>{"voltage": {"value": 3.71, "unit": "V"}}</code></td></tr>
+      <tr><td><code>config.sources</code></td><td class="type">array</td><td class="opt">optional</td><td>Source definitions (see below)</td></tr>
+      <tr><td><code>sources[].id</code></td><td class="type">string</td><td class="req">required</td><td>Unique source identifier</td></tr>
+      <tr><td><code>sources[].type</code></td><td class="type">string</td><td class="req">required</td><td><code>"battery"</code> | <code>"solar"</code> | <code>"wind"</code> | <code>"localgen"</code></td></tr>
+      <tr><td><code>sources[].enabled</code></td><td class="type">bool</td><td class="req">required</td><td>Whether this source publishes</td></tr>
+      <tr><td><code>sources[].topic_prefix</code></td><td class="type">string</td><td class="req">required</td><td>MQTT topic root (e.g. <code>"batteries"</code>)</td></tr>
+      <tr><td><code>sources[].sites</code></td><td class="type">int</td><td class="req">required</td><td>Number of sites</td></tr>
+      <tr><td><code>sources[].racks_per_site</code></td><td class="type">int</td><td class="req">required</td><td>Racks per site</td></tr>
+      <tr><td><code>sources[].modules_per_rack</code></td><td class="type">int</td><td class="req">required</td><td>Modules per rack</td></tr>
+      <tr><td><code>sources[].cells_per_module</code></td><td class="type">int</td><td class="req">required</td><td>Cells per module</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>Server → Client</h2>
+
+<div class="msg-card">
+  <div><span class="msg-type server">status</span><span class="msg-dir">← server</span></div>
+  <div class="msg-desc">Sent on connect and after any config change or start/stop. Reflects current state.</div>
+  <pre><code>{
+  "type":       "status",
+  "running":    true,
+  "cell_count": 144,
+  "config": {
+    "sample_interval_seconds": 1,
+    "topic_mode":              "per_cell",
+    "payload_format":          "flat",
+    "sources": [...]
+  }
+}</code></pre>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">stats</span><span class="msg-dir">← server (broadcast ~1/s)</span></div>
+  <div class="msg-desc">Publishing performance metrics, broadcast every second while running.</div>
+  <pre><code>{
+  "type":            "stats",
+  "total_published": 86400,
+  "mps":             144,
+  "last_loop_ms":    2.3
+}</code></pre>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>total_published</code></td><td class="type">int</td><td>Total messages published since start</td></tr>
+      <tr><td><code>mps</code></td><td class="type">int</td><td>Messages per second in last loop</td></tr>
+      <tr><td><code>last_loop_ms</code></td><td class="type">float</td><td>Wall-clock time of last publish loop in ms</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="msg-card">
+  <div><span class="msg-type server">samples</span><span class="msg-dir">← server (broadcast ~1/s)</span></div>
+  <div class="msg-desc">One sample payload per source per loop, for previewing data in a dashboard without subscribing to MQTT.</div>
+  <pre><code>{
+  "type": "samples",
+  "samples": [
+    {
+      "cell_path":    "batteries/site=0/rack=1/module=2/cell=3",
+      "source_id":    "battery",
+      "timestamp":    1741234567.891,
+      "measurements": {
+        "voltage":     {"value": 3.714, "unit": "V"},
+        "current":     {"value": -0.42, "unit": "A"},
+        "temperature": {"value": 28.3,  "unit": "°C"},
+        "soc":         {"value": 71.2,  "unit": "%"},
+        "soh":         {"value": 97.8,  "unit": "%"}
+      }
+    }
+  ]
+}</code></pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>MQTT Output Format</h2>
+
+<h3>Topic format</h3>
+<pre><code>{topic_prefix}/site={site_id}/rack={rack_id}/module={module_id}/cell={cell_id}
+# Example:
+batteries/site=0/rack=1/module=2/cell=3</code></pre>
+
+<div class="callout info">
+  The generator does <strong>not</strong> include <code>project=</code> in the topic. The stress runner does.
+  Both formats are handled correctly by <code>writer.cpp</code> via the <code>topic_kv_map</code> config.
+</div>
+
+<h3>Payload — flat format (<code>"payload_format": "flat"</code>)</h3>
+<pre><code>{
+  "timestamp":   1741234567.891,
+  "site_id":     0,
+  "rack_id":     1,
+  "module_id":   2,
+  "cell_id":     3,
+  "voltage":     3.714,
+  "current":    -0.42,
+  "temperature": 28.3,
+  "soc":         71.2,
+  "soh":         97.8
+}</code></pre>
+
+<h3>Payload — nested format (<code>"payload_format": "nested"</code>)</h3>
+<pre><code>{
+  "timestamp": 1741234567.891,
+  "voltage":   {"value": 3.714, "unit": "V"},
+  "current":   {"value": -0.42, "unit": "A"},
+  "temperature":{"value": 28.3, "unit": "°C"}
+}</code></pre>
+
+<div class="callout ok">
+  <code>writer.cpp</code> handles both formats — <code>parse_payload()</code> flattens nested <code>{value, unit}</code>
+  objects automatically. The Telegraf/InfluxDB path requires flat format (see <code>docs/system_faults.md</code> fault #11).
+</div>
+
+</body>
+</html>
