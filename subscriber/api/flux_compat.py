@@ -107,6 +107,7 @@ _rsync_state: dict = {
     "last_ms":      0.0,    # duration of last rsync run
     "file_count":   0,      # files in dest after last run
     "total_mb":     0.0,    # size of dest after last run
+    "interval_s":   5,      # configured sweep interval (set by start_rsync)
 }
 _rsync_task: asyncio.Task = None  # background task handle
 
@@ -150,7 +151,7 @@ def start_rsync(src: str, dst: str, interval: int = 5) -> dict:
     if _rsync_state["running"]:
         return {"ok": False, "msg": "already running"}
     _rsync_state.update({"running": True, "start_time": time.time(),
-                          "elapsed_s": 0, "run_count": 0})
+                          "elapsed_s": 0, "run_count": 0, "interval_s": interval})
     _rsync_task = asyncio.get_event_loop().create_task(_rsync_loop(src, dst, interval))
     log.info("rsync started")
     return {"ok": True, "msg": "started"}

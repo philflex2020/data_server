@@ -340,8 +340,8 @@ h2.section-title {
     <div class="bridge-block" style="margin-top:60px">
       <div class="bridge-label">rsync-sim</div>
       <div class="bridge-line" id="bridge-rsync-line" style="background:linear-gradient(90deg,#f0883e66,#f39c1266)"></div>
-      <div class="bridge-label">every 5 s</div>
-      <div class="bridge-label">history path</div>
+      <div class="bridge-label">every <span id="bridge-rsync-interval">5</span> s</div>
+      <div class="bridge-label" style="color:#8b949e">parquet → DuckDB</div>
     </div>
   </div>
 
@@ -960,6 +960,7 @@ function updateRsyncStats(r) {
     btn.textContent = '▶ Start rsync';
     btn.style.background = '#238636';
   }
+  if (r.interval_s) setText('bridge-rsync-interval', r.interval_s);
   setBoxState('box-store-host','dot-store-host', running ? 'ok' : (r.run_count > 0 ? 'warn' : 'dim'));
 }
 
