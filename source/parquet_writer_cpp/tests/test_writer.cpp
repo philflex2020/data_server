@@ -41,9 +41,14 @@ static bool is_valid_parquet(const std::string& path) {
     return std::string(head, 4) == "PAR1" && std::string(tail, 4) == "PAR1";
 }
 
+// Python binary with pyarrow — injected by Makefile via -DTEST_PYTHON_BIN
+#ifndef TEST_PYTHON_BIN
+#define TEST_PYTHON_BIN "python3"
+#endif
+
 // Row / column counts via pyarrow subprocess (avoids parquet/metadata.h C++20 dependency)
 static int64_t parquet_rows(const std::string& path) {
-    auto cmd = "/home/phil/work/gen-ai/data_server/.venv/bin/python3 -c \"import pyarrow.parquet as pq; "
+    auto cmd = std::string(TEST_PYTHON_BIN) + " -c \"import pyarrow.parquet as pq; "
                "print(pq.read_metadata('" + path + "').num_rows)\" 2>/dev/null";
     FILE* p = popen(cmd.c_str(), "r");
     if (!p) return -1;
@@ -54,7 +59,7 @@ static int64_t parquet_rows(const std::string& path) {
 }
 
 static int parquet_cols(const std::string& path) {
-    auto cmd = "/home/phil/work/gen-ai/data_server/.venv/bin/python3 -c \"import pyarrow.parquet as pq; "
+    auto cmd = std::string(TEST_PYTHON_BIN) + " -c \"import pyarrow.parquet as pq; "
                "print(pq.read_metadata('" + path + "').num_columns)\" 2>/dev/null";
     FILE* p = popen(cmd.c_str(), "r");
     if (!p) return -1;

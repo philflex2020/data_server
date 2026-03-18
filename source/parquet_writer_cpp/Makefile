@@ -20,7 +20,15 @@ SIMDJSON_LIBS   := $(shell pkg-config --libs   simdjson 2>/dev/null || echo "-ls
 ALL_CFLAGS := $(CXXFLAGS) $(ARROW_CFLAGS) $(MOSQ_CFLAGS) $(YAML_CFLAGS) $(SIMDJSON_CFLAGS)
 ALL_LIBS   := $(ARROW_LIBS) $(MOSQ_LIBS) $(YAML_LIBS) $(SIMDJSON_LIBS)
 
+# Python with pyarrow — used by test helpers to read back written Parquet files.
+# Try venv locations common to both phil-dev and spark-22b6 / .51.
+TEST_PYTHON  := $(shell \
+  ls $(HOME)/data_server/.venv/bin/python3 2>/dev/null || \
+  ls $(HOME)/work/gen-ai/data_server/.venv/bin/python3 2>/dev/null || \
+  echo python3)
+
 TEST_FLAGS := $(CXXFLAGS) -DPARQUET_WRITER_NO_MAIN \
+              -DTEST_PYTHON_BIN=\"$(TEST_PYTHON)\" \
               $(ARROW_CFLAGS) $(MOSQ_CFLAGS) $(YAML_CFLAGS) $(JSON_CFLAGS)
 
 .PHONY: all clean deps test kpi
