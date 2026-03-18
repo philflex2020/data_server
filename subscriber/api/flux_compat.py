@@ -212,32 +212,53 @@ def _query_type(flux: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _flux_source(cfg: dict, gap_exists: bool) -> str:
-    """Build the FROM clause: plain read_parquet, or a UNION + dedup CTE if gap-fill files exist."""
-    bucket     = cfg["s3"]["bucket"]
-    prefix     = cfg["s3"].get("prefix", "").strip("/")
-    gap_prefix = cfg["s3"].get("gap_fill_prefix", "").strip("/")
-    base     = "s3://{}/{}".format(bucket, prefix + "/" if prefix else "")
-    gap_base = "s3://{}/{}".format(bucket, gap_prefix + "/" if gap_prefix else "")
+    """Build the FROM clause: local path or S3, with optional gap-fill UNION."""
+    local_cfg = cfg.get("local") or {}
+    s3_cfg    = cfg.get("s3")    or {}
 
-    primary_path = "{}project=*/**/*.parquet".format(base)
-    primary_read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(primary_path)
-
-    if gap_prefix and gap_exists:
-        gap_path = "{}project=*/**/*.parquet".format(gap_base)
-        gap_read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(gap_path)
-        # Return a subquery alias that callers can use as a table reference.
-        return (
-            "(SELECT * EXCLUDE (_src, _rn) FROM ("
-            "  SELECT *, ROW_NUMBER() OVER ("
-            "    PARTITION BY timestamp, site_id, rack_id, module_id, cell_id ORDER BY _src"
-            "  ) AS _rn FROM ("
-            "    SELECT *, 0 AS _src FROM {primary} UNION ALL"
-            "    SELECT *, 1 AS _src FROM {gap}"
-            "  ) _combined"
-            ") _deduped WHERE _rn = 1) _src_data"
-        ).format(primary=primary_read, gap=gap_read)
-
-    return "({}) _src_data".format(primary_read)
+    if local_cfg.get("path"):
+        # Local filesystem mode (fractal-phil / parquet-aws-sim)
+        base     = local_cfg["path"].rstrip("/") + "/"
+        gap_base = (local_cfg.get("gap_fill_path") or "").rstrip("/") + "/"
+        primary_path = "{}project=*/**/*.parquet".format(base)
+        primary_read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(primary_path)
+        if local_cfg.get("gap_fill_path") and gap_exists:
+            gap_path = "{}project=*/**/*.parquet".format(gap_base)
+            gap_read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(gap_path)
+            return (
+                "(SELECT * EXCLUDE (_src, _rn) FROM ("
+                "  SELECT *, ROW_NUMBER() OVER ("
+                "    PARTITION BY timestamp, site_id, rack_id, module_id, cell_id ORDER BY _src"
+                "  ) AS _rn FROM ("
+                "    SELECT *, 0 AS _src FROM {primary} UNION ALL"
+                "    SELECT *, 1 AS _src FROM {gap}"
+                "  ) _combined"
+                ") _deduped WHERE _rn = 1) _src_data"
+            ).format(primary=primary_read, gap=gap_read)
+        return "({}) _src_data".format(primary_read)
+    else:
+        # S3 / MinIO mode
+        bucket     = s3_cfg["bucket"]
+        prefix     = s3_cfg.get("prefix", "").strip("/")
+        gap_prefix = s3_cfg.get("gap_fill_prefix", "").strip("/")
+        base     = "s3://{}/{}".format(bucket, prefix + "/" if prefix else "")
+        gap_base = "s3://{}/{}".format(bucket, gap_prefix + "/" if gap_prefix else "")
+        primary_path = "{}project=*/**/*.parquet".format(base)
+        primary_read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(primary_path)
+        if gap_prefix and gap_exists:
+            gap_path = "{}project=*/**/*.parquet".format(gap_base)
+            gap_read = "read_parquet('{}', hive_partitioning=true, union_by_name=true)".format(gap_path)
+            return (
+                "(SELECT * EXCLUDE (_src, _rn) FROM ("
+                "  SELECT *, ROW_NUMBER() OVER ("
+                "    PARTITION BY timestamp, site_id, rack_id, module_id, cell_id ORDER BY _src"
+                "  ) AS _rn FROM ("
+                "    SELECT *, 0 AS _src FROM {primary} UNION ALL"
+                "    SELECT *, 1 AS _src FROM {gap}"
+                "  ) _combined"
+                ") _deduped WHERE _rn = 1) _src_data"
+            ).format(primary=primary_read, gap=gap_read)
+        return "({}) _src_data".format(primary_read)
 
 
 def flux_to_sql(flux: str, cfg: dict):
@@ -249,8 +270,9 @@ def flux_to_sql(flux: str, cfg: dict):
     filters = _parse_filters(flux)
     qtype = _query_type(flux)
 
-    gap_prefix = cfg["s3"].get("gap_fill_prefix", "").strip("/")
-    gap_exists = bool(gap_prefix) and _gap_fill_exists_flux(cfg)
+    gap_prefix = (cfg.get("s3") or {}).get("gap_fill_prefix", "").strip("/")
+    gap_exists = (bool(gap_prefix) or bool((cfg.get("local") or {}).get("gap_fill_path"))) \
+                 and _gap_fill_exists_flux(cfg)
     source = _flux_source(cfg, gap_exists)
 
     where = ["timestamp >= {}".format(from_ts), "timestamp <= {}".format(to_ts)]
@@ -300,12 +322,12 @@ def _gap_fill_exists_flux(cfg: dict) -> bool:
     if local_gap:
         import os
         return os.path.isdir(local_gap)
-    gap_prefix = cfg["s3"].get("gap_fill_prefix", "").strip("/")
+    gap_prefix = (cfg.get("s3") or {}).get("gap_fill_prefix", "").strip("/")
     if not gap_prefix:
         return False
     try:
         import boto3
-        s3_cfg = cfg["s3"]
+        s3_cfg = cfg.get("s3") or {}
         kwargs = dict(
             region_name           = s3_cfg.get("region", "us-east-1"),
             aws_access_key_id     = s3_cfg.get("access_key"),
