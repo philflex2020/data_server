@@ -1079,6 +1079,7 @@ async def _handle(reader, writer, cfg, duckdb_conn):
                     f'from(bucket: "{bucket}")\n'
                     f'  |> range(start: {start_rfc}, stop: {stop_rfc})\n'
                     f'  |> filter(fn: (r) => r._measurement == "battery_cell")\n'
+                    f'  |> filter(fn: (r) => r._field == "value")\n'
                     f'  |> count()\n'
                     f'  |> group()\n'
                     f'  |> sum(column: "_value")\n'
