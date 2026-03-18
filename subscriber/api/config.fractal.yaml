@@ -20,9 +20,12 @@ flux_http:
   port: 8768
 
 # InfluxDB2 proxy (for /influx_health — avoids browser CORS on :8086)
+# passthrough: true  = Phase 1 (proxy Flux queries to InfluxDB, track stats)
+# passthrough: false = Phase 3+ (translate Flux → DuckDB SQL)
 influx:
   host: localhost
   port: 8086
+  passthrough: true
 
 # History query limits
 history:

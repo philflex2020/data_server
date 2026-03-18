@@ -449,14 +449,47 @@ async def _handle(reader, writer, cfg, duckdb_conn):
 
         if method == "POST" and "/api/v2/query" in path:
             flux = body.decode(errors="replace")
+            influx_cfg  = cfg.get("influx", {})
+            passthrough = influx_cfg.get("passthrough", False)
+            t0 = time.monotonic()
             try:
                 loop = asyncio.get_running_loop()
-                csv_text = await loop.run_in_executor(
-                    None, run_flux_query, flux, cfg, duckdb_conn
-                )
-                _http_response(writer, 200,
-                               cors + [("Content-Type", "application/csv; charset=utf-8")],
-                               csv_text.encode())
+                if passthrough:
+                    # Phase 1: proxy straight to InfluxDB, track stats
+                    influx_host = influx_cfg.get("host", "localhost")
+                    influx_port = influx_cfg.get("port", 8086)
+                    qs = "?" + path.split("?", 1)[1] if "?" in path else ""
+                    def _proxy():
+                        import urllib.request as _ur
+                        req = _ur.Request(
+                            f"http://{influx_host}:{influx_port}/api/v2/query{qs}",
+                            data=flux.encode(),
+                            headers={k: v for k, v in headers.items()
+                                     if k.lower() in ("authorization","content-type","accept")},
+                            method="POST",
+                        )
+                        with _ur.urlopen(req, timeout=10) as resp:
+                            return resp.status, resp.read()
+                    status, resp_body = await loop.run_in_executor(None, _proxy)
+                    elapsed = round((time.monotonic() - t0) * 1000, 1)
+                    log.info("Flux proxy → InfluxDB  %.1fms", elapsed)
+                    _http_response(writer, status,
+                                   cors + [("Content-Type", "application/csv; charset=utf-8")],
+                                   resp_body)
+                else:
+                    # Phase 3+: translate Flux → DuckDB SQL
+                    csv_text = await loop.run_in_executor(
+                        None, run_flux_query, flux, cfg, duckdb_conn
+                    )
+                    elapsed = round((time.monotonic() - t0) * 1000, 1)
+                    _http_response(writer, 200,
+                                   cors + [("Content-Type", "application/csv; charset=utf-8")],
+                                   csv_text.encode())
+                flux_stats["flux_queries_run"] += 1
+                n = flux_stats["flux_queries_run"]
+                flux_stats["flux_last_ms"] = elapsed
+                flux_stats["flux_avg_ms"]  = round(
+                    flux_stats["flux_avg_ms"] * (n - 1) / n + elapsed / n, 1)
             except Exception as exc:
                 log.error("Flux query error: %s", exc)
                 _http_response(writer, 500, cors, str(exc).encode())
