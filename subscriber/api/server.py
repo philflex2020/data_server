@@ -311,6 +311,8 @@ async def ws_handler(websocket) -> None:
         "subject":        g_live_subject,
     }))
     await websocket.send(json.dumps({"type": "stats", **g_stats, **flux_stats,
+                                     "mqtt_connected": g_mqtt_connected,
+                                     "ws_clients":     len(g_connected),
                                      "rsync": get_rsync_stats(), "s3sync": get_s3sync_stats(),
                                      "router": dict(_router), "sync": dict(g_sync_stats)}))
 
@@ -332,6 +334,8 @@ async def ws_handler(websocket) -> None:
                     "subject":        g_live_subject,
                 }))
                 await websocket.send(json.dumps({"type": "stats", **g_stats, **flux_stats,
+                                                 "mqtt_connected": g_mqtt_connected,
+                                                 "ws_clients":     len(g_connected),
                                                  "rsync": get_rsync_stats(), "s3sync": get_s3sync_stats(),
                                                  "router": dict(_router), "sync": dict(g_sync_stats)}))
 
@@ -419,6 +423,8 @@ async def stats_loop() -> None:
             "uptime_sec":     round(time.time() - g_start_time),
         })
         await broadcast({"type": "stats", **g_stats, **flux_stats,
+                          "mqtt_connected": g_mqtt_connected,
+                          "ws_clients":     len(g_connected),
                           "rsync": get_rsync_stats(), "s3sync": get_s3sync_stats(),
                           "router": dict(_router), "sync": dict(g_sync_stats)})
         await asyncio.sleep(1)
@@ -444,8 +450,13 @@ async def mqtt_connect_loop() -> None:
 
                 # Always subscribe to sync heartbeats for chain-of-custody tracking
                 await client.subscribe("_sync")
+                # Always subscribe to data topic for accurate sync drop counting —
+                # even when no live stream is active, messages must be counted.
+                data_topic = g_config.get("mqtt", {}).get("default_topic", "batteries/#")
+                await client.subscribe(data_topic)
+                log.info("MQTT background subscription: %s", data_topic)
                 # Restore active live-data subscription after reconnect
-                if g_live_subject:
+                if g_live_subject and g_live_subject != data_topic:
                     await client.subscribe(g_live_subject)
                     log.info("MQTT subscription restored: %s", g_live_subject)
 
@@ -522,7 +533,10 @@ async def _handle_mqtt_message(topic: str, payload: bytes) -> None:
     except Exception:
         flat = {"raw": payload.decode(errors="replace")}
     g_live_buffer.append(flat)
-    await broadcast({"type": "live", "subject": topic, "payload": flat})
+    # Only push live messages to WebSocket clients when someone has explicitly subscribed —
+    # the background subscription for sync counting should not generate unsolicited traffic.
+    if g_live_subject:
+        await broadcast({"type": "live", "subject": topic, "payload": flat})
 
 
 def run_buffer_query(from_ts: float, to_ts: float, proj_id: str, site_id: str, limit: int) -> dict:
