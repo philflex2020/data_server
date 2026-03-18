@@ -774,7 +774,7 @@ async function checkParquetStats(aws) {
 }
 
 // ── Flux query runner (fires against flux_compat :8768) ──────────────────────
-const FLUX_QUERY = `from(bucket:"battery-data") |> range(start: -5m) |> filter(fn:(r) => r._field == "voltage") |> aggregateWindow(every: 30s, fn: mean) |> limit(n:50)`;
+const FLUX_QUERY = `from(bucket:"battery-data") |> range(start: -5m) |> filter(fn:(r) => r._field == "voltage") |> limit(n:50)`;
 
 async function runOneFluxQuery(aws) {
   const url = `http://${aws}:8768/api/v2/query?org=battery-org`;
