@@ -293,12 +293,19 @@ h2.section-title {
         <span class="dot dim" id="dot-store-host"></span>
         Host Parquet Store
       </div>
-      <div class="box-sub">/srv/data/parquet/ · rsync-sim copies → aws-sim every 5 s</div>
+      <div class="box-sub">/srv/data/parquet/ → rsync → /srv/data/parquet-aws-sim/</div>
       <div class="metrics">
         <div class="metric">Files  <span id="pq-file-count">—</span></div>
         <div class="metric">Size   <span id="pq-total-mb">—</span> MB</div>
         <div class="metric">Latest <span id="pq-latest-age">—</span> s ago</div>
-        <div class="metric">rsync  <span id="rsync-status">—</span></div>
+        <div class="metric" style="margin-top:4px;border-top:1px solid #30363d;padding-top:4px">
+          rsync <span id="rsync-state" class="dim">stopped</span>
+          &nbsp;<button id="btn-rsync-toggle" style="padding:2px 10px;font-size:0.82em;background:#238636;border:none;border-radius:4px;color:#fff;cursor:pointer">▶ Start rsync</button>
+        </div>
+        <div class="metric">Elapsed  <span id="rsync-elapsed">—</span></div>
+        <div class="metric">Runs     <span id="rsync-runs">—</span></div>
+        <div class="metric">Synced   <span id="rsync-files">—</span> files · <span id="rsync-mb">—</span> MB</div>
+        <div class="metric">Last run <span id="rsync-last-ms">—</span> ms</div>
       </div>
     </div>
   </div>
@@ -718,6 +725,7 @@ function updateSubStats(d) {
   if (d.last_query_ms !== undefined) setText('store-last-ms', d.last_query_ms.toFixed(0));
   if (d.avg_query_ms  !== undefined) setText('store-avg-ms',  d.avg_query_ms.toFixed(0));
   setBoxState('box-store-aws','dot-store-aws', d.queries_run > 0 ? 'ok' : 'warn');
+  if (d.rsync) updateRsyncStats(d.rsync);
   if (d.flux_queries_run !== undefined) {
     setText('flux-queries',  fmtNum(d.flux_queries_run));
     if (d.flux_queries_run > 0) {
@@ -775,6 +783,48 @@ async function checkParquetStats(aws) {
     setBoxState('box-store-host','dot-store-host', d.file_count > 0 ? 'ok' : 'warn');
   } catch(e) { /* host unreachable — leave as dim */ }
 }
+
+// ── rsync control ─────────────────────────────────────────────────────────────
+function fmtElapsed(s) {
+  if (!s && s !== 0) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h) return `${h}h ${m}m ${sec}s`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function updateRsyncStats(r) {
+  if (!r) return;
+  const running = r.running;
+  setText('rsync-state',   running ? 'running' : 'stopped');
+  setClass('rsync-state',  running ? 'ok' : 'dim');
+  setText('rsync-elapsed', fmtElapsed(r.elapsed_s));
+  setText('rsync-runs',    r.run_count ?? '—');
+  setText('rsync-files',   (r.file_count ?? '—').toLocaleString());
+  setText('rsync-mb',      r.total_mb ?? '—');
+  setText('rsync-last-ms', r.last_ms ? r.last_ms + ' ms' : '—');
+  const btn = document.getElementById('btn-rsync-toggle');
+  if (running) {
+    btn.textContent = '■ Stop rsync';
+    btn.style.background = '#da3633';
+  } else {
+    btn.textContent = '▶ Start rsync';
+    btn.style.background = '#238636';
+  }
+  setBoxState('box-store-host','dot-store-host', running ? 'ok' : (r.run_count > 0 ? 'warn' : 'dim'));
+}
+
+document.getElementById('btn-rsync-toggle').addEventListener('click', async () => {
+  const aws = getConfig().aws;
+  const running = document.getElementById('rsync-state').textContent === 'running';
+  const endpoint = running ? 'stop' : 'start';
+  try {
+    const r = await fetch(`http://${aws}:8768/rsync/${endpoint}`,
+                          {method:'POST', signal: AbortSignal.timeout(5000)});
+    const d = await r.json();
+    if (!d.ok) console.warn('rsync', endpoint, d.msg);
+  } catch(e) { console.error('rsync toggle failed', e); }
+});
 
 // ── Flux query runner (fires against flux_compat :8768) ──────────────────────
 const FLUX_QUERY = `from(bucket:"battery-data") |> range(start: -5m) |> filter(fn:(r) => r._field == "voltage") |> limit(n:50)`;

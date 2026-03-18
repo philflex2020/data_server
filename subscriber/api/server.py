@@ -46,7 +46,7 @@ import duckdb
 import websockets
 import yaml
 
-from flux_compat import serve_flux_api, update_server_state, flux_stats, _gap_fill_exists_flux as _gap_fill_exists
+from flux_compat import serve_flux_api, update_server_state, flux_stats, get_rsync_stats, _gap_fill_exists_flux as _gap_fill_exists
 
 LOG_BUFFER: collections.deque = collections.deque(maxlen=200)
 
@@ -405,7 +405,8 @@ async def stats_loop() -> None:
             "live_subject":   g_live_subject,
             "uptime_sec":     round(time.time() - g_start_time),
         })
-        await broadcast({"type": "stats", **g_stats, **flux_stats})
+        await broadcast({"type": "stats", **g_stats, **flux_stats,
+                          "rsync": get_rsync_stats()})
         await asyncio.sleep(1)
 
 

@@ -27,6 +27,12 @@ influx:
   port: 8086
   passthrough: true
 
+# rsync control (parquet_monitor Start/Stop button)
+rsync:
+  src:      /srv/data/parquet/
+  dst:      /srv/data/parquet-aws-sim/
+  interval: 5   # seconds between runs
+
 # History query limits
 history:
   default_limit: 1000

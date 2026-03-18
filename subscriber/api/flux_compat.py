@@ -25,7 +25,9 @@ Also serves:
 import asyncio
 import json as _json
 import logging
+import os
 import re
+import subprocess
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -42,6 +44,76 @@ def update_server_state(d: dict) -> None:
 
 # Flux query stats — read by server.py stats_loop
 flux_stats: dict = {"flux_queries_run": 0, "flux_last_ms": 0.0, "flux_avg_ms": 0.0}
+
+# ---------------------------------------------------------------------------
+# rsync control state
+# ---------------------------------------------------------------------------
+_rsync_state: dict = {
+    "running":      False,
+    "start_time":   None,   # unix ts when loop started
+    "elapsed_s":    0,
+    "run_count":    0,      # number of rsync invocations completed
+    "last_ms":      0.0,    # duration of last rsync run
+    "file_count":   0,      # files in dest after last run
+    "total_mb":     0.0,    # size of dest after last run
+}
+_rsync_task: asyncio.Task = None  # background task handle
+
+def get_rsync_stats() -> dict:
+    s = dict(_rsync_state)
+    if s["running"] and s["start_time"]:
+        s["elapsed_s"] = round(time.time() - s["start_time"])
+    return s
+
+async def _rsync_loop(src: str, dst: str, interval: int) -> None:
+    log.info("rsync loop started: %s → %s every %ds", src, dst, interval)
+    while True:
+        t0 = time.monotonic()
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "rsync", "-a", "--delete", src, dst,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            await proc.wait()
+        except Exception as exc:
+            log.error("rsync error: %s", exc)
+        _rsync_state["last_ms"] = round((time.monotonic() - t0) * 1000, 0)
+        _rsync_state["run_count"] += 1
+        # count files + size in dest
+        total_files, total_bytes = 0, 0
+        for dirpath, _, filenames in os.walk(dst):
+            for fn in filenames:
+                if fn.endswith(".parquet"):
+                    try:
+                        st = os.stat(os.path.join(dirpath, fn))
+                        total_files += 1
+                        total_bytes += st.st_size
+                    except OSError:
+                        pass
+        _rsync_state["file_count"] = total_files
+        _rsync_state["total_mb"]   = round(total_bytes / 1_048_576, 1)
+        await asyncio.sleep(interval)
+
+def start_rsync(src: str, dst: str, interval: int = 5) -> dict:
+    global _rsync_task
+    if _rsync_state["running"]:
+        return {"ok": False, "msg": "already running"}
+    _rsync_state.update({"running": True, "start_time": time.time(),
+                          "elapsed_s": 0, "run_count": 0})
+    _rsync_task = asyncio.get_event_loop().create_task(_rsync_loop(src, dst, interval))
+    log.info("rsync started")
+    return {"ok": True, "msg": "started"}
+
+def stop_rsync() -> dict:
+    global _rsync_task
+    if not _rsync_state["running"]:
+        return {"ok": False, "msg": "not running"}
+    if _rsync_task:
+        _rsync_task.cancel()
+        _rsync_task = None
+    _rsync_state["running"] = False
+    log.info("rsync stopped after %d runs", _rsync_state["run_count"])
+    return {"ok": True, "msg": "stopped"}
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +565,26 @@ async def _handle(reader, writer, cfg, duckdb_conn):
             except Exception as exc:
                 log.error("Flux query error: %s", exc)
                 _http_response(writer, 500, cors, str(exc).encode())
+            return
+
+        if path.startswith("/rsync/start"):
+            src = cfg.get("rsync", {}).get("src", "/srv/data/parquet/")
+            dst = cfg.get("rsync", {}).get("dst", "/srv/data/parquet-aws-sim/")
+            ivl = int(cfg.get("rsync", {}).get("interval", 5))
+            result = start_rsync(src, dst, ivl)
+            _http_response(writer, 200, cors + [("Content-Type", "application/json")],
+                           _json.dumps(result).encode())
+            return
+
+        if path.startswith("/rsync/stop"):
+            result = stop_rsync()
+            _http_response(writer, 200, cors + [("Content-Type", "application/json")],
+                           _json.dumps(result).encode())
+            return
+
+        if path.startswith("/rsync/status"):
+            _http_response(writer, 200, cors + [("Content-Type", "application/json")],
+                           _json.dumps(get_rsync_stats()).encode())
             return
 
         if path.startswith("/parquet_stats"):
