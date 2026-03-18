@@ -418,8 +418,26 @@ async def _handle(reader, writer, cfg, duckdb_conn):
                            body)
             return
 
-        if path.startswith("/ping") or path.startswith("/health"):
+        if path.startswith("/ping") or path == "/health":
             _http_response(writer, 204, cors, b"")
+            return
+
+        if path.startswith("/influx_health"):
+            influx_port = cfg.get("influx", {}).get("port", 8086)
+            influx_host = cfg.get("influx", {}).get("host", "localhost")
+            loop = asyncio.get_running_loop()
+            def _check():
+                try:
+                    with urllib.request.urlopen(
+                        f"http://{influx_host}:{influx_port}/health", timeout=3
+                    ) as resp:
+                        return resp.status, resp.read()
+                except Exception as exc:
+                    return 503, str(exc).encode()
+            status, body = await loop.run_in_executor(None, _check)
+            _http_response(writer, status,
+                           cors + [("Content-Type", "application/json")],
+                           body)
             return
 
         if method == "POST" and "/api/v2/query" in path:

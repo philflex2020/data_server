@@ -708,9 +708,9 @@ function updateSubStats(d) {
 // ── InfluxDB2 health (CORS fetch) ─────────────────────────────────────────────
 async function checkInflux(aws) {
   try {
-    const r = await fetch(`http://${aws}:8086/health`, {signal: AbortSignal.timeout(3000)});
+    const r = await fetch(`http://${aws}:8768/influx_health`, {signal: AbortSignal.timeout(3000)});
     const j = await r.json().catch(() => ({}));
-    const ok = j.status === 'pass' || r.ok;
+    const ok = r.ok && (j.status === 'pass' || j.status === 'ok' || r.status === 200);
     setText('influx-health', ok ? 'healthy' : 'degraded');
     setClass('influx-health', ok ? 'ok' : 'warn');
     setBoxState('box-influx','dot-influx', ok ? 'ok' : 'warn');

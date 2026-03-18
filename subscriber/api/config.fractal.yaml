@@ -19,6 +19,11 @@ websocket:
 flux_http:
   port: 8768
 
+# InfluxDB2 proxy (for /influx_health — avoids browser CORS on :8086)
+influx:
+  host: localhost
+  port: 8086
+
 # History query limits
 history:
   default_limit: 1000
