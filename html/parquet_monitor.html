@@ -268,6 +268,8 @@ h2.section-title {
           <button onclick="setStressRate(0.5)"   class="btn-rate" id="btn-rate-05s">0.5 s</button>
           <button onclick="setStressRate(0.25)"  class="btn-rate" id="btn-rate-025s">0.25 s</button>
           <button onclick="setStressRate(0.1)"   class="btn-rate" id="btn-rate-01s">0.1 s</button>
+          &nbsp;<button onclick="document.getElementById('drop-demo-popup').style.display='flex'"
+            style="padding:1px 7px;font-size:0.82em;border:1px solid #30363d;border-radius:10px;background:transparent;color:#8b949e;cursor:pointer" title="Silent drop demo">?</button>
         </div>
       </div>
       <div class="sites-grid" id="gen-sites"></div>
@@ -1217,5 +1219,34 @@ btnDisconnect.addEventListener('click', doDisconnect);
 window.addEventListener('load', () => setTimeout(doConnect, 300));
 </script>
 
+<!-- ── Silent-drop demo popup ─────────────────────────────────────────────── -->
+<div id="drop-demo-popup" style="display:none;position:fixed;inset:0;background:#000a;z-index:999;align-items:center;justify-content:center">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:28px 32px;max-width:480px;width:90%;position:relative;box-shadow:0 8px 32px #0008">
+    <button onclick="document.getElementById('drop-demo-popup').style.display='none'"
+      style="position:absolute;top:12px;right:16px;background:transparent;border:none;color:#8b949e;font-size:1.3em;cursor:pointer;line-height:1">✕</button>
+    <h3 style="color:#f0883e;margin-bottom:16px;font-size:1.05em">Telegraf silent-drop demo</h3>
+    <p style="color:#8b949e;font-size:0.83em;margin-bottom:14px">
+      Telegraf holds metrics in a RAM buffer before flushing to InfluxDB.
+      When the buffer fills it <strong style="color:#f85149">silently discards the oldest metrics</strong> —
+      no error, no alert. Parquet captures everything.
+    </p>
+    <ol style="color:#e6edf3;font-size:0.88em;line-height:2;padding-left:1.2em;margin-bottom:18px">
+      <li>In the <strong>Telegraf → InfluxDB2</strong> box, set Limit → <strong>1 k</strong> and click <strong style="color:#da3633">Apply &amp; Restart</strong></li>
+      <li>Wait ~10 s for telegraf to come back up (Buffer shows 0 / 1000)</li>
+      <li>Click <strong>0.1 s</strong> rate button — rate jumps to ~11,500 msg/s</li>
+      <li>Watch the <strong>Buffer fill bar</strong> go red and <strong style="color:#f85149">Dropped</strong> count climb</li>
+      <li>Run a count comparison (route = <strong>Both</strong>, queries running) — InfluxDB row count will be lower than DuckDB</li>
+      <li>Click <strong>1 s</strong> to restore normal rate, set Limit → <strong>100 k</strong> to recover</li>
+    </ol>
+    <p style="color:#8b949e;font-size:0.8em">
+      At 1 s / 1,152 cells the 5 k buffer fills in ~4 s. At 0.1 s it fills in under 1 s.
+      InfluxDB never knows — telegraf logs nothing by default.
+    </p>
+    <div style="text-align:right;margin-top:18px">
+      <button onclick="document.getElementById('drop-demo-popup').style.display='none'"
+        style="padding:6px 20px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:0.88em;cursor:pointer">Got it</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
