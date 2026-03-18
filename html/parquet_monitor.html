@@ -732,6 +732,7 @@ function connectGen(host) {
     setText('gen-mps','—'); setText('gen-total','—'); setText('gen-tasks','—');
     genData = null;
     genWS = null;
+    if (pollTimer) setTimeout(() => { const cfg = getConfig(); connectGen(cfg.host); }, 3000);
   };
 }
 
@@ -841,6 +842,8 @@ function connectSub(aws) {
     setText('sub-mqtt','—'); setText('sub-mps','—'); setText('sub-total','—');
     subData = null;
     subWS = null;
+    // Auto-reconnect after 3 s if the monitor is still in connected state
+    if (pollTimer) setTimeout(() => { const cfg = getConfig(); connectSub(cfg.aws); }, 3000);
   };
 }
 
@@ -878,7 +881,8 @@ function updateSubStats(d) {
     // only upgrade to ok — don't downgrade health-check state to warn just because no queries yet
     if (d.flux_queries_run > 0) setBoxState('box-flux-query','dot-flux-query','ok');
   }
-  setBoxState('box-sub','dot-sub', mps > 0 || (subData && subData.mqtt_connected) ? 'ok' : 'warn');
+  const genMps = genData ? (genData.mps ?? 0) : 0;
+  setBoxState('box-sub','dot-sub', genMps > 0 || (subData && subData.mqtt_connected) ? 'ok' : 'warn');
 }
 
 // ── InfluxDB2 health (CORS fetch) ─────────────────────────────────────────────
