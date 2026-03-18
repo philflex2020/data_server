@@ -360,15 +360,18 @@ h2.section-title {
       <div class="box-title">
         <span class="dot dim" id="dot-flux-query"></span>
         Flux query API
-        <span class="box-port">:8086</span>
+        <span class="box-port">:8768</span>
       </div>
-      <div class="box-sub">browser → POST /api/v2/query → InfluxDB2 · orig_aws.html</div>
+      <div class="box-sub">monitor → POST /api/v2/query → flux_compat :8768 → InfluxDB2</div>
       <div class="metrics">
         <div class="metric">Status  <span id="flux-query-status">—</span></div>
         <div class="metric">Queries <span id="flux-queries">—</span> total</div>
         <div class="metric">Last    <span id="flux-last-ms">—</span> ms</div>
         <div class="metric">Avg     <span id="flux-avg-ms">—</span> ms</div>
-        <div class="metric">Page    <span class="dim">orig_aws.html</span></div>
+        <div class="metric" style="margin-top:6px">
+          <button id="btn-flux-toggle" style="padding:2px 10px;font-size:0.82em;background:#238636;border:none;border-radius:4px;color:#fff;cursor:pointer">▶ Start queries</button>
+        </div>
+        <div class="metric" style="font-size:0.78em;color:#8b949e;word-break:break-all" id="flux-url-hint">—</div>
       </div>
     </div>
   </div>
@@ -551,6 +554,7 @@ function getConfig() {
 let genWS   = null;   // stress_runner :8769
 let subWS   = null;   // subscriber_api :8767
 let pollTimer = null;
+let fluxTimer = null; // auto Flux query loop
 let genLastTs = 0;
 let subLastTs = 0;
 let genData   = null;
@@ -769,6 +773,48 @@ async function checkParquetStats(aws) {
   } catch(e) { /* host unreachable — leave as dim */ }
 }
 
+// ── Flux query runner (fires against flux_compat :8768) ──────────────────────
+const FLUX_QUERY = `from(bucket:"battery-data") |> range(start: -5m) |> filter(fn:(r) => r._field == "voltage") |> aggregateWindow(every: 30s, fn: mean) |> limit(n:50)`;
+
+async function runOneFluxQuery(aws) {
+  const url = `http://${aws}:8768/api/v2/query?org=battery-org`;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Token battery-token-secret',
+        'Content-Type':  'application/vnd.flux',
+        'Accept':        'application/csv',
+      },
+      body: FLUX_QUERY,
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch(e) { /* stats still updated server-side on success */ }
+}
+
+function setFluxRunning(aws, on) {
+  const btn = document.getElementById('btn-flux-toggle');
+  const hint = document.getElementById('flux-url-hint');
+  if (on) {
+    btn.textContent = '■ Stop queries';
+    btn.style.background = '#da3633';
+    const url = `http://${aws}:8768/api/v2/query?org=battery-org`;
+    hint.textContent = `POST ${url}  (token: battery-token-secret)`;
+    fluxTimer = setInterval(() => runOneFluxQuery(getConfig().aws), 5000);
+    runOneFluxQuery(aws);
+  } else {
+    btn.textContent = '▶ Start queries';
+    btn.style.background = '#238636';
+    hint.textContent = `POST http://${aws}:8768/api/v2/query?org=battery-org`;
+    if (fluxTimer) { clearInterval(fluxTimer); fluxTimer = null; }
+  }
+}
+
+document.getElementById('btn-flux-toggle').addEventListener('click', () => {
+  const on = fluxTimer === null;
+  setFluxRunning(getConfig().aws, on);
+});
+
 // ── Query path status update ──────────────────────────────────────────────────
 function updateQueryPaths() {
   // Flux → InfluxDB2 direct
@@ -846,6 +892,8 @@ function doConnect() {
   checkInflux(cfg.aws);
   checkFluxShim(cfg.aws);
   checkParquetStats(cfg.aws);
+  document.getElementById('flux-url-hint').textContent =
+    `POST http://${cfg.aws}:8768/api/v2/query?org=battery-org`;
 
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
