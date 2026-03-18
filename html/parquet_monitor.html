@@ -381,6 +381,8 @@ h2.section-title {
       <div class="box-sub">/srv/data/parquet-aws-sim/ · fed by rsync-sim + gap writer</div>
       <div class="metrics">
         <div class="metric">Queries <span id="store-queries">—</span> total</div>
+        <div class="metric">Last    <span id="store-last-ms">—</span> ms</div>
+        <div class="metric">Avg     <span id="store-avg-ms">—</span> ms</div>
         <div class="metric">Source  <span class="dim">rsync + gap writer</span></div>
       </div>
     </div>
@@ -701,6 +703,8 @@ function updateSubStats(d) {
   setText('sub-total',   fmtNum(d.live_total));
   setText('sub-wsclients', d.ws_clients ?? '—');
   setText('store-queries', fmtNum(d.queries_run));
+  if (d.last_query_ms !== undefined) setText('store-last-ms', d.last_query_ms.toFixed(0));
+  if (d.avg_query_ms  !== undefined) setText('store-avg-ms',  d.avg_query_ms.toFixed(0));
   setBoxState('box-store-aws','dot-store-aws', d.queries_run > 0 ? 'ok' : 'warn');
   setBoxState('box-sub','dot-sub', mps > 0 || (subData && subData.mqtt_connected) ? 'ok' : 'warn');
 }

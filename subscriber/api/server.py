@@ -72,7 +72,8 @@ g_mqtt_client: Optional[aiomqtt.Client] = None   # active MQTT client
 g_mqtt_connected: bool = False
 g_s3_connected: bool = False
 g_live_subject: str = ""                          # active MQTT subscription topic
-g_stats = {"live_total": 0, "live_per_sec": 0, "queries_run": 0}
+g_stats = {"live_total": 0, "live_per_sec": 0, "queries_run": 0,
+           "last_query_ms": 0.0, "avg_query_ms": 0.0}
 g_live_window: list = []
 g_start_time = time.time()
 g_duckdb: Optional[duckdb.DuckDBPyConnection] = None
@@ -368,6 +369,12 @@ async def ws_handler(websocket) -> None:
                         result = await asyncio.get_event_loop().run_in_executor(
                             None, run_history_query, g_config, proj_id, site_id, from_ts, to_ts, limit
                         )
+                    ms = result.get("elapsed_ms", 0.0)
+                    g_stats["last_query_ms"] = ms
+                    n = g_stats["queries_run"]
+                    g_stats["avg_query_ms"] = round(
+                        g_stats["avg_query_ms"] * (n - 1) / n + ms / n, 1)
+                    log.info("History query: %d rows in %.0fms (id=%s)", result.get("total", 0), ms, query_id)
                     await websocket.send(json.dumps({"type": "history", "query_id": query_id, **result}, default=str))
                 except Exception as exc:
                     log.error("History query failed: %s", exc)
