@@ -50,6 +50,7 @@
 #include <arrow/io/api.h>
 #include <parquet/arrow/reader.h>
 #include <parquet/metadata.h>
+#include <parquet/statistics.h>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -96,7 +97,7 @@ static bool file_might_overlap(const std::string& path, double t0, double t1) {
 
     std::unique_ptr<parquet::arrow::FileReader> reader;
     parquet::ArrowReaderProperties props;
-    if (!builder.properties(props).Build(&reader).ok()) return true;
+    if (!builder.properties(props)->Build(&reader).ok()) return true;
 
     auto metadata = reader->parquet_reader()->metadata();
     int ts_col = metadata->schema()->ColumnIndex("timestamp");
@@ -396,9 +397,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    mosquitto_on_connect   (g_mosq, on_connect);
-    mosquitto_on_message   (g_mosq, on_message);
-    mosquitto_on_disconnect(g_mosq, on_disconnect);
+    mosquitto_connect_callback_set   (g_mosq, on_connect);
+    mosquitto_message_callback_set   (g_mosq, on_message);
+    mosquitto_disconnect_callback_set(g_mosq, on_disconnect);
 
     // Connect with exponential back-off
     double delay = 1.0;
