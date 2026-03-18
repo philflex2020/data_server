@@ -436,6 +436,14 @@ h2.section-title {
         </div>
         <div class="metric" style="margin-top:6px">
           <button id="btn-flux-toggle" style="padding:2px 10px;font-size:0.82em;background:#238636;border:none;border-radius:4px;color:#fff;cursor:pointer">▶ Start queries</button>
+          &nbsp;every&nbsp;
+          <select id="flux-interval-select" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:0.82em;padding:2px 4px" onchange="onFluxIntervalChange()">
+            <option value="2000">2 s</option>
+            <option value="5000" selected>5 s</option>
+            <option value="10000">10 s</option>
+            <option value="30000">30 s</option>
+            <option value="60000">60 s</option>
+          </select>
         </div>
         <div style="margin-top:6px;position:relative">
           <pre id="flux-curl-cmd" style="font-size:0.72em;color:#8b949e;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:6px 32px 6px 8px;margin:0;white-space:pre-wrap;word-break:break-all;cursor:text">—</pre>
@@ -1078,17 +1086,29 @@ function fluxCurlCmd(aws) {
   return `curl -X POST "http://${aws}:8768/api/v2/query?org=battery-org" \\\n  -H "Authorization: Token battery-token-secret" \\\n  -H "Content-Type: application/vnd.flux" \\\n  -d 'from(bucket:"battery-data") |> range(start: -5m) |> filter(fn:(r) => r._field == "voltage") |> limit(n:50)'`;
 }
 
+function getFluxInterval() {
+  return parseInt(document.getElementById('flux-interval-select').value) || 5000;
+}
+
 function setFluxRunning(aws, on) {
   const btn = document.getElementById('btn-flux-toggle');
   if (on) {
     btn.textContent = '■ Stop queries';
     btn.style.background = '#da3633';
-    fluxTimer = setInterval(() => runOneFluxQuery(getConfig().aws), 5000);
+    fluxTimer = setInterval(() => runOneFluxQuery(getConfig().aws), getFluxInterval());
     runOneFluxQuery(aws);
   } else {
     btn.textContent = '▶ Start queries';
     btn.style.background = '#238636';
     if (fluxTimer) { clearInterval(fluxTimer); fluxTimer = null; }
+  }
+}
+
+function onFluxIntervalChange() {
+  // if queries are running, restart the timer at the new rate
+  if (fluxTimer !== null) {
+    clearInterval(fluxTimer);
+    fluxTimer = setInterval(() => runOneFluxQuery(getConfig().aws), getFluxInterval());
   }
 }
 

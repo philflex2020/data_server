@@ -316,7 +316,16 @@ def _query_type(flux: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _flux_source(cfg: dict, gap_exists: bool) -> str:
-    """Build the FROM clause: local path or S3, with optional gap-fill UNION."""
+    """Build the FROM clause: local path or S3, with optional gap-fill UNION.
+
+    TODO performance: scope the parquet glob to the query date range instead of
+    reading all files. flux_to_sql() already computes from_ts/to_ts from range().
+    Pass those in and build date-scoped paths like:
+      YYYY/MM/DD/*.parquet  for each date in [from_ts, to_ts]
+    This avoids a full table scan on large stores and is critical for production
+    where months of data exist. At current scale (~1k files, 1 GB) the glob is
+    fast enough, but at >10k files query latency will grow linearly without this.
+    """
     local_cfg = cfg.get("local") or {}
     s3_cfg    = cfg.get("s3")    or {}
 
