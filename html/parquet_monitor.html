@@ -711,9 +711,12 @@ function updateSubStats(d) {
   setBoxState('box-store-aws','dot-store-aws', d.queries_run > 0 ? 'ok' : 'warn');
   if (d.flux_queries_run !== undefined) {
     setText('flux-queries',  fmtNum(d.flux_queries_run));
-    setText('flux-last-ms',  d.flux_last_ms.toFixed(0));
-    setText('flux-avg-ms',   d.flux_avg_ms.toFixed(0));
-    setBoxState('box-flux-query','dot-flux-query', d.flux_queries_run > 0 ? 'ok' : 'warn');
+    if (d.flux_queries_run > 0) {
+      setText('flux-last-ms', d.flux_last_ms.toFixed(0));
+      setText('flux-avg-ms',  d.flux_avg_ms.toFixed(0));
+    }
+    // only upgrade to ok — don't downgrade health-check state to warn just because no queries yet
+    if (d.flux_queries_run > 0) setBoxState('box-flux-query','dot-flux-query','ok');
   }
   setBoxState('box-sub','dot-sub', mps > 0 || (subData && subData.mqtt_connected) ? 'ok' : 'warn');
 }
