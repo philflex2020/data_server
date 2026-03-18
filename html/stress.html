@@ -88,12 +88,20 @@
 
   <!-- Connect bar -->
   <div class="connect-bar">
+    <button class="btn" id="btn-phildev"  onclick="quickConnect('phil-dev')">phil-dev</button>
+    <button class="btn" id="btn-spark"    onclick="quickConnect('spark-22b6')">spark-22b6</button>
+    <button class="btn" id="btn-fractal"  onclick="quickConnect('fractal-phil')">fractal-phil</button>
+    <span style="color:#334155;margin:0 2px">|</span>
+    <input id="inp-custom" placeholder="new host…" style="width:120px;background:#020617;border:1px solid #334155;border-radius:5px;color:#e2e8f0;padding:4px 8px;font-size:12px;outline:none"
+      onkeydown="if(event.key==='Enter') quickConnect(this.value)">
+    <button class="btn" onclick="quickConnect(document.getElementById('inp-custom').value)">Go</button>
+    <span style="color:#334155;margin:0 2px">|</span>
     <label>Host</label>
     <input id="inp-host" value="localhost"/>
     <label>Port</label>
     <input id="inp-port" value="8769" style="width:65px"/>
-    <button class="btn primary" onclick="connect()">Connect</button>
-    <button class="btn danger"  onclick="disconnect()">Disconnect</button>
+    <button class="btn" onclick="connect()">Connect</button>
+    <button class="btn danger" onclick="disconnect()">Disconnect</button>
     <div class="ws-status">
       <div class="ws-dot" id="ws-dot"></div>
       <span id="ws-label">Disconnected</span>
@@ -357,10 +365,32 @@ function handleMsg(msg) {
   log(`stats: ${fmt(total_published)} total  ${fmt(mps)} mps  ${active_tasks} tasks`);
 }
 
+// ── Quick-connect buttons ────────────────────────────────────────────────────
+const STRESS_HOSTS = {
+  'phil-dev':    'btn-phildev',
+  'spark-22b6':  'btn-spark',
+  'fractal-phil':'btn-fractal',
+};
+
+function quickConnect(host) {
+  host = host.trim();
+  if (!host) return;
+  document.getElementById('inp-host').value = host;
+  localStorage.setItem('stress_host', host);
+  Object.entries(STRESS_HOSTS).forEach(([h, id]) =>
+    document.getElementById(id).className = 'btn' + (h === host ? ' primary' : '')
+  );
+  connect();
+}
+
 // ── Auto-connect on load ─────────────────────────────────────────────────────
 (function () {
-  const saved = localStorage.getItem('ds_host');
-  if (saved) document.getElementById('inp-host').value = saved;
+  const saved = localStorage.getItem('stress_host') || localStorage.getItem('ds_host');
+  if (saved) {
+    document.getElementById('inp-host').value = saved;
+    const btnId = STRESS_HOSTS[saved];
+    if (btnId) document.getElementById(btnId).className = 'btn primary';
+  }
 })();
 connect();
 </script>

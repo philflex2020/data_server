@@ -157,6 +157,13 @@
     <button class="btn" id="btnSpark" onclick="selectHost('aws')">
       <span class="stack-dot" id="dotSpark"></span>spark-22b6 :8765
     </button>
+    <button class="btn" id="btnFractal" onclick="selectHost('fractal')">
+      <span class="stack-dot" id="dotFractal"></span>fractal-phil :8765
+    </button>
+    <span style="color:#334155;margin:0 4px">|</span>
+    <input class="host" id="customHost" placeholder="new host…" style="width:130px"
+      onkeydown="if(event.key==='Enter') selectCustomHost(this.value)">
+    <button class="btn sm" onclick="selectCustomHost(document.getElementById('customHost').value)">Go</button>
   </div>
 
   <!-- Connect bar -->
@@ -706,25 +713,43 @@ function setGenPill(cls, text) {
 // ── Host persistence ──────────────────────────────────────────────────────────
 let activeHostKey = 'ds_host';
 
+const HOST_DEFS = [
+  { key: 'ds',      storageKey: 'ds_host',      btnId: 'btnPhilDev', dotId: 'dotPhilDev', defaultHost: 'phil-dev'     },
+  { key: 'aws',     storageKey: 'aws_host',      btnId: 'btnSpark',   dotId: 'dotSpark',   defaultHost: 'spark-22b6'   },
+  { key: 'fractal', storageKey: 'fractal_host',  btnId: 'btnFractal', dotId: 'dotFractal', defaultHost: 'fractal-phil' },
+];
+
+function selectCustomHost(host) {
+  host = host.trim();
+  if (!host) return;
+  localStorage.setItem('custom_host', host);
+  document.getElementById('wsHost').value = host;
+  activeHostKey = 'custom_host';
+  HOST_DEFS.forEach(d => document.getElementById(d.btnId).className = 'btn');
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  connectWs();
+}
+
 function selectHost(key) {
-  activeHostKey = key === 'aws' ? 'aws_host' : 'ds_host';
+  const def = HOST_DEFS.find(d => d.key === key) || HOST_DEFS[0];
+  activeHostKey = def.storageKey;
   document.getElementById('wsHost').value =
-    localStorage.getItem(activeHostKey) || window.location.hostname;
-  document.getElementById('btnPhilDev').className = 'btn' + (key === 'ds'  ? ' primary' : '');
-  document.getElementById('btnSpark').className   = 'btn' + (key === 'aws' ? ' primary' : '');
+    localStorage.getItem(def.storageKey) || def.defaultHost;
+  HOST_DEFS.forEach(d =>
+    document.getElementById(d.btnId).className = 'btn' + (d.key === key ? ' primary' : '')
+  );
   probeHosts();
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   connectWs();
 }
 
 function probeHosts() {
-  ['ds_host','aws_host'].forEach((hostKey, i) => {
-    const dotId = i === 0 ? 'dotPhilDev' : 'dotSpark';
-    const dot   = document.getElementById(dotId);
-    const h     = localStorage.getItem(hostKey) || window.location.hostname;
-    const port  = document.getElementById('wsPort').value || '8765';
-    const p     = new WebSocket(`ws://${h}:${port}`);
-    const t     = setTimeout(() => { dot.className = 'stack-dot down'; try { p.close(); } catch(e){} }, 3000);
+  const port = document.getElementById('wsPort').value || '8765';
+  HOST_DEFS.forEach(({ storageKey, dotId, defaultHost }) => {
+    const dot = document.getElementById(dotId);
+    const h   = localStorage.getItem(storageKey) || defaultHost;
+    const p   = new WebSocket(`ws://${h}:${port}`);
+    const t   = setTimeout(() => { dot.className = 'stack-dot down'; try { p.close(); } catch(e){} }, 3000);
     p.onopen  = () => { clearTimeout(t); dot.className = 'stack-dot up';   p.close(); };
     p.onerror = () => { clearTimeout(t); dot.className = 'stack-dot down'; };
   });

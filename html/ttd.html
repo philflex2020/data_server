@@ -303,10 +303,14 @@
   <span id="mgr-dot" class="dot" style="width:9px;height:9px;border-radius:50%;background:#484f58;display:inline-block;transition:background .3s;flex-shrink:0"></span>
   <span id="mgr-label" style="color:#8b949e;">Not connected</span>
   <span class="sep">|</span>
-  Host: <input type="text" id="mgr-host" value="localhost" style="width:120px">
-  <button onclick="mgrConnect(8761)">phil-dev :8761</button>
-  <button onclick="mgrConnect(8762)">spark-22b6 :8762</button>
-  <button onclick="mgrConnect(8761)">fractal-phil :8761</button>
+  <button onclick="mgrConnectHost('phil-dev', 8761)"    id="mgrBtn-phildev">phil-dev :8761</button>
+  <button onclick="mgrConnectHost('spark-22b6', 8762)"  id="mgrBtn-spark">spark-22b6 :8762</button>
+  <button onclick="mgrConnectHost('fractal-phil', 8761)" id="mgrBtn-fractal">fractal-phil :8761</button>
+  <span class="sep">|</span>
+  Host: <input type="text" id="mgr-host" value="localhost" style="width:120px"
+    onkeydown="if(event.key==='Enter') mgrConnect(8761)">
+  <button onclick="mgrConnect(8761)">Connect :8761</button>
+  <button onclick="mgrConnect(8762)">:8762</button>
   <button id="mgr-disc" onclick="mgrDisconnect()" style="display:none;border-color:#f85149;color:#f85149;">Disconnect</button>
 </div>
 
@@ -1855,6 +1859,21 @@ function getHost() {
   return (document.getElementById('mgr-host').value.trim()
        || localStorage.getItem('ds_host')
        || 'localhost');
+}
+
+const MGR_HOSTS = {
+  'phil-dev':    { btnId: 'mgrBtn-phildev',  port: 8761 },
+  'spark-22b6':  { btnId: 'mgrBtn-spark',    port: 8762 },
+  'fractal-phil':{ btnId: 'mgrBtn-fractal',  port: 8761 },
+};
+
+function mgrConnectHost(host, port) {
+  document.getElementById('mgr-host').value = host;
+  Object.entries(MGR_HOSTS).forEach(([h, cfg]) => {
+    const el = document.getElementById(cfg.btnId);
+    if (el) el.style.borderColor = h === host ? '#3fb950' : '';
+  });
+  mgrConnect(port);
 }
 
 function mgrConnect(port) {
