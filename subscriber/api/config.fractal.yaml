@@ -45,6 +45,13 @@ rsync:
   dst:      /srv/data/parquet-aws-sim/
   interval: 5   # seconds between runs
 
+# Telegraf control (parquet_monitor buffer slider + restart)
+telegraf:
+  conf_path: /home/phil/data_server/source/telegraf/telegraf-aws-sim.conf
+  binary:    /usr/bin/telegraf
+  org:       battery-org
+  token:     battery-token-secret
+
 # History query limits
 history:
   default_limit: 1000

@@ -605,6 +605,89 @@ def _s3_diag(cfg: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Telegraf control helpers (sync — run in executor)
+# ---------------------------------------------------------------------------
+
+def _telegraf_stats(influx_cfg: dict, tg_cfg: dict) -> dict:
+    """Query InfluxDB internal_write metrics to get telegraf buffer stats."""
+    host  = influx_cfg.get("host", "localhost")
+    port  = influx_cfg.get("port", 8086)
+    org   = tg_cfg.get("org", "battery-org")
+    token = tg_cfg.get("token", "battery-token-secret")
+    flux = (
+        'from(bucket:"battery-data")'
+        ' |> range(start: -2m)'
+        ' |> filter(fn: (r) => r._measurement == "internal_write" and r.output == "influxdb_v2")'
+        ' |> filter(fn: (r) => r._field == "buffer_limit" or r._field == "buffer_size"'
+        '   or r._field == "metrics_dropped" or r._field == "metrics_written")'
+        ' |> last()'
+    )
+    req = urllib.request.Request(
+        f"http://{host}:{port}/api/v2/query?org={org}",
+        data=flux.encode(),
+        headers={"Authorization": f"Token {token}",
+                 "Content-Type": "application/vnd.flux"},
+        method="POST",
+    )
+    out: dict = {"buffer_limit": None, "buffer_size": None,
+                 "metrics_dropped": None, "metrics_written": None}
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            for line in resp.read().decode().splitlines():
+                if not line or line.startswith("#") or ",result," in line:
+                    continue
+                parts = line.split(",")
+                if len(parts) < 8:
+                    continue
+                # CSV cols: ,result,table,_start,_stop,_time,_value,_field,...
+                value = parts[6]
+                field = parts[7]
+                if field in out:
+                    try:
+                        out[field] = int(float(value))
+                    except ValueError:
+                        pass
+    except Exception as exc:
+        out["error"] = str(exc)
+    # compute fill_pct
+    if out["buffer_limit"] and out["buffer_size"] is not None:
+        out["fill_pct"] = round(out["buffer_size"] / out["buffer_limit"] * 100, 1)
+    else:
+        out["fill_pct"] = None
+    return out
+
+
+def _telegraf_set_buffer(conf_path: str, binary: str, new_limit: int) -> dict:
+    """Update metric_buffer_limit in telegraf conf and restart telegraf."""
+    import re
+    # Read + patch config
+    with open(conf_path) as f:
+        content = f.read()
+    content = re.sub(
+        r'(metric_buffer_limit\s*=\s*)\d+[^\n]*',
+        f'\\g<1>{new_limit}    # set via parquet_monitor',
+        content,
+    )
+    with open(conf_path, "w") as f:
+        f.write(content)
+    # Kill existing instance
+    try:
+        subprocess.run(["pkill", "-f", "telegraf.*telegraf-aws-sim"], timeout=5)
+    except Exception:
+        pass
+    time.sleep(1.5)
+    # Restart
+    proc = subprocess.Popen(
+        [binary, "--config", conf_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    log.info("telegraf restarted (pid=%d) with buffer_limit=%d", proc.pid, new_limit)
+    return {"ok": True, "limit": new_limit, "telegraf_pid": proc.pid}
+
+
+# ---------------------------------------------------------------------------
 # Asyncio HTTP server
 # ---------------------------------------------------------------------------
 
@@ -897,6 +980,34 @@ async def _handle(reader, writer, cfg, duckdb_conn):
             _http_response(writer, 200,
                            cors + [("Content-Type", "application/json")],
                            body)
+            return
+
+        if path.startswith("/telegraf/stats"):
+            influx_cfg = cfg.get("influx", {})
+            tg_cfg     = cfg.get("telegraf", {})
+            loop = asyncio.get_running_loop()
+            stats = await loop.run_in_executor(None, _telegraf_stats, influx_cfg, tg_cfg)
+            _http_response(writer, 200, cors + [("Content-Type", "application/json")],
+                           _json.dumps(stats).encode())
+            return
+
+        if path.startswith("/telegraf/set_buffer"):
+            tg_cfg    = cfg.get("telegraf", {})
+            conf_path = tg_cfg.get("conf_path", "")
+            binary    = tg_cfg.get("binary", "/usr/bin/telegraf")
+            try:
+                body_json = _json.loads(body or b"{}")
+                new_limit = int(body_json.get("limit", 0))
+                if new_limit < 100 or new_limit > 1_000_000:
+                    raise ValueError("limit out of range")
+            except Exception as exc:
+                _http_response(writer, 400, cors, str(exc).encode())
+                return
+            loop   = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, _telegraf_set_buffer, conf_path, binary, new_limit)
+            _http_response(writer, 200, cors + [("Content-Type", "application/json")],
+                           _json.dumps(result).encode())
             return
 
         _http_response(writer, 404, cors, b"Not Found")

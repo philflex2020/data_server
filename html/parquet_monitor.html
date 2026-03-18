@@ -356,9 +356,40 @@ h2.section-title {
         <span class="box-port">:8086</span>
       </div>
       <div class="box-sub">MQTT :1884 → InfluxDB2 · telegraf-aws-sim.conf</div>
+      <!-- NOTE: metric_buffer_limit controls how many metrics telegraf holds in RAM
+           before flushing to InfluxDB. When the buffer fills (InfluxDB slow/backlogged),
+           telegraf SILENTLY DROPS the oldest metrics — no error, no log warning by default.
+           This is a key demo point: parquet captures everything; InfluxDB loses data quietly.
+           Reduce the limit below to force drops under high message rates. -->
       <div class="metrics">
-        <div class="metric">Health <span id="influx-health">—</span></div>
-        <div class="metric">Bucket <span class="dim">battery-data</span></div>
+        <div class="metric">Health  <span id="influx-health">—</span></div>
+        <div class="metric">Bucket  <span class="dim">battery-data</span></div>
+        <div class="metric" style="margin-top:6px;border-top:1px solid #30363d;padding-top:4px">
+          Buffer  <span id="tg-buf-size">—</span> / <span id="tg-buf-limit">—</span>
+          <span id="tg-buf-pct" style="font-size:0.85em;color:#8b949e"></span>
+        </div>
+        <div class="metric" style="margin:2px 0 4px">
+          <!-- fill bar -->
+          <div style="height:6px;background:#21262d;border-radius:3px;width:100%;overflow:hidden">
+            <div id="tg-buf-bar" style="height:100%;width:0%;background:#3fb950;border-radius:3px;transition:width 1s"></div>
+          </div>
+        </div>
+        <div class="metric" style="color:#f85149">
+          Dropped <span id="tg-dropped" style="font-weight:600">—</span>
+          <span style="color:#8b949e;font-size:0.82em"> (cumulative · silent)</span>
+        </div>
+        <div class="metric" style="margin-top:6px">
+          Limit&nbsp;
+          <select id="tg-limit-select" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:0.82em;padding:2px 4px">
+            <option value="1000">1 k</option>
+            <option value="5000" selected>5 k</option>
+            <option value="10000">10 k</option>
+            <option value="25000">25 k</option>
+            <option value="50000">50 k</option>
+            <option value="100000">100 k</option>
+          </select>
+          &nbsp;<button onclick="setTelegrafBuffer()" style="padding:2px 8px;font-size:0.82em;background:#da3633;border:none;border-radius:4px;color:#fff;cursor:pointer">Apply &amp; Restart</button>
+        </div>
       </div>
     </div>
 
@@ -603,6 +634,7 @@ function getConfig() {
 let genWS   = null;   // stress_runner :8769
 let subWS   = null;   // subscriber_api :8767
 let pollTimer = null;
+let tgTimer   = null;
 let fluxTimer = null; // auto Flux query loop
 let genLastTs = 0;
 let subLastTs = 0;
@@ -797,6 +829,46 @@ async function checkInflux(aws) {
     setBoxState('box-influx','dot-influx','error');
     setText('sb-influx','unreachable');
   }
+}
+
+// ── Telegraf buffer stats ─────────────────────────────────────────────────────
+async function checkTelegrafStats(aws) {
+  try {
+    const r = await fetch(`http://${aws}:8768/telegraf/stats`, {signal: AbortSignal.timeout(4000)});
+    const d = await r.json();
+    setText('tg-buf-size',  d.buffer_size  !== null ? d.buffer_size.toLocaleString()  : '—');
+    setText('tg-buf-limit', d.buffer_limit !== null ? d.buffer_limit.toLocaleString() : '—');
+    // sync the select to reflect the actual current limit
+    if (d.buffer_limit !== null) {
+      const sel = document.getElementById('tg-limit-select');
+      const match = [...sel.options].find(o => parseInt(o.value) === d.buffer_limit);
+      if (match) sel.value = String(d.buffer_limit);
+    }
+    const pct = d.fill_pct ?? 0;
+    setText('tg-buf-pct', pct !== null ? ` (${pct}%)` : '');
+    const bar = document.getElementById('tg-buf-bar');
+    if (bar) {
+      bar.style.width = Math.min(pct, 100) + '%';
+      bar.style.background = pct > 80 ? '#f85149' : pct > 50 ? '#d29922' : '#3fb950';
+    }
+    const dropped = d.metrics_dropped ?? 0;
+    setText('tg-dropped', dropped.toLocaleString());
+    setClass('tg-dropped', dropped > 0 ? 'error' : 'ok');
+  } catch(e) { /* influx may not be up yet */ }
+}
+
+async function setTelegrafBuffer() {
+  const aws   = document.getElementById('cfg-aws').value.trim();
+  const limit = parseInt(document.getElementById('tg-limit-select').value);
+  try {
+    await fetch(`http://${aws}:8768/telegraf/set_buffer`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({limit}),
+      signal: AbortSignal.timeout(10000),
+    });
+    setTimeout(() => checkTelegrafStats(aws), 5000); // re-check after telegraf restarts
+  } catch(e) { console.error('set_buffer failed', e); }
 }
 
 // ── flux_compat shim check (:8768) ───────────────────────────────────────────
@@ -1074,6 +1146,7 @@ function doConnect() {
   checkInflux(cfg.aws);
   checkFluxShim(cfg.aws);
   checkParquetStats(cfg.aws);
+  checkTelegrafStats(cfg.aws);
   document.getElementById('flux-curl-cmd').textContent = fluxCurlCmd(cfg.aws);
 
   if (pollTimer) clearInterval(pollTimer);
@@ -1085,6 +1158,9 @@ function doConnect() {
     checkParquetStats(c.aws);
     updateQueryPaths();
   }, 2000);
+  // telegraf buffer stats on slower cadence (10s) — InfluxDB internal metrics lag by ~10s
+  if (tgTimer) clearInterval(tgTimer);
+  tgTimer = setInterval(() => checkTelegrafStats(getConfig().aws), 10000);
 
   connected = true;
   btnConnect.style.display    = 'none';
@@ -1096,6 +1172,7 @@ function doDisconnect() {
   if (genWS) { try { genWS.close(); } catch(e){} genWS = null; }
   if (subWS) { try { subWS.close(); } catch(e){} subWS = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (tgTimer)   { clearInterval(tgTimer);   tgTimer   = null; }
   connected = false;
   btnConnect.style.display    = '';
   btnDisconnect.style.display = 'none';

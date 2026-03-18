@@ -74,6 +74,7 @@ g_topology:        List[dict] = []
 g_ws_clients:      Set = set()
 g_mqtt_client:     Optional[mqtt.Client] = None
 g_stop:            asyncio.Event
+g_interval:        float = 1.0   # seconds between publish sweeps — set_rate changes this live
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +114,6 @@ async def site_publish_loop(project_id: int, site_cfg: dict, config: dict,
     global g_total_published, g_active_tasks
 
     site_id      = site_cfg["site_id"]
-    interval     = config["sample_interval_seconds"]
     topic_prefix = config["topic_prefix"]
 
     cells = build_cells(
@@ -133,8 +133,9 @@ async def site_publish_loop(project_id: int, site_cfg: dict, config: dict,
     g_active_tasks += 1
     try:
         while not g_stop.is_set():
-            t_start = time.monotonic()
-            batch   = 0
+            t_start  = time.monotonic()
+            interval = g_interval          # read live — set_rate updates this
+            batch    = 0
 
             for cell in cells:
                 if g_stop.is_set():
@@ -175,11 +176,13 @@ def build_stats_message() -> dict:
         "total_published": g_total_published,
         "mps":             g_mps,
         "active_tasks":    g_active_tasks,
+        "interval":        g_interval,
         "projects":        projects_out,
     }
 
 
 async def ws_handler(websocket) -> None:
+    global g_interval
     g_ws_clients.add(websocket)
     log.info("WebSocket client connected (%d total)", len(g_ws_clients))
     await websocket.send(json.dumps(build_stats_message()))
@@ -190,6 +193,13 @@ async def ws_handler(websocket) -> None:
             except json.JSONDecodeError:
                 continue
             if msg.get("type") == "get_status":
+                await websocket.send(json.dumps(build_stats_message()))
+            elif msg.get("type") == "set_rate":
+                new_interval = float(msg["interval"])
+                new_interval = max(0.05, min(60.0, new_interval))  # clamp 50ms–60s
+                g_interval = new_interval
+                log.info("Rate changed → interval=%.2fs (~%.0f mps)", g_interval,
+                         sum(s["cells"] for p in g_topology for s in p["sites"]) / g_interval)
                 await websocket.send(json.dumps(build_stats_message()))
     except websockets.exceptions.ConnectionClosed:
         pass
@@ -219,9 +229,10 @@ async def stats_broadcaster() -> None:
 # ---------------------------------------------------------------------------
 
 async def main_async(config: dict) -> None:
-    global g_mqtt_client, g_stop, g_topology
+    global g_mqtt_client, g_stop, g_topology, g_interval
 
-    g_stop = asyncio.Event()
+    g_stop     = asyncio.Event()
+    g_interval = float(config.get("sample_interval_seconds", 1.0))
 
     loop = asyncio.get_event_loop()
     loop.add_signal_handler(signal.SIGINT,  lambda: (log.info("SIGINT"),  g_stop.set()))
