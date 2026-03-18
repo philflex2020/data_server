@@ -161,6 +161,11 @@ h2.section-title {
   font-size: 0.86em; font-weight: 700; margin-bottom: 8px;
 }
 .qpath-title .dot { flex-shrink: 0; }
+.btn-rate {
+  padding: 2px 7px; font-size: 0.8em; border: none; border-radius: 4px; cursor: pointer;
+  background: #30363d; color: #8b949e;
+}
+.btn-rate.active { background: #238636; color: #fff; }
 .path-tag {
   font-size: 0.70em; font-weight: 700; padding: 1px 7px; border-radius: 3px;
   letter-spacing: 0.06em; text-transform: uppercase; margin-left: 4px;
@@ -252,10 +257,18 @@ h2.section-title {
       </div>
       <div class="box-sub">aiomqtt → FlashMQ :1883 · simulates field devices</div>
       <div class="metrics">
-        <div class="metric">Rate  <span id="gen-mps">—</span> msg/s</div>
-        <div class="metric">Total <span id="gen-total">—</span></div>
-        <div class="metric">Tasks <span id="gen-tasks">—</span></div>
-        <div class="metric">Last  <span id="gen-age">—</span></div>
+        <div class="metric">Rate     <span id="gen-mps">—</span> msg/s</div>
+        <div class="metric">Interval <span id="gen-interval">—</span> s/sweep</div>
+        <div class="metric">Total    <span id="gen-total">—</span></div>
+        <div class="metric">Tasks    <span id="gen-tasks">—</span></div>
+        <div class="metric" style="margin-top:6px;border-top:1px solid #30363d;padding-top:4px">
+          Speed&nbsp;
+          <button onclick="setStressRate(2.0)"   class="btn-rate" id="btn-rate-2s">2 s</button>
+          <button onclick="setStressRate(1.0)"   class="btn-rate" id="btn-rate-1s">1 s</button>
+          <button onclick="setStressRate(0.5)"   class="btn-rate" id="btn-rate-05s">0.5 s</button>
+          <button onclick="setStressRate(0.25)"  class="btn-rate" id="btn-rate-025s">0.25 s</button>
+          <button onclick="setStressRate(0.1)"   class="btn-rate" id="btn-rate-01s">0.1 s</button>
+        </div>
       </div>
       <div class="sites-grid" id="gen-sites"></div>
     </div>
@@ -696,13 +709,26 @@ function connectGen(host) {
   };
 }
 
+const RATE_BTNS = {2.0:'2s', 1.0:'1s', 0.5:'05s', 0.25:'025s', 0.1:'01s'};
+
+function setStressRate(interval) {
+  if (!genWS || genWS.readyState !== WebSocket.OPEN) return;
+  genWS.send(JSON.stringify({type: 'set_rate', interval}));
+}
+
 function updateGen(d) {
-  const mps = d.mps ?? 0;
-  setText('gen-mps',   mps > 0 ? mps.toLocaleString() : '0');
-  setText('gen-total', fmtNum(d.total_published));
-  setText('gen-tasks', d.active_tasks ?? '—');
-  setText('gen-age',   'now');
+  const mps      = d.mps ?? 0;
+  const interval = d.interval ?? null;
+  setText('gen-mps',      mps > 0 ? mps.toLocaleString() : '0');
+  setText('gen-interval', interval !== null ? interval.toFixed(2) : '—');
+  setText('gen-total',    fmtNum(d.total_published));
+  setText('gen-tasks',    d.active_tasks ?? '—');
   setBoxState('box-gen','dot-gen', mps > 0 ? 'ok' : 'warn');
+  // highlight active rate button
+  Object.entries(RATE_BTNS).forEach(([iv, id]) => {
+    const btn = document.getElementById('btn-rate-' + id);
+    if (btn) btn.classList.toggle('active', interval !== null && Math.abs(interval - parseFloat(iv)) < 0.01);
+  });
 
   // FlashMQ :1883 & host writer — inferred from generator + bridge
   const bridgeOk = subData && subData.mqtt_connected && mps > 0;
