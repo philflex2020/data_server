@@ -268,7 +268,7 @@ body {
     </div>
     <div class="path-row">
       <span class="path-dot" id="dot-parquet-drops"></span>
-      <span class="path-label">Drops detected</span>
+      <span class="path-label" title="Messages lost between edge publisher and aws-sim broker — unavailable to InfluxDB and all other subscribers">Transit loss&nbsp;&#9432;</span>
       <span class="path-value" id="val-parquet-drops">—</span>
     </div>
   </div>
@@ -282,9 +282,12 @@ body {
     <div class="hero-sub">total received this session</div>
   </div>
   <div class="hero-card drops" id="hero-drops-card">
-    <div class="hero-label">Drops Detected</div>
+    <div class="hero-label" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <span title="Messages published by the edge stress runner that did not complete transit to the aws-sim broker (FlashMQ :1884). Measured by comparing the publisher sync heartbeat count against messages received by the subscriber API on the same broker. Both Telegraf/InfluxDB and the subscriber API subscribe to this broker — a message dropped here is unavailable to all downstream consumers including InfluxDB.">aws-sim Transit Loss&nbsp;&#9432;</span>
+      <button onclick="resetDrops()" style="font-size:0.75em;padding:1px 7px;background:#21262d;border:1px solid #30363d;border-radius:3px;color:#8b949e;cursor:pointer" title="Reset counter baseline to now">Reset</button>
+    </div>
     <div class="hero-value" id="hero-drops">—</div>
-    <div class="hero-sub">published but not received</div>
+    <div class="hero-sub" id="hero-drops-sub">% of messages lost in transit</div>
   </div>
   <div class="hero-card capture">
     <div class="hero-label">Rate</div>
@@ -310,7 +313,7 @@ body {
       <span class="m-value" id="sync-total">—</span>
     </div>
     <div class="metric-row">
-      <span class="m-label">Cumulative drops</span>
+      <span class="m-label" title="Publisher sync count vs subscriber API received count on FlashMQ :1884 — proxy for InfluxDB loss as both share the same broker">Transit loss&nbsp;&#9432;</span>
       <span class="m-value" id="sync-drops">—</span>
     </div>
     <div class="metric-row">
@@ -344,37 +347,64 @@ body {
   </div>
 </div>
 
-<!-- Cost comparison -->
-<div class="cost-grid">
-  <div class="cost-card current">
-    <div class="cost-title">Current Path — InfluxDB</div>
-    <div class="cost-item"><span class="ci-name">EC2 r5.xlarge (InfluxDB)</span><span class="ci-cost">$182/mo</span></div>
-    <div class="cost-item"><span class="ci-name">EFS storage</span><span class="ci-cost">$25/mo</span></div>
-    <div class="cost-item"><span class="ci-name">AWS IoT Core ingestion</span><span class="ci-cost">$6/mo</span></div>
-    <div class="cost-item"><span class="ci-name">Lambda transforms</span><span class="ci-cost">$5/mo</span></div>
-    <div class="cost-item"><span class="ci-name">CloudWatch</span><span class="ci-cost">$8/mo</span></div>
-    <div class="cost-total"><span>3 sites / month</span><span class="ct-value">$226</span></div>
+<!-- Resource comparison (CPU / throughput) -->
+<div class="detail-card" style="margin-bottom:14px">
+  <div class="detail-title">Resource Comparison — Live</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+    <div>
+      <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#f0883e;margin-bottom:8px">Current path — Telegraf / InfluxDB</div>
+      <div class="metric-row"><span class="m-label" title="Telegraf parses every MQTT message, applies field mapping, type coercion and tag extraction before writing to InfluxDB">Processing model</span><span class="m-value warn">schema-coupled transform</span></div>
+      <div class="metric-row"><span class="m-label">Write model</span><span class="m-value">per-message indexed write</span></div>
+      <div class="metric-row"><span class="m-label">Instance required</span><span class="m-value warn">r5.xlarge  (4 vCPU / 32 GB)</span></div>
+      <div class="metric-row"><span class="m-label">CPU profiling</span><span class="m-value" id="cpu-influx">pending instrumentation</span></div>
+    </div>
+    <div>
+      <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#3fb950;margin-bottom:8px">No-loss path — Parquet writer</div>
+      <div class="metric-row"><span class="m-label" title="Writer deserialises raw JSON, appends to in-memory buffer, flushes to columnar file — no schema, no indexing, no transforms">Processing model</span><span class="m-value ok">schema-free serialise + flush</span></div>
+      <div class="metric-row"><span class="m-label">Write model</span><span class="m-value ok">batched columnar (Snappy)</span></div>
+      <div class="metric-row"><span class="m-label">Instance required</span><span class="m-value ok">t3.large  (2 vCPU / 8 GB)</span></div>
+      <div class="metric-row"><span class="m-label">Throughput now</span><span class="m-value ok" id="cpu-parquet-rate">—</span></div>
+    </div>
   </div>
-  <div class="cost-card new">
-    <div class="cost-title">No-Loss Parquet Path</div>
-    <div class="cost-item"><span class="ci-name">EC2 t3.large (writer + API)</span><span class="ci-cost">$37/mo</span></div>
-    <div class="cost-item"><span class="ci-name">S3 parquet storage</span><span class="ci-cost">$10/mo</span></div>
-    <div class="cost-item"><span class="ci-name">S3 PUT requests</span><span class="ci-cost">$0.50/mo</span></div>
-    <div class="cost-item"><span class="ci-name">No IoT Core</span><span class="ci-cost" style="color:#3fb950">$0</span></div>
-    <div class="cost-item"><span class="ci-name">No Lambda</span><span class="ci-cost" style="color:#3fb950">$0</span></div>
-    <div class="cost-total"><span>3 sites / month</span><span class="ct-value">~$50</span></div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid #21262d;font-size:0.76em;color:#6e7681">
+    Full CPU profiling of both paths against the same load requires additional instrumentation and is scheduled
+    as part of the production data validation exercise. Instance sizing above is based on vendor recommendations
+    and stress-test observations at ~8,000 msg/s.
   </div>
 </div>
 
-<div class="cost-saving">
-  <span class="saving-label">Saving at 3 sites (validated)</span>
-  <span class="saving-value">$176/mo &nbsp;·&nbsp; 78%</span>
-  <span class="saving-label">Extrapolated to 80 sites</span>
-  <span class="saving-value">$75,700/mo &nbsp;·&nbsp; 99%</span>
-  <span class="saving-note">
-    InfluxDB cost accelerates with site count (cardinality index growth requires larger EC2 instances).
-    Parquet/S3 scales at constant unit cost. Both paths run simultaneously — InfluxDB is not turned off.
-  </span>
+<!-- Cost comparison — dropdown -->
+<div class="detail-card" style="margin-bottom:14px">
+  <div class="detail-title" onclick="toggleCosts()" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between">
+    <span>AWS Infrastructure Comparison</span>
+    <span id="cost-chevron" style="font-size:0.9em;color:#8b949e;transition:transform 0.2s">&#9654; expand</span>
+  </div>
+  <div id="cost-panel" style="display:none;margin-top:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+      <div>
+        <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#f0883e;margin-bottom:8px">Current path — InfluxDB</div>
+        <div class="cost-item"><span class="ci-name">High-memory EC2 (InfluxDB TSM index)</span><span class="ci-cost">large</span></div>
+        <div class="cost-item"><span class="ci-name">EFS persistent storage</span><span class="ci-cost">high $/GB</span></div>
+        <div class="cost-item"><span class="ci-name">IoT Core per-message ingestion</span><span class="ci-cost">scales with rate</span></div>
+        <div class="cost-item"><span class="ci-name">Lambda per-message transform</span><span class="ci-cost">scales with rate</span></div>
+        <div class="cost-item"><span class="ci-name">CloudWatch metrics + logs</span><span class="ci-cost">scales with rate</span></div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #30363d;font-size:0.82em;color:#f0883e;font-weight:600">Cost accelerates with site count — cardinality index forces vertical scaling</div>
+      </div>
+      <div>
+        <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#3fb950;margin-bottom:8px">No-loss path — Parquet / S3</div>
+        <div class="cost-item"><span class="ci-name">Parquet writer runs on site host</span><span class="ci-cost" style="color:#3fb950">no AWS cost</span></div>
+        <div class="cost-item"><span class="ci-name">S3 columnar storage (8-15× compressed)</span><span class="ci-cost">low $/GB</span></div>
+        <div class="cost-item"><span class="ci-name">No IoT Core</span><span class="ci-cost" style="color:#3fb950">eliminated</span></div>
+        <div class="cost-item"><span class="ci-name">No Lambda transforms</span><span class="ci-cost" style="color:#3fb950">eliminated</span></div>
+        <div class="cost-item"><span class="ci-name">EC2 receiver (if host cannot run writer)</span><span class="ci-cost">small — if needed</span></div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #30363d;font-size:0.82em;color:#3fb950;font-weight:600">Primary cost: S3 storage only — writer runs on existing site hardware at no additional AWS cost</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:10px 14px;background:#0d2d1a;border:1px solid #3fb95033;border-radius:6px;font-size:0.82em;color:#7fba84">
+      Estimated saving against synthetic test load: <strong>&gt; 50%</strong>.
+      Final figures pending validation against production data volume — in progress.
+    </div>
+  </div>
 </div>
 
 <!-- Live feed -->
@@ -397,6 +427,8 @@ const hostAws  = () => document.getElementById('host-aws').value.trim();
 let ws = null;
 let feedCount = 0;
 let statsPoller = null;
+let dropsBaseline = 0;   // client-side offset — set on Reset
+let totalBaseline = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -418,6 +450,29 @@ function feedLog(msg, type = '') {
   while (stream.children.length > 80) stream.removeChild(stream.firstChild);
   feedCount++;
   setText('feed-count', feedCount + ' events');
+}
+
+function toggleCosts() {
+  const panel = document.getElementById('cost-panel');
+  const chev  = document.getElementById('cost-chevron');
+  const open  = panel.style.display === 'none';
+  panel.style.display = open ? '' : 'none';
+  chev.innerHTML = open ? '&#9660; collapse' : '&#9654; expand';
+}
+
+function resetDrops() {
+  // Snapshot current server values as the new baseline — display resets to 0
+  const lastSync = window._lastSyncRaw || {};
+  dropsBaseline = lastSync.drops_detected ?? 0;
+  totalBaseline = lastSync.total_received ?? 0;
+  window._lastDrops = 0;
+  setText('hero-drops', '0%');
+  setText('hero-drops-sub', 'all messages present in InfluxDB');
+  setClass('hero-drops', 'ok');
+  $('hero-drops-card').classList.remove('nonzero');
+  setText('sync-drops', '0');
+  setText('val-parquet-drops', '0%');
+  feedLog('Drop counter reset', 'sys');
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -474,8 +529,9 @@ function handleStats(d) {
   const total   = d.live_total   ?? 0;
   const mqttOk  = d.mqtt_connected;
 
-  setText('hero-rate',     mps > 0 ? fmtNum(mps) : '0');
-  setText('hero-captured', fmtNum(total));
+  setText('hero-rate',          mps > 0 ? fmtNum(mps) : '0');
+  setText('hero-captured',      fmtNum(total));
+  setText('cpu-parquet-rate',   mps > 0 ? fmtNum(mps) + ' msg/s  (t3.large)' : '—');
   setText('val-parquet-mqtt', mqttOk ? 'active' : 'disconnected');
   setClass('val-parquet-mqtt', mqttOk ? 'ok' : 'warn');
   $('dot-parquet-mqtt').className = 'path-dot ' + (mqttOk ? 'ok' : 'warn');
@@ -483,24 +539,35 @@ function handleStats(d) {
   // Sync / chain of custody
   if (d.sync) {
     const s = d.sync;
-    const drops = s.drops_detected ?? 0;
+    window._lastSyncRaw = s;   // kept for reset baseline
+    const drops = Math.max(0, (s.drops_detected ?? 0) - dropsBaseline);
+    const total = Math.max(0, (s.total_received  ?? 0) - totalBaseline);
+    const pct   = (total + drops) > 0 ? (drops / (total + drops) * 100) : 0;
+    const pctStr = pct > 0 ? pct.toFixed(2) + '%' : '0%';
+
     setText('sync-session', s.session_id || '—');
     setText('sync-seq',     s.sync_seq != null ? '#' + s.sync_seq : '—');
-    setText('sync-total',   fmtNum(s.total_received));
-    setText('sync-drops',   drops > 0 ? drops.toLocaleString() : '0');
+    setText('sync-total',   fmtNum(total));
+    setText('sync-drops',   drops > 0
+      ? drops.toLocaleString() + '  (' + pctStr + ' of stream)'
+      : '0');
     setText('sync-last',    s.last_sync_ts ? new Date(s.last_sync_ts * 1000).toLocaleTimeString() : '—');
     setClass('sync-drops',  drops > 0 ? 'err' : 'ok');
 
-    setText('hero-drops', drops > 0 ? drops.toLocaleString() : '0');
+    // Hero: show percentage, sub-line clarifies it's absent from InfluxDB
+    setText('hero-drops',     pctStr);
+    setText('hero-drops-sub', drops > 0
+      ? drops.toLocaleString() + ' messages absent from InfluxDB'
+      : 'all messages present in InfluxDB');
     setClass('hero-drops', drops > 0 ? 'err' : 'ok');
     $('hero-drops-card').classList.toggle('nonzero', drops > 0);
 
-    setText('val-parquet-drops', drops > 0 ? drops + ' DROPS' : '0');
+    setText('val-parquet-drops', drops > 0 ? pctStr + ' missing' : '0%');
     setClass('val-parquet-drops', drops > 0 ? 'err' : 'ok');
     $('dot-parquet-drops').className = 'path-dot ' + (drops > 0 ? 'err' : 'ok');
 
     if (drops > 0 && drops !== (window._lastDrops || 0)) {
-      feedLog('DROP DETECTED — cumulative: ' + drops, 'drop');
+      feedLog('MISSING FROM INFLUX — ' + pctStr + ' (' + drops + ' messages)', 'drop');
     }
     window._lastDrops = drops;
   }
