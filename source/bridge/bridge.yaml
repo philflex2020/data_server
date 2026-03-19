@@ -75,16 +75,13 @@ groups:
 bridges:
 
   aws_live:
-    description: "Forward live sensor data to AWS FlashMQ"
-    host: flashmq.aws.example.com
-    port: 1883
-    qos: 1
+    description: "Forward live sensor data to fractal-phil FlashMQ aws-sim (192.168.86.51:1884)"
+    host: 192.168.86.51
+    port: 1884
+    qos: 0
     protocol_version: mqtt3.1.1
     tls: off
-    # remote_username: bridge_user
-    # remote_password: bridge_pass
-    # ca_file: /etc/flashmq/certs/aws-ca.pem
-    # clientid_prefix: site0-bridge
+    clientid_prefix: phil-dev-bridge
     groups:
       - batteries_all
       - solar_all
