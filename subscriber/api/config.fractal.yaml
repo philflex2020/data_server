@@ -42,13 +42,14 @@ s3:
   prefix:       ""
   sync_interval: 10   # seconds between upload sweeps
 
-# rsync control (parquet_monitor Start/Stop button)
-# Dual-host: pull from phil-dev over SSH. Requires passwordless SSH key
-# from fractal-phil → phil@192.168.86.46 (see INSTALL_phil_dev.md).
+# rsync — dual-host push model:
+# phil-dev runs source/rsync_push/push_agent.py (:8770) and pushes to this host.
+# parquet_monitor.html controls push agent directly at cfg.host:8770 (not here).
+# This block kept for reference / fallback to pull mode.
 rsync:
-  src:      phil@192.168.86.46:/srv/data/parquet/
+  src:      /srv/data/parquet-aws-sim/   # local — push agent writes here
   dst:      /srv/data/parquet-aws-sim/
-  interval: 5   # seconds between runs
+  interval: 5
 
 # Telegraf control (parquet_monitor buffer slider + restart)
 telegraf:

@@ -1486,6 +1486,16 @@ async function checkParquetStats(aws) {
   } catch(e) { /* host unreachable — leave as dim */ }
 }
 
+// ── rsync push agent (phil-dev :8770) ────────────────────────────────────────
+async function checkRsyncPush(host) {
+  try {
+    const r = await fetch(`http://${host}:8770/rsync/status`, {signal: AbortSignal.timeout(3000)});
+    if (!r.ok) return;
+    const d = await r.json();
+    updateRsyncStats(d);
+  } catch(e) { /* push agent unreachable */ }
+}
+
 // ── rsync control ─────────────────────────────────────────────────────────────
 function fmtElapsed(s) {
   if (!s && s !== 0) return '—';
@@ -1522,11 +1532,11 @@ function updateRsyncStats(r) {
 }
 
 document.getElementById('btn-rsync-toggle').addEventListener('click', async () => {
-  const aws = getConfig().aws;
+  const host = getConfig().host;
   const running = document.getElementById('rsync-state').textContent === 'running';
   const endpoint = running ? 'stop' : 'start';
   try {
-    const r = await fetch(`http://${aws}:8768/rsync/${endpoint}`,
+    const r = await fetch(`http://${host}:8770/rsync/${endpoint}`,
                           {method:'POST', signal: AbortSignal.timeout(5000)});
     const d = await r.json();
     if (!d.ok) console.warn('rsync', endpoint, d.msg);
@@ -1754,13 +1764,14 @@ function doConnect() {
   setText('sb-host', cfg.host);
   setText('sb-aws', cfg.aws);
 
-  connectGen(cfg.aws);   // stress_runner runs on aws-sim (fractal-phil), not host
+  connectGen(cfg.host);  // stress_runner runs on phil-dev (host)
   connectSub(cfg.aws);
   checkInflux(cfg.aws);
   checkFluxShim(cfg.aws);
   checkParquetStats(cfg.aws);
   checkProcStats(cfg.aws);
   checkTelegrafStats(cfg.aws);
+  checkRsyncPush(cfg.host);
   document.getElementById('flux-curl-cmd').textContent = fluxCurlCmd(cfg.aws);
 
   if (pollTimer) clearInterval(pollTimer);
@@ -1771,6 +1782,7 @@ function doConnect() {
     checkFluxShim(c.aws);
     checkParquetStats(c.aws);
     checkProcStats(c.aws);
+    checkRsyncPush(c.host);
     updateQueryPaths();
   }, 2000);
   // telegraf buffer stats on slower cadence (10s) — InfluxDB internal metrics lag by ~10s

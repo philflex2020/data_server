@@ -69,6 +69,29 @@ subscriber-api).
 - Added `value` field for per_cell_item readings
 - Changed `qos = 1` → `qos = 0`
 
+### source/rsync_push/push_agent.py (new file)
+- Standalone asyncio HTTP push agent, runs on phil-dev at :8770
+- Pushes `/srv/data/parquet/` → `phil@192.168.86.51:/srv/data/parquet-aws-sim/` on a timer
+- HTTP API: `GET /ping`, `GET /rsync/status`, `POST /rsync/start`, `POST /rsync/stop`
+- Parses rsync `--stats` for file count and total MB; exposes as JSON
+- Config-driven via `source/rsync_push/config.yaml`
+
+### source/rsync_push/config.yaml (new file)
+- rsync.src: `/srv/data/parquet/`
+- rsync.dst: `phil@192.168.86.51:/srv/data/parquet-aws-sim/`
+- rsync.interval: 5 s
+- http.port: 8770
+
+### html/parquet_monitor.html — rsync push agent wiring
+- `checkRsyncPush(host)` polls `http://${host}:8770/rsync/status` every 2 s and feeds `updateRsyncStats()`
+- Rsync Start/Stop button now calls `cfg.host:8770` (push agent on phil-dev) instead of `cfg.aws:8768` (subscriber-api pull)
+- `connectGen()` changed from `cfg.aws` → `cfg.host` (stress_runner WS runs on phil-dev in dual-host mode)
+- Both are wired into the connect call and the 2 s `pollTimer`
+
+### subscriber/api/config.fractal.yaml — rsync section note
+- Updated comment: rsync is now driven by push agent on phil-dev, not pulled by fractal-phil
+- src kept as local placeholder; push agent is the authoritative path
+
 ---
 
 ## Pending / In-Progress
@@ -89,5 +112,8 @@ subscriber-api).
 - [x] End-to-end bridge test PASSED:
       Published `{"test":"dual-host-bridge"}` on phil-dev:1883 →
       received on fractal-phil:1884 (`BRIDGE OK`).
+- [x] Create push agent (source/rsync_push/push_agent.py + config.yaml) on phil-dev :8770
+- [x] Wire monitor to use cfg.host:8770 for rsync Start/Stop/Status
+- [ ] Deploy push_agent.py to phil-dev: copy source/rsync_push/ and start with nohup
 - [ ] Full pipeline test: start stress_runner + writer.cpp on phil-dev,
       verify data reaches InfluxDB and DuckDB on fractal-phil via /compare
