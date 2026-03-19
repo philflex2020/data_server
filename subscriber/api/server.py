@@ -377,6 +377,7 @@ async def broadcast_status() -> None:
 # ---------------------------------------------------------------------------
 
 async def ws_handler(websocket) -> None:
+    global g_live_state_enabled
     g_connected.add(websocket)
     log.info("Client connected (%d total)", len(g_connected))
 
@@ -446,7 +447,6 @@ async def ws_handler(websocket) -> None:
                 }))
 
             elif t == "set_live_state":
-                global g_live_state_enabled
                 g_live_state_enabled = bool(msg.get("enabled", False))
                 log.info("Live-state gap fill %s via API", "ENABLED" if g_live_state_enabled else "DISABLED")
                 await websocket.send(json.dumps({
