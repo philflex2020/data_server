@@ -11,6 +11,7 @@ websocket:
   port: 8769
 
 topic_prefix: batteries
+topic_mode: per_cell_item
 sample_interval_seconds: 1
 
 cell_data:
