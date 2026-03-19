@@ -72,9 +72,9 @@ async def _rsync_loop(src: str, dst: str, interval: int) -> None:
                             pass
                     if "Total transferred file size" in line:
                         try:
-                            val = line.split(":")[-1].strip().replace(",", "")
+                            val = line.split(":")[-1].strip().replace(",", "").split()[0]
                             _state["total_mb"] = round(int(val) / 1_048_576, 2)
-                        except ValueError:
+                        except (ValueError, IndexError):
                             pass
                 log.info("rsync #%d done in %.0f ms — %d files, %.2f MB",
                          _state["run_count"], elapsed_ms,
