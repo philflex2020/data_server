@@ -215,10 +215,8 @@ h2.section-title {
 <body>
 
 <div class="nav">
-  <a href="dashboard.html">Dashboard</a>
-  <a href="parquet_transition.html">Transition plan</a>
-  <a href="subscriber.html">Subscriber</a>
   <a href="parquet_monitor.html" class="active">Monitor</a>
+  <a href="parquet_config.html">Config</a>
 </div>
 
 <h1>Parquet Pipeline Monitor</h1>
@@ -487,7 +485,7 @@ h2.section-title {
         <span class="dot dim" id="dot-store-aws"></span>
         aws-sim Parquet Store
       </div>
-      <div class="box-sub">/srv/data/parquet-aws-sim/ · fed by rsync-sim + gap writer</div>
+      <div class="box-sub">/srv/data/parquet-aws-sim/ · fed by rsync-sim · live gap via in-process buffer</div>
       <div class="metrics">
         <div class="metric">Files   <span id="aws-store-files">—</span> · <span id="aws-store-mb">—</span> MB</div>
         <div class="metric">DuckDB  <span id="aws-store-duckdb-q">—</span> queries · avg <span id="aws-store-duckdb-avg">—</span> ms</div>
@@ -521,20 +519,6 @@ h2.section-title {
       </div>
     </div>
 
-    <!-- Gap writer (optional) -->
-    <div class="comp-box dim" id="box-gap">
-      <div class="box-title">
-        <span class="dot dim" id="dot-gap"></span>
-        Gap writer
-        <span class="box-port">optional</span>
-      </div>
-      <div class="box-sub">writer.cpp current_state mode · covers ≤60 s rsync lag</div>
-      <div class="metrics">
-        <div class="metric">cs.parquet <span id="gap-age">—</span></div>
-        <div class="metric">Status     <span id="gap-status">—</span></div>
-      </div>
-    </div>
-
     <!-- subscriber_api -->
     <div class="comp-box dim" id="box-sub">
       <div class="box-title">
@@ -552,6 +536,10 @@ h2.section-title {
           <!-- sync tracking: received vs expected on the :1884 path -->
           Received  <span id="sub-sync-total">—</span>
           &nbsp;Drops <span id="sub-sync-drops" style="font-weight:600">—</span>
+        </div>
+        <div class="metric" style="margin-top:4px;border-top:1px solid #30363d;padding-top:4px;font-size:0.85em">
+          Live-state <span id="sub-live-state">—</span>
+          &nbsp;Buffer <span id="sub-buf-size">—</span> msgs
         </div>
       </div>
     </div>
@@ -1157,6 +1145,12 @@ function updateSubStats(d) {
     setText('sub-sync-drops', drops > 0 ? drops.toLocaleString() : '0');
     setClass('sub-sync-drops', drops > 0 ? 'error' : 'ok');
   }
+  if (d.live_state_enabled !== undefined) {
+    const on = d.live_state_enabled;
+    setText('sub-live-state', on ? 'on' : 'off');
+    setClass('sub-live-state', on ? 'ok' : 'dim');
+    setText('sub-buf-size', d.buffer_size != null ? fmtNum(d.buffer_size) : '—');
+  }
   if (d.flux_queries_run !== undefined) {
     setText('flux-queries',  fmtNum(d.flux_queries_run));
     if (d.flux_queries_run > 0) {
@@ -1729,15 +1723,6 @@ function updateQueryPaths() {
   setClass('dot-qduck', (subWS && subWS.readyState === WebSocket.OPEN) ? 'ok' : 'dim');
 }
 
-// ── Gap writer inference ──────────────────────────────────────────────────────
-// No direct API — we infer from subscriber status msgs if current_state exists.
-// Subscriber stats would need a "gap_writer_present" field; for now show unknown.
-function updateGapStatus() {
-  // Future: could check via a subscriber query or a dedicated health endpoint
-  setText('gap-age',    'unknown');
-  setText('gap-status', 'no direct API');
-  setBoxState('box-gap','dot-gap','dim');
-}
 
 // ── Periodic refresh ─────────────────────────────────────────────────────────
 function tick() {
@@ -1815,7 +1800,7 @@ function doDisconnect() {
   btnConnect.style.display    = '';
   btnDisconnect.style.display = 'none';
   // Reset all to dim
-  ['gen','fmq-host','writer-host','store-host','fmq-aws','sub','influx','gap','store-aws','flux-query']
+  ['gen','fmq-host','writer-host','store-host','fmq-aws','sub','influx','store-aws','flux-query']
     .forEach(id => setBoxState(`box-${id}`, `dot-${id}`, 'dim'));
   setText('sb-gen-ws','disconnected');
   setText('sb-sub-ws','disconnected');

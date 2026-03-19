@@ -41,12 +41,18 @@ import logging
 import time
 from typing import Optional, Set
 
+try:
+    import pandas as pd
+    _PANDAS_OK = True
+except ImportError:
+    _PANDAS_OK = False
+
 import aiomqtt
 import duckdb
 import websockets
 import yaml
 
-from flux_compat import serve_flux_api, update_server_state, flux_stats, get_rsync_stats, get_s3sync_stats, _router, _gap_fill_exists_flux as _gap_fill_exists
+from flux_compat import serve_flux_api, update_server_state, flux_stats, get_rsync_stats, get_s3sync_stats, _router
 
 LOG_BUFFER: collections.deque = collections.deque(maxlen=200)
 
@@ -92,6 +98,11 @@ g_stream_first_ts: float = 0.0   # unix ts of oldest retained message in NATS st
 # At ~3000 msgs/s (3 sites), 1_080_000 entries covers ~6 minutes. Each entry is a flat dict.
 BUFFER_MAXLEN = 1_080_000
 g_live_buffer: collections.deque = collections.deque(maxlen=BUFFER_MAXLEN)
+
+# Live-state gap fill — optional (config: live_state.enabled).
+# When enabled, buffer rows within the query window are merged into parquet
+# results, covering the flush-interval gap (~60 s) with zero extra processes.
+g_live_state_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -171,63 +182,23 @@ def _date_paths(base: str, proj_id: str, site_id: str, from_ts: float, to_ts: fl
 def run_history_query(cfg: dict, proj_id: str, site_id: str, from_ts: float, to_ts: float, limit: int) -> dict:
     local = _local_path(cfg)
     if local:
-        base      = local.rstrip("/") + "/"
-        gap_base  = ""
+        base = local.rstrip("/") + "/"
     else:
-        bucket     = cfg["s3"]["bucket"]
-        prefix     = cfg["s3"].get("prefix", "").strip("/")
-        gap_prefix = cfg["s3"].get("gap_fill_prefix", "").strip("/")
-        base     = f"s3://{bucket}/{prefix + '/' if prefix else ''}"
-        gap_base = f"s3://{bucket}/{gap_prefix + '/' if gap_prefix else ''}" if gap_prefix else ""
+        bucket = cfg["s3"]["bucket"]
+        prefix = cfg["s3"].get("prefix", "").strip("/")
+        base   = f"s3://{bucket}/{prefix + '/' if prefix else ''}"
 
     primary_paths = _date_paths(base, proj_id, site_id, from_ts, to_ts)
+    primary_list  = "[" + ", ".join(f"'{p}'" for p in primary_paths) + "]"
+    where         = f"timestamp >= {from_ts} AND timestamp <= {to_ts}"
 
-    # Include current_state.parquet (gap writer output) if present — covers the
-    # most recent flush-interval window not yet in the date-partitioned files.
-    if local:
-        import os
-        cs = local.rstrip("/") + "/current_state.parquet"
-        if os.path.exists(cs):
-            primary_paths.append(cs)
-
-    primary_list = "[" + ", ".join(f"'{p}'" for p in primary_paths) + "]"
-    where        = f"timestamp >= {from_ts} AND timestamp <= {to_ts}"
-
-    if not local and gap_base and _gap_fill_exists(cfg):
-        gap_paths = _date_paths(gap_base, proj_id, site_id, from_ts, to_ts)
-        gap_list  = "[" + ", ".join(f"'{p}'" for p in gap_paths) + "]"
-        # UNION primary + gap-fill, deduplicate keeping primary (src=0) over gap-fill (src=1).
-        sql = f"""
-            WITH combined AS (
-                SELECT *, 0 AS _src
-                FROM read_parquet({primary_list}, hive_partitioning=true, union_by_name=true)
-                WHERE {where}
-                UNION ALL
-                SELECT *, 1 AS _src
-                FROM read_parquet({gap_list}, hive_partitioning=true, union_by_name=true)
-                WHERE {where}
-            ),
-            deduped AS (
-                SELECT *, ROW_NUMBER() OVER (
-                    PARTITION BY timestamp, site_id, rack_id, module_id, cell_id
-                    ORDER BY _src
-                ) AS _rn
-                FROM combined
-            )
-            SELECT * EXCLUDE (_src, _rn) FROM deduped
-            WHERE _rn = 1
-            ORDER BY timestamp DESC
-            LIMIT {limit}
-        """
-        log.debug("History query: gap-fill UNION active")
-    else:
-        sql = f"""
-            SELECT *
-            FROM read_parquet({primary_list}, hive_partitioning=true, union_by_name=true)
-            WHERE {where}
-            ORDER BY timestamp DESC
-            LIMIT {limit}
-        """
+    sql = f"""
+        SELECT *
+        FROM read_parquet({primary_list}, hive_partitioning=true, union_by_name=true)
+        WHERE {where}
+        ORDER BY timestamp DESC
+        LIMIT {limit}
+    """
 
     t0       = time.monotonic()
     cursor   = g_duckdb.execute(sql)
@@ -287,11 +258,13 @@ async def broadcast(msg: dict) -> None:
 
 async def broadcast_status() -> None:
     await broadcast({
-        "type":           "status",
-        "mqtt_connected": g_mqtt_connected,
-        "s3_connected":   g_s3_connected,
-        "subscribed":     bool(g_live_subject),
-        "subject":        g_live_subject,
+        "type":                "status",
+        "mqtt_connected":      g_mqtt_connected,
+        "s3_connected":        g_s3_connected,
+        "subscribed":          bool(g_live_subject),
+        "subject":             g_live_subject,
+        "live_state_enabled":  g_live_state_enabled,
+        "buffer_size":         len(g_live_buffer),
     })
 
 
@@ -313,6 +286,8 @@ async def ws_handler(websocket) -> None:
     await websocket.send(json.dumps({"type": "stats", **g_stats, **flux_stats,
                                      "mqtt_connected": g_mqtt_connected,
                                      "ws_clients":     len(g_connected),
+                                     "live_state_enabled": g_live_state_enabled,
+                                     "buffer_size":        len(g_live_buffer),
                                      "rsync": get_rsync_stats(), "s3sync": get_s3sync_stats(),
                                      "router": dict(_router), "sync": dict(g_sync_stats)}))
 
@@ -366,6 +341,14 @@ async def ws_handler(websocket) -> None:
                     "lines": list(LOG_BUFFER)[-lines:]
                 }))
 
+            elif t == "set_live_state":
+                global g_live_state_enabled
+                g_live_state_enabled = bool(msg.get("enabled", False))
+                log.info("Live-state gap fill %s via API", "ENABLED" if g_live_state_enabled else "DISABLED")
+                await websocket.send(json.dumps({
+                    "type": "live_state_ack", "enabled": g_live_state_enabled
+                }))
+
             elif t == "query_history":
                 query_id = msg.get("query_id", "q")
                 proj_id  = msg.get("proj_id",  "")
@@ -377,12 +360,24 @@ async def ws_handler(websocket) -> None:
                                g_config["history"]["max_limit"])
                 g_stats["queries_run"] += 1
                 try:
-                    buf_oldest = g_live_buffer[0].get("timestamp", 0) if g_live_buffer else 0
-                    buf_newest = g_live_buffer[-1].get("timestamp", 0) if g_live_buffer else 0
-                    use_buffer = bool(g_live_buffer) and to_ts >= buf_oldest and from_ts <= buf_newest
-                    if use_buffer:
+                    buf_oldest = float(g_live_buffer[0].get("timestamp", 0)) if g_live_buffer else 0.0
+                    buf_newest = float(g_live_buffer[-1].get("timestamp", 0)) if g_live_buffer else 0.0
+                    has_buf    = g_live_state_enabled and bool(g_live_buffer)
+
+                    if has_buf and from_ts >= buf_oldest:
+                        # Query entirely within buffer — serve from memory
+                        log.debug("Query route: buffer-only (%.0f–%.0f in buf %.0f–%.0f)",
+                                  from_ts, to_ts, buf_oldest, buf_newest)
                         result = run_buffer_query(from_ts, to_ts, proj_id, site_id, limit)
+                    elif has_buf and to_ts >= buf_oldest:
+                        # Query spans parquet + buffer — hybrid UNION
+                        log.debug("Query route: hybrid parquet+buffer (buf_oldest=%.0f)", buf_oldest)
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, run_hybrid_query, g_config, proj_id, site_id,
+                            from_ts, to_ts, buf_oldest, limit
+                        )
                     else:
+                        # Query entirely in parquet range (or buffer disabled)
                         result = await asyncio.get_event_loop().run_in_executor(
                             None, run_history_query, g_config, proj_id, site_id, from_ts, to_ts, limit
                         )
@@ -423,8 +418,10 @@ async def stats_loop() -> None:
             "uptime_sec":     round(time.time() - g_start_time),
         })
         await broadcast({"type": "stats", **g_stats, **flux_stats,
-                          "mqtt_connected": g_mqtt_connected,
-                          "ws_clients":     len(g_connected),
+                          "mqtt_connected":     g_mqtt_connected,
+                          "ws_clients":         len(g_connected),
+                          "live_state_enabled": g_live_state_enabled,
+                          "buffer_size":        len(g_live_buffer),
                           "rsync": get_rsync_stats(), "s3sync": get_s3sync_stats(),
                           "router": dict(_router), "sync": dict(g_sync_stats)})
         await asyncio.sleep(1)
@@ -579,6 +576,93 @@ def run_buffer_query(from_ts: float, to_ts: float, proj_id: str, site_id: str, l
 
 
 
+def run_hybrid_query(cfg: dict, proj_id: str, site_id: str,
+                     from_ts: float, to_ts: float,
+                     buf_oldest: float, limit: int) -> dict:
+    """Parquet (older portion) UNION live buffer (recent portion), parquet wins on dedup.
+
+    Used when the query window spans both parquet history and the in-memory buffer.
+    Requires pandas (pip install pandas).
+    """
+    if not _PANDAS_OK:
+        log.warning("Hybrid query fallback: pandas not installed — using parquet only")
+        return run_history_query(cfg, proj_id, site_id, from_ts, to_ts, limit)
+
+    # Snapshot buffer rows in the query window (oldest→newest, then reverse for dedup)
+    buf_rows = []
+    for msg in g_live_buffer:
+        ts = float(msg.get("timestamp", 0))
+        if ts < buf_oldest or ts > to_ts:
+            continue
+        if site_id and str(msg.get("site_id", "")) != site_id:
+            continue
+        if proj_id and str(msg.get("project_id", msg.get("project", ""))) != proj_id:
+            continue
+        buf_rows.append(dict(msg))
+
+    if not buf_rows:
+        return run_history_query(cfg, proj_id, site_id, from_ts, to_ts, limit)
+
+    buf_df = pd.DataFrame(buf_rows)
+    # Ensure dedup key columns exist so PARTITION BY never fails
+    for col in ("timestamp", "site_id", "rack_id", "module_id", "cell_id"):
+        if col not in buf_df.columns:
+            buf_df[col] = None
+
+    g_duckdb.register("_live_buffer_view", buf_df)
+
+    local = _local_path(cfg)
+    if local:
+        base = local.rstrip("/") + "/"
+    else:
+        bucket = cfg["s3"]["bucket"]
+        prefix = cfg["s3"].get("prefix", "").strip("/")
+        base   = f"s3://{bucket}/{prefix + '/' if prefix else ''}"
+
+    primary_paths = _date_paths(base, proj_id, site_id, from_ts, to_ts)
+    primary_list  = "[" + ", ".join(f"'{p}'" for p in primary_paths) + "]"
+    where        = f"timestamp >= {from_ts} AND timestamp <= {to_ts}"
+
+    sql = f"""
+        WITH combined AS (
+            SELECT *, 0 AS _src
+            FROM read_parquet({primary_list}, hive_partitioning=true, union_by_name=true)
+            WHERE {where}
+            UNION ALL BY NAME
+            SELECT *, 1 AS _src
+            FROM _live_buffer_view
+            WHERE timestamp >= {from_ts} AND timestamp <= {to_ts}
+        ),
+        deduped AS (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY timestamp, site_id, rack_id, module_id, cell_id
+                ORDER BY _src
+            ) AS _rn
+            FROM combined
+        )
+        SELECT * EXCLUDE (_src, _rn) FROM deduped
+        WHERE _rn = 1
+        ORDER BY timestamp DESC
+        LIMIT {limit}
+    """
+
+    t0       = time.monotonic()
+    cursor   = g_duckdb.execute(sql)
+    columns  = [d[0] for d in cursor.description]
+    raw_rows = cursor.fetchall()
+    elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+    rows = [
+        [float(v) if isinstance(v, (int, float))
+         else v.decode("utf-8", errors="replace") if isinstance(v, bytes)
+         else str(v) if v is not None else None
+         for v in row]
+        for row in raw_rows
+    ]
+    log.info("Hybrid query: %d rows in %.0fms (parquet+buffer, ts=%.0f–%.0f)",
+             len(rows), elapsed_ms, from_ts, to_ts)
+    return {"columns": columns, "rows": rows, "total": len(rows), "elapsed_ms": elapsed_ms}
+
+
 async def s3_check_loop() -> None:
     global g_s3_connected
     while True:
@@ -594,10 +678,15 @@ async def s3_check_loop() -> None:
 # ---------------------------------------------------------------------------
 
 async def main_async(cfg: dict) -> None:
-    global g_config, g_duckdb
+    global g_config, g_duckdb, g_live_state_enabled
 
     g_config = cfg
     g_duckdb = build_duckdb(cfg)
+
+    ls_cfg = cfg.get("live_state", {})
+    g_live_state_enabled = bool(ls_cfg.get("enabled", False))
+    if g_live_state_enabled:
+        log.info("Live-state gap fill ENABLED (config)")
 
     default_route = cfg.get("flux_http", {}).get("default_route", "influx")
     from flux_compat import set_route_mode

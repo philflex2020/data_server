@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# Start the full fractal-phil simulation stack.
+# Start the full aws-sim stack on the test_aws host (fractal-phil).
 # Both FlashMQ instances, both writer.cpp instances, rsync-sim loop,
 # Telegraf, and the subscriber API all run on this one machine.
 #
 # Run from the data_server root:
-#   bash start_fractal_phil.sh [--no-gap-writer] [--no-telegraf]
+#   bash start_aws_sim.sh [--no-telegraf]
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-GAP_WRITER=true
 TELEGRAF=true
 for arg in "$@"; do
   case "$arg" in
-    --no-gap-writer) GAP_WRITER=false ;;
-    --no-telegraf)   TELEGRAF=false ;;
+    --no-telegraf) TELEGRAF=false ;;
   esac
 done
 
@@ -38,15 +36,9 @@ echo "=== Starting host writer.cpp → /srv/data/parquet ==="
 
 echo "=== Starting rsync-sim loop (5 s) ==="
 (while true; do
-  rsync -a --delete /srv/data/parquet/ /srv/data/parquet-aws-sim/
+  rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/
   sleep 5
 done) > /tmp/rsync-sim.log 2>&1 &
-
-if $GAP_WRITER; then
-  echo "=== Starting gap writer → /srv/data/parquet-aws-sim/current_state.parquet ==="
-  (cd source/parquet_writer_cpp && nohup ./parquet_writer --config ../../aws/gap_fill/config.yaml \
-    > /tmp/writer-gap.log 2>&1) &
-fi
 
 if $TELEGRAF; then
   echo "=== Starting Telegraf → InfluxDB2 ==="
@@ -64,7 +56,6 @@ echo "=== Starting subscriber_api ==="
 echo ""
 echo "Stack started. Logs:"
 echo "  /tmp/writer-host.log      host writer.cpp"
-echo "  /tmp/writer-gap.log       gap writer (if enabled)"
 echo "  /tmp/rsync-sim.log        rsync-sim"
 echo "  /tmp/telegraf.log         telegraf"
 echo "  /tmp/stress_runner.log    stress_runner"

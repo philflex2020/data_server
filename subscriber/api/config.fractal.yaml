@@ -58,6 +58,12 @@ telegraf:
   org:       battery-org
   token:     battery-token-secret
 
+# Live-state gap fill — merge in-memory buffer into parquet query results,
+# covering the flush-interval window (~60 s) not yet written to disk.
+# Can also be toggled at runtime: {"type": "set_live_state", "enabled": true}
+live_state:
+  enabled: true
+
 # History query limits
 history:
   default_limit: 1000

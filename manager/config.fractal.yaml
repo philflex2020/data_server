@@ -92,7 +92,7 @@ components:
       - >-
         mkdir -p /srv/data/parquet-aws-sim &&
         while true; do
-          rsync -a --delete /srv/data/parquet/ /srv/data/parquet-aws-sim/;
+          rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/;
           sleep 5;
         done
     cwd: "."

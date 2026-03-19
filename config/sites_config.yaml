@@ -1,0 +1,49 @@
+# check_sites.sh site definitions
+#
+# Each site is checked via SSH — all port/HTTP probes run on the remote host
+# so they work even if ports are firewalled (e.g. AWS security groups).
+#
+# Auth (pick one per site):
+#   ssh_key: ~/.ssh/id_rsa          # path to private key; expands ~
+#   ssh_password: secret            # password auth — requires sshpass installed
+#   (neither)                       # uses SSH agent / default key
+
+sites:
+
+  # ── Edge writer (phil-dev) ──────────────────────────────────────────────────
+  - name: phil-dev
+    host: phil-dev
+    user: phil
+    # ssh_key: ~/.ssh/id_rsa
+    type: edge
+    parquet_dirs:
+      - /srv/data/parquet
+
+  # ── AWS-sim testbed (fractal-phil) ─────────────────────────────────────────
+  - name: fractal-phil
+    host: 192.168.86.51
+    user: phil
+    type: aws-sim
+    parquet_dirs:
+      - /srv/data/parquet
+      - /srv/data/parquet-aws-sim
+    systemd_services:
+      - flashmq
+      - influxdb
+      - telegraf
+
+  # ── AWS production example (commented out) ─────────────────────────────────
+  # - name: prod-aws
+  #   host: ec2-1-2-3-4.compute-1.amazonaws.com
+  #   user: ubuntu
+  #   ssh_key: ~/.ssh/prod-key.pem
+  #   type: aws
+  #   aws_region: us-east-1
+  #   s3_parquet_bucket: data-server-prod
+  #   s3_parquet_prefix: parquet/
+  #   ecs_cluster: data-server
+  #   ecs_services:
+  #     - subscriber-api
+  #     - parquet-writer
+  #   systemd_services:
+  #     - parquet-writer        # if running as systemd on EC2 rather than ECS
