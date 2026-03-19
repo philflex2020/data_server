@@ -1147,7 +1147,7 @@ function updateSubStats(d) {
   setText('sub-wsclients', d.ws_clients ?? '—');
   setText('sub-mqtt',    d.mqtt_connected ? 'connected' : 'disconnected');
   setClass('sub-mqtt',   d.mqtt_connected ? 'ok' : 'warn');
-  if (d.rsync)   updateRsyncStats(d.rsync);
+  // d.rsync intentionally ignored — push agent at cfg.host:8770 is authoritative
   if (d.s3sync)  updateS3SyncStats(d.s3sync);
   if (d.router)  updateRouterStats(d.router);
   if (d.sync) {
@@ -1473,16 +1473,27 @@ async function checkFluxShim(aws) {
   }
 }
 
-// ── Host Parquet file stats ───────────────────────────────────────────────────
-async function checkParquetStats(aws) {
+// ── Host Parquet file stats (phil-dev :8770/parquet_stats) ───────────────────
+async function checkHostParquetStats(host) {
   try {
-    const r = await fetch(`http://${aws}:8768/parquet_stats`, {signal: AbortSignal.timeout(4000)});
+    const r = await fetch(`http://${host}:8770/parquet_stats`, {signal: AbortSignal.timeout(4000)});
     if (!r.ok) return;
     const d = await r.json();
     setText('pq-file-count', d.file_count.toLocaleString());
     setText('pq-total-mb',   d.total_mb.toLocaleString());
     setText('pq-latest-age', d.latest_age_s !== null ? d.latest_age_s : '—');
-    // box-store-host state owned by updateRsyncStats
+  } catch(e) { /* host unreachable — leave as dim */ }
+}
+
+// ── AWS-sim Parquet file stats (fractal-phil :8768/parquet_stats) ─────────────
+async function checkParquetStats(aws) {
+  try {
+    const r = await fetch(`http://${aws}:8768/parquet_stats`, {signal: AbortSignal.timeout(4000)});
+    if (!r.ok) return;
+    const d = await r.json();
+    setText('aws-store-files', d.file_count.toLocaleString());
+    setText('aws-store-mb',    d.total_mb.toLocaleString());
+    if (d.file_count > 0) setBoxState('box-store-aws', 'dot-store-aws', 'ok');
   } catch(e) { /* host unreachable — leave as dim */ }
 }
 
@@ -1772,6 +1783,7 @@ function doConnect() {
   checkProcStats(cfg.aws);
   checkTelegrafStats(cfg.aws);
   checkRsyncPush(cfg.host);
+  checkHostParquetStats(cfg.host);
   document.getElementById('flux-curl-cmd').textContent = fluxCurlCmd(cfg.aws);
 
   if (pollTimer) clearInterval(pollTimer);
@@ -1783,6 +1795,7 @@ function doConnect() {
     checkParquetStats(c.aws);
     checkProcStats(c.aws);
     checkRsyncPush(c.host);
+    checkHostParquetStats(c.host);
     updateQueryPaths();
   }, 2000);
   // telegraf buffer stats on slower cadence (10s) — InfluxDB internal metrics lag by ~10s

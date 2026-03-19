@@ -158,6 +158,22 @@ async def _handle(reader, writer, cfg: dict) -> None:
             log.info("rsync push stopped")
         _response(writer, 200, json_hdr, b'{"ok":true,"msg":"stopped"}')
 
+    elif path == "/parquet_stats":
+        src = cfg["rsync"]["src"].rstrip("/")
+        try:
+            files = list(Path(src).rglob("*.parquet"))
+            file_count = len(files)
+            total_mb   = round(sum(f.stat().st_size for f in files) / 1_048_576, 2)
+            latest_age = None
+            if files:
+                latest_mtime = max(f.stat().st_mtime for f in files)
+                latest_age   = round(time.time() - latest_mtime, 0)
+            body = json.dumps({"file_count": file_count, "total_mb": total_mb,
+                               "latest_age_s": latest_age}).encode()
+        except Exception as exc:
+            body = json.dumps({"error": str(exc)}).encode()
+        _response(writer, 200, json_hdr, body)
+
     else:
         _response(writer, 404, CORS, b'{"error":"not found"}')
 
