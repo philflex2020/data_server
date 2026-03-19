@@ -74,14 +74,18 @@ subscriber-api).
 ## Pending / In-Progress
 
 - [x] stress_runner/config.yaml: change port 1884 → 1883 (publish to host FlashMQ)
-- [ ] Generate FlashMQ bridge config on phil-dev:
-      `mkdir -p /etc/flashmq/bridge-conf.d`
-      `python3 source/bridge/gen_bridge_conf.py source/bridge/bridge.yaml \`
-      `        --output /etc/flashmq/bridge-conf.d/bridge.conf`
-      `sudo flashmq --reload-config`
-- [ ] Add `include_dir /etc/flashmq/bridge-conf.d` to `/etc/flashmq/flashmq.conf`
-- [ ] Update config.fractal.yaml rsync.src to pull from phil-dev over SSH:
+- [ ] Generate FlashMQ bridge config on phil-dev (requires sudo — run manually):
+      `echo "include_dir /etc/flashmq/bridge-conf.d" | sudo tee -a /etc/flashmq/flashmq.conf`
+      `sudo mkdir -p /etc/flashmq/bridge-conf.d`
+      `python3 source/bridge/gen_bridge_conf.py source/bridge/bridge.yaml --output /tmp/bridge.conf`
+      `sudo cp /tmp/bridge.conf /etc/flashmq/bridge-conf.d/bridge.conf`
+      `sudo systemctl reload flashmq`
+- [ ] Create /srv/data/parquet on phil-dev (requires sudo — run manually):
+      `sudo mkdir -p /srv/data/parquet && sudo chown phil:phil /srv/data/parquet`
+- [x] Update config.fractal.yaml rsync.src to pull from phil-dev over SSH:
       `src: phil@192.168.86.46:/srv/data/parquet/`
-- [ ] SSH key: fractal-phil needs passwordless SSH access to phil-dev for rsync pull
+- [x] SSH key: fractal-phil → phil-dev
+      Generated ed25519 key on fractal-phil; public key installed in phil-dev
+      ~/.ssh/authorized_keys. SSH connectivity verified (ssh-ok).
 - [ ] End-to-end test: verify data flows phil-dev:1883 → bridge → fractal-phil:1884
       → telegraf → InfluxDB and subscriber-api → parquet

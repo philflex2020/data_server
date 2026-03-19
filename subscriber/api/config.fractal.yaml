@@ -1,6 +1,6 @@
 # Subscriber API — fractal-phil sim (aws-sim side)
 # Real-time:  aiomqtt → FlashMQ aws-sim :1884
-# Historical: DuckDB → /srv/data/parquet-aws-sim  (rsync-sim + gap writer)
+# Historical: DuckDB → /srv/data/parquet-aws-sim  (rsync pull from phil-dev + gap writer)
 
 mqtt:
   host: localhost
@@ -43,8 +43,10 @@ s3:
   sync_interval: 10   # seconds between upload sweeps
 
 # rsync control (parquet_monitor Start/Stop button)
+# Dual-host: pull from phil-dev over SSH. Requires passwordless SSH key
+# from fractal-phil → phil@192.168.86.46 (see INSTALL_phil_dev.md).
 rsync:
-  src:      /srv/data/parquet/
+  src:      phil@192.168.86.46:/srv/data/parquet/
   dst:      /srv/data/parquet-aws-sim/
   interval: 5   # seconds between runs
 
