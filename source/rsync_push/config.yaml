@@ -4,6 +4,7 @@ rsync:
   src:      /srv/data/parquet/
   dst:      phil@192.168.86.51:/srv/data/parquet-aws-sim/
   interval: 5          # seconds between pushes
+  retain_hours: 4      # delete host files older than this (0 = keep forever)
 
 http:
   port: 8770

@@ -53,7 +53,7 @@ async def _rsync_loop(src: str, dst: str, interval: int) -> None:
         t0 = time.monotonic()
         try:
             proc = await asyncio.create_subprocess_exec(
-                "rsync", "-a", "--delete", "--stats", src, dst,
+                "rsync", "-a", "--stats", src, dst,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -88,6 +88,25 @@ async def _rsync_loop(src: str, dst: str, interval: int) -> None:
         await asyncio.sleep(interval)
 
     log.info("rsync push loop stopped")
+
+
+# ── Local retention cleanup ───────────────────────────────────────────────────
+async def _cleanup_loop(src: str, retain_hours: float, interval: int) -> None:
+    log.info("retention cleanup: keeping last %.1fh in %s, checking every %ds",
+             retain_hours, src, interval)
+    while _state["running"]:
+        await asyncio.sleep(interval)
+        cutoff = time.time() - retain_hours * 3600
+        removed = 0
+        for f in Path(src).rglob("*.parquet"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    removed += 1
+            except Exception:
+                pass
+        if removed:
+            log.info("retention: removed %d file(s) older than %.1fh", removed, retain_hours)
 
 
 # ── HTTP server ──────────────────────────────────────────────────────────────
@@ -143,11 +162,15 @@ async def _handle(reader, writer, cfg: dict) -> None:
             _state["running"]    = True
             _state["start_time"] = time.monotonic()
             _state["run_count"]  = 0
-            src      = cfg["rsync"]["src"]
-            dst      = cfg["rsync"]["dst"]
-            interval = cfg["rsync"].get("interval", 5)
-            _loop_task = asyncio.get_event_loop().create_task(_rsync_loop(src, dst, interval))
-            log.info("rsync push started")
+            src          = cfg["rsync"]["src"]
+            dst          = cfg["rsync"]["dst"]
+            interval     = cfg["rsync"].get("interval", 5)
+            retain_hours = cfg["rsync"].get("retain_hours", 0)
+            loop = asyncio.get_event_loop()
+            _loop_task = loop.create_task(_rsync_loop(src, dst, interval))
+            if retain_hours > 0:
+                loop.create_task(_cleanup_loop(src, retain_hours, max(interval * 6, 60)))
+            log.info("rsync push started (retain_hours=%s)", retain_hours or "unlimited")
         _response(writer, 200, json_hdr, b'{"ok":true,"msg":"started"}')
 
     elif path == "/rsync/stop" and method == "POST":
