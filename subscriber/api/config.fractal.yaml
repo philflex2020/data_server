@@ -68,3 +68,9 @@ live_state:
 history:
   default_limit: 1000
   max_limit: 10000
+
+# Numpy ring buffer (gap-fill for recent data).
+# ~60 bytes/entry. At 24k msg/s: 8_640_000 ≈ 520 MB, covers ~6 min.
+# At  3k msg/s: 1_080_000 ≈  65 MB, covers ~6 min.
+buffer:
+  maxlen: 8640000
