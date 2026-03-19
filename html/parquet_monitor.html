@@ -1510,6 +1510,7 @@ async function checkRsyncPush(host) {
 // ── rsync control ─────────────────────────────────────────────────────────────
 function fmtElapsed(s) {
   if (!s && s !== 0) return '—';
+  s = Math.round(s);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   if (h) return `${h}h ${m}m ${sec}s`;
   if (m) return `${m}m ${sec}s`;
@@ -1525,7 +1526,7 @@ function updateRsyncStats(r) {
   setText('rsync-runs',    r.run_count ?? '—');
   setText('rsync-files',      (r.file_count ?? '—').toLocaleString());
   setText('rsync-mb',        r.total_mb ?? '—');
-  setText('rsync-last-ms', r.last_ms ? r.last_ms + ' ms' : '—');
+  setText('rsync-last-ms', r.last_ms ? r.last_ms : '—');
   const btn = document.getElementById('btn-rsync-toggle');
   if (running) {
     btn.textContent = '■ Stop rsync';
