@@ -1,0 +1,5 @@
+# venv is one level up from source/, i.e. at the repo root
+# /home/phil/work/gen-ai/data_server/.venv
+
+cd /home/phil/work/gen-ai/data_server
+.venv/bin/python source/stress_runner/stress_runner.py --config source/stress_runner/config.yaml

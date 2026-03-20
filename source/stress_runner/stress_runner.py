@@ -146,18 +146,25 @@ async def site_publish_loop(project_id: int, site_cfg: dict, config: dict,
             for cell in cells:
                 if g_stop.is_set():
                     break
+                # Drop messages when paho's outbound queue is backing up — paho has no
+                # built-in size limit for QoS 0 packets, so without this guard the deque
+                # grows without bound if the broker is slow (e.g. cold start after reboot).
+                if len(g_mqtt_client._out_packet) > 20000:
+                    batch += 8 if mode == "per_cell_item" else 1   # count as sent for stats
+                    continue
                 # QoS 0 (fire-and-forget) avoids PUBACK backlog that causes FlashMQ to
                 # drop messages for slow subscribers before they even reach telegraf.
                 # TODO: discuss QoS tradeoffs with team — QoS 1 is correct for production
                 # but at high rates the PUBACK round-trip saturates broker queues.
                 if mode == "per_cell_item":
                     ts     = time.time()
+                    topic  = cell.topic          # cache — property rebuilds f-string each call
                     values = {name: state.step() for name, state in cell.measurements.items()}
                     if "voltage" in values and "current" in values:
                         values["power"] = round(values["voltage"] * values["current"], 4)
                     for name, val in values.items():
                         g_mqtt_client.publish(
-                            f"{cell.topic}/{name}",
+                            f"{topic}/{name}",
                             json.dumps({"timestamp": ts, "value": val}),
                             qos=0,
                         )

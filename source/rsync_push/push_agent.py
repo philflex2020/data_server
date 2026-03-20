@@ -114,6 +114,7 @@ CORS = [
     ("Access-Control-Allow-Origin",  "*"),
     ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
     ("Access-Control-Allow-Headers", "Content-Type"),
+    ("Connection",                   "close"),
 ]
 
 
@@ -183,7 +184,7 @@ async def _handle(reader, writer, cfg: dict) -> None:
 
     elif path == "/parquet_stats":
         src = cfg["rsync"]["src"].rstrip("/")
-        try:
+        def _scan():
             files = list(Path(src).rglob("*.parquet"))
             file_count = len(files)
             total_mb   = round(sum(f.stat().st_size for f in files) / 1_048_576, 2)
@@ -191,8 +192,12 @@ async def _handle(reader, writer, cfg: dict) -> None:
             if files:
                 latest_mtime = max(f.stat().st_mtime for f in files)
                 latest_age   = round(time.time() - latest_mtime, 0)
-            body = json.dumps({"file_count": file_count, "total_mb": total_mb,
-                               "latest_age_s": latest_age}).encode()
+            return {"file_count": file_count, "total_mb": total_mb,
+                    "latest_age_s": latest_age}
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _scan)
+            body = json.dumps(result).encode()
         except Exception as exc:
             body = json.dumps({"error": str(exc)}).encode()
         _response(writer, 200, json_hdr, body)
@@ -220,6 +225,18 @@ async def main() -> None:
     log.info("src: %s  dst: %s  interval: %ss",
              cfg["rsync"]["src"], cfg["rsync"]["dst"],
              cfg["rsync"].get("interval", 5))
+
+    # Auto-start rsync loop on launch
+    src          = cfg["rsync"]["src"]
+    dst          = cfg["rsync"]["dst"]
+    interval     = cfg["rsync"].get("interval", 5)
+    retain_hours = cfg["rsync"].get("retain_hours", 0)
+    _state["running"]    = True
+    _state["start_time"] = asyncio.get_event_loop().time()
+    asyncio.create_task(_rsync_loop(src, dst, interval))
+    if retain_hours > 0:
+        asyncio.create_task(_cleanup_loop(src, retain_hours, max(interval * 6, 60)))
+    log.info("rsync auto-started: %s → %s", src, dst)
 
     async with server:
         await server.serve_forever()

@@ -897,6 +897,8 @@ mqtt:
   host: localhost
   port: 1883
   client_id: stress-runner
+  username: ""
+  password: ""
 
 websocket:
   host: 0.0.0.0
@@ -919,13 +921,13 @@ projects:
   - project_id: 1
     sites:
       - site_id: 10
-        racks: 4
+        racks: 12
         modules_per_rack: 8
-        cells_per_module: 12
+        cells_per_module: 52
       - site_id: 11
-        racks: 4
+        racks: 12
         modules_per_rack: 8
-        cells_per_module: 12`,
+        cells_per_module: 52`,
     startup: [
       {
         title: 'Start stress runner',
