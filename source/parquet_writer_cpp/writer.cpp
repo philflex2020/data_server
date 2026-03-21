@@ -46,6 +46,7 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <set>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -114,6 +115,33 @@ struct Config {
     // 0 = disabled (default).
     uint64_t    min_free_bytes {0};   // set via min_free_gb in config
 };
+
+// M12: validate config — catch bad values before they cause spin-loops or silent drops
+static bool validate_config(const Config& cfg) {
+    bool ok = true;
+    if (cfg.flush_interval_seconds <= 0) {
+        std::cerr << "[config] flush_interval_seconds must be > 0 (got "
+                  << cfg.flush_interval_seconds << ")\n"; ok = false;
+    }
+    if (cfg.max_total_buffer_rows <= 0) {
+        std::cerr << "[config] max_total_buffer_rows must be > 0 (got "
+                  << cfg.max_total_buffer_rows << ")\n"; ok = false;
+    }
+    if (cfg.max_messages_per_part <= 0) {
+        std::cerr << "[config] max_messages_per_part must be > 0 (got "
+                  << cfg.max_messages_per_part << ")\n"; ok = false;
+    }
+    static const std::set<std::string> valid_compression{
+        "snappy", "gzip", "brotli", "lz4", "zstd", "none"};
+    if (!valid_compression.count(cfg.compression)) {
+        std::cerr << "[config] unknown compression '" << cfg.compression
+                  << "' — valid: snappy gzip brotli lz4 zstd none\n"; ok = false;
+    }
+    if (cfg.base_path.empty()) {
+        std::cerr << "[config] output.base_path must be set\n"; ok = false;
+    }
+    return ok;
+}
 
 Config load_config(const std::string& path) {
     Config cfg;
@@ -213,6 +241,15 @@ struct TopicInfo {
     std::string              field_name; // per_cell_item: last non-kv segment (e.g. "voltage")
 };
 
+// M13: strip path-traversal characters from topic-derived path segments
+static std::string sanitize_path_segment(std::string s) {
+    // truncate at any slash (belt-and-suspenders — topic is already split on '/')
+    auto slash = s.find_first_of("/\\");
+    if (slash != std::string::npos) s = s.substr(0, slash);
+    if (s.empty() || s == "." || s == "..") return "";
+    return s;
+}
+
 std::optional<TopicInfo> parse_topic(const std::string& topic) {
     TopicInfo info;
     std::istringstream ss(topic);
@@ -221,8 +258,9 @@ std::optional<TopicInfo> parse_topic(const std::string& topic) {
 
     while (std::getline(ss, segment, '/')) {
         if (first) {
-            info.source_type = segment;
+            info.source_type = sanitize_path_segment(segment);  // M13
             first = false;
+            if (info.source_type.empty()) return std::nullopt;
             continue;
         }
         auto eq = segment.find('=');
@@ -239,7 +277,7 @@ std::optional<TopicInfo> parse_topic(const std::string& topic) {
 }
 
 Row parse_payload(const std::string& payload_str, const TopicInfo& topic, int project_id,
-                  const Config& cfg = Config{}) {
+                  const Config& cfg) {
     Row row;
 
     // Metadata from topic — driven by cfg.topic_kv_map
@@ -286,10 +324,12 @@ Row parse_payload(const std::string& payload_str, const TopicInfo& topic, int pr
             // Flat scalar
             double d;
             if (val.get(d) == simdjson::SUCCESS) {
-                row.floats[k] = d;
+                if (row.ints.count(k) == 0)              // M14: don't duplicate topic-derived int cols
+                    row.floats[k] = d;
             } else {
-                int64_t iv;  // flat integer (e.g. "site_id": 3 in payload)
-                if (val.get(iv) == simdjson::SUCCESS) row.floats[k] = static_cast<double>(iv);
+                int64_t iv;
+                if (val.get(iv) == simdjson::SUCCESS && row.ints.count(k) == 0)
+                    row.floats[k] = static_cast<double>(iv);  // M14: skip if already an int col
             }
         }
     }
@@ -313,8 +353,10 @@ static std::string replace_vars(std::string tmpl,
 }
 
 std::string make_output_path(const Config& cfg,
-                              const std::string& source_type, int partition_value) {
-    auto now = std::chrono::system_clock::now();
+                              const std::string& source_type, int partition_value,
+                              std::optional<std::chrono::system_clock::time_point> collection_ts = {}) {
+    // M4: use provided timestamp (WAL replay) or current time (normal flush)
+    auto now = collection_ts.value_or(std::chrono::system_clock::now());
     auto t   = std::chrono::system_clock::to_time_t(now);
     std::tm tm{};
     gmtime_r(&t, &tm);
@@ -354,12 +396,9 @@ static parquet::Compression::type to_parquet_compression(const std::string& s) {
     return parquet::Compression::SNAPPY;
 }
 
-arrow::Status flush_partition(const std::string& path,
-                               const std::vector<Row>& rows,
-                               const std::string& compression) {
-    if (rows.empty()) return arrow::Status::OK();
-
-    // Collect ordered column names (stable order across files)
+// M3: shared Arrow table builder — was duplicated verbatim in flush_partition and write_wal_ipc
+static arrow::Result<std::shared_ptr<arrow::Table>>
+rows_to_arrow_table(const std::vector<Row>& rows) {
     std::vector<std::string> int_cols, float_cols;
     {
         std::map<std::string, bool> seen_i, seen_f;
@@ -368,11 +407,8 @@ arrow::Status flush_partition(const std::string& path,
             for (const auto& [k, _] : r.floats) if (!seen_f[k]) { seen_f[k]=true; float_cols.push_back(k); }
         }
     }
-
-    std::vector<std::shared_ptr<arrow::Field>>  fields;
-    std::vector<std::shared_ptr<arrow::Array>>  arrays;
-
-    // Integer columns
+    std::vector<std::shared_ptr<arrow::Field>> fields;
+    std::vector<std::shared_ptr<arrow::Array>> arrays;
     for (const auto& col : int_cols) {
         arrow::Int64Builder b;
         for (const auto& r : rows) {
@@ -385,8 +421,6 @@ arrow::Status flush_partition(const std::string& path,
         fields.push_back(arrow::field(col, arrow::int64()));
         arrays.push_back(arr);
     }
-
-    // Float columns
     for (const auto& col : float_cols) {
         arrow::DoubleBuilder b;
         for (const auto& r : rows) {
@@ -399,18 +433,21 @@ arrow::Status flush_partition(const std::string& path,
         fields.push_back(arrow::field(col, arrow::float64()));
         arrays.push_back(arr);
     }
+    return arrow::Table::Make(arrow::schema(fields), arrays);
+}
 
-    auto table = arrow::Table::Make(arrow::schema(fields), arrays);
-
+arrow::Status flush_partition(const std::string& path,
+                               const std::vector<Row>& rows,
+                               const std::string& compression) {
+    if (rows.empty()) return arrow::Status::OK();
+    ARROW_ASSIGN_OR_RAISE(auto table, rows_to_arrow_table(rows));
     auto props = parquet::WriterProperties::Builder()
         .compression(to_parquet_compression(compression))
         ->build();
-
     ARROW_ASSIGN_OR_RAISE(auto outfile, arrow::io::FileOutputStream::Open(path));
     ARROW_RETURN_NOT_OK(parquet::arrow::WriteTable(
         *table, arrow::default_memory_pool(), outfile,
         static_cast<int64_t>(rows.size()), props));
-
     return arrow::Status::OK();
 }
 
@@ -475,38 +512,7 @@ static std::string wal_path_for(const Config& cfg, const std::string& source_typ
 static arrow::Status write_wal_ipc(const std::string& path, const std::vector<Row>& rows) {
     if (rows.empty()) return arrow::Status::OK();
 
-    // Build Arrow table from rows (ints + floats only — same as flush_partition)
-    std::vector<std::string> int_cols, float_cols;
-    {
-        std::map<std::string, bool> si, sf;
-        for (const auto& r : rows) {
-            for (const auto& [k, _] : r.ints)   if (!si[k]) { si[k]=true; int_cols.push_back(k); }
-            for (const auto& [k, _] : r.floats) if (!sf[k]) { sf[k]=true; float_cols.push_back(k); }
-        }
-    }
-    std::vector<std::shared_ptr<arrow::Field>> fields;
-    std::vector<std::shared_ptr<arrow::Array>> arrays;
-    for (const auto& col : int_cols) {
-        arrow::Int64Builder b;
-        for (const auto& r : rows) {
-            auto it = r.ints.find(col);
-            if (it != r.ints.end()) ARROW_RETURN_NOT_OK(b.Append(it->second));
-            else                    ARROW_RETURN_NOT_OK(b.AppendNull());
-        }
-        std::shared_ptr<arrow::Array> arr; ARROW_RETURN_NOT_OK(b.Finish(&arr));
-        fields.push_back(arrow::field(col, arrow::int64())); arrays.push_back(arr);
-    }
-    for (const auto& col : float_cols) {
-        arrow::DoubleBuilder b;
-        for (const auto& r : rows) {
-            auto it = r.floats.find(col);
-            if (it != r.floats.end()) ARROW_RETURN_NOT_OK(b.Append(it->second));
-            else                      ARROW_RETURN_NOT_OK(b.AppendNull());
-        }
-        std::shared_ptr<arrow::Array> arr; ARROW_RETURN_NOT_OK(b.Finish(&arr));
-        fields.push_back(arrow::field(col, arrow::float64())); arrays.push_back(arr);
-    }
-    auto table = arrow::Table::Make(arrow::schema(fields), arrays);
+    ARROW_ASSIGN_OR_RAISE(auto table, rows_to_arrow_table(rows));  // M3: shared helper
     ARROW_ASSIGN_OR_RAISE(auto out, arrow::io::FileOutputStream::Open(path));
     ARROW_ASSIGN_OR_RAISE(auto writer, arrow::ipc::MakeFileWriter(out, table->schema()));
     ARROW_RETURN_NOT_OK(writer->WriteTable(*table));
@@ -587,6 +593,18 @@ static void replay_wal_files() {
         std::cout << "[wal] replaying " << rows.size() << " rows from " << wp.filename()
                   << " (source_type=" << source_type << ")\n";
         g_wal_replay_rows.fetch_add(rows.size());
+        // M4: derive collection timestamp from oldest row so WAL replay writes to the
+        // correct date partition, not today's date.
+        int64_t min_ts_ms = INT64_MAX;
+        for (const auto& r : rows) {
+            if (auto it = r.ints.find("timestamp"); it != r.ints.end())
+                min_ts_ms = std::min(min_ts_ms, it->second);
+        }
+        std::optional<std::chrono::system_clock::time_point> collection_ts;
+        if (min_ts_ms != INT64_MAX)
+            collection_ts = std::chrono::system_clock::time_point{
+                std::chrono::milliseconds(min_ts_ms)};
+
         // Group by partition key and flush to production parquet
         std::map<PartitionKey, std::vector<Row>> parts;
         for (auto& r : rows) {
@@ -597,7 +615,7 @@ static void replay_wal_files() {
         }
         bool all_ok = true;
         for (auto& [key, part_rows] : parts) {
-            auto path   = make_output_path(*g_cfg, key.source_type, key.partition_value);
+            auto path   = make_output_path(*g_cfg, key.source_type, key.partition_value, collection_ts);
             auto status = flush_partition(path, part_rows, g_cfg->compression);
             if (status.ok())
                 std::cout << "[wal] flushed " << part_rows.size() << " rows → " << path << "\n";
@@ -633,7 +651,19 @@ static void health_thread_fn(int port) {
         if (select(srv + 1, &fds, nullptr, nullptr, &tv) <= 0) continue;
         int cli = accept(srv, nullptr, nullptr);
         if (cli < 0) continue;
-        char buf[256]; recv(cli, buf, sizeof(buf) - 1, 0);
+        char buf[256] = {};                                      // M6: zero-init
+        auto n = recv(cli, buf, sizeof(buf) - 1, 0);            // M6: check return
+        if (n <= 0) { close(cli); continue; }
+        // M7: only respond to GET /health
+        std::string req(buf, static_cast<size_t>(n));
+        bool valid_request = (req.rfind("GET ", 0) == 0) &&
+                             (req.find(" /health ") != std::string::npos ||
+                              req.find(" /health\r") != std::string::npos);
+        if (!valid_request) {
+            const char* r404 = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(cli, r404, strlen(r404), 0);
+            close(cli); continue;
+        }
         std::string body =
             "{\"msgs_received\":"    + std::to_string(g_msgs_received.load())     +
             ",\"buffer_rows\":"      + std::to_string(g_health_buffer_rows.load())+
@@ -797,23 +827,15 @@ static void flush_thread_fn() {
         lock.unlock();                              // release before slow I/O
         do_flush(std::move(to_flush), std::move(cs_snap));
     }
-
-    // Final flush on shutdown
-    std::unique_lock<std::mutex> lock(g_mutex);
-    auto to_flush    = std::exchange(g_buffers, {});
-    g_total_buffered = 0;
-    g_health_buffer_rows.store(0);
-    auto cs_snap     = std::move(g_current_state);
-    g_current_state  = std::make_shared<StateMap>();
-    lock.unlock();
-    do_flush(std::move(to_flush), std::move(cs_snap));
+    // M11: final flush moved to main(), after mosquitto_loop_stop(), so it catches
+    // all messages delivered up to loop_stop rather than up to flush thread exit.
 }
 
 // ---------------------------------------------------------------------------
 // MQTT callbacks
 // ---------------------------------------------------------------------------
 
-static struct mosquitto* g_mosq{nullptr};  // set in main before loop_start
+static std::atomic<struct mosquitto*> g_mosq{nullptr};  // M10: atomic — written by main, read by callbacks
 
 static void on_connect(struct mosquitto*, void*, int rc) {
     if (rc == 0) {
@@ -821,7 +843,7 @@ static void on_connect(struct mosquitto*, void*, int rc) {
                   << ":" << g_cfg->mqtt_port << "\n";
         // Subscribe here so reconnect after broker restart automatically resubscribes.
         // mosquitto_loop_start handles TCP reconnect but not resubscription.
-        int sub_rc = mosquitto_subscribe(g_mosq, nullptr,
+        int sub_rc = mosquitto_subscribe(g_mosq.load(), nullptr,
                                          g_cfg->mqtt_topic.c_str(), g_cfg->mqtt_qos);
         if (sub_rc != MOSQ_ERR_SUCCESS)
             std::cerr << "[mqtt] subscribe failed: " << mosquitto_strerror(sub_rc) << "\n";
@@ -852,10 +874,14 @@ static void handle_sync_message(const std::string& payload) {
                       << " (was " << g_sync_session_id << ") — counters reset\n";
         g_sync_session_id     = session;
         g_received_since_sync = 0;
+        g_sync_drops_detected = 0;  // M2: reset cumulative drop count for new session
         return;  // skip comparison for first sync of a new session
     }
 
-    int64_t received = static_cast<int64_t>(g_received_since_sync);
+    // M2: clamp to avoid misleading results if counter somehow exceeds int64 range
+    int64_t received = (g_received_since_sync > static_cast<uint64_t>(INT64_MAX))
+                       ? INT64_MAX
+                       : static_cast<int64_t>(g_received_since_sync);
     int64_t dropped  = interval_pub - received;
     g_received_since_sync = 0;
 
@@ -1028,6 +1054,7 @@ int main(int argc, char* argv[]) {
     }
 
     Config cfg = load_config(config_path);
+    if (!validate_config(cfg)) return 1;   // M12
     g_cfg = &cfg;
 
     std::signal(SIGINT,  handle_signal);
@@ -1081,11 +1108,26 @@ int main(int argc, char* argv[]) {
     mosquitto_loop_start(mosq);
 
     std::thread flusher(flush_thread_fn);
-    flusher.join();   // wait here until shutdown
+    flusher.join();   // wait for flush thread to exit its normal loop on g_shutdown
 
-    if (health_thr.joinable()) health_thr.join();
-    mosquitto_loop_stop(mosq, /*force=*/true);
+    if (health_thr.joinable()) health_thr.join();   // conditional — only created when health_enabled
+
+    // M9+M11: stop MQTT before final flush so all in-flight messages are captured.
+    // disconnect sends DISCONNECT packet to broker; loop_stop drains the network thread.
     mosquitto_disconnect(mosq);
+    mosquitto_loop_stop(mosq, /*force=*/false);
+
+    // Final flush in main — catches everything buffered between flush thread's last
+    // cycle and loop_stop. flusher is already joined so no locking needed.
+    {
+        auto to_flush = std::exchange(g_buffers, {});
+        g_total_buffered = 0;
+        g_health_buffer_rows.store(0);
+        auto cs_snap = std::move(g_current_state);
+        g_current_state = std::make_shared<StateMap>();
+        do_flush(std::move(to_flush), std::move(cs_snap));
+    }
+
     mosquitto_destroy(mosq);
     mosquitto_lib_cleanup();
 
