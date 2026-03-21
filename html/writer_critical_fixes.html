@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>writer.cpp — Critical Fixes</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2128;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --critical: #f85149;
+    --green:    #3fb950;
+    --blue:     #58a6ff;
+    --yellow:   #e3b341;
+    --tag-crit: rgba(248,81,73,0.15);
+    --tag-ok:   rgba(63,185,80,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.6; padding: 2rem 1rem;
+  }
+  .page { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: .2rem; }
+  .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
+  .subtitle a { color: var(--blue); text-decoration: none; }
+  .subtitle a:hover { text-decoration: underline; }
+
+  /* nav pills */
+  .nav { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 2rem; }
+  .nav a {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 2em; padding: .25rem .8rem; font-size: .8rem;
+    color: var(--muted); text-decoration: none; transition: all .15s;
+  }
+  .nav a:hover { border-color: var(--critical); color: var(--critical); }
+
+  /* fix card */
+  .fix {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden;
+  }
+  .fix-header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .9rem 1.1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .fix-id {
+    background: var(--tag-crit); color: var(--critical);
+    border: 1px solid var(--critical); border-radius: 4px;
+    font-size: .75rem; font-weight: 800; padding: .2rem .55rem;
+    letter-spacing: .05em; flex-shrink: 0;
+  }
+  .fix-title { font-weight: 600; font-size: 1rem; flex: 1; }
+  .fix-lines { color: var(--muted); font-size: .8rem; font-weight: 400; margin-left: .4rem; }
+
+  .fix-body { padding: 1rem 1.1rem; }
+  .fix-body p { margin-bottom: .75rem; font-size: .9rem; }
+  .fix-body p:last-child { margin-bottom: 0; }
+
+  /* before/after blocks */
+  .diff { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin: .75rem 0; }
+  @media (max-width: 700px) { .diff { grid-template-columns: 1fr; } }
+
+  .code-block { border-radius: 6px; overflow: hidden; }
+  .code-label {
+    font-size: .7rem; font-weight: 700; letter-spacing: .08em;
+    padding: .3rem .75rem; text-transform: uppercase;
+  }
+  .code-label.before { background: rgba(248,81,73,.2);  color: var(--critical); }
+  .code-label.after  { background: rgba(63,185,80,.15); color: var(--green);    }
+  .code-label.note   { background: rgba(88,166,255,.1); color: var(--blue);     }
+
+  pre {
+    background: #010409; border: 1px solid var(--border);
+    border-top: none; padding: .75rem 1rem; overflow-x: auto;
+    font-family: "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-size: .78rem; line-height: 1.6; margin: 0;
+  }
+  .solo pre { border-top: 1px solid var(--border); border-radius: 6px; margin: .75rem 0; }
+  code {
+    background: rgba(255,255,255,.07); border-radius: 3px;
+    padding: .1em .35em; font-family: "SF Mono", Consolas, monospace; font-size: .85em;
+  }
+
+  /* apply order */
+  .apply-order {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.1rem; margin-top: 2rem;
+  }
+  .apply-order h3 { font-size: .95rem; margin-bottom: .75rem; color: var(--text); }
+  .steps { display: flex; flex-direction: column; gap: .4rem; }
+  .step {
+    display: flex; align-items: flex-start; gap: .75rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: .5rem .8rem; font-size: .85rem;
+  }
+  .step-num {
+    background: rgba(88,166,255,.12); color: var(--blue);
+    border: 1px solid var(--blue); border-radius: 50%;
+    width: 1.4rem; height: 1.4rem; display: flex; align-items: center;
+    justify-content: center; font-size: .75rem; font-weight: 700; flex-shrink: 0;
+  }
+  .step-id { color: var(--critical); font-weight: 700; flex-shrink: 0; }
+  .step-desc { color: var(--text); }
+  .step-risk { margin-left: auto; flex-shrink: 0; font-size: .75rem; padding: .1rem .4rem;
+               border-radius: 3px; }
+  .risk-low  { background: var(--tag-ok);   color: var(--green);  }
+  .risk-med  { background: rgba(227,179,65,.15); color: var(--yellow); }
+  .risk-high { background: var(--tag-crit); color: var(--critical); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>writer.cpp — Critical Fixes</h1>
+  <p class="subtitle">
+    Companion to <a href="writer_code_review.html">writer_code_review.html</a> ·
+    6 critical issues · exact before/after code for each
+  </p>
+
+  <div class="nav">
+    <a href="#C1">C1 Signal handler UB</a>
+    <a href="#C2">C2 WAL abort-on-fail</a>
+    <a href="#C3">C3 WAL source_type</a>
+    <a href="#C4">C4 Lock contention</a>
+    <a href="#C5">C5 Health buffer_rows</a>
+    <a href="#C6">C6 WAL chunk(0)</a>
+  </div>
+
+  <!-- ── C1 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C1">
+    <div class="fix-header">
+      <span class="fix-id">C1</span>
+      <span class="fix-title">Signal handler calls <code>notify_all</code> on <code>condition_variable</code> — undefined behaviour
+        <span class="fix-lines">lines 917–920</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p><code>condition_variable::notify_all()</code> acquires an internal mutex. If the signal fires while <code>g_mutex</code> is held by another thread, the signal handler deadlocks. Under POSIX only a small set of functions (<code>write</code>, <code>sem_post</code>, <code>_exit</code>…) are async-signal-safe.</p>
+      <p><strong>Fix:</strong> self-pipe pattern — write one byte to a pipe from the handler; the flush thread polls the pipe instead of blocking on the condvar.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — line 917</div>
+          <pre>static void handle_signal(int) {
+    g_shutdown = true;
+    g_flush_cv.notify_all(); // NOT safe
+}</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>// globals:
+static int g_signal_pipe[2] = {-1,-1};
+
+static void handle_signal(int) {
+    g_shutdown.store(true,
+        std::memory_order_relaxed);
+    char b = 1;
+    (void)write(g_signal_pipe[1], &b, 1);
+}</pre>
+        </div>
+      </div>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — flush_thread_fn wait</div>
+          <pre>g_flush_cv.wait_for(lock,
+    std::chrono::seconds(
+        g_cfg->flush_interval_seconds));</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — poll the pipe</div>
+          <pre>lock.unlock();
+struct pollfd pfd =
+    { g_signal_pipe[0], POLLIN, 0 };
+poll(&pfd, 1,
+    g_cfg->flush_interval_seconds * 1000);
+lock.lock();</pre>
+        </div>
+      </div>
+
+      <div class="solo">
+        <div class="code-label note" style="border-radius:6px 6px 0 0; padding:.3rem .75rem;">In main() — before mosquitto_lib_init()</div>
+        <pre>pipe(g_signal_pipe);  // or pipe2(..., O_CLOEXEC) on Linux</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C2 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C2">
+    <div class="fix-header">
+      <span class="fix-id">C2</span>
+      <span class="fix-title">WAL write failure silently proceeds to Parquet flush — crash safety guarantee void
+        <span class="fix-lines">lines 671–678, 511</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p>When <code>write_wal_ipc</code> fails the code logs a warning and continues flushing Parquet. If the Parquet write then crashes, the data is gone with no WAL to recover from. Two fixes needed: abort the partition on WAL failure, and check <code>out->Close()</code>.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — do_flush() line 676</div>
+          <pre>if (!ws.ok())
+    std::cerr << "[wal] write failed ("
+              << ws.ToString()
+              << ") — proceeding without WAL\n";
+// falls through to Parquet flush!</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — abort this partition</div>
+          <pre>if (!ws.ok()) {
+    std::cerr << "[wal] write failed ("
+              << ws.ToString()
+              << ") — SKIPPING flush\n";
+    wal_file.clear();
+    continue; // skip to next partition
+}</pre>
+        </div>
+      </div>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — write_wal_ipc() line 511</div>
+          <pre>ARROW_RETURN_NOT_OK(writer->Close());
+return out->Close(); // Status ignored by caller</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — check both closes</div>
+          <pre>ARROW_RETURN_NOT_OK(writer->Close());
+ARROW_RETURN_NOT_OK(out->Close());
+return arrow::Status::OK();</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C3 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C3">
+    <div class="fix-header">
+      <span class="fix-id">C3</span>
+      <span class="fix-title">WAL replay hard-codes <code>source_type = "batteries"</code> — silent data misrouting
+        <span class="fix-lines">line 577</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p>The WAL filename already encodes the source type: <code>{source_type}_{pval}_{ts}.wal.arrow</code>. The replay loop never parses it back — all recovered rows land in <code>batteries/</code> regardless of origin.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — line 577</div>
+          <pre>// hard-coded "batteries"
+parts[{"batteries", pval}]
+    .push_back(std::move(r));</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — parse from filename</div>
+          <pre>// Parse stem: "batteries_1_20260320T..."
+std::string stem = wf.stem().string();
+if (stem.size()>4 &&
+    stem.substr(stem.size()-4)==".wal")
+  stem = stem.substr(0, stem.size()-4);
+std::string source_type = "batteries";
+auto us = stem.find('_');
+if (us != std::string::npos)
+  source_type = stem.substr(0, us);
+
+parts[{source_type, pval}]
+    .push_back(std::move(r));</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C4 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C4">
+    <div class="fix-header">
+      <span class="fix-id">C4</span>
+      <span class="fix-title"><code>on_message</code> holds <code>g_mutex</code> for every message at 80k msg/sec — blocks MQTT thread
+        <span class="fix-lines">lines 878–900</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p>The flush thread copies <code>g_current_state</code> (up to 10k map entries) while holding the same lock as the MQTT receive thread. During the copy the MQTT thread is blocked — mosquitto's buffer fills and keepalives can be missed.</p>
+      <p><strong>Minimal fix:</strong> promote to <code>std::shared_mutex</code> — multiple <code>on_message</code> calls can proceed concurrently; the flush takes exclusive only for the fast buffer swap.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>static std::mutex g_mutex;
+
+// on_message:
+std::unique_lock&lt;std::mutex&gt; lock(g_mutex);
+
+// flush_thread_fn swap:
+std::unique_lock&lt;std::mutex&gt; lock(g_mutex);</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>static std::shared_mutex g_mutex;
+
+// on_message (write path):
+std::unique_lock&lt;std::shared_mutex&gt;
+    lock(g_mutex);
+
+// flush_thread_fn swap (exclusive):
+std::unique_lock&lt;std::shared_mutex&gt;
+    lock(g_mutex);</pre>
+        </div>
+      </div>
+
+      <p style="color:var(--muted); font-size:.85rem;">Long-term: replace with a lock-free SPSC queue per partition, or use <code>std::atomic&lt;std::shared_ptr&gt;</code> double-buffer for <code>g_current_state</code> to eliminate the O(N) copy entirely.</p>
+    </div>
+  </div>
+
+  <!-- ── C5 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C5">
+    <div class="fix-header">
+      <span class="fix-id">C5</span>
+      <span class="fix-title"><code>g_health_buffer_rows</code> not zeroed after flush — health endpoint reports stale count
+        <span class="fix-lines">lines 761–763 + check_disk_space</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p><code>g_total_buffered</code> is reset to 0 after the buffer swap but <code>g_health_buffer_rows</code> (the atomic exposed via <code>/health</code>) is only written in <code>on_message</code>. Between a flush completing and the next message, the endpoint reports the old inflated count. Same function also never samples disk when the guard is disabled, so <code>disk_free_gb</code> always shows 0.0.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — flush_thread_fn lines 761–762</div>
+          <pre>auto to_flush    = std::exchange(g_buffers, {});
+g_total_buffered = 0;
+// g_health_buffer_rows never zeroed here</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>auto to_flush    = std::exchange(g_buffers, {});
+g_total_buffered = 0;
+g_health_buffer_rows.store(0); // fix C5</pre>
+        </div>
+      </div>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — check_disk_space line 441</div>
+          <pre>static bool check_disk_space(...) {
+    if (min_bytes == 0) return true; // exits before sampling
+    auto si = fs::space(path, ec);
+    g_disk_free_gb_x10.store(...);
+    ...</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — sample first, guard second</div>
+          <pre>static bool check_disk_space(...) {
+    auto si = fs::space(path, ec);
+    if (!ec)
+        g_disk_free_gb_x10.store(
+            si.available / (1024ULL*1024*1024/10));
+    if (min_bytes == 0) return true; // guard after sample
+    ...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C6 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C6">
+    <div class="fix-header">
+      <span class="fix-id">C6</span>
+      <span class="fix-title">WAL replay reads only <code>chunk(0)</code> — silently drops rows in multi-chunk tables
+        <span class="fix-lines">lines 537–541</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p>Arrow <code>ChunkedArray</code> can hold multiple chunks when a table is assembled from multiple <code>RecordBatch</code>es via <code>Table::FromRecordBatches</code>. <code>chunk(0)</code> silently discards everything after the first chunk. The fix is <code>arrow::Concatenate</code> which is a no-op for single-chunk columns.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — line 537</div>
+          <pre>auto chunk0 = table->column(c)->chunk(0);
+// only first chunk — rest silently dropped
+if (tid == arrow::Type::INT64)
+    int_cols.emplace_back(name,
+        std::static_pointer_cast&lt;
+            arrow::Int64Array&gt;(chunk0));</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — Concatenate all chunks</div>
+          <pre>auto combined =
+    arrow::Concatenate(
+        table->column(c)->chunks());
+if (!combined.ok()) continue;
+auto arr = combined.ValueOrDie();
+if (tid == arrow::Type::INT64)
+    int_cols.emplace_back(name,
+        std::static_pointer_cast&lt;
+            arrow::Int64Array&gt;(arr));</pre>
+        </div>
+      </div>
+      <p style="color:var(--muted); font-size:.85rem;"><code>arrow::Concatenate</code> is in <code>&lt;arrow/compute/api.h&gt;</code> — already transitively included via <code>&lt;arrow/api.h&gt;</code>. Zero overhead for single-chunk arrays.</p>
+    </div>
+  </div>
+
+  <!-- ── Apply order ──────────────────────────────────────────────────────── -->
+  <div class="apply-order">
+    <h3>Recommended apply order — least to most invasive</h3>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-id">C5</span>
+        <span class="step-desc">Two-line fix — health <code>buffer_rows</code> + <code>disk_free_gb</code> both correct immediately</span>
+        <span class="step-risk risk-low">low risk</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-id">C3</span>
+        <span class="step-desc">String parsing from WAL filename — no behaviour change for normal operation</span>
+        <span class="step-risk risk-low">low risk</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-id">C2</span>
+        <span class="step-desc">Abort partition flush if WAL write fails — test with WAL deliberately failing</span>
+        <span class="step-risk risk-low">low risk</span>
+      </div>
+      <div class="step">
+        <span class="step-num">4</span>
+        <span class="step-id">C6</span>
+        <span class="step-desc">Replace <code>chunk(0)</code> with <code>Concatenate</code> — test WAL replay directly</span>
+        <span class="step-risk risk-low">low risk</span>
+      </div>
+      <div class="step">
+        <span class="step-num">5</span>
+        <span class="step-id">C1</span>
+        <span class="step-desc">Self-pipe signal handler + poll-based flush wait — most structural change</span>
+        <span class="step-risk risk-med">medium risk</span>
+      </div>
+      <div class="step">
+        <span class="step-num">6</span>
+        <span class="step-id">C4</span>
+        <span class="step-desc"><code>mutex</code> → <code>shared_mutex</code> on the hot path — benchmark throughput after</span>
+        <span class="step-risk risk-high">benchmark after</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
