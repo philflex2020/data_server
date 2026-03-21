@@ -114,6 +114,16 @@ struct Config {
     // Disk space guard — skip flush if free space below threshold.
     // 0 = disabled (default).
     uint64_t    min_free_bytes {0};   // set via min_free_gb in config
+
+    // MQTT tuning — rarely need changing
+    int mqtt_keepalive_seconds     {60};   // broker keepalive interval
+    int mqtt_reconnect_min_seconds {2};    // exponential backoff min
+    int mqtt_reconnect_max_seconds {30};   // exponential backoff max
+    int mqtt_connect_retry_seconds {5};    // initial connect retry wait
+
+    // Flush retry tuning
+    int flush_max_retries          {3};    // attempts per partition per flush cycle
+    int flush_retry_base_seconds   {1};    // base for exponential backoff: 1s, 2s, 4s, …
 };
 
 // M12: validate config — catch bad values before they cause spin-loops or silent drops
@@ -160,6 +170,14 @@ Config load_config(const std::string& path) {
             }
             if (m["partition_field"])
                 cfg.partition_field = m["partition_field"].as<std::string>();
+            if (m["keepalive_seconds"])
+                cfg.mqtt_keepalive_seconds     = m["keepalive_seconds"].as<int>();
+            if (m["reconnect_min_seconds"])
+                cfg.mqtt_reconnect_min_seconds = m["reconnect_min_seconds"].as<int>();
+            if (m["reconnect_max_seconds"])
+                cfg.mqtt_reconnect_max_seconds = m["reconnect_max_seconds"].as<int>();
+            if (m["connect_retry_seconds"])
+                cfg.mqtt_connect_retry_seconds = m["connect_retry_seconds"].as<int>();
         }
         if (auto o = y["output"]) {
             if (o["base_path"])              cfg.base_path              = o["base_path"].as<std::string>();
@@ -167,7 +185,9 @@ Config load_config(const std::string& path) {
             if (o["compression"])            cfg.compression            = o["compression"].as<std::string>();
             if (o["flush_interval_seconds"]) cfg.flush_interval_seconds = o["flush_interval_seconds"].as<int>();
             if (o["max_messages_per_part"])  cfg.max_messages_per_part  = o["max_messages_per_part"].as<int>();
-            if (o["max_total_buffer_rows"])   cfg.max_total_buffer_rows   = o["max_total_buffer_rows"].as<int>();
+            if (o["max_total_buffer_rows"])    cfg.max_total_buffer_rows   = o["max_total_buffer_rows"].as<int>();
+            if (o["flush_max_retries"])        cfg.flush_max_retries        = o["flush_max_retries"].as<int>();
+            if (o["flush_retry_base_seconds"]) cfg.flush_retry_base_seconds = o["flush_retry_base_seconds"].as<int>();
             if (o["hot_file_path"])          cfg.hot_file_path          = o["hot_file_path"].as<std::string>();
             if (o["current_state_path"])     cfg.current_state_path     = o["current_state_path"].as<std::string>();
             if (o["partitions"]) {
@@ -265,8 +285,13 @@ std::optional<TopicInfo> parse_topic(const std::string& topic) {
         }
         auto eq = segment.find('=');
         if (eq != std::string::npos) {
-            try { info.kv[segment.substr(0, eq)] = std::stoi(segment.substr(eq + 1)); }
-            catch (...) {}
+            std::string kv_key = segment.substr(0, eq);
+            int kv_val;
+            try { kv_val = std::stoi(segment.substr(eq + 1)); }
+            catch (...) { continue; }
+            if (info.kv.count(kv_key))
+                std::cerr << "[topic] duplicate key '" << kv_key << "' in: " << topic << "\n";
+            info.kv[kv_key] = kv_val;
         } else if (!segment.empty()) {
             // No '=' — per_cell_item field name (e.g. "voltage" in .../cell=3/voltage)
             info.field_name = segment;
@@ -399,13 +424,16 @@ static parquet::Compression::type to_parquet_compression(const std::string& s) {
 // M3: shared Arrow table builder — was duplicated verbatim in flush_partition and write_wal_ipc
 static arrow::Result<std::shared_ptr<arrow::Table>>
 rows_to_arrow_table(const std::vector<Row>& rows) {
+    // m3: use std::set so column order is always alphabetically sorted, not first-seen order
     std::vector<std::string> int_cols, float_cols;
     {
-        std::map<std::string, bool> seen_i, seen_f;
+        std::set<std::string> seen_i, seen_f;
         for (const auto& r : rows) {
-            for (const auto& [k, _] : r.ints)   if (!seen_i[k]) { seen_i[k]=true; int_cols.push_back(k); }
-            for (const auto& [k, _] : r.floats) if (!seen_f[k]) { seen_f[k]=true; float_cols.push_back(k); }
+            for (const auto& [k, _] : r.ints)   seen_i.insert(k);
+            for (const auto& [k, _] : r.floats) seen_f.insert(k);
         }
+        int_cols.assign(seen_i.begin(), seen_i.end());
+        float_cols.assign(seen_f.begin(), seen_f.end());
     }
     std::vector<std::shared_ptr<arrow::Field>> fields;
     std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -455,8 +483,10 @@ arrow::Status flush_partition(const std::string& path,
 // Forward declarations for globals defined in "Buffer + flush thread" section
 // ---------------------------------------------------------------------------
 
-static const Config*         g_cfg{nullptr};
+static Config                g_cfg_storage{};
+static const Config*         g_cfg{&g_cfg_storage};  // m4: never null — safe in tests before main()
 static std::atomic<bool>     g_shutdown{false};
+static std::atomic<bool>     g_flush_needed{false};  // m2: sticky flag survives a busy flush thread
 static std::atomic<uint64_t> g_overflow_drops{0};
 static int                   g_signal_pipe[2] = {-1, -1};
 
@@ -495,18 +525,19 @@ static bool check_disk_space(const std::string& path, uint64_t min_bytes) {
 // WAL — Arrow IPC write-ahead log (only active when wal_enabled: true)
 // ---------------------------------------------------------------------------
 
-static std::string time_suffix() {
-    auto now = std::chrono::system_clock::now();
-    auto t   = std::chrono::system_clock::to_time_t(now);
+static std::string time_suffix(std::chrono::system_clock::time_point tp) {
+    auto t = std::chrono::system_clock::to_time_t(tp);
     std::tm tm{}; gmtime_r(&t, &tm);
     char buf[20]; strftime(buf, sizeof(buf), "%Y%m%dT%H%M%SZ", &tm);
     return buf;
 }
 
-static std::string wal_path_for(const Config& cfg, const std::string& source_type, int pval) {
+// m5: directory created once at startup, not on every flush call
+// m6: accepts flush_ts so WAL and Parquet filenames share the same clock read
+static std::string wal_path_for(const Config& cfg, const std::string& source_type, int pval,
+                                  std::chrono::system_clock::time_point tp) {
     std::string wp = cfg.wal_path.empty() ? cfg.base_path + "/.wal" : cfg.wal_path;
-    std::error_code ec; fs::create_directories(wp, ec);
-    return wp + "/" + source_type + "_" + std::to_string(pval) + "_" + time_suffix() + ".wal.arrow";
+    return wp + "/" + source_type + "_" + std::to_string(pval) + "_" + time_suffix(tp) + ".wal.arrow";
 }
 
 static arrow::Status write_wal_ipc(const std::string& path, const std::vector<Row>& rows) {
@@ -651,8 +682,8 @@ static void health_thread_fn(int port) {
         if (select(srv + 1, &fds, nullptr, nullptr, &tv) <= 0) continue;
         int cli = accept(srv, nullptr, nullptr);
         if (cli < 0) continue;
-        char buf[256] = {};                                      // M6: zero-init
-        auto n = recv(cli, buf, sizeof(buf) - 1, 0);            // M6: check return
+        char buf[4096] = {};                                     // m10: 4 KB covers Chrome/Firefox headers
+        auto n = recv(cli, buf, sizeof(buf) - 1, 0);
         if (n <= 0) { close(cli); continue; }
         // M7: only respond to GET /health
         std::string req(buf, static_cast<size_t>(n));
@@ -708,6 +739,7 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
         return;
     }
 
+    auto flush_ts    = std::chrono::system_clock::now();  // m6: single clock read for WAL+Parquet filenames
     auto flush_start = std::chrono::steady_clock::now();
     uint64_t flush_rows = 0;
     std::vector<Row> hot_rows;   // accumulated for hot file; empty if feature disabled
@@ -722,7 +754,7 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
         // WAL: write before parquet (only if enabled)
         std::string wal_file;
         if (g_cfg->wal_enabled) {
-            wal_file = wal_path_for(*g_cfg, key.source_type, key.partition_value);
+            wal_file = wal_path_for(*g_cfg, key.source_type, key.partition_value, flush_ts);
             auto ws = write_wal_ipc(wal_file, part.rows);
             if (!ws.ok()) {
                 std::cerr << "[wal] write failed (" << ws.ToString()
@@ -732,14 +764,15 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
             }
         }
 
-        auto path = make_output_path(*g_cfg, key.source_type, key.partition_value);
+        auto path = make_output_path(*g_cfg, key.source_type, key.partition_value, flush_ts);
         arrow::Status status;
-        constexpr int MAX_RETRIES = 3;
-        for (int attempt = 0; attempt <= MAX_RETRIES; ++attempt) {
+        const int max_retries  = g_cfg->flush_max_retries;
+        const int retry_base_s = g_cfg->flush_retry_base_seconds;
+        for (int attempt = 0; attempt <= max_retries; ++attempt) {
             if (attempt > 0) {
-                std::cerr << "[flush] retry " << attempt << "/" << MAX_RETRIES
+                std::cerr << "[flush] retry " << attempt << "/" << max_retries
                           << " for " << path << "\n";
-                std::this_thread::sleep_for(std::chrono::seconds(1 << (attempt - 1))); // 1s, 2s, 4s
+                std::this_thread::sleep_for(std::chrono::seconds(retry_base_s << (attempt - 1)));
             }
             status = flush_partition(path, part.rows, g_cfg->compression);
             if (status.ok()) break;
@@ -750,7 +783,8 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
             std::cout << "[flush] " << part.rows.size() << " rows → " << path << "\n";
             if (!wal_file.empty()) { std::error_code ec; fs::remove(wal_file, ec); }
         } else {
-            std::cerr << "[flush] PERMANENT ERROR — " << part.rows.size() << " rows LOST for "
+            std::cerr << "[flush] PERMANENT ERROR after " << max_retries << " retries — "
+                      << part.rows.size() << " rows LOST for "
                       << key.source_type << "/" << g_cfg->partition_field
                       << "=" << key.partition_value << ": " << status.ToString() << "\n";
             if (!wal_file.empty())
@@ -811,14 +845,12 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
 
 static void flush_thread_fn() {
     while (!g_shutdown) {
+        // m2: skip the poll if a flush was requested while we were busy last cycle
+        if (!g_flush_needed.exchange(false)) {
+            struct pollfd pfd = { g_signal_pipe[0], POLLIN, 0 };
+            poll(&pfd, 1, g_cfg->flush_interval_seconds * 1000);
+        }
         std::unique_lock<std::mutex> lock(g_mutex);
-        lock.unlock();
-        struct pollfd pfd =
-            { g_signal_pipe[0], POLLIN, 0 };
-        poll(&pfd, 1,
-            g_cfg->flush_interval_seconds * 1000);
-        lock.lock();
-
         auto to_flush  = std::exchange(g_buffers, {});
         g_total_buffered = 0;                       // reset counter atomically with buffer swap
         g_health_buffer_rows.store(0);              // C5: health endpoint now correctly shows 0 after flush
@@ -845,8 +877,11 @@ static void on_connect(struct mosquitto*, void*, int rc) {
         // mosquitto_loop_start handles TCP reconnect but not resubscription.
         int sub_rc = mosquitto_subscribe(g_mosq.load(), nullptr,
                                          g_cfg->mqtt_topic.c_str(), g_cfg->mqtt_qos);
-        if (sub_rc != MOSQ_ERR_SUCCESS)
-            std::cerr << "[mqtt] subscribe failed: " << mosquitto_strerror(sub_rc) << "\n";
+        if (sub_rc != MOSQ_ERR_SUCCESS) {
+            std::cerr << "[mqtt] subscribe failed (" << mosquitto_strerror(sub_rc)
+                      << ") — disconnecting to force reconnect\n";
+            mosquitto_disconnect(g_mosq.load());  // m9: triggers on_connect again rather than silently receiving nothing
+        }
     } else {
         std::cerr << "[mqtt] connect failed: " << mosquitto_connack_string(rc) << "\n";
     }
@@ -871,7 +906,8 @@ static void handle_sync_message(const std::string& payload) {
     if (session != g_sync_session_id) {
         if (!g_sync_session_id.empty())
             std::cout << "[sync] new session " << session
-                      << " (was " << g_sync_session_id << ") — counters reset\n";
+                      << " (was " << g_sync_session_id << ") — counters reset"
+                      << " (drops before first _sync of new session are not counted)\n";
         g_sync_session_id     = session;
         g_received_since_sync = 0;
         g_sync_drops_detected = 0;  // M2: reset cumulative drop count for new session
@@ -944,6 +980,7 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
         if (drops == 1 || drops % 10000 == 0)
             std::cerr << "[buffer] OVERFLOW — dropped " << drops
                       << " rows (max_total_buffer_rows=" << g_cfg->max_total_buffer_rows << ")\n";
+        g_flush_needed.store(true);  // m2: sticky — survives a busy flush thread
         g_flush_cv.notify_one();
         return;
     }
@@ -957,8 +994,10 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
     ++g_total_buffered;
     g_health_buffer_rows.store(g_total_buffered);
     ++g_received_since_sync;
-    if (static_cast<int>(part.rows.size()) >= g_cfg->max_messages_per_part)
+    if (static_cast<int>(part.rows.size()) >= g_cfg->max_messages_per_part) {
+        g_flush_needed.store(true);  // m2: sticky
         g_flush_cv.notify_one();
+    }
 }
 
 static void on_disconnect(struct mosquitto*, void*, int rc) {
@@ -992,13 +1031,18 @@ static void handle_signal(int) {
 
 static void print_help(const char* prog) {
     std::cout <<
-"Usage: " << prog << " [--config <path>] [--help]\n"
+"Usage: " << prog << " [--config <path>] [options] [--help]\n"
 "\n"
 "MQTT → partitioned Parquet writer for battery telemetry.\n"
 "\n"
-"Options:\n"
-"  --config <path>   YAML config file (default: config.yaml)\n"
-"  --help            Show this help and exit\n"
+"Options (override config file values):\n"
+"  --config <path>        YAML config file (default: config.yaml)\n"
+"  --host <hostname>      MQTT broker host (overrides mqtt.host)\n"
+"  --port <n>             MQTT broker port (overrides mqtt.port)\n"
+"  --output <path>        Parquet output directory (overrides output.base_path)\n"
+"  --health-port <n>      Health endpoint port (overrides health.port)\n"
+"  --flush-interval <n>   Flush interval seconds (overrides output.flush_interval_seconds)\n"
+"  --help                 Show this help and exit\n"
 "\n"
 "Core config (output section):\n"
 "  base_path              Local directory for Parquet output\n"
@@ -1048,19 +1092,47 @@ static void print_help(const char* prog) {
 
 int main(int argc, char* argv[]) {
     std::string config_path = "config.yaml";
+    // CLI overrides applied after config load — take precedence over config file
+    std::string cli_host, cli_output;
+    int cli_port = 0, cli_health_port = 0, cli_flush_interval = 0;
     for (int i = 1; i < argc; i++) {
-        if (std::string(argv[i]) == "--help") { print_help(argv[0]); return 0; }
-        if (std::string(argv[i]) == "--config" && i + 1 < argc) config_path = argv[++i];
+        std::string a(argv[i]);
+        if (a == "--help")                              { print_help(argv[0]); return 0; }
+        if (a == "--config"       && i + 1 < argc)     config_path      = argv[++i];
+        else if (a == "--host"    && i + 1 < argc)     cli_host         = argv[++i];
+        else if (a == "--port"    && i + 1 < argc)     cli_port         = std::atoi(argv[++i]);
+        else if (a == "--output"  && i + 1 < argc)     cli_output       = argv[++i];
+        else if (a == "--health-port" && i + 1 < argc) cli_health_port  = std::atoi(argv[++i]);
+        else if (a == "--flush-interval" && i+1 < argc)cli_flush_interval = std::atoi(argv[++i]);
     }
 
     Config cfg = load_config(config_path);
+    // Apply CLI overrides
+    if (!cli_host.empty())         cfg.mqtt_host              = cli_host;
+    if (cli_port > 0)              cfg.mqtt_port              = cli_port;
+    if (!cli_output.empty())       cfg.base_path              = cli_output;
+    if (cli_health_port > 0)       cfg.health_port            = cli_health_port;
+    if (cli_flush_interval > 0)    cfg.flush_interval_seconds = cli_flush_interval;
+
     if (!validate_config(cfg)) return 1;   // M12
-    g_cfg = &cfg;
+    g_cfg_storage = cfg;  // m4: copy into static storage so g_cfg is never null
+
+    // m5: create WAL directory once at startup rather than on every flush call
+    if (cfg.wal_enabled) {
+        std::string wp = cfg.wal_path.empty() ? cfg.base_path + "/.wal" : cfg.wal_path;
+        std::error_code ec;
+        fs::create_directories(wp, ec);
+        if (ec) { std::cerr << "[wal] mkdir failed: " << ec.message() << "\n"; return 1; }
+    }
 
     std::signal(SIGINT,  handle_signal);
     std::signal(SIGTERM, handle_signal);
 
-    mosquitto_lib_init();
+    // m11: check return value — undefined behaviour if init fails
+    if (mosquitto_lib_init() != MOSQ_ERR_SUCCESS) {
+        std::cerr << "[init] mosquitto_lib_init failed\n";
+        return 1;
+    }
     if (pipe(g_signal_pipe) != 0) {
         std::cerr << "[init] pipe() failed: " << strerror(errno) << "\n";
         return 1;
@@ -1078,14 +1150,17 @@ int main(int argc, char* argv[]) {
     mosquitto_message_callback_set(mosq, on_message);
     mosquitto_disconnect_callback_set(mosq, on_disconnect);
     mosquitto_log_callback_set(mosq, on_log);
-    mosquitto_reconnect_delay_set(mosq, 2, 30, /*exponential=*/true);
+    mosquitto_reconnect_delay_set(mosq, cfg.mqtt_reconnect_min_seconds,
+                                       cfg.mqtt_reconnect_max_seconds, /*exponential=*/true);
 
     // Initial connect (retry until broker is up); subscription happens in on_connect
     while (!g_shutdown) {
-        int rc = mosquitto_connect(mosq, cfg.mqtt_host.c_str(), cfg.mqtt_port, /*keepalive=*/60);
+        int rc = mosquitto_connect(mosq, cfg.mqtt_host.c_str(), cfg.mqtt_port,
+                                   cfg.mqtt_keepalive_seconds);
         if (rc == MOSQ_ERR_SUCCESS) break;
-        std::cerr << "[mqtt] connect: " << mosquitto_strerror(rc) << " — retrying in 5s\n";
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::cerr << "[mqtt] connect: " << mosquitto_strerror(rc)
+                  << " — retrying in " << cfg.mqtt_connect_retry_seconds << "s\n";
+        std::this_thread::sleep_for(std::chrono::seconds(cfg.mqtt_connect_retry_seconds));
     }
 
     std::cout << "[writer] topic='" << cfg.mqtt_topic

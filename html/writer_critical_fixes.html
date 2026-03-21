@@ -170,7 +170,7 @@
   <h1>writer.cpp — Critical, Major &amp; Minor Fixes</h1>
   <p class="subtitle">
     Companion to <a href="writer_code_review.html">writer_code_review.html</a> ·
-    6 critical · 14 major · 11 minor · before/after code and suggested fixes
+    6 critical · 14 major · 11 minor · before/after code and suggested fixes · sync-free analysis
   </p>
 
   <div class="nav">
@@ -180,6 +180,7 @@
     <a href="#C4">C4 Lock contention</a>
     <a href="#C5">C5 Health buffer_rows</a>
     <a href="#C6">C6 WAL chunk(0)</a>
+    <a href="#sync-free">Sync-free operation</a>
   </div>
 
   <!-- ── C1 ──────────────────────────────────────────────────────────────── -->
@@ -1043,34 +1044,35 @@ if (row.ints.count(key) == 0)
   <div class="fix" id="m1">
     <div class="fix-header">
       <span class="fix-id min">m1</span>
-      <span class="fix-title">Magic numbers — backlog, retries, backoff, keepalive, reconnect delays all hardcoded
-        <span class="fix-lines">lines 609, 683, 687, 1011, 1015, 1018</span>
+      <span class="fix-title">Magic numbers — keepalive, reconnect delays, retry counts all hardcoded; no CLI overrides
+        <span class="fix-lines">Config struct · load_config · main()</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
-      <p>None of the operational timing constants are configurable. Changing keepalive from 60s requires a recompile. At minimum, define named constants instead of inline literals so they're findable and self-documenting.</p>
+      <p>Added six configurable fields to <code>Config</code> with the current values as defaults (no behaviour change unless overridden). Also added five CLI flags that override config-file values without editing the file — useful when running multiple writers on the same box.</p>
       <div class="diff">
         <div class="code-block">
-          <div class="code-label before">Before — scattered magic numbers</div>
-          <pre>listen(srv, 4);                    // health backlog
-constexpr int MAX_RETRIES = 3;    // parquet retry count
-sleep_for(seconds(1 &lt;&lt; attempt)); // 1s/2s/4s backoff
-mosquitto_connect(..., 60);        // keepalive
-reconnect_delay_set(mosq, 2, 30); // min/max delay
-sleep_for(seconds(5));            // connect retry</pre>
+          <div class="code-label after">Config fields added (config.yaml — commented-out defaults shown)</div>
+          <pre># mqtt section:
+# keepalive_seconds: 60
+# reconnect_min_seconds: 2
+# reconnect_max_seconds: 30
+# connect_retry_seconds: 5
+
+# output section:
+# flush_max_retries: 3
+# flush_retry_base_seconds: 1   # gives 1s / 2s / 4s backoff</pre>
         </div>
         <div class="code-block">
-          <div class="code-label after">After — named constants (or config fields)</div>
-          <pre>// Near top of file or in Config struct:
-static constexpr int  HEALTH_BACKLOG       = 4;
-static constexpr int  FLUSH_MAX_RETRIES    = 3;
-static constexpr int  MQTT_KEEPALIVE_S     = 60;
-static constexpr int  MQTT_RECONNECT_MIN_S = 2;
-static constexpr int  MQTT_RECONNECT_MAX_S = 30;
-static constexpr int  MQTT_CONNECT_RETRY_S = 5;</pre>
+          <div class="code-label after">CLI overrides added</div>
+          <pre>--host &lt;hostname&gt;        overrides mqtt.host
+--port &lt;n&gt;              overrides mqtt.port
+--output &lt;path&gt;         overrides output.base_path
+--health-port &lt;n&gt;       overrides health.port
+--flush-interval &lt;n&gt;    overrides output.flush_interval_seconds</pre>
         </div>
       </div>
-      <p style="color:var(--muted);font-size:.85rem;">For full configurability, add these as optional fields in <code>Config</code> with the current values as defaults — no behaviour change, but runtime-tunable.</p>
     </div>
   </div>
 
@@ -1081,6 +1083,7 @@ static constexpr int  MQTT_CONNECT_RETRY_S = 5;</pre>
       <span class="fix-title">Overflow <code>notify_one</code> is lost if flush thread is mid-flush — drops continue for full interval
         <span class="fix-lines">lines 941–948</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p><code>notify_one</code> only wakes the flush thread if it is blocked in <code>poll()</code>. If the flush thread is busy doing Parquet I/O (outside the poll), the notification is silently discarded. The next flush won't start until the full <code>flush_interval_seconds</code> has elapsed — all overflow drops in that window are unrecoverable.</p>
@@ -1117,6 +1120,7 @@ if (!g_flush_needed.exchange(false)) {
       <span class="fix-title">Parquet column order non-deterministic across flush cycles
         <span class="fix-lines">rows_to_arrow_table()</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>Column order is determined by which row is seen first in each flush batch. If the first row of one cycle lacks a field that later rows have, the column position shifts. DuckDB is unaffected but the files are confusing to inspect with <code>parquet-tools</code> or pandas.</p>
@@ -1153,6 +1157,7 @@ float_cols.assign(seen_f.begin(), seen_f.end());</pre>
       <span class="fix-title"><code>g_cfg</code> is a raw pointer to a stack <code>Config</code> — null dereference in tests
         <span class="fix-lines">line 458</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p><code>g_cfg</code> is <code>nullptr</code> until <code>main()</code> sets it. Any unit test that calls a function referencing <code>g_cfg</code> before <code>main()</code> runs will segfault. The fix is trivial: make it a pointer to a static default-constructed <code>Config</code>, never null.</p>
@@ -1181,6 +1186,7 @@ g_cfg_storage = cfg;   // copy loaded config in</pre>
       <span class="fix-title"><code>wal_path_for</code> calls <code>create_directories</code> on every flush, every partition
         <span class="fix-lines">wal_path_for() ~line 507</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>At 10k partitions and a 60-second flush cycle, that's 10k redundant <code>stat</code>+<code>mkdir</code> syscall sequences per flush. The WAL directory doesn't change between flushes.</p>
@@ -1224,6 +1230,7 @@ static std::string wal_path_for(...) {
       <span class="fix-title">WAL filename and Parquet filename can differ by one second at a clock boundary
         <span class="fix-lines">time_suffix() vs make_output_path()</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p><code>wal_path_for</code> calls <code>time_suffix()</code> and <code>make_output_path</code> calls <code>system_clock::now()</code> independently. If they straddle a second boundary the WAL file is named <code>…T120000Z.wal.arrow</code> while the Parquet file is named <code>…T120001Z.parquet</code>. The WAL cleanup logic that deletes the WAL on success still works (it holds the full path), but the filenames are confusing.</p>
@@ -1254,6 +1261,7 @@ auto path = make_output_path(*g_cfg, ..., flush_ts);
       <span class="fix-title">First <code>_sync</code> of a new session always logs OK — drops before it arrived are invisible
         <span class="fix-lines">handle_sync_message()</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>When a session change is detected the counters reset and the function returns early, skipping the drop check. This is correct — there's genuinely no prior sync to compare against. But messages dropped <em>between</em> session start and the first <code>_sync</code> of that session are permanently invisible. The current comment says "documented but not prominently".</p>
@@ -1290,6 +1298,7 @@ auto path = make_output_path(*g_cfg, ..., flush_ts);
       <span class="fix-title"><code>parse_topic</code> silently overwrites duplicate key-value segments
         <span class="fix-lines">lines 227–234</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>If a topic path contains <code>site=1/rack=2/site=3</code>, the second <code>site=3</code> silently overwrites the first with no warning. The resulting row has <code>site=3</code> with no indication that the topic was malformed.</p>
@@ -1323,6 +1332,7 @@ info.kv[kv_key] = kv_val;</pre>
       <span class="fix-title"><code>mosquitto_subscribe</code> failure in <code>on_connect</code> not retried — writer receives nothing
         <span class="fix-lines">on_connect() ~line 802</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>If <code>mosquitto_subscribe</code> fails (e.g. broker ACL rejection, out of memory), the writer logs the error and continues. It is now connected to the broker but subscribed to nothing — it receives zero messages indefinitely with no further indication. The reconnect loop in <code>mosquitto_loop_start</code> only fires on TCP disconnect, not on subscribe failure.</p>
@@ -1358,6 +1368,7 @@ if (sub_rc != MOSQ_ERR_SUCCESS) {
       <span class="fix-title">Health endpoint <code>recv</code> buffer 255 bytes — too small for Chrome/Firefox headers
         <span class="fix-lines">health_thread_fn()</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>Chrome and Firefox send 500–2000 byte GET headers (User-Agent, Accept, Cookie, etc.). The 255-byte buffer silently truncates the request. The path/method check added by M7 may fail to match <code>/health</code> if it falls beyond byte 255, causing spurious 404s from real browser requests.</p>
@@ -1383,6 +1394,7 @@ auto n = recv(cli, buf, sizeof(buf) - 1, 0);</pre>
       <span class="fix-title"><code>mosquitto_lib_init()</code> return value unchecked — crash if init fails
         <span class="fix-lines">main() ~line 1064</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p><code>mosquitto_lib_init()</code> can return <code>MOSQ_ERR_UNKNOWN</code> if the underlying platform library fails to initialise. All subsequent mosquitto calls will produce undefined behaviour. <code>mosquitto_lib_cleanup()</code> is also called unconditionally in the shutdown path even if init failed.</p>
@@ -1399,6 +1411,64 @@ auto n = recv(cli, buf, sizeof(buf) - 1, 0);</pre>
 }</pre>
         </div>
       </div>
+    </div>
+  </div>
+
+
+  <h2 class="section" id="sync-free">Sync-free Operation</h2>
+
+  <div class="fix">
+    <div class="fix-header">
+      <span class="fix-id" style="background:rgba(88,166,255,.12);color:var(--blue);border-color:rgba(88,166,255,.3);">INFO</span>
+      <span class="fix-title">_sync messages are optional — writer operates correctly with zero sync traffic</span>
+    </div>
+    <div class="fix-body">
+      <p style="margin-bottom:.8rem">
+        Verified 2026-03-21. The <code>_sync</code> message path is a pure optional drop-detection
+        overlay. Every code path that matters for data integrity (parse → buffer → flush → WAL →
+        Parquet) is completely independent of sync.
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="text-align:left;padding:.4rem .6rem">Symbol</th>
+            <th style="text-align:left;padding:.4rem .6rem">Behaviour without sync</th>
+            <th style="text-align:left;padding:.4rem .6rem">Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem"><code>_sync</code> intercept<br><small style="color:var(--muted)">on_message line 910–913</small></td>
+            <td style="padding:.4rem .6rem">Branch never taken. All messages flow to normal parse path.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem"><code>g_received_since_sync</code><br><small style="color:var(--muted)">uint64_t, line 699 / incremented line 959</small></td>
+            <td style="padding:.4rem .6rem">Grows monotonically. Only read inside <code>handle_sync_message()</code>, which is never called. Wraps at 1.8×10¹⁹ — at 80k msg/sec that is ~7 billion years.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem"><code>g_sync_drops_detected</code><br><code>g_sync_session_id</code></td>
+            <td style="padding:.4rem .6rem">Stay at zero / empty string forever. Never written or read outside <code>handle_sync_message()</code>.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem">Health endpoint<br><small style="color:var(--muted)">/health JSON</small></td>
+            <td style="padding:.4rem .6rem">Reports <code>"sync_session": ""</code> and <code>"sync_drops": 0</code>. Valid JSON, not broken — just shows feature inactive.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr>
+            <td style="padding:.4rem .6rem">Flush / WAL / Parquet</td>
+            <td style="padding:.4rem .6rem">Completely unaffected. No flush, WAL write, or Parquet path reads any sync variable.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top:.9rem;color:var(--muted);font-size:.85rem">
+        The only effect of having no sync traffic is that drop detection is silent — there are no
+        false positives, no stalls, and no crashes. The feature simply contributes nothing until
+        a stress_runner that emits <code>_sync</code> messages is connected.
+      </p>
     </div>
   </div>
 

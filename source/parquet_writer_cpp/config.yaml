@@ -5,6 +5,12 @@ mqtt:
   topic: "#"
   qos: 1
 
+  # Connection tuning — defaults work for local FlashMQ; adjust for WAN brokers.
+  # keepalive_seconds: 60       # MQTT keepalive interval sent to broker
+  # reconnect_min_seconds: 2    # exponential-backoff reconnect floor
+  # reconnect_max_seconds: 30   # exponential-backoff reconnect ceiling
+  # connect_retry_seconds: 5    # wait between initial connect attempts
+
   # Maps topic kv key → row column name (all stored as int64).
   # Omit to use the defaults below. Add or rename keys for other sensor topologies.
   topic_kv_map:
@@ -30,6 +36,10 @@ output:
   flush_interval_seconds: 60
   max_messages_per_part: 5000000
   max_total_buffer_rows: 2000000  # ~25s at 80k msgs/sec
+
+  # Parquet write retry tuning
+  # flush_max_retries: 3          # attempts per partition before rows are lost
+  # flush_retry_base_seconds: 1   # backoff base: 1s, 2s, 4s per attempt
 
   # Current-state file — one row per unique sensor, always the latest reading.
   # Intended for the AWS writer instance: writer.cpp subscribes to the FlashMQ
