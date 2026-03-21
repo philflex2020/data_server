@@ -69,6 +69,9 @@ static int parquet_cols(const std::string& path) {
     try { return std::stoi(buf); } catch (...) { return -1; }
 }
 
+// Default config for tests — uses same defaults as Config struct (standard topic_kv_map)
+static const Config g_test_cfg;
+
 // ---------------------------------------------------------------------------
 // parse_topic
 // ---------------------------------------------------------------------------
@@ -129,7 +132,7 @@ TEST("parse_payload: nested {value,unit} format") {
     auto r = parse_payload(
         R"({"timestamp":1700000000.0,"voltage":{"value":3.7,"unit":"V"},)"
         R"("current":{"value":-5.2,"unit":"A"}})",
-        t, /*project_id=*/0);
+        t, /*project_id=*/0, g_test_cfg);
 
     EXPECT_NEAR(r.floats.at("timestamp"), 1700000000.0, 1.0);
     EXPECT_NEAR(r.floats.at("voltage"),   3.7,           1e-6);
@@ -138,14 +141,14 @@ TEST("parse_payload: nested {value,unit} format") {
 
 TEST("parse_payload: flat scalar format") {
     auto t = *parse_topic("batteries/site=0/rack=0/module=0/cell=0");
-    auto r = parse_payload(R"({"timestamp":1.0,"voltage":3.7,"soc":80.5})", t, 0);
+    auto r = parse_payload(R"({"timestamp":1.0,"voltage":3.7,"soc":80.5})", t, 0, g_test_cfg);
     EXPECT_NEAR(r.floats.at("voltage"), 3.7,  1e-6);
     EXPECT_NEAR(r.floats.at("soc"),     80.5, 1e-6);
 }
 
 TEST("parse_payload: metadata from topic injected as int columns") {
     auto t = *parse_topic("batteries/site=5/rack=2/module=1/cell=3");
-    auto r = parse_payload(R"({"timestamp":1.0})", t, /*project_id=*/7);
+    auto r = parse_payload(R"({"timestamp":1.0})", t, /*project_id=*/7, g_test_cfg);
     EXPECT_EQ(r.ints.at("project_id"), 7);
     EXPECT_EQ(r.ints.at("site_id"),    5);
     EXPECT_EQ(r.ints.at("rack_id"),    2);
@@ -155,14 +158,14 @@ TEST("parse_payload: metadata from topic injected as int columns") {
 
 TEST("parse_payload: bad JSON does not crash, topic metadata still present") {
     auto t = *parse_topic("batteries/site=0/rack=0/module=0/cell=0");
-    auto r = parse_payload("{not valid json!!}", t, 0);
+    auto r = parse_payload("{not valid json!!}", t, 0, g_test_cfg);
     EXPECT_EQ(r.ints.at("site_id"), 0);   // topic metadata intact
     EXPECT_TRUE(r.floats.empty());        // no payload data
 }
 
 TEST("parse_payload: empty JSON object") {
     auto t = *parse_topic("solar/site=3/rack=1/module=0/cell=2");
-    auto r = parse_payload("{}", t, 0);
+    auto r = parse_payload("{}", t, 0, g_test_cfg);
     EXPECT_EQ(r.ints.at("site_id"), 3);
     EXPECT_TRUE(r.floats.empty());
 }
@@ -171,7 +174,7 @@ TEST("parse_payload: int columns from payload take int type") {
     auto t = *parse_topic("batteries/site=0/rack=0/module=0/cell=0");
     // site_id appearing in payload — topic value should already be there,
     // payload int_col value overrides (both are same type)
-    auto r = parse_payload(R"({"timestamp":1.0,"site_id":99})", t, 0);
+    auto r = parse_payload(R"({"timestamp":1.0,"site_id":99})", t, 0, g_test_cfg);
     EXPECT_EQ(r.ints.at("site_id"), 99);
 }
 
@@ -187,7 +190,7 @@ TEST("parse_payload: full battery payload all 7 measurements") {
             "soh":          {"value": 98.0,  "unit": "%"},
             "resistance":   {"value": 0.01,  "unit": "ohm"},
             "capacity":     {"value": 100.0, "unit": "Ah"}
-        })", t, 0);
+        })", t, 0, g_test_cfg);
     EXPECT_EQ(r.floats.size(), 8u);   // timestamp + 7 measurements
 }
 
@@ -202,7 +205,7 @@ TEST("parse_payload: full solar payload all 6 measurements") {
             "dc_current":  {"value": 8.0,   "unit": "A"},
             "ac_power":    {"value": 180.0, "unit": "W"},
             "efficiency":  {"value": 20.0,  "unit": "%"}
-        })", t, 0);
+        })", t, 0, g_test_cfg);
     EXPECT_EQ(r.floats.size(), 7u);
 }
 

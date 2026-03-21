@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Docker Torture Test</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; line-height: 1.6; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.9rem; margin: 18px 0 6px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+
+  pre  { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; color: #e6edf3; margin: 8px 0; }
+  pre.result { background: #0d1a0d; border-color: #1a4a1a; }
+  pre.shell  { background: #0d0d1a; border-color: #1a1a4a; }
+
+  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: #e6edf3; }
+
+  .kw   { color: #ff7b72; }
+  .fn   { color: #d2a8ff; }
+  .str  { color: #a5d6ff; }
+  .num  { color: #79c0ff; }
+  .cmt  { color: #8b949e; }
+  .ok   { color: #3fb950; }
+  .warn { color: #d29922; }
+  .err  { color: #f85149; }
+  .py   { color: #ffa657; }
+
+  p { margin-bottom: 8px; font-size: 0.88rem; }
+  ul { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+  .lbl { font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; display: block; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
+  .badge-break { background: #3d0a0a; color: var(--red);    border: 1px solid #7a1515; }
+  .badge-warn  { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-info  { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .badge-ok    { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 12px; }
+  th { background: #21262d; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+
+  .alert { border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 0.88rem; border-left: 4px solid; }
+  .alert-info { background: #0c2d6b22; border-color: var(--accent); }
+  .alert-ok   { background: #0d442922; border-color: var(--green); }
+  .alert-warn { background: #2d200022; border-color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<h1>writer.cpp — Docker Torture Test</h1>
+<p class="subtitle">
+  Supermicro lab server · 256 GB RAM · full-topology parallel container runs ·
+  sustained failure injection across all 6 critical/major fixes from Review 2
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_diff_detector.html">Diff Detector (Python)</a>
+  <a href="writer_duck_diff_detector.html">DuckDB Diff</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html" class="here">Torture Test</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Overview</h2>
+
+<div class="section">
+  <div class="grid2">
+    <div class="card">
+      <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Lab server capacity</div>
+      <ul>
+        <li><strong>256 GB RAM</strong> — run dozens of full topologies in parallel</li>
+        <li>Each topology: FlashMQ broker + writer.cpp + stress_runner = ~300 MB RSS</li>
+        <li>Comfortably fit <strong>4 simultaneous writer instances</strong> at 80k msgs/sec each</li>
+        <li>Docker named volumes isolate output dirs per writer</li>
+        <li>All containers on a private <code>supermicro</code> bridge network</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div style="color:var(--accent);font-weight:600;margin-bottom:8px">What must survive</div>
+      <ul>
+        <li><strong>NC1</strong> — WAL replay writes to original date partition, not today</li>
+        <li><strong>NC2</strong> — atomic temp+rename on flush, no partial .parquet files</li>
+        <li><strong>NC3</strong> — remove() in destructor never throws, flush thread stays up</li>
+        <li><strong>NC4</strong> — pipe wake on overflow, no 60-second CV stall</li>
+        <li><strong>NM2</strong> — poll() replaces select(), FD &gt; 1023 safe on health endpoint</li>
+        <li><strong>NM4</strong> — SensorKey includes writer_id, no cross-contamination</li>
+      </ul>
+    </div>
+  </div>
+  <div class="alert alert-warn" style="margin-top:14px">
+    <strong>Goal:</strong> every scenario runs to completion with zero data loss, no process crash,
+    correct WAL replay to correct date partition, and no corrupt .parquet files on disk.
+    A single BREAK in any scenario is a release blocker.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Scenario Table</h2>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:18%">Scenario</th>
+        <th style="width:20%">Fix tested</th>
+        <th style="width:30%">Failure injection method</th>
+        <th style="width:32%">Pass criterion</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>S1: Broker kill + restart</strong></td>
+        <td>WAL accumulation + <span class="badge badge-warn">NC1</span> WAL date fix</td>
+        <td><code>docker stop flashmq</code> for 30 s then <code>docker start flashmq</code></td>
+        <td>WAL replays to original date partition, not today's date. Zero rows written to wrong dir.</td>
+      </tr>
+      <tr>
+        <td><strong>S2: Disk fill to limit</strong></td>
+        <td><span class="badge badge-warn">disk guard</span></td>
+        <td><code>fallocate -l &lt;N&gt;G</code> fills mount to within <code>min_free_bytes</code> of the limit</td>
+        <td>Writer logs <code>LOW SPACE</code>, stops accepting new flushes, does not crash or corrupt existing files.</td>
+      </tr>
+      <tr>
+        <td><strong>S3: Output dir read-only mid-flush</strong></td>
+        <td><span class="badge badge-warn">NC2</span> temp+rename &amp; <span class="badge badge-warn">NC3</span> no-throw remove</td>
+        <td><code>chmod 000</code> on output dir for 500 ms during a flush window, then <code>chmod 755</code></td>
+        <td>No corrupt .parquet files on disk. Flush thread keeps running after the window closes; next flush succeeds.</td>
+      </tr>
+      <tr>
+        <td><strong>S4: Sustained buffer overflow</strong></td>
+        <td><span class="badge badge-warn">NC4</span> pipe wake (no 60 s stall)</td>
+        <td>Broker rate-limited to 1/10 normal throughput via <code>tc netem delay</code> while stress runner runs full speed</td>
+        <td><code>overflow_drops</code> logged; flush triggered within 1 s of overflow. No 60-second CV stall window in logs.</td>
+      </tr>
+      <tr>
+        <td><strong>S5: Writer kill -9 during flush</strong></td>
+        <td>WAL replay integrity</td>
+        <td><code>kill -9</code> writer PID at random 5 s intervals; supervisor restarts immediately</td>
+        <td>All rows in WAL replayed exactly once: no duplicates, no data loss. DuckDB row count matches expected.</td>
+      </tr>
+      <tr>
+        <td><strong>S6: Health endpoint FD stress</strong></td>
+        <td><span class="badge badge-warn">NM2</span> poll fix</td>
+        <td>Open 2 000 simultaneous TCP connections to health port with <code>ab -c 2000 -n 4000</code></td>
+        <td>No crash. All connections answered or cleanly refused. <code>select()</code> FD &gt; 1023 crash absent from logs.</td>
+      </tr>
+      <tr>
+        <td><strong>S7: Two writers, same broker</strong></td>
+        <td><span class="badge badge-warn">NM4</span> SensorKey isolation</td>
+        <td>Two writer containers (<code>writer-a</code>, <code>writer-b</code>), different output dirs, same MQTT topic space</td>
+        <td>No cross-contamination in <code>current_state</code> map. Row counts per writer match stress runner publish counts independently (within 1%).</td>
+      </tr>
+      <tr>
+        <td><strong>S8: 24 h soak — all faults combined</strong></td>
+        <td>All fixes together</td>
+        <td>S1–S4 fault injection on a 60 s rotating cycle for 24 h continuous</td>
+        <td>Zero crashes. WAL dates correct throughout. No corrupt files. Health endpoint always responds. Row loss &lt; 0.01%.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>docker-compose.yml</h2>
+
+<div class="section">
+  <p>Place this file at <code>docker/torture/docker-compose.yml</code> in the repo root.
+     Build the writer image first (see Quick-start). All four writer instances share the same
+     FlashMQ broker but write to isolated named volumes.</p>
+
+<pre><span class="cmt"># docker/torture/docker-compose.yml</span>
+<span class="kw">version</span>: <span class="str">"3.9"</span>
+
+<span class="kw">networks</span>:
+  <span class="fn">supermicro</span>:
+    <span class="kw">driver</span>: bridge
+
+<span class="kw">volumes</span>:
+  <span class="fn">data-writer-a</span>: {}
+  <span class="fn">data-writer-b</span>: {}
+  <span class="fn">data-writer-c</span>: {}
+  <span class="fn">data-writer-d</span>: {}
+
+<span class="kw">services</span>:
+
+  <span class="cmt"># ── MQTT broker ───────────────────────────────────────────────────</span>
+  <span class="fn">flashmq</span>:
+    <span class="kw">image</span>: flashmq/flashmq:latest
+    <span class="kw">container_name</span>: flashmq
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">ports</span>:
+      - <span class="str">"1883:1883"</span>
+    <span class="kw">networks</span>:
+      - supermicro
+
+  <span class="cmt"># ── Stress runner ─────────────────────────────────────────────────</span>
+  <span class="fn">stress-runner</span>:
+    <span class="kw">image</span>: parquet-writer:latest
+    <span class="kw">container_name</span>: stress-runner
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">depends_on</span>:
+      - flashmq
+    <span class="kw">environment</span>:
+      MQTT_HOST: flashmq
+      MQTT_PORT: <span class="num">1883</span>
+    <span class="kw">command</span>: >
+      .venv/bin/python source/stress_runner/stress_runner.py
+      --config source/stress_runner/config.yaml
+    <span class="kw">networks</span>:
+      - supermicro
+
+  <span class="cmt"># ── Writer A ──────────────────────────────────────────────────────</span>
+  <span class="fn">writer-a</span>:
+    <span class="kw">image</span>: parquet-writer:latest
+    <span class="kw">container_name</span>: writer-a
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">depends_on</span>:
+      - flashmq
+    <span class="kw">environment</span>:
+      WRITER_ID: writer-a
+    <span class="kw">command</span>: >
+      ./parquet_writer
+      --config /etc/writer/writer_a.yaml
+    <span class="kw">volumes</span>:
+      - data-writer-a:/data/writer-a
+      - ./configs/writer_a.yaml:/etc/writer/writer_a.yaml:ro
+    <span class="kw">ports</span>:
+      - <span class="str">"8771:8771"</span>
+    <span class="kw">networks</span>:
+      - supermicro
+
+  <span class="cmt"># ── Writer B ──────────────────────────────────────────────────────</span>
+  <span class="fn">writer-b</span>:
+    <span class="kw">image</span>: parquet-writer:latest
+    <span class="kw">container_name</span>: writer-b
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">depends_on</span>:
+      - flashmq
+    <span class="kw">environment</span>:
+      WRITER_ID: writer-b
+    <span class="kw">command</span>: >
+      ./parquet_writer
+      --config /etc/writer/writer_b.yaml
+    <span class="kw">volumes</span>:
+      - data-writer-b:/data/writer-b
+      - ./configs/writer_b.yaml:/etc/writer/writer_b.yaml:ro
+    <span class="kw">ports</span>:
+      - <span class="str">"8772:8772"</span>
+    <span class="kw">networks</span>:
+      - supermicro
+
+  <span class="cmt"># ── Writer C ──────────────────────────────────────────────────────</span>
+  <span class="fn">writer-c</span>:
+    <span class="kw">image</span>: parquet-writer:latest
+    <span class="kw">container_name</span>: writer-c
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">depends_on</span>:
+      - flashmq
+    <span class="kw">environment</span>:
+      WRITER_ID: writer-c
+    <span class="kw">command</span>: >
+      ./parquet_writer
+      --config /etc/writer/writer_c.yaml
+    <span class="kw">volumes</span>:
+      - data-writer-c:/data/writer-c
+      - ./configs/writer_c.yaml:/etc/writer/writer_c.yaml:ro
+    <span class="kw">ports</span>:
+      - <span class="str">"8773:8773"</span>
+    <span class="kw">networks</span>:
+      - supermicro
+
+  <span class="cmt"># ── Writer D ──────────────────────────────────────────────────────</span>
+  <span class="fn">writer-d</span>:
+    <span class="kw">image</span>: parquet-writer:latest
+    <span class="kw">container_name</span>: writer-d
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">depends_on</span>:
+      - flashmq
+    <span class="kw">environment</span>:
+      WRITER_ID: writer-d
+    <span class="kw">command</span>: >
+      ./parquet_writer
+      --config /etc/writer/writer_d.yaml
+    <span class="kw">volumes</span>:
+      - data-writer-d:/data/writer-d
+      - ./configs/writer_d.yaml:/etc/writer/writer_d.yaml:ro
+    <span class="kw">ports</span>:
+      - <span class="str">"8774:8774"</span>
+    <span class="kw">networks</span>:
+      - supermicro
+
+  <span class="cmt"># ── Fault injector ────────────────────────────────────────────────</span>
+  <span class="fn">fault-injector</span>:
+    <span class="kw">image</span>: alpine:3.19
+    <span class="kw">container_name</span>: fault-injector
+    <span class="kw">restart</span>: "no"
+    <span class="kw">depends_on</span>:
+      - flashmq
+      - writer-a
+    <span class="kw">environment</span>:
+      SCENARIO: broker_kill
+      WRITER: writer-a
+      CYCLE_SECONDS: <span class="num">60</span>
+      DATA_DIR: /data/writer-a
+    <span class="kw">volumes</span>:
+      - data-writer-a:/data/writer-a
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./fault_inject.sh:/fault_inject.sh:ro
+    <span class="kw">command</span>: [<span class="str">"sh"</span>, <span class="str">"/fault_inject.sh"</span>]
+    <span class="kw">networks</span>:
+      - supermicro</pre>
+
+  <div class="alert alert-info">
+    <strong>Per-writer config files</strong> live at <code>docker/torture/configs/writer_{a,b,c,d}.yaml</code>.
+    Each sets a unique <code>health_port</code> (8771–8774), <code>output_dir</code>, and <code>writer_id</code>.
+    The MQTT broker host is <code>flashmq</code> (Docker service name resolves inside the supermicro network).
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>fault_inject.sh</h2>
+
+<div class="section">
+  <p>Place at <code>docker/torture/fault_inject.sh</code>. The fault-injector container runs this script.
+     Set <code>SCENARIO</code> and <code>WRITER</code> env vars when launching the container.</p>
+
+<pre class="shell"><span class="cmt">#!/bin/sh
+# fault_inject.sh — torture test fault injection driver
+# Env vars:
+#   SCENARIO      broker_kill | disk_fill | chmod_flip | overflow | kill9
+#   WRITER        writer-a | writer-b | writer-c | writer-d
+#   CYCLE_SECONDS seconds between fault cycles (default 60)
+#   DATA_DIR      path to writer output volume (default /data/writer-a)</span>
+
+<span class="kw">set</span> -e
+
+SCENARIO=<span class="str">"${SCENARIO:-broker_kill}"</span>
+WRITER=<span class="str">"${WRITER:-writer-a}"</span>
+CYCLE_SECONDS=<span class="num">${CYCLE_SECONDS:-60}</span>
+DATA_DIR=<span class="str">"${DATA_DIR:-/data/writer-a}"</span>
+LOG=<span class="str">"/tmp/fault_inject.log"</span>
+
+<span class="fn">log</span>() {
+  <span class="kw">echo</span> <span class="str">"[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [${SCENARIO}] $*"</span> | <span class="kw">tee</span> -a <span class="str">"$LOG"</span>
+}
+
+<span class="fn">scenario_broker_kill</span>() {
+  log <span class="str">"Stopping flashmq container for 30s"</span>
+  docker stop flashmq
+  sleep <span class="num">30</span>
+  docker start flashmq
+  log <span class="str">"flashmq restarted — waiting for reconnect"</span>
+  sleep <span class="num">5</span>
+}
+
+<span class="fn">scenario_disk_fill</span>() {
+  <span class="cmt"># Fill the writer's data volume to within ~10MB of min_free_bytes</span>
+  FILL_FILE=<span class="str">"${DATA_DIR}/__torture_fill__"</span>
+  AVAIL_KB=$(df -k <span class="str">"$DATA_DIR"</span> | awk <span class="str">'NR==2{print $4}'</span>)
+  <span class="cmt"># Leave 8 MB free so we just cross the threshold</span>
+  FILL_KB=$(( AVAIL_KB - 8192 ))
+  <span class="kw">if</span> [ <span class="str">"$FILL_KB"</span> -gt <span class="num">0</span> ]; then
+    log <span class="str">"fallocate ${FILL_KB}KB into ${FILL_FILE}"</span>
+    fallocate -l <span class="str">"${FILL_KB}k"</span> <span class="str">"$FILL_FILE"</span>
+    sleep <span class="num">10</span>
+    log <span class="str">"Removing fill file, freeing space"</span>
+    rm -f <span class="str">"$FILL_FILE"</span>
+  <span class="kw">else</span>
+    log <span class="str">"WARN: not enough space to fill — skipping"</span>
+  <span class="kw">fi</span>
+}
+
+<span class="fn">scenario_chmod_flip</span>() {
+  <span class="cmt"># Remove write permission for 500ms during a flush window</span>
+  log <span class="str">"chmod 000 ${DATA_DIR}"</span>
+  chmod <span class="num">000</span> <span class="str">"$DATA_DIR"</span>
+  sleep <span class="num">0</span>.<span class="num">5</span>
+  chmod <span class="num">755</span> <span class="str">"$DATA_DIR"</span>
+  log <span class="str">"chmod 755 ${DATA_DIR} — window closed"</span>
+}
+
+<span class="fn">scenario_overflow</span>() {
+  <span class="cmt"># Throttle the flashmq container's network interface to simulate broker lag.
+  # Adds 10s of artificial delay so the stress runner outruns the broker,
+  # triggering NC4 pipe-wake overflow path.
+  # Requires NET_ADMIN capability on the fault-injector container.</span>
+  IFACE=<span class="str">"eth0"</span>
+  log <span class="str">"tc netem delay 10000ms on flashmq interface — overflow scenario"</span>
+  docker exec flashmq sh -c <span class="str">"tc qdisc add dev ${IFACE} root netem delay 10000ms 2>/dev/null || \
+    tc qdisc change dev ${IFACE} root netem delay 10000ms"</span>
+  sleep <span class="num">15</span>
+  docker exec flashmq sh -c <span class="str">"tc qdisc del dev ${IFACE} root 2>/dev/null || true"</span>
+  log <span class="str">"tc netem removed — throughput restored"</span>
+}
+
+<span class="fn">scenario_kill9</span>() {
+  <span class="cmt"># Kill the writer process inside its container; Docker restart=unless-stopped
+  # brings it back automatically.  We do this repeatedly every CYCLE_SECONDS.</span>
+  WRITER_PID=$(docker exec <span class="str">"$WRITER"</span> pgrep -x parquet_writer 2>/dev/null || true)
+  <span class="kw">if</span> [ -n <span class="str">"$WRITER_PID"</span> ]; then
+    log <span class="str">"kill -9 parquet_writer PID=${WRITER_PID} in ${WRITER}"</span>
+    docker exec <span class="str">"$WRITER"</span> kill -9 <span class="str">"$WRITER_PID"</span>
+  <span class="kw">else</span>
+    log <span class="str">"WARN: parquet_writer not found in ${WRITER} — already restarting?"</span>
+  <span class="kw">fi</span>
+  <span class="cmt"># Give Docker time to restart the container before next cycle</span>
+  sleep <span class="num">5</span>
+}
+
+log <span class="str">"fault_inject.sh started: SCENARIO=${SCENARIO} WRITER=${WRITER} CYCLE=${CYCLE_SECONDS}s"</span>
+
+<span class="kw">while true</span>; do
+  <span class="kw">case</span> <span class="str">"$SCENARIO"</span> <span class="kw">in</span>
+    broker_kill)  scenario_broker_kill  ;;
+    disk_fill)    scenario_disk_fill    ;;
+    chmod_flip)   scenario_chmod_flip   ;;
+    overflow)     scenario_overflow     ;;
+    kill9)        scenario_kill9        ;;
+    *)
+      log <span class="str">"ERROR: unknown SCENARIO='${SCENARIO}'. Use: broker_kill disk_fill chmod_flip overflow kill9"</span>
+      exit <span class="num">1</span>
+      ;;
+  <span class="kw">esac</span>
+  log <span class="str">"Cycle complete — sleeping ${CYCLE_SECONDS}s"</span>
+  sleep <span class="str">"$CYCLE_SECONDS"</span>
+<span class="kw">done</span></pre>
+
+  <div class="alert alert-warn">
+    The <code>overflow</code> scenario requires the fault-injector container to have
+    <code>cap_add: [NET_ADMIN]</code> and the <code>iproute2</code> package installed
+    (add <code>apk add iproute2 docker-cli</code> to the Alpine image or use a custom image).
+    The <code>kill9</code> scenario requires <code>/var/run/docker.sock</code> mounted.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Validation Queries</h2>
+
+<div class="section">
+  <p>Run these after any torture test scenario completes. All queries use DuckDB via
+     <code>.venv/bin/python3</code> from repo root. Replace path variables with the actual
+     writer output dirs mounted from the named Docker volumes.</p>
+
+  <h3>Query 1 — No corrupt files</h3>
+  <p>Any file that <code>parquet_metadata()</code> fails to parse raises an exception.
+     A clean result means every file is structurally valid.</p>
+<pre><span class="py">import</span> duckdb, <span class="py">glob</span>, <span class="py">sys</span>
+
+con = duckdb.<span class="fn">connect</span>()
+data_dir = <span class="str">"/data/writer-a"</span>
+files = <span class="py">glob</span>.<span class="fn">glob</span>(<span class="str">f"{data_dir}/**/*.parquet"</span>, recursive=<span class="kw">True</span>)
+corrupt = []
+<span class="kw">for</span> f <span class="kw">in</span> files:
+    <span class="kw">try</span>:
+        con.<span class="fn">execute</span>(<span class="str">f"SELECT COUNT(*) FROM parquet_metadata('{f}')"</span>).<span class="fn">fetchone</span>()
+    <span class="kw">except</span> <span class="py">Exception</span> <span class="kw">as</span> e:
+        corrupt.<span class="fn">append</span>((f, <span class="py">str</span>(e)))
+
+<span class="kw">if</span> corrupt:
+    <span class="py">print</span>(<span class="str">f"BREAK: {len(corrupt)} corrupt files"</span>)
+    <span class="kw">for</span> path, err <span class="kw">in</span> corrupt:
+        <span class="py">print</span>(<span class="str">f"  {path}: {err}"</span>)
+    sys.<span class="fn">exit</span>(<span class="num">1</span>)
+<span class="kw">else</span>:
+    <span class="py">print</span>(<span class="str">f"OK: all {len(files)} files are valid parquet"</span>)</pre>
+
+  <h3>Query 2 — WAL date correctness (S1 check)</h3>
+  <p>The <code>timestamp</code> range for every row in a partition must fall within the date
+     encoded in the directory name. A mismatch means NC1 WAL replay wrote to the wrong date.</p>
+<pre><span class="py">import</span> duckdb, <span class="py">pathlib</span>, <span class="py">datetime</span>
+
+con = duckdb.<span class="fn">connect</span>()
+data_dir = <span class="py">pathlib</span>.<span class="fn">Path</span>(<span class="str">"/data/writer-a"</span>)
+mismatches = []
+
+<span class="kw">for</span> date_dir <span class="kw">in</span> <span class="fn">sorted</span>(data_dir.<span class="fn">glob</span>(<span class="str">"date=*"</span>)):
+    date_str = date_dir.name.<span class="fn">split</span>(<span class="str">"="</span>)[<span class="num">1</span>]   <span class="cmt"># e.g. "2026-03-21"</span>
+    parquet_glob = <span class="str">f"{date_dir}/**/*.parquet"</span>
+    row = con.<span class="fn">execute</span>(<span class="str">f"""
+        SELECT
+          MIN(timestamp)::DATE AS ts_min,
+          MAX(timestamp)::DATE AS ts_max
+        FROM read_parquet('{parquet_glob}', union_by_name=true)
+    """</span>).<span class="fn">fetchone</span>()
+    <span class="kw">if</span> row <span class="kw">and</span> row[<span class="num">0</span>] <span class="kw">is not None</span>:
+        dir_date = <span class="py">datetime</span>.date.<span class="fn">fromisoformat</span>(date_str)
+        <span class="kw">if</span> row[<span class="num">0</span>] != dir_date <span class="kw">or</span> row[<span class="num">1</span>] != dir_date:
+            mismatches.<span class="fn">append</span>((date_str, row[<span class="num">0</span>], row[<span class="num">1</span>]))
+
+<span class="kw">if</span> mismatches:
+    <span class="py">print</span>(<span class="str">"BREAK: WAL replay date mismatch (NC1 regression)"</span>)
+    <span class="kw">for</span> d, lo, hi <span class="kw">in</span> mismatches:
+        <span class="py">print</span>(<span class="str">f"  dir={d}  ts_min={lo}  ts_max={hi}"</span>)
+<span class="kw">else</span>:
+    <span class="py">print</span>(<span class="str">"OK: all partition dates match their directory"</span>)</pre>
+
+  <h3>Query 3 — No duplicate rows</h3>
+  <p>Compares total row count against count of distinct primary key tuples.
+     Any gap means WAL was replayed more than once or message delivered twice.</p>
+<pre><span class="py">import</span> duckdb
+
+con = duckdb.<span class="fn">connect</span>()
+data_dir = <span class="str">"/data/writer-a"</span>
+result = con.<span class="fn">execute</span>(<span class="str">f"""
+    SELECT
+      COUNT(*)                                                        AS total_rows,
+      COUNT(DISTINCT (timestamp, cell_id, site_id, rack_id, module_id)) AS distinct_rows,
+      COUNT(*) - COUNT(DISTINCT (timestamp, cell_id, site_id, rack_id, module_id)) AS duplicates
+    FROM read_parquet('{data_dir}/**/*.parquet', union_by_name=true)
+"""</span>).<span class="fn">fetchone</span>()
+
+total, distinct, dupes = result
+<span class="py">print</span>(<span class="str">f"total={total}  distinct={distinct}  duplicates={dupes}"</span>)
+<span class="kw">if</span> dupes > <span class="num">0</span>:
+    <span class="py">print</span>(<span class="str">"BREAK: duplicate rows detected — WAL replayed more than once?"</span>)
+<span class="kw">else</span>:
+    <span class="py">print</span>(<span class="str">"OK: no duplicates"</span>)</pre>
+
+  <h3>Query 4 — Row count per writer</h3>
+  <p>All four writers subscribe to the same topic space and receive the same messages.
+     Counts should match within 1% of each other. A large deviation indicates
+     NM4 cross-contamination or a missed message batch.</p>
+<pre><span class="py">import</span> duckdb
+
+con = duckdb.<span class="fn">connect</span>()
+writers = [<span class="str">"writer-a"</span>, <span class="str">"writer-b"</span>, <span class="str">"writer-c"</span>, <span class="str">"writer-d"</span>]
+counts = {}
+
+<span class="kw">for</span> w <span class="kw">in</span> writers:
+    row = con.<span class="fn">execute</span>(<span class="str">f"""
+        SELECT COUNT(*) FROM read_parquet('/data/{w}/**/*.parquet', union_by_name=true)
+    """</span>).<span class="fn">fetchone</span>()
+    counts[w] = row[<span class="num">0</span>]
+    <span class="py">print</span>(<span class="str">f"  {w}: {row[0]:,} rows"</span>)
+
+vals = <span class="fn">list</span>(counts.<span class="fn">values</span>())
+lo, hi = <span class="fn">min</span>(vals), <span class="fn">max</span>(vals)
+pct_diff = (hi - lo) / hi * <span class="num">100</span> <span class="kw">if</span> hi > <span class="num">0</span> <span class="kw">else</span> <span class="num">0</span>
+<span class="py">print</span>(<span class="str">f"spread: {pct_diff:.3f}%"</span>)
+<span class="kw">if</span> pct_diff > <span class="num">1.0</span>:
+    <span class="py">print</span>(<span class="str">"BREAK: row count spread > 1% across writers"</span>)
+<span class="kw">else</span>:
+    <span class="py">print</span>(<span class="str">"OK: counts within 1%"</span>)</pre>
+
+  <h3>Query 5 — Zero nulls across all columns</h3>
+  <p>Uses <code>parquet_metadata()</code> statistics. <code>stats_null_count &gt; 0</code> for any column
+     in any row-group means a field was not written correctly — likely a serialisation
+     bug triggered by the fault injection.</p>
+<pre><span class="py">import</span> duckdb
+
+con = duckdb.<span class="fn">connect</span>()
+data_dir = <span class="str">"/data/writer-a"</span>
+result = con.<span class="fn">execute</span>(<span class="str">f"""
+    SELECT
+      file_name,
+      path_in_schema   AS column_name,
+      SUM(stats_null_count) AS total_nulls
+    FROM parquet_metadata('{data_dir}/**/*.parquet')
+    WHERE stats_null_count > 0
+    GROUP BY file_name, path_in_schema
+    ORDER BY total_nulls DESC
+    LIMIT 20
+"""</span>).<span class="fn">fetchall</span>()
+
+<span class="kw">if</span> result:
+    <span class="py">print</span>(<span class="str">f"BREAK: null values found in {len(result)} column(s)"</span>)
+    <span class="kw">for</span> row <span class="kw">in</span> result:
+        <span class="py">print</span>(<span class="str">f"  {row[0]}  col={row[1]}  nulls={row[2]}"</span>)
+<span class="kw">else</span>:
+    <span class="py">print</span>(<span class="str">"OK: zero nulls in all parquet column statistics"</span>)</pre>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Quick-start</h2>
+
+<div class="section">
+  <h3>1. Build the writer image</h3>
+<pre class="shell"><span class="cmt"># From repo root on the Supermicro host</span>
+docker build -t parquet-writer source/parquet_writer_cpp/</pre>
+
+  <h3>2. Create per-writer config files</h3>
+<pre class="shell">mkdir -p docker/torture/configs
+
+<span class="kw">for</span> w <span class="kw">in</span> a b c d; do
+  PORT=$((8770 + $(echo a b c d | tr ' ' '\n' | grep -n "^${w}$" | cut -d: -f1)))
+  cat > docker/torture/configs/writer_${w}.yaml &lt;&lt;EOF
+mqtt_host: flashmq
+mqtt_port: 1883
+output_dir: /data/writer-${w}
+health_port: ${PORT}
+writer_id: writer-${w}
+wal_dir: /data/writer-${w}/.wal
+min_free_bytes: 104857600
+flush_interval_seconds: 10
+EOF
+done</pre>
+
+  <h3>3. Start all services</h3>
+<pre class="shell">docker-compose -f docker/torture/docker-compose.yml up -d
+
+<span class="cmt"># Verify all containers are running</span>
+docker-compose -f docker/torture/docker-compose.yml ps</pre>
+
+  <h3>4. Inject a specific fault scenario</h3>
+<pre class="shell"><span class="cmt"># S1: broker kill+restart on writer-a (default CYCLE=60s)</span>
+SCENARIO=broker_kill WRITER=writer-a CYCLE_SECONDS=60 \
+  docker-compose -f docker/torture/docker-compose.yml run fault-injector
+
+<span class="cmt"># S2: disk fill on writer-b</span>
+SCENARIO=disk_fill WRITER=writer-b DATA_DIR=/data/writer-b \
+  docker-compose -f docker/torture/docker-compose.yml run fault-injector
+
+<span class="cmt"># S3: chmod flip on writer-c</span>
+SCENARIO=chmod_flip WRITER=writer-c DATA_DIR=/data/writer-c \
+  docker-compose -f docker/torture/docker-compose.yml run fault-injector
+
+<span class="cmt"># S4: overflow (tc netem) on writer-a via broker throttle</span>
+SCENARIO=overflow WRITER=writer-a \
+  docker-compose -f docker/torture/docker-compose.yml run fault-injector
+
+<span class="cmt"># S5: kill -9 writer-d every 60s</span>
+SCENARIO=kill9 WRITER=writer-d CYCLE_SECONDS=60 \
+  docker-compose -f docker/torture/docker-compose.yml run fault-injector</pre>
+
+  <h3>5. Watch health endpoints live</h3>
+<pre class="shell">watch -n2 'for p in 8771 8772 8773 8774; do
+  echo -n "port $p: "
+  curl -s localhost:$p/health | python3 -m json.tool
+done'</pre>
+
+  <h3>6. FD stress test (S6)</h3>
+<pre class="shell"><span class="cmt"># Requires apache bench — 2000 concurrent connections, 4000 total requests</span>
+ab -c 2000 -n 4000 http://localhost:8771/health
+
+<span class="cmt"># Watch for crashes in the writer-a log</span>
+docker logs -f writer-a 2>&amp;1 | grep -E '(CRASH|select|poll|accept|BREAK)'</pre>
+
+  <h3>7. Run validation after a test</h3>
+<pre class="shell">.venv/bin/python3 scripts/torture_validate.py /data/writer-a /data/writer-b /data/writer-c /data/writer-d</pre>
+
+  <h3>8. S8 — 24-hour soak (all faults on 60 s cycle)</h3>
+<pre class="shell"><span class="cmt"># Bring up a dedicated soak stack and rotate all four fault types across writers</span>
+for scenario in broker_kill disk_fill chmod_flip overflow; do
+  SCENARIO=$scenario WRITER=writer-a CYCLE_SECONDS=60 \
+    docker-compose -f docker/torture/docker-compose.yml run -d \
+    --name "fi_${scenario}" fault-injector
+done
+
+<span class="cmt"># Monitor fault log</span>
+docker exec fault-injector tail -f /tmp/fault_inject.log</pre>
+
+  <div class="alert alert-ok">
+    All four writer health ports (8771–8774) should respond with HTTP 200 and a JSON body
+    containing <code>"status":"ok"</code> throughout the entire soak run. Any 5xx or connection
+    refused is a BREAK.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Pass / Fail Summary</h2>
+
+<div class="section">
+  <p>Use this table to interpret logs after a run. Green OK = scenario passed.
+     Red BREAK = regression in the fix being tested, release blocker.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:18%">Scenario</th>
+        <th style="width:38%">What a passing run looks like</th>
+        <th style="width:38%">What a failing run looks like</th>
+        <th style="width:6%">Result</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>S1</strong><br>Broker kill + restart</td>
+        <td>
+          Log shows <code>WAL replay: N rows → date=ORIGINAL_DATE</code> after broker comes back.
+          Validation Query 2 finds no date mismatches.
+        </td>
+        <td>
+          Log shows <code>WAL replay: N rows → date=TODAY</code> (today != original date).
+          Validation Query 2 reports <span class="err">BREAK: WAL replay date mismatch</span>.
+          NC1 regression.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S2</strong><br>Disk fill to limit</td>
+        <td>
+          Writer logs <code>[WARN] LOW SPACE — flush suspended</code>.
+          No new .parquet files written during fill window.
+          Process stays running; resumes writing after fill file removed.
+        </td>
+        <td>
+          Writer crashes with <code>std::bad_alloc</code> or <code>ENOSPC</code> not caught.
+          Or continues writing partial files into a full filesystem.
+          Process is absent from <code>docker ps</code>.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S3</strong><br>Read-only dir mid-flush</td>
+        <td>
+          Flush error logged: <code>[ERROR] rename failed: EACCES</code>.
+          Temp file cleaned up (NC3 no-throw). Next flush (after chmod 755) succeeds.
+          Validation Query 1 finds zero corrupt files.
+        </td>
+        <td>
+          A <code>.parquet.tmp</code> file left permanently on disk (partial write).
+          Or flush thread panics / terminates.
+          Validation Query 1 reports <span class="err">BREAK: corrupt files</span>.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S4</strong><br>Sustained overflow</td>
+        <td>
+          Log shows <code>overflow_drops=N flush_triggered</code> within 1 s of overflow event.
+          No log line with a 60-second gap between overflow detection and flush.
+          Message rate recovers after <code>tc netem</code> removed.
+        </td>
+        <td>
+          Log shows 60-second silent window after overflow (CV wait timeout, NC4 not applied).
+          Or writer deadlocks — health endpoint stops responding for &gt; 60 s.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S5</strong><br>Writer kill -9</td>
+        <td>
+          After each restart, WAL replayed with log line <code>WAL: replaying N rows</code>.
+          Validation Query 3 shows <code>duplicates=0</code>.
+          Validation Query 2 shows correct dates throughout.
+        </td>
+        <td>
+          Validation Query 3 shows <span class="err">duplicates &gt; 0</span> (double replay).
+          Or row count is significantly less than expected (WAL entries lost on kill).
+          Or date mismatches from NC1 regression.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S6</strong><br>FD stress (2000 conns)</td>
+        <td>
+          <code>ab</code> output shows 0 failed requests or only <code>Non-2xx</code> responses (TCP backlog full = expected).
+          <code>docker logs writer-a</code> shows no crash, no <code>select() fd &gt; 1023</code> error.
+          Health endpoint still responds after <code>ab</code> completes.
+        </td>
+        <td>
+          Writer process exits with signal 6 (SIGABRT) or 11 (SIGSEGV) during the <code>ab</code> run.
+          Log contains <code>select: Bad file descriptor</code> or <code>fd=XXXX &gt; FD_SETSIZE</code>.
+          NM2 regression.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S7</strong><br>Two writers same broker</td>
+        <td>
+          Validation Query 4 shows counts within 1% across writer-a and writer-b.
+          No cell appears in both writers' <code>current_state</code> debug dumps with different values.
+          Row totals match stress runner publish count (2× for two subscribers).
+        </td>
+        <td>
+          One writer's row count is 2× expected (absorbed the other's state).
+          Or one writer's count is near-zero (its <code>current_state</code> evicted by the other).
+          NM4 regression.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+      <tr>
+        <td><strong>S8</strong><br>24 h soak</td>
+        <td>
+          All four health ports respond 200 every 2 s throughout the run.
+          Zero process restarts from non-kill9 causes.
+          All five validation queries pass on final dataset.
+          Row loss &lt; 0.01% vs expected count.
+        </td>
+        <td>
+          Any health port goes dark for &gt; 30 s (excluding intentional kill9 restart window).
+          Any validation query reports BREAK on final dataset.
+          <code>fault_inject.log</code> shows an unexpected error in any scenario handler.
+        </td>
+        <td><span class="badge badge-ok">OK</span><br><span class="badge badge-break">BREAK</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Release gate:</strong> all 8 scenarios must show <span class="badge badge-ok">OK</span>
+    on two consecutive independent runs before the build is tagged for deployment to lp3 or any edge host.
+    A single <span class="badge badge-break">BREAK</span> reopens the corresponding fix ticket.
+  </div>
+</div>
+
+</body>
+</html>

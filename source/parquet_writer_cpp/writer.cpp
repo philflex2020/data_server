@@ -34,13 +34,14 @@
 // POSIX socket for optional health endpoint
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <csignal>
+#include <limits>
 #include <ctime>
 #include <filesystem>
 #include <iostream>
@@ -472,10 +473,19 @@ arrow::Status flush_partition(const std::string& path,
     auto props = parquet::WriterProperties::Builder()
         .compression(to_parquet_compression(compression))
         ->build();
-    ARROW_ASSIGN_OR_RAISE(auto outfile, arrow::io::FileOutputStream::Open(path));
+    // NC2 fix: write to .tmp then rename so a partial write never leaves a corrupt final file
+    std::string tmp = path + ".tmp";
+    ARROW_ASSIGN_OR_RAISE(auto outfile, arrow::io::FileOutputStream::Open(tmp));
     ARROW_RETURN_NOT_OK(parquet::arrow::WriteTable(
         *table, arrow::default_memory_pool(), outfile,
         static_cast<int64_t>(rows.size()), props));
+    ARROW_RETURN_NOT_OK(outfile->Close());
+    std::error_code ec;
+    fs::rename(tmp, path, ec);
+    if (ec) {
+        fs::remove(tmp, ec);
+        return arrow::Status::IOError("flush_partition rename failed: ", ec.message());
+    }
     return arrow::Status::OK();
 }
 
@@ -626,15 +636,18 @@ static void replay_wal_files() {
         g_wal_replay_rows.fetch_add(rows.size());
         // M4: derive collection timestamp from oldest row so WAL replay writes to the
         // correct date partition, not today's date.
-        int64_t min_ts_ms = INT64_MAX;
+        // NC1 fix: timestamp is stored as r.floats (flat scalar double, Unix seconds).
+        double min_ts_sec = std::numeric_limits<double>::max();
         for (const auto& r : rows) {
-            if (auto it = r.ints.find("timestamp"); it != r.ints.end())
-                min_ts_ms = std::min(min_ts_ms, it->second);
+            if (auto it = r.floats.find("timestamp"); it != r.floats.end())
+                min_ts_sec = std::min(min_ts_sec, it->second);
         }
         std::optional<std::chrono::system_clock::time_point> collection_ts;
-        if (min_ts_ms != INT64_MAX)
-            collection_ts = std::chrono::system_clock::time_point{
-                std::chrono::milliseconds(min_ts_ms)};
+        if (min_ts_sec < std::numeric_limits<double>::max()) {
+            auto dur = std::chrono::duration_cast<std::chrono::system_clock::duration>(
+                           std::chrono::duration<double>(min_ts_sec));
+            collection_ts = std::chrono::system_clock::time_point{dur};
+        }
 
         // Group by partition key and flush to production parquet
         std::map<PartitionKey, std::vector<Row>> parts;
@@ -677,9 +690,8 @@ static void health_thread_fn(int port) {
     listen(srv, 4);
     std::cout << "[health] listening on :" << port << "\n";
     while (!g_shutdown) {
-        fd_set fds; FD_ZERO(&fds); FD_SET(srv, &fds);
-        timeval tv{1, 0};
-        if (select(srv + 1, &fds, nullptr, nullptr, &tv) <= 0) continue;
+        struct pollfd srv_pfd = { srv, POLLIN, 0 };
+        if (poll(&srv_pfd, 1, 1000) <= 0) continue;
         int cli = accept(srv, nullptr, nullptr);
         if (cli < 0) continue;
         char buf[4096] = {};                                     // m10: 4 KB covers Chrome/Firefox headers
@@ -724,7 +736,7 @@ using StateMap = std::map<SensorKey, Row>;
 static std::map<PartitionKey, Partition> g_buffers;
 static std::shared_ptr<StateMap>         g_current_state{std::make_shared<StateMap>()}; // C4-A: ptr swap at flush
 static std::mutex                        g_mutex;
-static std::condition_variable           g_flush_cv;
+// g_flush_cv removed: flush thread uses poll() on g_signal_pipe[0]; notify via pipe write
 // g_shutdown, g_cfg, g_overflow_drops declared above (before robustness section)
 static size_t                            g_total_buffered{0};    // total rows in g_buffers (under g_mutex)
 static uint64_t                          g_received_since_sync{0}; // msgs received since last _sync (under g_mutex)
@@ -816,7 +828,7 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
                 std::cout << "[hot] " << hot_rows.size() << " rows → " << g_cfg->hot_file_path << "\n";
         } else {
             std::cerr << "[hot] write failed: " << status.ToString() << "\n";
-            fs::remove(tmp);
+            { std::error_code ec; fs::remove(tmp, ec); }
         }
     }
 
@@ -838,7 +850,7 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
                 std::cout << "[cs] " << cs_rows.size() << " sensors → " << g_cfg->current_state_path << "\n";
         } else {
             std::cerr << "[cs] write failed: " << status.ToString() << "\n";
-            fs::remove(tmp);
+            { std::error_code ec; fs::remove(tmp, ec); }
         }
     }
 }
@@ -849,6 +861,8 @@ static void flush_thread_fn() {
         if (!g_flush_needed.exchange(false)) {
             struct pollfd pfd = { g_signal_pipe[0], POLLIN, 0 };
             poll(&pfd, 1, g_cfg->flush_interval_seconds * 1000);
+            // drain any wake bytes so the pipe never fills (pipe is O_NONBLOCK)
+            char drain[64]; while (::read(g_signal_pipe[0], drain, sizeof(drain)) > 0) {}
         }
         std::unique_lock<std::mutex> lock(g_mutex);
         auto to_flush  = std::exchange(g_buffers, {});
@@ -981,13 +995,20 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
             std::cerr << "[buffer] OVERFLOW — dropped " << drops
                       << " rows (max_total_buffer_rows=" << g_cfg->max_total_buffer_rows << ")\n";
         g_flush_needed.store(true);  // m2: sticky — survives a busy flush thread
-        g_flush_cv.notify_one();
+        { char b = 1; if (::write(g_signal_pipe[1], &b, 1) < 0) {} }
         return;
     }
 
     // Maintain current-state map: always keep the latest row per unique sensor.
-    if (!g_cfg->current_state_path.empty())
-        (*g_current_state)[SensorKey{info_opt->source_type, row.ints}] = row;
+    // NM4 fix: key only on topic-derived identity columns to prevent unbounded map growth
+    // from payload-injected int fields.
+    if (!g_cfg->current_state_path.empty()) {
+        std::map<std::string, int64_t> key_ints;
+        for (const auto& [_, col] : g_cfg->topic_kv_map)
+            if (auto it = row.ints.find(col); it != row.ints.end())
+                key_ints[col] = it->second;
+        (*g_current_state)[SensorKey{info_opt->source_type, std::move(key_ints)}] = row;
+    }
 
     auto& part = g_buffers[key];
     part.rows.push_back(std::move(row));
@@ -996,7 +1017,7 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
     ++g_received_since_sync;
     if (static_cast<int>(part.rows.size()) >= g_cfg->max_messages_per_part) {
         g_flush_needed.store(true);  // m2: sticky
-        g_flush_cv.notify_one();
+        { char b = 1; if (::write(g_signal_pipe[1], &b, 1) < 0) {} }
     }
 }
 
@@ -1140,6 +1161,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "[init] pipe() failed: " << strerror(errno) << "\n";
         return 1;
     }
+    // O_NONBLOCK on read end: drain loop in flush_thread_fn won't block after wakeup
+    fcntl(g_signal_pipe[0], F_SETFL, O_NONBLOCK);
 
     // clean_session=false: FlashMQ queues QoS-1 messages while we're offline
     auto* mosq = mosquitto_new(cfg.mqtt_client_id.c_str(), /*clean_session=*/false, nullptr);

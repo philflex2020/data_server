@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Diff Detector</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --purple: #bc8cff; --orange: #e3b341;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; line-height: 1.6; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 20px 0 8px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .card-title { font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { background: #21262d; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+
+  code { background: #21262d; border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: #e6edf3; }
+  pre { background: #161b22; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.5; overflow-x: auto; color: #e6edf3; }
+  .comment { color: #8b949e; }
+  .kw { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .num { color: #79c0ff; }
+  .fn { color: #d2a8ff; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green  { background: #0d4429; color: var(--green); border: 1px solid #1a6e3a; }
+  .badge-yellow { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-red    { background: #3d0a0a; color: var(--red); border: 1px solid #7a1515; }
+  .badge-blue   { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .badge-purple { background: #2d1f4d; color: var(--purple); border: 1px solid #5a3f9e; }
+  .badge-orange { background: #3d2200; color: var(--orange); border: 1px solid #7a4400; }
+
+  .alert { border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 0.88rem; border-left: 4px solid; }
+  .alert-info   { background: #0c2d6b22; border-color: var(--accent); }
+  .alert-warn   { background: #2d200022; border-color: var(--yellow); }
+  .alert-ok     { background: #0d442922; border-color: var(--green); }
+
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; margin-left: 4px; vertical-align: middle; font-weight: 600; }
+  .tag-new  { background: #0d4429; color: var(--green); }
+  .tag-mod  { background: #2d2000; color: var(--yellow); }
+  .tag-del  { background: #3d0a0a; color: var(--red); }
+
+  ul { padding-left: 20px; }
+  li { margin-bottom: 4px; font-size: 0.88rem; }
+  p  { margin-bottom: 10px; font-size: 0.88rem; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here  { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+</style>
+</head>
+<body>
+
+<h1>writer.cpp — Diff Detector Proposal</h1>
+<p class="subtitle">Design for a tool that watches for schema and behavioural changes between writer.cpp versions</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Code Review</a>
+  <a href="writer_critical_fixes.html">Critical Fixes</a>
+  <a href="writer_unit_kpi.html">Unit &amp; KPI Tests</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_diff_detector.html" class="here">Diff Detector</a>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Problem Statement</h2>
+<div class="section">
+  <p>writer.cpp is a single-file C++ ingest binary. Its output — the Parquet schema, partition layout, and WAL format — is consumed downstream by DuckDB queries, push_agent rsync, and the subscriber API. Changes to writer.cpp that seem local (renaming a config field, reordering columns, changing a default) can silently break the downstream stack.</p>
+  <p>A <strong>diff detector</strong> is a tool that, given two writer.cpp binaries (or two commits), automatically identifies every externally-visible change and classifies it by breaking severity. It runs in CI before merge and as a scheduled check on production builds.</p>
+  <div class="alert alert-warn">
+    <strong>Motivation:</strong> The current review process is manual. The code review doc identified 6 critical bugs and 11 minor issues. A diff detector would have caught many of these automatically and would prevent regressions when fixes are applied.
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>What Changes Are Detectable?</h2>
+<div class="section">
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title" style="color:var(--red)">Breaking Changes</div>
+      <ul>
+        <li>Parquet column added or removed</li>
+        <li>Column type changed (int64 → double)</li>
+        <li>Column renamed</li>
+        <li>Partition path template changed</li>
+        <li>Compression codec changed</li>
+        <li>WAL file format changed</li>
+        <li>Health endpoint response schema changed</li>
+        <li>Config field removed or renamed</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--yellow)">Behavioural Changes</div>
+      <ul>
+        <li>Default config value changed</li>
+        <li>Flush interval default changed</li>
+        <li>Buffer limit default changed</li>
+        <li>Topic KV map default changed</li>
+        <li>Partition field default changed</li>
+        <li>WAL enabled default changed</li>
+        <li>Health port default changed</li>
+        <li>Log message format changed</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--green)">Safe / Informational</div>
+      <ul>
+        <li>New config field added (with default)</li>
+        <li>New CLI flag added</li>
+        <li>New health field added</li>
+        <li>Compression perf change (same codec)</li>
+        <li>Parse throughput change</li>
+        <li>Flush retry logic change</li>
+        <li>Signal handling change</li>
+        <li>Internal mutex strategy change</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Architecture</h2>
+<div class="section">
+  <div class="alert alert-info">
+    The detector is a Python harness that runs both writer binaries against a synthetic MQTT stream, captures their outputs, and diffs the results. No source code parsing — purely output-based, so it works on any build.
+  </div>
+
+  <pre><span class="comment"># High-level flow</span>
+
+writer_old  ←──── synthetic MQTT stream ────→  writer_new
+    │                                               │
+    ▼                                               ▼
+  parquet_old/                                parquet_new/
+  wal_old/                                    wal_new/
+  health_old:8771                             health_new:8772
+    │                                               │
+    └──────────────┬───────────────────────────────┘
+                   ▼
+          diff_detector.py
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+    schema_diff         behaviour_diff
+    (pyarrow)           (health JSON, log lines)
+                   │
+                   ▼
+          report.json + report.html</pre>
+
+  <h3>Components</h3>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">diff_detector.py</div>
+      <ul>
+        <li>Launches both writers with test configs</li>
+        <li>Sends N messages via paho MQTT to both</li>
+        <li>Waits for flush (or triggers via SIGTERM)</li>
+        <li>Reads health endpoints from both</li>
+        <li>Calls schema_diff and behaviour_diff</li>
+        <li>Emits structured report</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">schema_diff.py</div>
+      <ul>
+        <li>Reads first Parquet file from each output dir</li>
+        <li>Compares schemas via pyarrow</li>
+        <li>Checks column names, types, nullable flags</li>
+        <li>Compares partition dir structure</li>
+        <li>Reads WAL Arrow IPC files and compares schemas</li>
+        <li>Returns list of SchemaChange objects</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">behaviour_diff.py</div>
+      <ul>
+        <li>Compares health JSON from both writers</li>
+        <li>Loads writer_config.yaml defaults from both</li>
+        <li>Diffs default values of each Config field</li>
+        <li>Checks row counts match for same input</li>
+        <li>Compares partition file count and names</li>
+        <li>Returns list of BehaviourChange objects</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">config_extractor.py</div>
+      <ul>
+        <li>Runs <code>writer --help</code> and parses output</li>
+        <li>Extracts CLI flags and their defaults</li>
+        <li>Runs writer with <code>--config /dev/null</code> to get compile-time defaults</li>
+        <li>Diffs flag lists between versions</li>
+        <li>Returns list of ConfigChange objects</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Test Config Strategy</h2>
+<div class="section">
+  <p>Each writer runs with an isolated config that gives it a unique client_id, base_path, and health port — identical to the multi-instance pattern in writer_config.yaml.</p>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">writer_diff_old.yaml</div>
+      <pre><span class="kw">mqtt</span>:
+  client_id: diff-detector-old
+  <span class="kw">host</span>: localhost
+  <span class="kw">port</span>: 1883
+<span class="kw">output</span>:
+  base_path: /tmp/diff_old
+  flush_interval_seconds: <span class="num">5</span>
+<span class="kw">health</span>:
+  enabled: <span class="kw">true</span>
+  port: <span class="num">8881</span>
+<span class="kw">wal</span>:
+  enabled: <span class="kw">true</span></pre>
+    </div>
+    <div class="card">
+      <div class="card-title">writer_diff_new.yaml</div>
+      <pre><span class="kw">mqtt</span>:
+  client_id: diff-detector-new
+  <span class="kw">host</span>: localhost
+  <span class="kw">port</span>: 1883
+<span class="kw">output</span>:
+  base_path: /tmp/diff_new
+  flush_interval_seconds: <span class="num">5</span>
+<span class="kw">health</span>:
+  enabled: <span class="kw">true</span>
+  port: <span class="num">8882</span>
+<span class="kw">wal</span>:
+  enabled: <span class="kw">true</span></pre>
+    </div>
+  </div>
+  <div class="alert alert-info" style="margin-top:12px">
+    Both writers subscribe to the same topic. The broker delivers every message to both independently — no splitting, no coordination. Row counts must match exactly after flush.
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Change Classification</h2>
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th>Change Type</th>
+        <th>Detection Method</th>
+        <th>Severity</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Column added to Parquet</td>
+        <td>pyarrow schema diff</td>
+        <td><span class="badge badge-yellow">WARN</span></td>
+        <td>DuckDB queries using <code>SELECT *</code> get new column; explicit queries safe</td>
+      </tr>
+      <tr>
+        <td>Column removed from Parquet</td>
+        <td>pyarrow schema diff</td>
+        <td><span class="badge badge-red">BREAK</span></td>
+        <td>Block merge; downstream queries referencing column will fail</td>
+      </tr>
+      <tr>
+        <td>Column type changed</td>
+        <td>pyarrow schema diff</td>
+        <td><span class="badge badge-red">BREAK</span></td>
+        <td>Block merge; mixed-type files will cause DuckDB schema errors</td>
+      </tr>
+      <tr>
+        <td>Column renamed</td>
+        <td>pyarrow schema diff</td>
+        <td><span class="badge badge-red">BREAK</span></td>
+        <td>Block merge; treat as remove+add pair</td>
+      </tr>
+      <tr>
+        <td>Partition template changed</td>
+        <td>compare dir tree structure</td>
+        <td><span class="badge badge-red">BREAK</span></td>
+        <td>Block merge; existing parquet files unreachable via new path</td>
+      </tr>
+      <tr>
+        <td>Row count mismatch for same input</td>
+        <td>compare parquet_rows() totals</td>
+        <td><span class="badge badge-red">BREAK</span></td>
+        <td>Block merge; data loss or duplication bug</td>
+      </tr>
+      <tr>
+        <td>WAL schema changed</td>
+        <td>Arrow IPC schema diff</td>
+        <td><span class="badge badge-red">BREAK</span></td>
+        <td>Block merge; WAL replay will fail on old WAL files</td>
+      </tr>
+      <tr>
+        <td>Config field default changed</td>
+        <td>config_extractor + default run</td>
+        <td><span class="badge badge-yellow">WARN</span></td>
+        <td>Require explicit config entry in production configs</td>
+      </tr>
+      <tr>
+        <td>New config field added</td>
+        <td>config_extractor diff</td>
+        <td><span class="badge badge-green">INFO</span></td>
+        <td>Document new field; existing configs use the default</td>
+      </tr>
+      <tr>
+        <td>New CLI flag added</td>
+        <td><code>--help</code> diff</td>
+        <td><span class="badge badge-green">INFO</span></td>
+        <td>Log for release notes only</td>
+      </tr>
+      <tr>
+        <td>Health field added or removed</td>
+        <td>health JSON diff</td>
+        <td><span class="badge badge-yellow">WARN</span></td>
+        <td>Monitoring dashboards may need updating</td>
+      </tr>
+      <tr>
+        <td>Compression codec default changed</td>
+        <td>pyarrow metadata check</td>
+        <td><span class="badge badge-yellow">WARN</span></td>
+        <td>DuckDB reads both; performance implication only</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Implementation Plan</h2>
+<div class="section">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Phase 1 — Schema Detector <span class="tag tag-new">Recommended first</span></div>
+      <ul>
+        <li>Write <code>schema_diff.py</code> using pyarrow</li>
+        <li>Reads two dirs, compares first parquet file schemas</li>
+        <li>No need to run writers — works on existing output</li>
+        <li>~60 lines of Python</li>
+        <li>Can be run manually: <code>python schema_diff.py old/ new/</code></li>
+      </ul>
+      <p style="margin-top:8px; color:var(--muted)">Immediate value: catches the class of bug where a config change silently drops columns.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase 2 — Config Extractor <span class="tag tag-new">Low effort</span></div>
+      <ul>
+        <li>Parse <code>writer --help</code> output with regex</li>
+        <li>Run writer with empty config to dump defaults to health</li>
+        <li>Diff field lists and default values</li>
+        <li>~80 lines of Python</li>
+      </ul>
+      <p style="margin-top:8px; color:var(--muted)">Catches default value drift — the m1/m2 class of minor bugs.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase 3 — Live Harness <span class="tag tag-mod">Moderate effort</span></div>
+      <ul>
+        <li>Launch both writers, send N messages via paho</li>
+        <li>Trigger flush via SIGTERM or wait for interval</li>
+        <li>Compare row counts and schemas</li>
+        <li>Requires local FlashMQ or mosquitto</li>
+        <li>~200 lines of Python</li>
+      </ul>
+      <p style="margin-top:8px; color:var(--muted)">Full integration test — catches data loss bugs (C3, C5) missed by schema diff alone.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Phase 4 — CI Integration <span class="tag tag-mod">Moderate effort</span></div>
+      <ul>
+        <li>GitHub Action: build both old (main) and new (PR branch)</li>
+        <li>Run detector, fail on BREAK severity</li>
+        <li>Post report as PR comment</li>
+        <li>~100 lines of GitHub Actions YAML</li>
+      </ul>
+      <p style="margin-top:8px; color:var(--muted)">Prevents accidental breaking changes from landing on main.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Phase 1 Sketch — schema_diff.py</h2>
+<div class="section">
+  <pre><span class="comment">#!/usr/bin/env python3
+# schema_diff.py — compare parquet schemas between two writer output dirs
+# Usage: python schema_diff.py /tmp/diff_old /tmp/diff_new</span>
+
+<span class="kw">import</span> sys, pathlib
+<span class="kw">import</span> pyarrow.parquet <span class="kw">as</span> pq
+
+<span class="kw">def</span> <span class="fn">first_parquet</span>(dirpath):
+    <span class="str">"""Find the first .parquet file anywhere under dirpath."""</span>
+    <span class="kw">for</span> p <span class="kw">in</span> pathlib.Path(dirpath).rglob(<span class="str">"*.parquet"</span>):
+        <span class="kw">return</span> p
+    <span class="kw">raise</span> FileNotFoundError(f<span class="str">"No parquet files under {dirpath}"</span>)
+
+<span class="kw">def</span> <span class="fn">schema_changes</span>(old_dir, new_dir):
+    old_schema = pq.read_schema(first_parquet(old_dir))
+    new_schema = pq.read_schema(first_parquet(new_dir))
+
+    old_cols = {f.name: f.type <span class="kw">for</span> f <span class="kw">in</span> old_schema}
+    new_cols = {f.name: f.type <span class="kw">for</span> f <span class="kw">in</span> new_schema}
+
+    changes = []
+    <span class="kw">for</span> name <span class="kw">in</span> old_cols:
+        <span class="kw">if</span> name <span class="kw">not in</span> new_cols:
+            changes.append((<span class="str">"BREAK"</span>, f<span class="str">"Column removed: {name} ({old_cols[name]})"</span>))
+        <span class="kw">elif</span> old_cols[name] != new_cols[name]:
+            changes.append((<span class="str">"BREAK"</span>, f<span class="str">"Type changed: {name} {old_cols[name]} → {new_cols[name]}"</span>))
+    <span class="kw">for</span> name <span class="kw">in</span> new_cols:
+        <span class="kw">if</span> name <span class="kw">not in</span> old_cols:
+            changes.append((<span class="str">"WARN"</span>, f<span class="str">"Column added: {name} ({new_cols[name]})"</span>))
+    <span class="kw">return</span> changes
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    old_dir, new_dir = sys.argv[<span class="num">1</span>], sys.argv[<span class="num">2</span>]
+    changes = schema_changes(old_dir, new_dir)
+    <span class="kw">if not</span> changes:
+        <span class="fn">print</span>(<span class="str">"✓ No schema changes detected"</span>)
+    <span class="kw">else</span>:
+        <span class="kw">for</span> severity, msg <span class="kw">in</span> changes:
+            <span class="fn">print</span>(f<span class="str">"[{severity}] {msg}"</span>)
+    <span class="fn">exit</span>(<span class="num">1</span> <span class="kw">if</span> <span class="fn">any</span>(s == <span class="str">"BREAK"</span> <span class="kw">for</span> s, _ <span class="kw">in</span> changes) <span class="kw">else</span> <span class="num">0</span>)</pre>
+
+  <div class="alert alert-ok">Phase 1 has zero new dependencies — pyarrow is already required by the test harness. Can be added to <code>make test</code> as a post-build check in &lt;1 day.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Relation to Existing Tests</h2>
+<div class="section">
+  <div class="alert alert-info">
+    The diff detector and the unit/KPI test suite are complementary, not overlapping. The unit tests verify correctness of the current binary; the diff detector verifies that the new binary is compatible with the old binary's output.
+  </div>
+  <table>
+    <thead>
+      <tr><th>Question</th><th>Unit Tests</th><th>Diff Detector</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Does flush_partition write valid Parquet?</td><td><span class="badge badge-green">Yes</span></td><td>–</td></tr>
+      <tr><td>Does the new version write the same schema as the old?</td><td>–</td><td><span class="badge badge-green">Yes</span></td></tr>
+      <tr><td>Does parse_payload produce correct rows?</td><td><span class="badge badge-green">Yes</span></td><td>–</td></tr>
+      <tr><td>Does the new version produce the same row count for same input?</td><td>–</td><td><span class="badge badge-green">Yes</span></td></tr>
+      <tr><td>Do WAL round-trips preserve data?</td><td><span class="badge badge-green">Yes (I2)</span></td><td>–</td></tr>
+      <tr><td>Does the WAL format remain backward-compatible?</td><td>–</td><td><span class="badge badge-green">Yes</span></td></tr>
+      <tr><td>Is parse throughput above target?</td><td>–</td><td><span class="badge badge-green">KPI</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── -->
+<h2>Recommended First Step</h2>
+<div class="section">
+  <div class="alert alert-ok">
+    <strong>Start with Phase 1 only.</strong> Create <code>source/parquet_writer_cpp/tests/schema_diff.py</code> (~60 lines). Add <code>make diff-check OLD=... NEW=...</code> to the Makefile. This catches the most dangerous class of change (column removal/type change) with zero additional dependencies and minimal effort.
+  </div>
+  <p>The live harness (Phase 3) is more valuable but requires mosquitto to be running and adds ~4× complexity. Defer until schema_diff is in CI and proving useful.</p>
+</div>
+
+</body>
+</html>

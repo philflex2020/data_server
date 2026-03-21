@@ -1247,5 +1247,134 @@ int main() {
   </div>
 
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 class="section">Last Run Results</h2>
+<div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem">
+  phil-dev · 2026-03-21 · <code>make test &amp;&amp; make kpi</code>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem">
+
+  <!-- Unit test output -->
+  <div>
+    <div style="font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">
+      Unit Tests — <code>make test</code>
+    </div>
+    <pre style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1rem;font-size:.78rem;line-height:1.55;overflow-x:auto">
+=== parquet_writer unit tests ===
+  <span style="color:var(--green)">PASS</span>  parse_topic: batteries fully-qualified
+  <span style="color:var(--green)">PASS</span>  parse_topic: solar source type
+  <span style="color:var(--green)">PASS</span>  parse_topic: wind source type
+  <span style="color:var(--green)">PASS</span>  parse_topic: source only, no kv
+  <span style="color:var(--green)">PASS</span>  parse_topic: empty string returns nullopt
+  <span style="color:var(--green)">PASS</span>  parse_topic: unknown extra kv keys ignored
+  <span style="color:var(--green)">PASS</span>  parse_topic: non-numeric value in kv skipped
+  <span style="color:var(--green)">PASS</span>  parse_payload: nested {value,unit} format
+  <span style="color:var(--green)">PASS</span>  parse_payload: flat scalar format
+  <span style="color:var(--green)">PASS</span>  parse_payload: metadata from topic injected
+  <span style="color:var(--green)">PASS</span>  parse_payload: bad JSON does not crash
+  <span style="color:var(--green)">PASS</span>  parse_payload: empty JSON object
+  <span style="color:var(--green)">PASS</span>  parse_payload: int columns from payload
+  <span style="color:var(--green)">PASS</span>  parse_payload: full battery payload (7 meas)
+  <span style="color:var(--green)">PASS</span>  parse_payload: full solar payload (6 meas)
+  <span style="color:var(--green)">PASS</span>  replace_vars: single substitution
+  <span style="color:var(--green)">PASS</span>  replace_vars: multiple substitutions
+  <span style="color:var(--green)">PASS</span>  replace_vars: partial — unknown left intact
+  <span style="color:var(--green)">PASS</span>  replace_vars: repeated placeholder
+  <span style="color:var(--green)">PASS</span>  replace_vars: empty template
+  <span style="color:var(--green)">PASS</span>  replace_vars: no placeholders unchanged
+  <span style="color:var(--green)">PASS</span>  flush_partition: empty rows writes no file
+  <span style="color:var(--green)">PASS</span>  flush_partition: single row valid parquet
+  <span style="color:var(--green)">PASS</span>  flush_partition: N rows round-trips correctly
+  <span style="color:var(--green)">PASS</span>  flush_partition: correct column count (9)
+  <span style="color:var(--green)">PASS</span>  flush_partition: sparse columns null-padded
+  <span style="color:var(--green)">PASS</span>  flush_partition: zstd compression valid
+  <span style="color:var(--green)">PASS</span>  hot file: merges rows from 2 partitions
+  <span style="color:var(--green)">PASS</span>  hot file: atomic rename (.tmp removed)
+  <span style="color:var(--green)">PASS</span>  hot file: disabled when path empty
+  <span style="color:var(--green)">PASS</span>  hot file: overwritten on second flush
+  <span style="color:var(--green)">PASS</span>  hot file: mixed source types merged
+  <span style="color:var(--green)">PASS</span>  current_state: one row per unique sensor
+  <span style="color:var(--green)">PASS</span>  current_state: latest reading wins
+  <span style="color:var(--green)">PASS</span>  current_state: disabled when path empty
+  <span style="color:var(--green)">PASS</span>  current_state: atomic rename (.tmp absent)
+  <span style="color:var(--green)">PASS</span>  current_state: mixed source types null-padded
+
+<span style="color:var(--green);font-weight:600">37 passed, 0 failed</span></pre>
+  </div>
+
+  <!-- KPI output -->
+  <div>
+    <div style="font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">
+      KPI Benchmarks — <code>make kpi</code>
+    </div>
+    <pre style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1rem;font-size:.78rem;line-height:1.55;overflow-x:auto">
+=== parquet_writer KPI benchmarks ===
+
+--- KPI 1: parse throughput ---
+parse_topic (1M calls)
+  <span style="color:var(--green);font-weight:600">1 650 946 ops/s</span>  (0.606s for 1M)
+  <span style="color:var(--muted)">110× fleet target of 14 976 msg/s ✓</span>
+
+parse_topic + parse_payload (1M)
+  <span style="color:var(--green);font-weight:600">507 578 ops/s</span>  (1.970s for 1M)
+  <span style="color:var(--muted)">34× fleet target ✓</span>
+
+parse_topic + parse_payload solar (1M)
+  <span style="color:var(--green);font-weight:600">543 054 ops/s</span>  (1.841s for 1M)
+  <span style="color:var(--muted)">36× fleet target ✓</span>
+
+Fleet target (24× scale): 14 976 msg/s
+
+--- KPI 2: parquet write throughput ---
+flush_partition snappy batch=1 000
+  <span style="color:var(--green);font-weight:600">960 857 rows/s   18.8 MB/s</span>
+  (0.208s for 200 000 rows)
+
+flush_partition snappy batch=10 000
+  <span style="color:var(--green);font-weight:600">984 343 rows/s   15.8 MB/s</span>
+  (0.203s for 200 000 rows)
+
+flush_partition snappy batch=50 000
+  <span style="color:var(--green);font-weight:600">855 594 rows/s   13.7 MB/s</span>
+  (0.234s for 200 000 rows)
+
+--- KPI 3: end-to-end ingest sim ---
+parse+buffer 14 976 msg × 10 rounds
+  <span style="color:var(--green);font-weight:600">452 212 ops/s</span>  (0.331s for 149 760)
+  96 partitions buffered, 149 760 rows
+
+Flush 149 760 rows → 96 parquet files:
+  <span style="color:var(--green);font-weight:600">0.125s  (1 201 221 rows/s)</span>
+
+Done.</pre>
+
+    <!-- KPI summary cards -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:.8rem">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Parse headroom</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">34×</div>
+        <div style="color:var(--muted);font-size:.75rem">above 14 976 msg/s fleet target</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Flush throughput</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">~1 M rows/s</div>
+        <div style="color:var(--muted);font-size:.75rem">149 k rows in 0.125s</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Full flush at 80k msg/s</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">&lt; 5s</div>
+        <div style="color:var(--muted);font-size:.75rem">for 60s × 80k = 4.8M rows</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Compression</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">13–19 MB/s</div>
+        <div style="color:var(--muted);font-size:.75rem">snappy, all batch sizes</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

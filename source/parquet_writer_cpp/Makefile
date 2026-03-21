@@ -29,7 +29,7 @@ TEST_PYTHON  := $(shell \
 
 TEST_FLAGS := $(CXXFLAGS) -DPARQUET_WRITER_NO_MAIN \
               -DTEST_PYTHON_BIN=\"$(TEST_PYTHON)\" \
-              $(ARROW_CFLAGS) $(MOSQ_CFLAGS) $(YAML_CFLAGS) $(JSON_CFLAGS)
+              $(ARROW_CFLAGS) $(MOSQ_CFLAGS) $(YAML_CFLAGS) $(SIMDJSON_CFLAGS)
 
 .PHONY: all clean deps test kpi
 

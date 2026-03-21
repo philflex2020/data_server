@@ -26,6 +26,9 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+
+// Default config for KPI tests — uses same defaults as Config struct
+static const Config g_kpi_cfg;
 using Clock  = std::chrono::steady_clock;
 using Ms     = std::chrono::duration<double, std::milli>;
 using Sec    = std::chrono::duration<double>;
@@ -120,7 +123,7 @@ static void kpi_parse_throughput() {
         volatile double sink = 0;
         for (long i = 0; i < N; i++) {
             auto ti = *parse_topic(topics[i % topics.size()]);
-            auto row = parse_payload(BATTERY_PAYLOAD, ti, 0);
+            auto row = parse_payload(BATTERY_PAYLOAD, ti, 0, g_kpi_cfg);
             sink += row.floats.size();
         }
         print_kpi("parse_topic + parse_payload (1M)", elapsed_sec(t0), N);
@@ -133,7 +136,7 @@ static void kpi_parse_throughput() {
         volatile double sink = 0;
         for (long i = 0; i < N; i++) {
             auto ti = *parse_topic(solar_topic);
-            auto row = parse_payload(SOLAR_PAYLOAD, ti, 0);
+            auto row = parse_payload(SOLAR_PAYLOAD, ti, 0, g_kpi_cfg);
             sink += row.floats.size();
         }
         print_kpi("parse_topic + parse_payload solar (1M)", elapsed_sec(t0), N);
@@ -230,7 +233,7 @@ static void kpi_ingest_simulation() {
         for (auto& [topic, payload] : messages) {
             auto ti = parse_topic(topic);
             if (!ti) continue;
-            Row row  = parse_payload(payload, *ti, 0);
+            Row row  = parse_payload(payload, *ti, 0, g_kpi_cfg);
             int site = row.ints.count("site_id") ? (int)row.ints.at("site_id") : 0;
             PartitionKey key{ti->source_type, site};
             local_buf[key].rows.push_back(std::move(row));
