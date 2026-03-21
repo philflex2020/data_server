@@ -88,6 +88,38 @@
     padding: .1em .35em; font-family: "SF Mono", Consolas, monospace; font-size: .85em;
   }
 
+  /* applied badge */
+  .applied {
+    margin-left: auto; flex-shrink: 0;
+    background: rgba(63,185,80,.15); color: var(--green);
+    border: 1px solid var(--green); border-radius: 4px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .06em;
+    padding: .15rem .5rem; text-transform: uppercase;
+  }
+
+  /* C4 options table */
+  .options { display: flex; flex-direction: column; gap: .6rem; margin: .75rem 0; }
+  .option {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: .75rem 1rem;
+  }
+  .option-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+  .option-tag {
+    font-size: .72rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+    padding: .15rem .5rem; border-radius: 3px; flex-shrink: 0;
+  }
+  .opt-a { background: rgba(63,185,80,.15);   color: var(--green);  border: 1px solid var(--green);  }
+  .opt-b { background: rgba(227,179,65,.15);  color: var(--yellow); border: 1px solid var(--yellow); }
+  .opt-c { background: rgba(88,166,255,.15);  color: var(--blue);   border: 1px solid var(--blue);   }
+  .option-title { font-weight: 600; font-size: .92rem; }
+  .option-effort { margin-left: auto; color: var(--muted); font-size: .8rem; flex-shrink: 0; }
+  .option p { font-size: .88rem; color: var(--text); margin-bottom: .4rem; }
+  .option p:last-child { margin-bottom: 0; }
+  .option ul { font-size: .85rem; padding-left: 1.2rem; }
+  .option ul li { margin-bottom: .2rem; }
+  .pro  { color: var(--green);    }
+  .con  { color: var(--critical); }
+
   /* apply order */
   .apply-order {
     background: var(--surface); border: 1px solid var(--border);
@@ -140,6 +172,7 @@
       <span class="fix-title">Signal handler calls <code>notify_all</code> on <code>condition_variable</code> — undefined behaviour
         <span class="fix-lines">lines 917–920</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p><code>condition_variable::notify_all()</code> acquires an internal mutex. If the signal fires while <code>g_mutex</code> is held by another thread, the signal handler deadlocks. Under POSIX only a small set of functions (<code>write</code>, <code>sem_post</code>, <code>_exit</code>…) are async-signal-safe.</p>
@@ -199,6 +232,7 @@ lock.lock();</pre>
       <span class="fix-title">WAL write failure silently proceeds to Parquet flush — crash safety guarantee void
         <span class="fix-lines">lines 671–678, 511</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>When <code>write_wal_ipc</code> fails the code logs a warning and continues flushing Parquet. If the Parquet write then crashes, the data is gone with no WAL to recover from. Two fixes needed: abort the partition on WAL failure, and check <code>out->Close()</code>.</p>
@@ -247,6 +281,7 @@ return arrow::Status::OK();</pre>
       <span class="fix-title">WAL replay hard-codes <code>source_type = "batteries"</code> — silent data misrouting
         <span class="fix-lines">line 577</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>The WAL filename already encodes the source type: <code>{source_type}_{pval}_{ts}.wal.arrow</code>. The replay loop never parses it back — all recovered rows land in <code>batteries/</code> regardless of origin.</p>
@@ -286,35 +321,112 @@ parts[{source_type, pval}]
       </span>
     </div>
     <div class="fix-body">
-      <p>The flush thread copies <code>g_current_state</code> (up to 10k map entries) while holding the same lock as the MQTT receive thread. During the copy the MQTT thread is blocked — mosquitto's buffer fills and keepalives can be missed.</p>
-      <p><strong>Minimal fix:</strong> promote to <code>std::shared_mutex</code> — multiple <code>on_message</code> calls can proceed concurrently; the flush takes exclusive only for the fast buffer swap.</p>
+      <p>The MQTT network thread calls <code>on_message</code> which locks <code>g_mutex</code> to insert into <code>g_buffers</code> and update <code>g_current_state</code>. The flush thread holds the <em>same</em> lock while copying <code>g_current_state</code> — up to 10k <code>std::map</code> entries with heap-allocated keys. During that O(N) copy every incoming message queues behind it. Three options in increasing order of effort:</p>
 
-      <div class="diff">
-        <div class="code-block">
-          <div class="code-label before">Before</div>
-          <pre>static std::mutex g_mutex;
+      <div class="options">
 
-// on_message:
-std::unique_lock&lt;std::mutex&gt; lock(g_mutex);
+        <div class="option">
+          <div class="option-header">
+            <span class="option-tag opt-a">Option A — Chosen ✓</span>
+            <span class="option-title">Eliminate the <code>g_current_state</code> copy — <code>shared_ptr</code> move at flush time</span>
+            <span class="option-effort">Applied</span>
+          </div>
+          <p>The bottleneck is not the mutex itself but the O(N) map copy under the lock. Change <code>g_current_state</code> to a <code>std::shared_ptr&lt;StateMap&gt;</code>. The flush thread does <code>std::move</code> to take ownership and installs a fresh empty map — O(1) pointer swap under the lock. <code>on_message</code> writes through the pointer as before. Lock hold time in the flush thread drops from O(N) to O(1).</p>
+          <ul>
+            <li class="pro">✓ Minimal structural change — <code>g_buffers</code> swap loop untouched</li>
+            <li class="pro">✓ Safe to land immediately alongside C1–C6</li>
+            <li class="con">✗ <code>on_message</code> still runs on the mosquitto network thread — Python subscriber gets no benefit</li>
+          </ul>
+          <div class="diff" style="margin-top:.6rem;">
+            <div class="code-block">
+              <div class="code-label before">Before — O(N) copy under lock</div>
+              <pre>static std::map&lt;SensorKey,Row&gt;
+    g_current_state;
 
-// flush_thread_fn swap:
-std::unique_lock&lt;std::mutex&gt; lock(g_mutex);</pre>
+// flush_thread_fn — holds g_mutex
+// for the entire map copy:
+auto cs_snap = g_current_state;
+// ↑ heap-allocates N entries
+//   while MQTT thread is blocked</pre>
+            </div>
+            <div class="code-block">
+              <div class="code-label after">After — O(1) pointer move under lock</div>
+              <pre>using StateMap = std::map&lt;SensorKey,Row&gt;;
+static std::shared_ptr&lt;StateMap&gt;
+    g_current_state{
+        std::make_shared&lt;StateMap&gt;()};
+
+// flush_thread_fn — O(1) move:
+auto cs_snap = std::move(g_current_state);
+g_current_state = std::make_shared&lt;StateMap&gt;();
+// lock released immediately after</pre>
+            </div>
+          </div>
         </div>
-        <div class="code-block">
-          <div class="code-label after">After</div>
-          <pre>static std::shared_mutex g_mutex;
 
-// on_message (write path):
-std::unique_lock&lt;std::shared_mutex&gt;
-    lock(g_mutex);
-
-// flush_thread_fn swap (exclusive):
-std::unique_lock&lt;std::shared_mutex&gt;
-    lock(g_mutex);</pre>
+        <div class="option">
+          <div class="option-header">
+            <span class="option-tag opt-b">Option B</span>
+            <span class="option-title">Lock-free SPSC ring in writer.cpp — dedicated ingest thread</span>
+            <span class="option-effort">~1 week</span>
+          </div>
+          <p><code>on_message</code> pushes to a lock-free single-producer single-consumer ring queue (mosquitto uses one network thread — true SPSC). A dedicated ingest thread drains the queue, batches rows into <code>g_buffers</code>, and updates state — so the flush lock is never contended from the network thread at all.</p>
+          <ul>
+            <li class="pro">✓ MQTT network thread never blocks — keepalive risk eliminated</li>
+            <li class="pro">✓ Ring queue entries can be fixed-size (no heap per message)</li>
+            <li class="con">✗ <code>Row</code> struct still uses <code>std::map&lt;string,…&gt;</code> — heap allocations inside the ring entries</li>
+            <li class="con">✗ Python subscriber_api still parses MQTT on its own event loop</li>
+          </ul>
         </div>
+
+        <div class="option">
+          <div class="option-header">
+            <span class="option-tag opt-c">Option C — Future</span>
+            <span class="option-title">Shared memory ring buffer — writer produces, Python consumes via <code>numpy.frombuffer</code></span>
+            <span class="option-effort">subscriber_api phase</span>
+          </div>
+          <p>An <code>mmap</code>-backed SPSC ring. Schema is stored in the ring header at startup (field names + types from config or first message — <strong>content-agnostic, not hardcoded</strong>). Each row is fixed-size, cache-line aligned, no heap. Python attaches the same <code>/dev/shm</code> region and reads via <code>numpy.frombuffer</code> — zero copy, no GIL, no MQTT parsing in Python.</p>
+          <div class="solo" style="margin:.6rem 0;">
+            <div class="code-label note" style="border-radius:6px 6px 0 0;">Ring layout (generic — field names from config)</div>
+            <pre>RingHeader [256 bytes, two cache lines]
+  write_seq  atomic&lt;uint64&gt;    // producer cursor
+  _pad       [56 bytes]
+  read_seq   atomic&lt;uint64&gt;    // consumer cursor
+  _pad       [56 bytes]
+  capacity   uint32
+  row_bytes  uint16            // fixed at startup
+  n_int_fields, n_float_fields uint8
+  field_names[32][16]          // generic field registry
+
+RingRow [fixed, aligned to 8 bytes]
+  ts_ns      int64
+  ints[]     int64  × n_int_fields
+  floats[]   double × n_float_fields</pre>
+          </div>
+          <div class="solo" style="margin:.6rem 0;">
+            <div class="code-label note" style="border-radius:6px 6px 0 0;">Python — build dtype from header, zero-copy read</div>
+            <pre>def dtype_from_header(hdr):
+    fields = [('ts_ns', np.int64)]
+    for i in range(hdr.n_int_fields):
+        fields.append((hdr.field_names[i], np.int64))
+    for i in range(hdr.n_float_fields):
+        fields.append((hdr.field_names[hdr.n_int_fields+i], np.float64))
+    return np.dtype(fields)
+
+ring = np.frombuffer(mm, dtype=dtype_from_header(hdr), offset=HEADER_SIZE)</pre>
+          </div>
+          <ul>
+            <li class="pro">✓ Solves writer C4 and subscriber_api M1 simultaneously</li>
+            <li class="pro">✓ mmap-backed — ring survives writer crash, replay on restart (replaces WAL for live window)</li>
+            <li class="pro">✓ Content-agnostic — works for any MQTT payload shape</li>
+            <li class="con">✗ <code>Row</code> struct (heap maps) must be replaced — touches <code>on_message</code>, <code>flush_partition</code>, <code>write_wal_ipc</code>, WAL replay</li>
+            <li class="con">✗ Schema must be fixed at startup — dynamic field discovery needs a two-pass init</li>
+          </ul>
+        </div>
+
       </div>
 
-      <p style="color:var(--muted); font-size:.85rem;">Long-term: replace with a lock-free SPSC queue per partition, or use <code>std::atomic&lt;std::shared_ptr&gt;</code> double-buffer for <code>g_current_state</code> to eliminate the O(N) copy entirely.</p>
+      <p style="color:var(--muted); font-size:.85rem; margin-top:.5rem;"><strong style="color:var(--yellow)">Recommended path:</strong> Land Option A now (eliminates the O(N) copy bottleneck, one day's work). Build Option C as a separate feature targeting subscriber_api's Python ingest problem — fold writer C4 in when the ring is proven.</p>
     </div>
   </div>
 
@@ -325,6 +437,7 @@ std::unique_lock&lt;std::shared_mutex&gt;
       <span class="fix-title"><code>g_health_buffer_rows</code> not zeroed after flush — health endpoint reports stale count
         <span class="fix-lines">lines 761–763 + check_disk_space</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p><code>g_total_buffered</code> is reset to 0 after the buffer swap but <code>g_health_buffer_rows</code> (the atomic exposed via <code>/health</code>) is only written in <code>on_message</code>. Between a flush completing and the next message, the endpoint reports the old inflated count. Same function also never samples disk when the guard is disabled, so <code>disk_free_gb</code> always shows 0.0.</p>
@@ -374,6 +487,7 @@ g_health_buffer_rows.store(0); // fix C5</pre>
       <span class="fix-title">WAL replay reads only <code>chunk(0)</code> — silently drops rows in multi-chunk tables
         <span class="fix-lines">lines 537–541</span>
       </span>
+      <span class="applied">✓ Applied</span>
     </div>
     <div class="fix-body">
       <p>Arrow <code>ChunkedArray</code> can hold multiple chunks when a table is assembled from multiple <code>RecordBatch</code>es via <code>Table::FromRecordBatches</code>. <code>chunk(0)</code> silently discards everything after the first chunk. The fix is <code>arrow::Concatenate</code> which is a no-op for single-chunk columns.</p>
@@ -407,43 +521,43 @@ if (tid == arrow::Type::INT64)
 
   <!-- ── Apply order ──────────────────────────────────────────────────────── -->
   <div class="apply-order">
-    <h3>Recommended apply order — least to most invasive</h3>
+    <h3>Apply order — status</h3>
     <div class="steps">
-      <div class="step">
-        <span class="step-num">1</span>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
         <span class="step-id">C5</span>
         <span class="step-desc">Two-line fix — health <code>buffer_rows</code> + <code>disk_free_gb</code> both correct immediately</span>
-        <span class="step-risk risk-low">low risk</span>
+        <span class="step-risk risk-low">done</span>
       </div>
-      <div class="step">
-        <span class="step-num">2</span>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
         <span class="step-id">C3</span>
-        <span class="step-desc">String parsing from WAL filename — no behaviour change for normal operation</span>
-        <span class="step-risk risk-low">low risk</span>
+        <span class="step-desc">Parse <code>source_type</code> from WAL filename — no behaviour change for normal operation</span>
+        <span class="step-risk risk-low">done</span>
       </div>
-      <div class="step">
-        <span class="step-num">3</span>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
         <span class="step-id">C2</span>
-        <span class="step-desc">Abort partition flush if WAL write fails — test with WAL deliberately failing</span>
-        <span class="step-risk risk-low">low risk</span>
+        <span class="step-desc">Abort partition flush if WAL write fails; <code>out-&gt;Close()</code> now checked</span>
+        <span class="step-risk risk-low">done</span>
       </div>
-      <div class="step">
-        <span class="step-num">4</span>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
         <span class="step-id">C6</span>
-        <span class="step-desc">Replace <code>chunk(0)</code> with <code>Concatenate</code> — test WAL replay directly</span>
-        <span class="step-risk risk-low">low risk</span>
+        <span class="step-desc">Replace <code>chunk(0)</code> with <code>arrow::Concatenate</code> — all WAL chunks now replayed</span>
+        <span class="step-risk risk-low">done</span>
       </div>
-      <div class="step">
-        <span class="step-num">5</span>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
         <span class="step-id">C1</span>
-        <span class="step-desc">Self-pipe signal handler + poll-based flush wait — most structural change</span>
-        <span class="step-risk risk-med">medium risk</span>
+        <span class="step-desc">Self-pipe signal handler + <code>poll</code>-based flush wait — async-signal-safe</span>
+        <span class="step-risk risk-low">done</span>
       </div>
-      <div class="step">
-        <span class="step-num">6</span>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
         <span class="step-id">C4</span>
-        <span class="step-desc"><code>mutex</code> → <code>shared_mutex</code> on the hot path — benchmark throughput after</span>
-        <span class="step-risk risk-high">benchmark after</span>
+        <span class="step-desc">Option A applied — <code>shared_ptr&lt;StateMap&gt;</code> move eliminates O(N) copy under lock. Option C (shared memory ring) deferred to subscriber_api phase.</span>
+        <span class="step-risk risk-low">done</span>
       </div>
     </div>
   </div>

@@ -658,8 +658,10 @@ static void health_thread_fn(int port) {
 // Buffer + flush thread
 // ---------------------------------------------------------------------------
 
+using StateMap = std::map<SensorKey, Row>;
+
 static std::map<PartitionKey, Partition> g_buffers;
-static std::map<SensorKey, Row>          g_current_state;  // latest row per sensor
+static std::shared_ptr<StateMap>         g_current_state{std::make_shared<StateMap>()}; // C4-A: ptr swap at flush
 static std::mutex                        g_mutex;
 static std::condition_variable           g_flush_cv;
 // g_shutdown, g_cfg, g_overflow_drops declared above (before robustness section)
@@ -669,7 +671,7 @@ static uint64_t                          g_sync_drops_detected{0}; // cumulative
 static std::string                       g_sync_session_id;      // detect stress_runner restarts
 
 static void do_flush(std::map<PartitionKey, Partition> to_flush,
-                     std::map<SensorKey, Row>          cs_snapshot) {
+                     std::shared_ptr<StateMap>         cs_snapshot) {
     // Disk space guard (skips entire flush if enabled and space is low)
     if (!check_disk_space(g_cfg->base_path, g_cfg->min_free_bytes)) {
         std::cerr << "[flush] SKIPPED — insufficient disk space\n";
@@ -756,10 +758,10 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
 
     // Current-state file — one row per unique sensor, always the latest reading.
     // Written from the snapshot taken under g_mutex in flush_thread_fn.
-    if (!g_cfg->current_state_path.empty() && !cs_snapshot.empty()) {
+    if (!g_cfg->current_state_path.empty() && cs_snapshot && !cs_snapshot->empty()) {
         std::vector<Row> cs_rows;
-        cs_rows.reserve(cs_snapshot.size());
-        for (auto& [k, r] : cs_snapshot) cs_rows.push_back(r);
+        cs_rows.reserve(cs_snapshot->size());
+        for (auto& [k, r] : *cs_snapshot) cs_rows.push_back(r);
 
         auto tmp    = g_cfg->current_state_path + ".tmp";
         auto status = flush_partition(tmp, cs_rows, g_cfg->compression);
@@ -790,7 +792,8 @@ static void flush_thread_fn() {
         auto to_flush  = std::exchange(g_buffers, {});
         g_total_buffered = 0;                       // reset counter atomically with buffer swap
         g_health_buffer_rows.store(0);              // C5: health endpoint now correctly shows 0 after flush
-        auto cs_snap   = g_current_state;           // copy under same lock — atomic with buffer swap
+        auto cs_snap   = std::move(g_current_state);            // C4-A: O(1) pointer move, not O(N) copy
+        g_current_state = std::make_shared<StateMap>();         // fresh empty map for next cycle
         lock.unlock();                              // release before slow I/O
         do_flush(std::move(to_flush), std::move(cs_snap));
     }
@@ -800,7 +803,8 @@ static void flush_thread_fn() {
     auto to_flush    = std::exchange(g_buffers, {});
     g_total_buffered = 0;
     g_health_buffer_rows.store(0);
-    auto cs_snap     = g_current_state;
+    auto cs_snap     = std::move(g_current_state);
+    g_current_state  = std::make_shared<StateMap>();
     lock.unlock();
     do_flush(std::move(to_flush), std::move(cs_snap));
 }
@@ -920,7 +924,7 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
 
     // Maintain current-state map: always keep the latest row per unique sensor.
     if (!g_cfg->current_state_path.empty())
-        g_current_state[SensorKey{info_opt->source_type, row.ints}] = row;
+        (*g_current_state)[SensorKey{info_opt->source_type, row.ints}] = row;
 
     auto& part = g_buffers[key];
     part.rows.push_back(std::move(row));
