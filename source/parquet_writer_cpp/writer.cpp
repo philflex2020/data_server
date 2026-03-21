@@ -16,7 +16,7 @@
  *   {base_path}/{source_type}/project={project_id}/site={site_id}/{year}/{month}/{day}/{ts}.parquet
  *
  * Usage:
- *   ./parquet_writer [--config config.yaml]
+ *   ./parquet_writer [--config writer_config.yaml]
  *
  * Build:
  *   cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
@@ -1036,7 +1036,7 @@ static void print_help(const char* prog) {
 "MQTT → partitioned Parquet writer for battery telemetry.\n"
 "\n"
 "Options (override config file values):\n"
-"  --config <path>        YAML config file (default: config.yaml)\n"
+"  --config <path>        YAML config file (default: writer_config.yaml)\n"
 "  --host <hostname>      MQTT broker host (overrides mqtt.host)\n"
 "  --port <n>             MQTT broker port (overrides mqtt.port)\n"
 "  --client-id <id>       MQTT client ID (overrides mqtt.client_id) — MUST be unique per instance\n"
@@ -1087,12 +1087,12 @@ static void print_help(const char* prog) {
 "\n"
 "Examples:\n"
 "  ./parquet_writer\n"
-"  ./parquet_writer --config /etc/writer/config.yaml\n"
+"  ./parquet_writer --config /etc/writer/writer_config.yaml\n"
 "  curl http://localhost:8771/health | python3 -m json.tool\n";
 }
 
 int main(int argc, char* argv[]) {
-    std::string config_path = "config.yaml";
+    std::string config_path = "writer_config.yaml";
     // CLI overrides applied after config load — take precedence over config file
     std::string cli_host, cli_output, cli_client_id;
     int cli_port = 0, cli_health_port = 0, cli_flush_interval = 0;

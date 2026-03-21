@@ -31,7 +31,7 @@ flashmq --config /etc/flashmq/flashmq-aws-sim.conf &
 sleep 0.5
 
 echo "=== Starting host writer.cpp → /srv/data/parquet ==="
-(cd source/parquet_writer_cpp && nohup ./parquet_writer --config config.yaml \
+(cd source/parquet_writer_cpp && nohup ./parquet_writer --config writer_config.yaml \
   > /tmp/writer-host.log 2>&1) &
 
 echo "=== Starting rsync-sim loop (5 s) ==="
@@ -46,7 +46,7 @@ if $TELEGRAF; then
 fi
 
 echo "=== Starting stress_runner ==="
-(cd source/stress_runner && nohup python stress_runner.py --config config.yaml \
+(cd source/stress_runner && nohup python stress_runner.py --config writer_config.yaml \
   > /tmp/stress_runner.log 2>&1) &
 
 echo "=== Starting subscriber_api ==="

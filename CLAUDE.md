@@ -45,7 +45,7 @@ cd html && python3 -m http.server 8080 --bind 0.0.0.0 &
 .venv/bin/python source/stress_runner/stress_runner.py --config source/stress_runner/config.yaml > /tmp/stress_runner.log 2>&1 &
 
 # Parquet writer (C++ binary, pre-built)
-cd source/parquet_writer_cpp && ./parquet_writer --config config.yaml > /tmp/writer-host.log 2>&1 &
+cd source/parquet_writer_cpp && ./parquet_writer --config writer_config.yaml > /tmp/writer-host.log 2>&1 &
 
 # Push agent (must run from its own dir)
 cd source/rsync_push && /home/phil/work/gen-ai/data_server/.venv/bin/python push_agent.py > /tmp/push_agent.log 2>&1 &
@@ -58,7 +58,7 @@ cd source/rsync_push && /home/phil/work/gen-ai/data_server/.venv/bin/python push
 cd ~/work/gen-ai/data_server/source/parquet_writer_cpp && make parquet_writer
 
 # Start writer
-./parquet_writer --config config.yaml > /tmp/writer-host.log 2>&1 &
+./parquet_writer --config writer_config.yaml > /tmp/writer-host.log 2>&1 &
 ```
 
 - Git remote uses HTTPS (no GitHub SSH key on lp3): `https://github.com/philflex2020/data_server.git`

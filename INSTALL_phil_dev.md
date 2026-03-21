@@ -236,7 +236,7 @@ sudo mkdir -p /srv/data/parquet
 sudo chown phil:phil /srv/data/parquet
 ```
 
-### Config: `source/parquet_writer_cpp/config.yaml`
+### Config: `source/parquet_writer_cpp/writer_config.yaml`
 
 ```yaml
 mqtt:

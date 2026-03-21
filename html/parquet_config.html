@@ -653,7 +653,7 @@ token:  battery-token-secret
     id: 'writer_cpp', group: 'edge_path', label: 'writer.cpp',
     desc: 'MQTT → Parquet writer (edge, /srv/data/parquet)',
     dot: 'edge', host: 'fractal', port: null,
-    configFile: 'source/parquet_writer_cpp/config.yaml',
+    configFile: 'source/parquet_writer_cpp/writer_config.yaml',
     configLang: 'yaml',
     config: `mqtt:
   host: localhost
@@ -690,7 +690,7 @@ cd source/parquet_writer_cpp && make
 
 # Run
 cd source/parquet_writer_cpp
-./parquet_writer --config config.yaml`,
+./parquet_writer --config writer_config.yaml`,
         log: '/tmp/writer-host.log',
       },
     ],
@@ -932,7 +932,7 @@ projects:
       {
         title: 'Start stress runner',
         cmd: `cd source/stress_runner
-.venv/bin/python stress_runner.py --config config.yaml`,
+.venv/bin/python stress_runner.py --config writer_config.yaml`,
         log: '/tmp/stress_runner.log',
       },
     ],
@@ -995,7 +995,7 @@ sources:
       {
         title: 'Start generator',
         cmd: `cd source/generator
-.venv/bin/python generator.py --config config.yaml`,
+.venv/bin/python generator.py --config writer_config.yaml`,
         log: null,
       },
     ],
@@ -1149,7 +1149,7 @@ flashmq --config /etc/flashmq/flashmq-aws-sim.conf &
 sleep 0.5
 
 echo "=== Starting host writer.cpp → /srv/data/parquet ==="
-(cd source/parquet_writer_cpp && nohup ./parquet_writer --config config.yaml \
+(cd source/parquet_writer_cpp && nohup ./parquet_writer --config writer_config.yaml \
   > /tmp/writer-host.log 2>&1) &
 
 echo "=== Starting rsync-sim loop (5 s) ==="
@@ -1170,7 +1170,7 @@ if $TELEGRAF; then
 fi
 
 echo "=== Starting stress_runner ==="
-(cd source/stress_runner && nohup python stress_runner.py --config config.yaml \
+(cd source/stress_runner && nohup python stress_runner.py --config writer_config.yaml \
   > /tmp/stress_runner.log 2>&1) &
 
 echo "=== Starting subscriber_api ==="

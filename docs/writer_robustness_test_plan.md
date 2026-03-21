@@ -27,7 +27,7 @@ flush.  Also collected in atomics for health endpoint.  Zero overhead.
 **Test:**
 
 ```bash
-./parquet_writer --config config.yaml
+./parquet_writer --config writer_config.yaml
 # After first flush you should see:
 # [flush] 12345 rows → /srv/data/parquet/batteries/...
 # [flush] total=12345 rows in 42ms
@@ -209,7 +209,7 @@ the production writer with the original config:
 
 ```bash
 kill %1   # or pkill -f parquet_writer
-./parquet_writer --config config.yaml &
+./parquet_writer --config writer_config.yaml &
 ```
 
 The original `config.yaml` has none of the new stanzas so all robustness

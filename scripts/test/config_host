@@ -5,7 +5,7 @@ config_host <ip> [--help]
 Show key config files from a data_server host node via SSH.
 
 Configs shown:
-  writer       source/parquet_writer_cpp/config.yaml
+  writer       source/parquet_writer_cpp/writer_config.yaml
   stress       source/stress_runner/config.yaml
   push_agent   source/rsync_push/config.yaml
   flashmq      /etc/flashmq/flashmq.conf  (or bridge conf dir)
@@ -69,7 +69,7 @@ def show_git(host, password):
     show_section("git  branch + recent commits", out)
 
 def show_writer(host, password):
-    out, _ = ssh(host, f"cat {REPO}/source/parquet_writer_cpp/config.yaml", password)
+    out, _ = ssh(host, f"cat {REPO}/source/parquet_writer_cpp/writer_config.yaml", password)
     show_section("writer  config.yaml", out)
 
 def show_stress(host, password):

@@ -56,7 +56,7 @@ cd data_server/source/parquet_writer_cpp
 make
 
 mkdir -p /data/parquet-aws
-./parquet_writer --config config.yaml
+./parquet_writer --config writer_config.yaml
 ```
 
 ### Systemd service
@@ -69,7 +69,7 @@ After=network.target
 [Service]
 User=ubuntu
 WorkingDirectory=/home/ubuntu/data_server/source/parquet_writer_cpp
-ExecStart=/home/ubuntu/data_server/source/parquet_writer_cpp/parquet_writer --config config.yaml
+ExecStart=/home/ubuntu/data_server/source/parquet_writer_cpp/parquet_writer --config writer_config.yaml
 Restart=always
 RestartSec=10
 StandardOutput=journal
