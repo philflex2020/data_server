@@ -35,6 +35,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include <atomic>
 #include <chrono>
@@ -420,6 +421,7 @@ arrow::Status flush_partition(const std::string& path,
 static const Config*         g_cfg{nullptr};
 static std::atomic<bool>     g_shutdown{false};
 static std::atomic<uint64_t> g_overflow_drops{0};
+static int                   g_signal_pipe[2] = {-1, -1};
 
 // ---------------------------------------------------------------------------
 // Flush metrics (always present, zero overhead when not watched)
@@ -438,11 +440,12 @@ static std::atomic<uint64_t> g_wal_replay_rows  {0};
 // ---------------------------------------------------------------------------
 
 static bool check_disk_space(const std::string& path, uint64_t min_bytes) {
-    if (min_bytes == 0) return true;
     std::error_code ec;
     auto si = fs::space(path, ec);
+    if (!ec)
+        g_disk_free_gb_x10.store(si.available / (1024ULL * 1024 * 1024 / 10)); // C5: always sample
+    if (min_bytes == 0) return true;                                             // guard moved after sample
     if (ec) { std::cerr << "[disk] space check failed: " << ec.message() << "\n"; return true; }
-    g_disk_free_gb_x10.store(si.available / (1024ULL * 1024 * 1024 / 10));
     if (si.available < min_bytes) {
         std::cerr << "[disk] LOW SPACE: " << si.available / (1024.0*1024*1024)
                   << " GB free, minimum " << min_bytes / (1024.0*1024*1024) << " GB\n";
@@ -508,7 +511,8 @@ static arrow::Status write_wal_ipc(const std::string& path, const std::vector<Ro
     ARROW_ASSIGN_OR_RAISE(auto writer, arrow::ipc::MakeFileWriter(out, table->schema()));
     ARROW_RETURN_NOT_OK(writer->WriteTable(*table));
     ARROW_RETURN_NOT_OK(writer->Close());
-    return out->Close();
+    ARROW_RETURN_NOT_OK(out->Close());   // C2: was discarded — WAL file could be corrupt but caller saw OK
+    return arrow::Status::OK();
 }
 
 static std::vector<Row> wal_replay_file(const std::string& path) {
@@ -534,11 +538,14 @@ static std::vector<Row> wal_replay_file(const std::string& path) {
         for (int c = 0; c < ncols; ++c) {
             const auto& name = table->schema()->field(c)->name();
             auto tid = table->schema()->field(c)->type()->id();
-            auto chunk0 = table->column(c)->chunk(0);
+            // C6: flatten all chunks into one contiguous array — chunk(0) silently drops multi-chunk tables
+            auto combined = arrow::Concatenate(table->column(c)->chunks());
+            if (!combined.ok()) continue;
+            auto arr = combined.ValueOrDie();
             if (tid == arrow::Type::INT64)
-                int_cols.emplace_back(name, std::static_pointer_cast<arrow::Int64Array>(chunk0));
+                int_cols.emplace_back(name, std::static_pointer_cast<arrow::Int64Array>(arr));
             else if (tid == arrow::Type::DOUBLE)
-                dbl_cols.emplace_back(name, std::static_pointer_cast<arrow::DoubleArray>(chunk0));
+                dbl_cols.emplace_back(name, std::static_pointer_cast<arrow::DoubleArray>(arr));
         }
         rows.reserve(nrows);
         for (int r = 0; r < nrows; ++r) {
@@ -565,7 +572,20 @@ static void replay_wal_files() {
     for (const auto& wp : wal_files) {
         auto rows = wal_replay_file(wp.string());
         if (rows.empty()) { fs::remove(wp, ec); continue; }
-        std::cout << "[wal] replaying " << rows.size() << " rows from " << wp.filename() << "\n";
+
+        // C3: parse source_type from filename: {source_type}_{pval}_{ts}.wal.arrow
+        std::string stem = wp.stem().string();          // e.g. "batteries_1_20260320T120000Z.wal"
+        if (stem.size() > 4 && stem.substr(stem.size()-4) == ".wal")
+            stem = stem.substr(0, stem.size()-4);       // strip trailing ".wal"
+        std::string source_type;
+        auto first_us = stem.find('_');
+        if (first_us != std::string::npos)
+            source_type = stem.substr(0, first_us);
+        if (source_type.empty())
+            source_type = "data";   // safe fallback — filename didn't match expected pattern
+
+        std::cout << "[wal] replaying " << rows.size() << " rows from " << wp.filename()
+                  << " (source_type=" << source_type << ")\n";
         g_wal_replay_rows.fetch_add(rows.size());
         // Group by partition key and flush to production parquet
         std::map<PartitionKey, std::vector<Row>> parts;
@@ -573,8 +593,7 @@ static void replay_wal_files() {
             int pval = 0;
             if (auto it = r.ints.find(g_cfg->partition_field); it != r.ints.end())
                 pval = static_cast<int>(it->second);
-            // Infer source_type from first segment of wal filename (best-effort)
-            parts[{"batteries", pval}].push_back(std::move(r));
+            parts[{source_type, pval}].push_back(std::move(r));
         }
         bool all_ok = true;
         for (auto& [key, part_rows] : parts) {
@@ -673,8 +692,12 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
         if (g_cfg->wal_enabled) {
             wal_file = wal_path_for(*g_cfg, key.source_type, key.partition_value);
             auto ws = write_wal_ipc(wal_file, part.rows);
-            if (!ws.ok())
-                std::cerr << "[wal] write failed (" << ws.ToString() << ") — proceeding without WAL\n";
+            if (!ws.ok()) {
+                std::cerr << "[wal] write failed (" << ws.ToString()
+                          << ") — SKIPPING parquet flush for this partition\n";
+                wal_file.clear();   // C2: don't try to delete a partial WAL on success path
+                continue;           // C2: abort — no WAL means no crash-safe guarantee
+            }
         }
 
         auto path = make_output_path(*g_cfg, key.source_type, key.partition_value);
@@ -757,9 +780,16 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
 static void flush_thread_fn() {
     while (!g_shutdown) {
         std::unique_lock<std::mutex> lock(g_mutex);
-        g_flush_cv.wait_for(lock, std::chrono::seconds(g_cfg->flush_interval_seconds));
+        lock.unlock();
+        struct pollfd pfd =
+            { g_signal_pipe[0], POLLIN, 0 };
+        poll(&pfd, 1,
+            g_cfg->flush_interval_seconds * 1000);
+        lock.lock();
+
         auto to_flush  = std::exchange(g_buffers, {});
         g_total_buffered = 0;                       // reset counter atomically with buffer swap
+        g_health_buffer_rows.store(0);              // C5: health endpoint now correctly shows 0 after flush
         auto cs_snap   = g_current_state;           // copy under same lock — atomic with buffer swap
         lock.unlock();                              // release before slow I/O
         do_flush(std::move(to_flush), std::move(cs_snap));
@@ -769,6 +799,7 @@ static void flush_thread_fn() {
     std::unique_lock<std::mutex> lock(g_mutex);
     auto to_flush    = std::exchange(g_buffers, {});
     g_total_buffered = 0;
+    g_health_buffer_rows.store(0);
     auto cs_snap     = g_current_state;
     lock.unlock();
     do_flush(std::move(to_flush), std::move(cs_snap));
@@ -915,8 +946,12 @@ static void on_log(struct mosquitto*, void*, int level, const char* str) {
 // ---------------------------------------------------------------------------
 
 static void handle_signal(int) {
-    g_shutdown = true;
-    g_flush_cv.notify_all();
+    g_shutdown.store(true, std::memory_order_relaxed);
+    char b = 1;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+    write(g_signal_pipe[1], &b, 1);   // intentionally unchecked in signal context
+#pragma GCC diagnostic pop
 }
 
 // ---------------------------------------------------------------------------
@@ -995,6 +1030,10 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, handle_signal);
 
     mosquitto_lib_init();
+    if (pipe(g_signal_pipe) != 0) {
+        std::cerr << "[init] pipe() failed: " << strerror(errno) << "\n";
+        return 1;
+    }
 
     // clean_session=false: FlashMQ queues QoS-1 messages while we're offline
     auto* mosq = mosquitto_new(cfg.mqtt_client_id.c_str(), /*clean_session=*/false, nullptr);
