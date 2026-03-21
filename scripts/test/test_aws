@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""
+test_aws <ip> [tests...] [--help]
+
+Quick sanity-check script for the aws-sim node (fractal-phil).
+
+Tests implemented:
+  mqtt_aws        TCP :1884 — FlashMQ aws-sim reachable
+  influxdb        HTTP :8086/health — InfluxDB2 alive
+  subscriber_ws   WebSocket :8767 — subscriber_api WebSocket
+  subscriber_http HTTP :8768 — subscriber_api Flux endpoint
+
+Usage:
+  test_aws 192.168.86.51                    # run all tests
+  test_aws 192.168.86.51 influxdb           # run one test
+  test_aws --help
+"""
+
+import sys
+import json
+import socket
+import asyncio
+import argparse
+import urllib.request
+import urllib.error
+
+try:
+    import websockets
+    HAS_WS = True
+except ImportError:
+    HAS_WS = False
+
+# ── colours ──────────────────────────────────────────────────────────────────
+
+GREEN  = "\033[32m"
+RED    = "\033[31m"
+YELLOW = "\033[33m"
+RESET  = "\033[0m"
+
+def ok(msg):   print(f"  {GREEN}PASS{RESET}  {msg}")
+def fail(msg): print(f"  {RED}FAIL{RESET}  {msg}")
+def warn(msg): print(f"  {YELLOW}WARN{RESET}  {msg}")
+def hdr(msg):  print(f"\n[ {msg} ]")
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def tcp_reachable(host, port, timeout=3):
+    try:
+        s = socket.create_connection((host, port), timeout=timeout)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+def http_get(url, timeout=5):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.read(), r.status, None
+    except urllib.error.URLError as e:
+        return None, None, str(e)
+    except Exception as e:
+        return None, None, str(e)
+
+def http_get_json(url, timeout=5):
+    body, status, err = http_get(url, timeout)
+    if err:
+        return None
+    try:
+        return json.loads(body)
+    except Exception:
+        return {}
+
+async def ws_get_message(host, port, timeout=5):
+    if not HAS_WS:
+        return None, "websockets not installed (pip install websockets)"
+    uri = f"ws://{host}:{port}"
+    try:
+        async with websockets.connect(uri, open_timeout=timeout) as ws:
+            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            return json.loads(raw), None
+    except Exception as e:
+        return None, str(e)
+
+# ── tests ──────────────────────────────────────────────────────────────────────
+
+def test_mqtt_aws(host):
+    hdr(f"mqtt_aws  {host}:1884")
+    if tcp_reachable(host, 1884):
+        ok("TCP :1884 reachable — FlashMQ aws-sim is up")
+        return True
+    fail("TCP :1884 not reachable — FlashMQ aws-sim may be down")
+    return False
+
+
+def test_influxdb(host):
+    hdr(f"influxdb  {host}:8086/health")
+    if not tcp_reachable(host, 8086):
+        fail("TCP :8086 not reachable — InfluxDB2 not running")
+        return False
+    data = http_get_json(f"http://{host}:8086/health")
+    if data is None:
+        fail("HTTP GET /health failed")
+        return False
+    status = data.get("status", "unknown")
+    name   = data.get("name", "")
+    if status == "pass":
+        ok(f"status={status}  name={name}")
+        return True
+    warn(f"status={status}  name={name}")
+    return False
+
+
+def test_subscriber_ws(host):
+    hdr(f"subscriber_api  {host}:8767 (WebSocket)")
+    if not HAS_WS:
+        warn("websockets not installed — skipping (pip install websockets)")
+        return False
+    if not tcp_reachable(host, 8767):
+        fail("TCP :8767 not reachable — subscriber_api not running")
+        return False
+    data, err = asyncio.run(ws_get_message(host, 8767))
+    if err:
+        if "no close frame" in str(err) or "ConnectionClosed" in str(err):
+            ok("WebSocket :8767 connected (no initial message — normal)")
+            return True
+        fail(f"WebSocket error: {err}")
+        return False
+    ok(f"WebSocket :8767 connected, received: {str(data)[:80]}")
+    return True
+
+
+def test_subscriber_http(host):
+    hdr(f"subscriber_api  {host}:8768 (Flux HTTP /api/v2/query)")
+    if not tcp_reachable(host, 8768):
+        fail("TCP :8768 not reachable — subscriber_api Flux endpoint not running")
+        return False
+    # Endpoint only accepts POST /api/v2/query — just confirm TCP is up
+    ok("TCP :8768 reachable — Flux HTTP endpoint up")
+    return True
+
+
+# ── registry ──────────────────────────────────────────────────────────────────
+
+TESTS = {
+    "mqtt_aws":        test_mqtt_aws,
+    "influxdb":        test_influxdb,
+    "subscriber_ws":   test_subscriber_ws,
+    "subscriber_http": test_subscriber_http,
+}
+
+# ── main ───────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Sanity-check the aws-sim node (fractal-phil).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="\n".join(f"  {name}" for name in TESTS),
+    )
+    parser.add_argument("host", nargs="?", help="IP address of the aws-sim node")
+    parser.add_argument("tests", nargs="*",
+                        help=f"tests to run (default: all). Choices: {', '.join(TESTS)}")
+    args = parser.parse_args()
+
+    if not args.host:
+        parser.print_help()
+        sys.exit(0)
+
+    host   = args.host
+    chosen = args.tests if args.tests else list(TESTS)
+
+    unknown = [t for t in chosen if t not in TESTS]
+    if unknown:
+        print(f"Unknown test(s): {', '.join(unknown)}")
+        print(f"Available: {', '.join(TESTS)}")
+        sys.exit(1)
+
+    print(f"\ntest_aws  target={host}  tests={', '.join(chosen)}")
+
+    results = {}
+    for name in chosen:
+        results[name] = TESTS[name](host)
+
+    passed = sum(1 for v in results.values() if v)
+    total  = len(results)
+    colour = GREEN if passed == total else RED
+    print(f"\n{colour}{'='*40}{RESET}")
+    print(f"{colour}{passed}/{total} tests passed{RESET}")
+    print()
+
+    sys.exit(0 if passed == total else 1)
+
+
+if __name__ == "__main__":
+    main()
