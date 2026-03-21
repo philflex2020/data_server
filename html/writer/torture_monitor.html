@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Torture Monitor — phil-256g</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149; --orange: #e3b341;
+    --green-bg: #0d4429; --yellow-bg: #2d2000; --red-bg: #3d0a0a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif; padding: 16px; }
+  h2 { color: var(--accent); font-size: 1rem; margin: 20px 0 8px;
+       padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+
+  /* ── top bar ── */
+  .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .topbar h1 { color: var(--accent); font-size: 1.3rem; margin-right: 4px; }
+  .topbar input { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                  padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; width: 180px; }
+  .topbar input:focus { outline: none; border-color: var(--accent); }
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text);
+         padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.82rem; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn.active { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+  .btn.needs-action { border-color: var(--yellow); color: var(--yellow);
+                      animation: pulse-warn 1.2s ease-in-out infinite; }
+  @keyframes pulse-warn {
+    0%,100% { box-shadow: 0 0 0 0 rgba(210,153,34,0); }
+    50%      { box-shadow: 0 0 0 5px rgba(210,153,34,0.35); }
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .dot.ok   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.err  { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+  .dot.warn { background: var(--yellow); }
+  .dot.off  { background: var(--muted); }
+  #conn-status { font-size: 0.8rem; color: var(--muted); }
+
+  /* ── writer cards ── */
+  .writers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 1100px) { .writers { grid-template-columns: repeat(2, 1fr); } }
+  .wcard { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .wcard.ok     { border-color: #1a4a1a; }
+  .wcard.warn   { border-color: #5a4000; }
+  .wcard.err    { border-color: #7a1515; }
+  .wcard.off    { opacity: .5; }
+  .wcard-title  { font-weight: 700; font-size: 0.88rem; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .wcard-title span { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+  .metric { display: flex; justify-content: space-between; font-size: 0.8rem;
+            padding: 2px 0; border-bottom: 1px solid #21262d; }
+  .metric:last-child { border-bottom: none; }
+  .metric .k { color: var(--muted); }
+  .metric .v { font-family: 'Consolas', monospace; color: var(--text); }
+  .metric .v.ok   { color: var(--green); }
+  .metric .v.warn { color: var(--yellow); }
+  .metric .v.err  { color: var(--red); }
+  .rate-bar { height: 28px; margin: 8px 0 4px; position: relative; }
+  .rate-bar canvas { width: 100%; height: 28px; display: block; }
+  .rate-label { font-size: 0.72rem; color: var(--muted); text-align: right; }
+
+  /* ── disk bar ── */
+  .disk-bar { height: 6px; background: var(--border); border-radius: 3px; margin: 6px 0 2px; overflow: hidden; }
+  .disk-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+
+  /* ── containers table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 12px; }
+  th { background: #21262d; color: var(--muted); text-align: left; padding: 6px 8px;
+       border-bottom: 2px solid var(--border); }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-family: 'Consolas', monospace; }
+  tr:last-child td { border-bottom: none; }
+  .running  { color: var(--green); }
+  .exited   { color: var(--red); }
+  .starting { color: var(--yellow); }
+
+  /* ── fault controls ── */
+  .fault-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .fault-row select { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                      padding: 4px 8px; border-radius: 4px; font-size: 0.82rem; }
+  .scenario-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+  .scenario-btn:hover { border-color: var(--orange); color: var(--orange); }
+  .scenario-btn.all-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── log ── */
+  #log-out { background: #0a0e14; border: 1px solid var(--border); border-radius: 6px;
+             padding: 10px; font-family: 'Consolas', monospace; font-size: 0.76rem;
+             line-height: 1.5; height: 200px; overflow-y: auto; color: #adbac7; }
+  #log-out .ts  { color: var(--muted); }
+  #log-out .ok  { color: var(--green); }
+  #log-out .err { color: var(--red); }
+  #log-out .warn{ color: var(--yellow); }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase;
+           letter-spacing: .05em; margin-bottom: 6px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* ── stress runner bars ── */
+  .stress-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .stress-grid { grid-template-columns: repeat(2, 1fr); } }
+  .scard { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+  .scard.ok  { border-color: #1a4a1a; }
+  .scard.err { border-color: #7a1515; opacity: .6; }
+  .scard-title { font-size: 0.82rem; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+  .scard-rate  { font-size: 1.4rem; font-family: 'Consolas', monospace; color: var(--green); line-height: 1; }
+  .scard-unit  { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .scard-bar   { height: 5px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .scard-fill  { height: 100%; border-radius: 3px; background: var(--green); transition: width .5s; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem;
+           padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here  { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_diff_detector.html">Diff Detector</a>
+  <a href="writer_duck_diff_detector.html">DuckDB Diff</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="torture_monitor.html" class="here">Monitor</a>
+</div>
+
+<div class="topbar">
+  <h1>Torture Monitor</h1>
+  <input id="host-input" type="text" value="192.168.86.34" placeholder="host">
+  <input id="port-input" type="text" value="8780" placeholder="port" style="width:70px">
+  <button class="btn" id="connect-btn" onclick="toggleConnect()">Connect</button>
+  <span id="conn-status"><span class="dot off" id="conn-dot"></span>disconnected</span>
+  <div style="flex:1"></div>
+  <button class="btn" onclick="stackAction('up')">Stack Up</button>
+  <button class="btn danger" onclick="stackAction('down')">Stack Down</button>
+  <button class="btn" id="restart-btn" onclick="stackAction('restart')">Restart Writers</button>
+</div>
+
+<!-- ── Stress runner rate cards ── -->
+<h2>Stress Runners — Publish Rate</h2>
+<div class="stress-grid" id="stress-grid">
+  <div class="scard off" id="scard-a"><div class="scard-title">stress-a</div><div class="scard-rate">—</div><div class="scard-unit">msg/s</div></div>
+  <div class="scard off" id="scard-b"><div class="scard-title">stress-b</div><div class="scard-rate">—</div><div class="scard-unit">msg/s</div></div>
+  <div class="scard off" id="scard-c"><div class="scard-title">stress-c</div><div class="scard-rate">—</div><div class="scard-unit">msg/s</div></div>
+  <div class="scard off" id="scard-d"><div class="scard-title">stress-d</div><div class="scard-rate">—</div><div class="scard-unit">msg/s</div></div>
+</div>
+
+<!-- ── Writer health cards ── -->
+<h2>Writers — Health & Throughput</h2>
+<div class="writers" id="writers-grid">
+  <div class="wcard off" id="card-a"><div class="wcard-title"><span style="color:var(--accent)">writer-a</span><span>:8771</span></div><div class="metric"><span class="k">waiting…</span></div></div>
+  <div class="wcard off" id="card-b"><div class="wcard-title"><span style="color:var(--accent)">writer-b</span><span>:8772</span></div><div class="metric"><span class="k">waiting…</span></div></div>
+  <div class="wcard off" id="card-c"><div class="wcard-title"><span style="color:var(--accent)">writer-c</span><span>:8773</span></div><div class="metric"><span class="k">waiting…</span></div></div>
+  <div class="wcard off" id="card-d"><div class="wcard-title"><span style="color:var(--accent)">writer-d</span><span>:8774</span></div><div class="metric"><span class="k">waiting…</span></div></div>
+</div>
+
+<div class="grid2">
+  <!-- ── Container status ── -->
+  <div class="section">
+    <div class="label">Container Status</div>
+    <table>
+      <thead><tr><th>Name</th><th>Status</th><th>Image</th></tr></thead>
+      <tbody id="containers-body"><tr><td colspan="3" style="color:var(--muted)">—</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- ── Fault injection ── -->
+  <div class="section">
+    <div class="label">Fault Injection</div>
+    <div class="fault-row">
+      <span style="font-size:.8rem;color:var(--muted)">Target:</span>
+      <select id="fault-target">
+        <option value="torture_writer_a">writer-a</option>
+        <option value="torture_writer_b">writer-b</option>
+        <option value="torture_writer_c">writer-c</option>
+        <option value="torture_writer_d" selected>writer-d</option>
+      </select>
+      <span style="font-size:.8rem;color:var(--muted)">Cycle:</span>
+      <select id="fault-cycle">
+        <option value="30">30s</option>
+        <option value="60" selected>60s</option>
+        <option value="120">120s</option>
+        <option value="300">5min</option>
+      </select>
+    </div>
+    <div class="fault-row">
+      <button class="scenario-btn" onclick="runFault('broker_kill')">S1 broker_kill</button>
+      <button class="scenario-btn" onclick="runFault('disk_fill')">S2 disk_fill</button>
+      <button class="scenario-btn" onclick="runFault('chmod_flip')">S3 chmod_flip</button>
+      <button class="scenario-btn" onclick="runFault('overflow')">S4 overflow</button>
+      <button class="scenario-btn" onclick="runFault('kill9')">S5 kill9</button>
+    </div>
+    <div class="fault-row">
+      <button class="scenario-btn all-btn" onclick="runFault('all')">S8 — all scenarios (rotating)</button>
+      <button class="btn danger" onclick="stopFault()">Stop fault</button>
+    </div>
+    <div id="fault-status" style="font-size:.78rem;color:var(--muted);margin-top:6px"></div>
+  </div>
+</div>
+
+<!-- ── Log viewer ── -->
+<div class="section">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <div class="label" style="margin:0">Container Logs</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="log-service" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:.78rem">
+        <option value="broker">broker</option>
+        <option value="writer-a" selected>writer-a</option>
+        <option value="writer-b">writer-b</option>
+        <option value="writer-c">writer-c</option>
+        <option value="writer-d">writer-d</option>
+        <option value="stress-a">stress-a</option>
+        <option value="stress-b">stress-b</option>
+        <option value="stress-c">stress-c</option>
+        <option value="stress-d">stress-d</option>
+      </select>
+      <button class="btn" style="padding:2px 8px;font-size:.78rem" onclick="fetchLogs()">Fetch</button>
+      <button class="btn" style="padding:2px 8px;font-size:.78rem" onclick="clearLog()">Clear</button>
+    </div>
+  </div>
+  <div id="log-out"></div>
+</div>
+
+<script>
+// ── state ──────────────────────────────────────────────────────────────────
+let pollTimer = null;
+let connected = false;
+let prevMsgs  = {};           // writer-id → last msgs_received for rate calc
+let prevTs    = {};           // writer-id → last poll timestamp
+let rateHistory = {           // last 30 rate samples per writer
+  'writer-a': [], 'writer-b': [], 'writer-c': [], 'writer-d': []
+};
+const RATE_LEN = 30;
+
+function apiBase() {
+  return `http://${document.getElementById('host-input').value}:${document.getElementById('port-input').value}`;
+}
+
+// ── connection ─────────────────────────────────────────────────────────────
+function toggleConnect() {
+  if (connected) {
+    disconnect();
+  } else {
+    connect();
+  }
+}
+
+function connect() {
+  setStatus('connecting…', 'warn');
+  fetch(apiBase() + '/health')
+    .then(r => r.json())
+    .then(() => {
+      connected = true;
+      document.getElementById('connect-btn').textContent = 'Disconnect';
+      document.getElementById('connect-btn').classList.add('active');
+      setStatus('connected', 'ok');
+      log('Connected to ' + apiBase(), 'ok');
+      pollNow();
+      pollTimer = setInterval(pollNow, 2500);
+    })
+    .catch(e => {
+      setStatus('failed: ' + e.message, 'err');
+      log('Connection failed: ' + e.message, 'err');
+    });
+}
+
+function disconnect() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+  connected = false;
+  document.getElementById('connect-btn').textContent = 'Connect';
+  document.getElementById('connect-btn').classList.remove('active');
+  setStatus('disconnected', 'off');
+  log('Disconnected', 'warn');
+}
+
+function setStatus(msg, level) {
+  const dot = document.getElementById('conn-dot');
+  const st  = document.getElementById('conn-status');
+  dot.className = 'dot ' + level;
+  st.innerHTML  = `<span class="dot ${level}" id="conn-dot"></span>${msg}`;
+}
+
+// ── polling ────────────────────────────────────────────────────────────────
+let stressPollCount = 0;
+function pollNow() {
+  fetch(apiBase() + '/writers')
+    .then(r => r.json())
+    .then(updateWriters)
+    .catch(e => { setStatus('poll error: ' + e.message, 'err'); });
+
+  fetch(apiBase() + '/docker/ps')
+    .then(r => r.json())
+    .then(updateContainers)
+    .catch(() => {});
+
+  // Poll stress runners every ~10s (every 4th writer poll at 2.5s interval)
+  if (stressPollCount++ % 4 === 0) {
+    fetch(apiBase() + '/stress')
+      .then(r => r.json())
+      .then(updateStress)
+      .catch(() => {});
+  }
+}
+
+// ── stress runner cards ────────────────────────────────────────────────────
+const STRESS_MAX_MPS = 20000;  // ~20k/s per runner at full rate (80k total / 4)
+
+function updateStress(data) {
+  ['a','b','c','d'].forEach(s => {
+    const key  = `stress-${s}`;
+    const info = data[key] || {};
+    const card = document.getElementById(`scard-${s}`);
+    const mps  = info.msgs_per_sec || 0;
+    const ok   = info.ok !== false;
+    const pct  = Math.min(100, (mps / STRESS_MAX_MPS) * 100);
+    const col  = pct > 60 ? 'var(--green)' : pct > 20 ? 'var(--yellow)' : 'var(--red)';
+
+    card.className = `scard ${ok ? 'ok' : 'err'}`;
+    card.innerHTML = `
+      <div class="scard-title">stress-${s}</div>
+      <div class="scard-rate" style="color:${col}">${fmtNum(mps)}</div>
+      <div class="scard-unit">msg/s</div>
+      <div class="scard-bar"><div class="scard-fill" style="width:${pct}%;background:${col}"></div></div>`;
+  });
+}
+
+// ── writer cards ───────────────────────────────────────────────────────────
+function updateWriters(data) {
+  const rates = [];
+  ['a','b','c','d'].forEach(w => {
+    const key  = `writer-${w}`;
+    const info = data[key] || {};
+    renderCard(w, info);
+    // collect rate after renderCard has updated prevMsgs
+    if (info._ok) rates.push(rateHistory[key].slice(-1)[0] || 0);
+  });
+
+  // If all connected writers have had zero rate for 2+ consecutive polls,
+  // flag the Restart Writers button
+  const btn = document.getElementById('restart-btn');
+  const allOk    = ['a','b','c','d'].every(w => (data[`writer-${w}`]||{})._ok);
+  const allZero  = rates.length === 4 && rates.every(r => r === 0);
+  // only flag after prevMsgs is populated (at least one prior poll)
+  const havePrev = ['a','b','c','d'].every(w => prevMsgs[`writer-${w}`] !== undefined);
+  if (allOk && allZero && havePrev) {
+    btn.classList.add('needs-action');
+    btn.title = 'Writers connected but receiving 0 msgs/s — click to reconnect';
+  } else {
+    btn.classList.remove('needs-action');
+    btn.title = '';
+  }
+}
+
+function renderCard(w, d) {
+  const card = document.getElementById(`card-${w}`);
+  const ports = {a:8771, b:8772, c:8773, d:8774};
+
+  if (!d._ok) {
+    card.className = 'wcard err';
+    card.innerHTML = `
+      <div class="wcard-title">
+        <span style="color:var(--red)">writer-${w}</span>
+        <span>:${ports[w]}</span>
+      </div>
+      <div class="metric"><span class="k">error</span>
+        <span class="v err">${d._error || 'unreachable'}</span></div>`;
+    return;
+  }
+
+  // rate calculation
+  const now  = Date.now();
+  const msgs = d.msgs_received || 0;
+  const key  = `writer-${w}`;
+  let   rate = 0;
+  if (prevMsgs[key] !== undefined && prevTs[key]) {
+    const dt = (now - prevTs[key]) / 1000;
+    rate = dt > 0 ? Math.round((msgs - prevMsgs[key]) / dt) : 0;
+    if (rate < 0) rate = 0;
+  }
+  prevMsgs[key] = msgs;
+  prevTs[key]   = now;
+
+  const hist = rateHistory[key];
+  hist.push(rate);
+  if (hist.length > RATE_LEN) hist.shift();
+
+  const drops   = d.overflow_drops   || 0;
+  const walPend = d.wal_pending_rows  || 0;
+  const diskFree= d.disk_free_gb      || 0;
+  const diskGB  = diskFree.toFixed(1);
+  const uptime  = d.uptime_seconds    || 0;
+  const status  = d.status || 'unknown';
+
+  const cardClass = drops > 0 ? 'warn' : (status !== 'ok' ? 'err' : 'ok');
+  card.className  = `wcard ${cardClass}`;
+
+  const diskPct = diskFree > 0 ? Math.min(100, (diskFree / 950) * 100) : 0;
+  const diskCol = diskPct > 30 ? '#3fb950' : diskPct > 10 ? '#d29922' : '#f85149';
+
+  card.innerHTML = `
+    <div class="wcard-title">
+      <span style="color:var(--accent)">writer-${w}</span>
+      <span>:${ports[w]} · up ${fmtUptime(uptime)}</span>
+    </div>
+    <div class="rate-bar"><canvas id="spark-${w}" height="28"></canvas></div>
+    <div class="rate-label">${fmtNum(rate)} msg/s</div>
+    <div class="metric"><span class="k">msgs received</span>
+      <span class="v">${fmtNum(msgs)}</span></div>
+    <div class="metric"><span class="k">rows written</span>
+      <span class="v">${fmtNum(d.total_rows_written||0)}</span></div>
+    <div class="metric"><span class="k">overflow drops</span>
+      <span class="v ${drops>0?'warn':'ok'}">${fmtNum(drops)}</span></div>
+    <div class="metric"><span class="k">flush count</span>
+      <span class="v">${d.flush_count||0}</span></div>
+    <div class="metric"><span class="k">wal replay rows</span>
+      <span class="v ${(d.wal_replay_rows||0)>0?'warn':''}">${fmtNum(d.wal_replay_rows||0)}</span></div>
+    <div class="metric"><span class="k">wal pending</span>
+      <span class="v ${walPend>0?'warn':''}">${fmtNum(walPend)}</span></div>
+    <div class="disk-bar"><div class="disk-fill" style="width:${diskPct}%;background:${diskCol}"></div></div>
+    <div class="metric" style="margin-top:2px"><span class="k">disk free</span>
+      <span class="v">${diskGB} GB</span></div>`;
+
+  // draw sparkline
+  requestAnimationFrame(() => drawSparkline(`spark-${w}`, hist));
+}
+
+function drawSparkline(id, data) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const W = canvas.offsetWidth || 200;
+  const H = 28;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  if (data.length < 2) return;
+  const max = Math.max(...data, 1);
+  const bw  = W / RATE_LEN;
+  data.forEach((v, i) => {
+    const x = i * bw;
+    const h = Math.max(2, (v / max) * H);
+    const alpha = 0.4 + 0.6 * (i / data.length);
+    ctx.fillStyle = `rgba(88,166,255,${alpha})`;
+    ctx.fillRect(x + 1, H - h, Math.max(1, bw - 2), h);
+  });
+}
+
+// ── containers ─────────────────────────────────────────────────────────────
+function updateContainers(data) {
+  const tbody = document.getElementById('containers-body');
+  if (!Array.isArray(data) || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">no containers</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(c => {
+    const state  = (c.State || c.Status || '').toLowerCase();
+    const cls    = state.includes('running') ? 'running'
+                 : state.includes('exit')    ? 'exited'
+                 : 'starting';
+    const name   = c.Name   || c.Names || '—';
+    const image  = c.Image  || '—';
+    const status = c.Status || c.State || '—';
+    return `<tr>
+      <td>${name}</td>
+      <td class="${cls}">${status}</td>
+      <td style="color:var(--muted)">${image}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── fault injection ────────────────────────────────────────────────────────
+function runFault(scenario) {
+  const target = document.getElementById('fault-target').value;
+  const cycle  = document.getElementById('fault-cycle').value;
+  const status = document.getElementById('fault-status');
+  status.textContent = `Starting ${scenario} → ${target} (${cycle}s cycle)…`;
+  fetch(apiBase() + '/fault/run', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({scenario, target, cycle: parseInt(cycle)}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.started) {
+      status.style.color = 'var(--green)';
+      status.textContent = `✓ ${scenario} started (target: ${target}, cycle: ${cycle}s)`;
+      log(`Fault started: ${scenario} / ${target} / ${cycle}s`, 'ok');
+    } else {
+      status.style.color = 'var(--red)';
+      status.textContent = `✗ failed: ${d.stderr || 'unknown error'}`;
+      log(`Fault failed: ${d.stderr}`, 'err');
+    }
+  })
+  .catch(e => {
+    status.style.color = 'var(--red)';
+    status.textContent = '✗ request failed: ' + e.message;
+  });
+}
+
+function stopFault() {
+  fetch(apiBase() + '/fault/stop', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('fault-status').textContent =
+        d.stopped ? '✓ fault container stopped' : '— fault not running';
+      log('Fault stopped', 'warn');
+    })
+    .catch(e => log('Stop failed: ' + e.message, 'err'));
+}
+
+// ── stack controls ─────────────────────────────────────────────────────────
+function stackAction(action) {
+  if (action === 'restart') {
+    const btn = document.getElementById('restart-btn');
+    btn.classList.remove('needs-action');
+    btn.title = '';
+  }
+  const url     = apiBase() + '/stack/' + action;
+  const payload = action === 'restart'
+    ? {services: ['writer-a','writer-b','writer-c','writer-d']}
+    : {};
+  fetch(url, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => log(`stack/${action}: ${d.ok ? 'OK' : 'failed'} ${d.output||''}`, d.ok ? 'ok' : 'err'))
+  .catch(e => log(`stack/${action} error: ${e.message}`, 'err'));
+}
+
+// ── log ────────────────────────────────────────────────────────────────────
+function fetchLogs() {
+  const svc = document.getElementById('log-service').value;
+  fetch(apiBase() + '/logs/' + svc)
+    .then(r => r.json())
+    .then(d => {
+      const out = document.getElementById('log-out');
+      const lines = (d.lines || []).map(l => {
+        const cls = /error|FAIL|BREAK|crash/i.test(l) ? 'err'
+                  : /warn|DROP|SPACE/i.test(l)         ? 'warn'
+                  : /OK|replaying|flush|healthy/i.test(l) ? 'ok'
+                  : '';
+        return `<div class="${cls}">${escHtml(l)}</div>`;
+      });
+      out.innerHTML = lines.join('');
+      out.scrollTop = out.scrollHeight;
+    })
+    .catch(e => log('Log fetch failed: ' + e.message, 'err'));
+}
+
+function clearLog() {
+  document.getElementById('log-out').innerHTML = '';
+}
+
+function log(msg, cls = '') {
+  const out  = document.getElementById('log-out');
+  const time = new Date().toLocaleTimeString();
+  out.innerHTML += `<div class="${cls}"><span class="ts">[${time}]</span> ${escHtml(msg)}</div>`;
+  out.scrollTop  = out.scrollHeight;
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  return Number(n).toLocaleString();
+}
+function fmtUptime(s) {
+  if (s < 60)   return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h' + Math.floor((s%3600)/60) + 'm';
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── auto-connect on load ───────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  // Start paused — let user hit Connect, or auto-connect if host reachable
+  log('Ready. Press Connect or adjust host/port.', '');
+});
+</script>
+</body>
+</html>

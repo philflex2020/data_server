@@ -5,38 +5,34 @@ networks:
     name: torture_net
     driver: bridge
 
-volumes:
-  data-a: {}
-  data-b: {}
-  data-c: {}
-  data-d: {}
-  wal-a:  {}
-  wal-b:  {}
-  wal-c:  {}
-  wal-d:  {}
+# Named volumes removed — writers use bind mounts on dedicated disks:
+#   writer-a/b → /mnt/tort-sdf   (sdf, ~870 GB free)
+#   writer-c/d → /mnt/tort-sdg   (sdg, ~870 GB free)
 
 services:
 
-  # ── MQTT broker ─────────────────────────────────────────────────────────
+  # ── MQTT broker (FlashMQ — multi-threaded, handles 80k+ msg/s fan-out) ───
   broker:
-    image: eclipse-mosquitto:2.0
+    image: flashmq:torture
+    build:
+      context: ../..
+      dockerfile: docker/torture/Dockerfile.flashmq
     container_name: torture_broker
     networks: [torture]
     ports:
       - "11883:1883"   # host port 11883 → broker 1883 (avoids conflict with live broker)
-    volumes:
-      - ./configs/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "hc", "-m", "1", "-q", "0"]
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 5s
 
-  # ── Stress runner ────────────────────────────────────────────────────────
-  stress:
+  # ── Stress runners (one per writer, topic-sharded to eliminate fan-out) ──
+  stress-a:
     image: python:3.10-slim
-    container_name: torture_stress
+    container_name: torture_stress_a
     networks: [torture]
     depends_on:
       broker:
@@ -47,7 +43,55 @@ services:
     working_dir: /app
     command: >
       sh -c "pip install -q paho-mqtt pyyaml websockets &&
-             python stress_runner.py --config /app/stress_torture.yaml"
+             python stress_runner.py --config /app/stress_torture_a.yaml"
+    restart: unless-stopped
+
+  stress-b:
+    image: python:3.10-slim
+    container_name: torture_stress_b
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ../../source/stress_runner:/app
+      - ../../source/generator:/app/../generator
+    working_dir: /app
+    command: >
+      sh -c "pip install -q paho-mqtt pyyaml websockets &&
+             python stress_runner.py --config /app/stress_torture_b.yaml"
+    restart: unless-stopped
+
+  stress-c:
+    image: python:3.10-slim
+    container_name: torture_stress_c
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ../../source/stress_runner:/app
+      - ../../source/generator:/app/../generator
+    working_dir: /app
+    command: >
+      sh -c "pip install -q paho-mqtt pyyaml websockets &&
+             python stress_runner.py --config /app/stress_torture_c.yaml"
+    restart: unless-stopped
+
+  stress-d:
+    image: python:3.10-slim
+    container_name: torture_stress_d
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ../../source/stress_runner:/app
+      - ../../source/generator:/app/../generator
+    working_dir: /app
+    command: >
+      sh -c "pip install -q paho-mqtt pyyaml websockets &&
+             python stress_runner.py --config /app/stress_torture_d.yaml"
     restart: unless-stopped
 
   # ── Writer A — baseline, always running ─────────────────────────────────
@@ -59,8 +103,8 @@ services:
       broker:
         condition: service_healthy
     volumes:
-      - data-a:/data/parquet
-      - wal-a:/wal
+      - /mnt/tort-sdf/data-a:/data/parquet
+      - /mnt/tort-sdf/wal-a:/wal
       - ./configs/writer-a.yaml:/etc/writer/config.yaml:ro
     ports:
       - "8771:8771"
@@ -75,8 +119,8 @@ services:
       broker:
         condition: service_healthy
     volumes:
-      - data-b:/data/parquet
-      - wal-b:/wal
+      - /mnt/tort-sdf/data-b:/data/parquet
+      - /mnt/tort-sdf/wal-b:/wal
       - ./configs/writer-b.yaml:/etc/writer/config.yaml:ro
     ports:
       - "8772:8771"
@@ -91,8 +135,8 @@ services:
       broker:
         condition: service_healthy
     volumes:
-      - data-c:/data/parquet
-      - wal-c:/wal
+      - /mnt/tort-sdg/data-c:/data/parquet
+      - /mnt/tort-sdg/wal-c:/wal
       - ./configs/writer-c.yaml:/etc/writer/config.yaml:ro
     ports:
       - "8773:8771"
@@ -107,8 +151,8 @@ services:
       broker:
         condition: service_healthy
     volumes:
-      - data-d:/data/parquet
-      - wal-d:/wal
+      - /mnt/tort-sdg/data-d:/data/parquet
+      - /mnt/tort-sdg/wal-d:/wal
       - ./configs/writer-d.yaml:/etc/writer/config.yaml:ro
     ports:
       - "8774:8771"
@@ -122,7 +166,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./scripts/fault_inject.sh:/fault_inject.sh:ro
-      - data-c:/data-c
+      - /mnt/tort-sdg/data-c:/data-c
     environment:
       SCENARIO: ${SCENARIO:-all}
       CYCLE_SECONDS: ${CYCLE_SECONDS:-60}
