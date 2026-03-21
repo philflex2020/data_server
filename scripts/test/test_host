@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""
+test_host <ip> [--help]
+
+Quick sanity-check script for a data_server host node.
+Run one test at a time or all in sequence.
+
+Tests implemented:
+  stress_runner   WebSocket :8769 — confirms process is live and publishing
+  writer          HTTP :8771/health — parquet writer health endpoint
+  mqtt            TCP :1883 — FlashMQ broker reachable
+  push_agent      HTTP :8770/parquet_stats — rsync push agent live
+
+Usage:
+  test_host 192.168.86.20                  # run all tests
+  test_host 192.168.86.20 stress_runner    # run one test
+  test_host --help
+"""
+
+import sys
+import json
+import socket
+import asyncio
+import argparse
+import urllib.request
+import urllib.error
+
+try:
+    import websockets
+    HAS_WS = True
+except ImportError:
+    HAS_WS = False
+
+# ── colours ──────────────────────────────────────────────────────────────────
+
+GREEN  = "\033[32m"
+RED    = "\033[31m"
+YELLOW = "\033[33m"
+RESET  = "\033[0m"
+
+def ok(msg):   print(f"  {GREEN}PASS{RESET}  {msg}")
+def fail(msg): print(f"  {RED}FAIL{RESET}  {msg}")
+def warn(msg): print(f"  {YELLOW}WARN{RESET}  {msg}")
+def hdr(msg):  print(f"\n[ {msg} ]")
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def tcp_reachable(host, port, timeout=3):
+    try:
+        s = socket.create_connection((host, port), timeout=timeout)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+def http_get_json(url, timeout=5):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.URLError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, str(e)
+
+async def ws_get_stats(host, port=8769, timeout=5):
+    if not HAS_WS:
+        return None, "websockets package not installed (pip install websockets)"
+    uri = f"ws://{host}:{port}"
+    try:
+        async with websockets.connect(uri, open_timeout=timeout) as ws:
+            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            return json.loads(raw), None
+    except Exception as e:
+        return None, str(e)
+
+# ── tests ──────────────────────────────────────────────────────────────────────
+
+def test_mqtt(host):
+    hdr(f"mqtt  {host}:1883")
+    if tcp_reachable(host, 1883):
+        ok("TCP :1883 reachable — FlashMQ is up")
+        return True
+    else:
+        fail("TCP :1883 not reachable — FlashMQ may be down")
+        return False
+
+
+def test_stress_runner(host):
+    hdr(f"stress_runner  {host}:8769")
+    if not HAS_WS:
+        warn("websockets not installed — skipping WS check (pip install websockets)")
+        return False
+
+    if not tcp_reachable(host, 8769):
+        fail("TCP :8769 not reachable — stress_runner not running")
+        return False
+
+    data, err = asyncio.run(ws_get_stats(host, 8769))
+    if err:
+        fail(f"WebSocket connect failed: {err}")
+        return False
+
+    mps      = data.get("mps", 0)
+    total    = data.get("total_published", 0)
+    active   = data.get("active_tasks", 0)
+    drops    = data.get("dropped", 0)
+
+    if mps > 0:
+        ok(f"publishing  mps={mps:,}  total={total:,}  active_tasks={active}  dropped={drops}")
+    else:
+        warn(f"connected but mps=0  total={total:,}  active_tasks={active}  (paused or just started?)")
+
+    return True
+
+
+def test_writer(host):
+    hdr(f"writer  {host}:8771/health")
+    if not tcp_reachable(host, 8771):
+        fail("TCP :8771 not reachable — writer health endpoint not enabled (add health: enabled: true to config)")
+        return False
+
+    data = http_get_json(f"http://{host}:8771/health")
+    if data is None or isinstance(data, tuple):
+        fail(f"HTTP GET failed: {data}")
+        return False
+
+    ok(f"HTTP 200 received")
+    for k, v in data.items():
+        print(f"         {k}: {v}")
+
+    drops = data.get("overflow_drops", 0)
+    if drops > 0:
+        warn(f"overflow_drops={drops} — buffer is being dropped under load")
+
+    return True
+
+
+def test_push_agent(host):
+    hdr(f"push_agent  {host}:8770/parquet_stats")
+    if not tcp_reachable(host, 8770):
+        fail("TCP :8770 not reachable — push_agent not running")
+        return False
+
+    data = http_get_json(f"http://{host}:8770/parquet_stats")
+    if data is None or isinstance(data, tuple):
+        fail(f"HTTP GET failed: {data}")
+        return False
+
+    ok("HTTP 200 received")
+    for k, v in data.items():
+        print(f"         {k}: {v}")
+    return True
+
+
+# ── registry ──────────────────────────────────────────────────────────────────
+
+TESTS = {
+    "mqtt":          test_mqtt,
+    "stress_runner": test_stress_runner,
+    "writer":        test_writer,
+    "push_agent":    test_push_agent,
+}
+
+# ── main ───────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Sanity-check a data_server host node.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="\n".join(f"  {name}" for name in TESTS),
+    )
+    parser.add_argument("host", nargs="?", help="IP address of the host to test")
+    parser.add_argument("tests", nargs="*",
+                        help=f"tests to run (default: all). Choices: {', '.join(TESTS)}")
+    args = parser.parse_args()
+
+    if not args.host:
+        parser.print_help()
+        sys.exit(0)
+
+    host = args.host
+    chosen = args.tests if args.tests else list(TESTS)
+
+    unknown = [t for t in chosen if t not in TESTS]
+    if unknown:
+        print(f"Unknown test(s): {', '.join(unknown)}")
+        print(f"Available: {', '.join(TESTS)}")
+        sys.exit(1)
+
+    print(f"\ntest_host  target={host}  tests={', '.join(chosen)}")
+
+    results = {}
+    for name in chosen:
+        results[name] = TESTS[name](host)
+
+    passed = sum(1 for v in results.values() if v)
+    total  = len(results)
+    colour = GREEN if passed == total else RED
+    print(f"\n{colour}{'='*40}{RESET}")
+    print(f"{colour}{passed}/{total} tests passed{RESET}")
+    print()
+
+    sys.exit(0 if passed == total else 1)
+
+
+if __name__ == "__main__":
+    main()
