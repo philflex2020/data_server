@@ -38,6 +38,8 @@
 #include <unistd.h>
 #include <poll.h>
 
+#include "mqtt_ring.h"
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -883,6 +885,12 @@ static void flush_thread_fn() {
 
 static std::atomic<struct mosquitto*> g_mosq{nullptr};  // M10: atomic — written by main, read by callbacks
 
+// Lock-free SPSC ring: on_message (MQTT thread) → parse_thread_fn (parse thread).
+// g_mqtt_stopped is set by main() after mosquitto_loop_stop() to tell the parse
+// thread that no more pushes will occur and it may drain to empty then exit.
+static MqttRing              g_mqtt_ring;
+static std::atomic<bool>     g_mqtt_stopped{false};
+
 static void on_connect(struct mosquitto*, void*, int rc) {
     if (rc == 0) {
         std::cout << "[mqtt] connected to " << g_cfg->mqtt_host
@@ -950,13 +958,12 @@ static void handle_sync_message(const std::string& payload) {
     }
 }
 
-static void on_message(struct mosquitto*, void*, const struct mosquitto_message* msg) {
-    if (!msg->payloadlen) return;
+// Processes one raw MQTT message.  Called from parse_thread_fn with topic/payload
+// already copied out of the ring.  Owns g_mutex only for the brief buffer-insert.
+static void process_raw_message(const char* topic_cstr, const char* payload_cstr) {
+    std::string topic(topic_cstr);
+    std::string payload(payload_cstr);
 
-    std::string topic(msg->topic);
-    std::string payload(static_cast<const char*>(msg->payload), msg->payloadlen);
-
-    // Intercept sync messages before normal processing
     if (topic == "_sync") {
         std::lock_guard<std::mutex> lock(g_mutex);
         handle_sync_message(payload);
@@ -968,8 +975,6 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
 
     Row row = parse_payload(payload, *info_opt, g_cfg->project_id, *g_cfg);
 
-    // per_cell_item mode: rename generic "value" field to the actual measurement name
-    // (e.g. topic .../cell=3/voltage → field_name="voltage", payload {"value": 3.7})
     if (!info_opt->field_name.empty()) {
         auto it = row.floats.find("value");
         if (it != row.floats.end()) {
@@ -988,20 +993,16 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
 
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    // Overflow guard: drop incoming row if buffer is full, wake flush thread immediately.
     if (g_total_buffered >= static_cast<size_t>(g_cfg->max_total_buffer_rows)) {
         auto drops = g_overflow_drops.fetch_add(1) + 1;
         if (drops == 1 || drops % 10000 == 0)
             std::cerr << "[buffer] OVERFLOW — dropped " << drops
                       << " rows (max_total_buffer_rows=" << g_cfg->max_total_buffer_rows << ")\n";
-        g_flush_needed.store(true);  // m2: sticky — survives a busy flush thread
+        g_flush_needed.store(true);
         { char b = 1; if (::write(g_signal_pipe[1], &b, 1) < 0) {} }
         return;
     }
 
-    // Maintain current-state map: always keep the latest row per unique sensor.
-    // NM4 fix: key only on topic-derived identity columns to prevent unbounded map growth
-    // from payload-injected int fields.
     if (!g_cfg->current_state_path.empty()) {
         std::map<std::string, int64_t> key_ints;
         for (const auto& [_, col] : g_cfg->topic_kv_map)
@@ -1016,8 +1017,43 @@ static void on_message(struct mosquitto*, void*, const struct mosquitto_message*
     g_health_buffer_rows.store(g_total_buffered);
     ++g_received_since_sync;
     if (static_cast<int>(part.rows.size()) >= g_cfg->max_messages_per_part) {
-        g_flush_needed.store(true);  // m2: sticky
+        g_flush_needed.store(true);
         { char b = 1; if (::write(g_signal_pipe[1], &b, 1) < 0) {} }
+    }
+}
+
+// Drains g_mqtt_ring and processes each message.  Runs until MQTT is stopped
+// (g_mqtt_stopped == true) and the ring is empty.
+static void parse_thread_fn() {
+    MqSlot slot;
+    while (true) {
+        if (g_mqtt_ring.pop(slot)) {
+            process_raw_message(slot.topic, slot.payload);
+        } else if (g_mqtt_stopped.load(std::memory_order_acquire) && g_mqtt_ring.empty()) {
+            break;
+        } else {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+    }
+}
+
+// on_message: called from libmosquitto network thread — must return immediately.
+// Just pushes raw bytes into the lock-free ring; parse_thread_fn does the work.
+static void on_message(struct mosquitto*, void*, const struct mosquitto_message* msg) {
+    if (!msg->payloadlen) return;
+
+    bool ok = g_mqtt_ring.push(
+        msg->topic,                                         // null-terminated
+        static_cast<int>(std::strlen(msg->topic)),
+        static_cast<const char*>(msg->payload),
+        msg->payloadlen
+    );
+
+    if (!ok) {
+        // Ring full — count as overflow (same semantics as buffer overflow)
+        auto drops = g_overflow_drops.fetch_add(1) + 1;
+        if (drops == 1 || drops % 10000 == 0)
+            std::cerr << "[ring] FULL — dropped " << drops << " msgs\n";
     }
 }
 
@@ -1208,15 +1244,23 @@ int main(int argc, char* argv[]) {
     // Background MQTT network loop (handles reconnects automatically)
     mosquitto_loop_start(mosq);
 
+    // parse_thread drains g_mqtt_ring → process_raw_message → g_buffers
+    std::thread parser(parse_thread_fn);
+
     std::thread flusher(flush_thread_fn);
     flusher.join();   // wait for flush thread to exit its normal loop on g_shutdown
 
-    if (health_thr.joinable()) health_thr.join();   // conditional — only created when health_enabled
+    if (health_thr.joinable()) health_thr.join();
 
-    // M9+M11: stop MQTT before final flush so all in-flight messages are captured.
-    // disconnect sends DISCONNECT packet to broker; loop_stop drains the network thread.
+    // Stop MQTT *before* signalling parse_thread so the ring is fully written
+    // when g_mqtt_stopped is set.  loop_stop blocks until the network thread exits.
     mosquitto_disconnect(mosq);
     mosquitto_loop_stop(mosq, /*force=*/false);
+
+    // Signal parse_thread that no more pushes will occur, then wait for it to
+    // drain the ring completely before doing the final flush.
+    g_mqtt_stopped.store(true, std::memory_order_release);
+    parser.join();
 
     // Final flush in main — catches everything buffered between flush thread's last
     // cycle and loop_stop. flusher is already joined so no locking needed.
