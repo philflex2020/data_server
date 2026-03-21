@@ -29,6 +29,7 @@ output:
   compression: snappy          # snappy | zstd | gzip | none
   flush_interval_seconds: 60
   max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000  # ~25s at 80k msgs/sec
 
   # Current-state file — one row per unique sensor, always the latest reading.
   # Intended for the AWS writer instance: writer.cpp subscribes to the FlashMQ
