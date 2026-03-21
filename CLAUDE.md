@@ -2,10 +2,14 @@
 
 ## Machines
 
-| Name | IP | Role |
-|---|---|---|
-| phil-dev | 192.168.86.46 | Host / edge — stress runner, writer.cpp, push agent, FlashMQ :1883 |
-| fractal-phil | 192.168.86.51 | AWS-sim — FlashMQ :1884, Telegraf, InfluxDB2, subscriber_api, manager |
+| Name | WiFi IP | Wired IP | Role |
+|---|---|---|---|
+| phil-dev | 192.168.86.46 | — | Dev machine (retired as edge host) |
+| lp3 (LattePanda) | 192.168.86.20 | 192.168.0.20 | Host / edge — stress runner, writer.cpp, push agent, FlashMQ :1883 |
+| fractal-phil | 192.168.86.51 | 192.168.0.51 | AWS-sim — FlashMQ :1884, Telegraf, InfluxDB2, subscriber_api, manager |
+
+> **Note:** Always use wired IPs (192.168.0.x) for bridge and rsync — higher throughput, avoids WiFi contention at ~80k msgs/sec.
+> **Important:** 192.168.0.x is only reachable from lp3. phil-dev (192.168.86.46) is WiFi-only and cannot reach this subnet — bridge/rsync configs using 192.168.0.51 must be run from lp3, not phil-dev.
 
 ## Architecture
 

@@ -1,0 +1,78 @@
+# real_writer config — EMS / Longbow production MQTT schema
+#
+# Topic format:  unit/{unit_id}/{device}/{instance}/{point_name}/{dtype}
+# Payload:       {"ts":"2024-11-15T21:27:52.775Z","value":0.999393}
+#
+# site_id is NOT in the topic — it is the partition directory name and is
+# injected from config into every row.  This avoids repeating it on every
+# message (18 bytes per message saved, no registry needed).
+#
+# dtype is a parse-time type hint — not stored as a column.
+# Parquet dictionary encoding handles repeated point_name strings automatically.
+#
+# Output schema per parquet row:
+#   project_id  INT64
+#   ts          FLOAT64   (Unix epoch seconds, parsed from ISO 8601)
+#   site_id     VARCHAR   ("0215D1D8")   — injected from config
+#   unit_id     VARCHAR   ("02281660")
+#   device      VARCHAR   ("bms" | "pcs" | "rack")
+#   instance    VARCHAR   ("bms_1" | "pcs_2" | ...)
+#   point_name  VARCHAR   ("Batt1_SBMU1_Current")
+#   value_i     INT64     — populated for integer/boolean_integer points
+#   value_f     FLOAT64   — populated for float points
+#   (value_i and value_f are only split when both types appear in one partition)
+
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: real-writer
+  topic: "unit/#"
+  qos: 0
+
+  topic_parser: positional
+  # Segments for: unit/{unit_id}/{device}/{instance}/{point_name}/{dtype}
+  #               0     1          2        3           4            5
+  topic_segments:
+    - "_"          # 0: "unit" (literal)
+    - unit_id      # 1: hex unit serial
+    - device       # 2: "bms" / "pcs" / "rack"
+    - instance     # 3: "bms_1" / "bms_2" / "pcs_1" / etc.
+    - point_name   # 4: "Batt1_SBMU1_Current"
+    - dtype_hint   # 5: type hint — drives int vs float storage, not written to parquet
+
+  partition_field: site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+output:
+  base_path: /srv/data/parquet-ems
+  project_id: 0
+  # site_id is the partition key — set to match the site this writer serves
+  site_id: "0215D1D8"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000
+
+  # current_state_path: /srv/data/parquet-ems/current_state.parquet
+
+wal:
+  # Write-ahead log: written before each parquet flush, deleted on success.
+  # On crash the WAL survives and is replayed at next startup.
+  enabled: true
+  # path: ""   # default: {base_path}/.wal/  (leave blank for default)
+
+health:
+  # Exposes a lightweight JSON status endpoint — no extra dependencies.
+  # GET http://host:8771/health
+  enabled: true
+  port: 8771
+
+guard:
+  # Abort flush if free disk space falls below this threshold.
+  min_free_gb: 1.0

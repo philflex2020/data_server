@@ -33,9 +33,12 @@ TEST_FLAGS := $(CXXFLAGS) -DPARQUET_WRITER_NO_MAIN \
 
 .PHONY: all clean deps test kpi
 
-all: parquet_writer
+all: parquet_writer real_writer
 
 parquet_writer: writer.cpp
+	$(CXX) $(ALL_CFLAGS) $< -o $@ $(ALL_LIBS)
+
+real_writer: real_writer.cpp
 	$(CXX) $(ALL_CFLAGS) $< -o $@ $(ALL_LIBS)
 
 tests/test_writer: tests/test_writer.cpp writer.cpp tests/test_runner.h
@@ -55,4 +58,4 @@ deps:
 	sudo apt-get install -y libmosquitto-dev libyaml-cpp-dev libsimdjson-dev
 
 clean:
-	rm -f parquet_writer tests/test_writer tests/kpi_writer
+	rm -f parquet_writer real_writer tests/test_writer tests/kpi_writer
