@@ -43,10 +43,10 @@ services:
         condition: service_healthy
     volumes:
       - ../../source/stress_runner:/app
-      - ../../:/repo
+      - ../../source/generator:/app/../generator
     working_dir: /app
     command: >
-      sh -c "pip install -q paho-mqtt pyyaml &&
+      sh -c "pip install -q paho-mqtt pyyaml websockets &&
              python stress_runner.py --config /app/stress_torture.yaml"
     restart: unless-stopped
 
