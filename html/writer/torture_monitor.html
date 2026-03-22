@@ -316,7 +316,7 @@ function pollNow() {
 }
 
 // ── stress runner cards ────────────────────────────────────────────────────
-const STRESS_MAX_MPS = 20000;  // ~20k/s per runner at full rate (80k total / 4)
+const STRESS_MAX_MPS = 200000;  // C++ stress_pub bursts to ~200-400k/s per runner
 
 function updateStress(data) {
   ['a','b','c','d'].forEach(s => {
@@ -397,14 +397,17 @@ function renderCard(w, d) {
   hist.push(rate);
   if (hist.length > RATE_LEN) hist.shift();
 
-  const drops   = d.overflow_drops   || 0;
-  const walPend = d.wal_pending_rows  || 0;
-  const diskFree= d.disk_free_gb      || 0;
-  const diskGB  = diskFree.toFixed(1);
-  const uptime  = d.uptime_seconds    || 0;
-  const status  = d.status || 'unknown';
+  const bufDrops  = d.overflow_drops || 0;
+  const ringDrops = d.ring_drops     || 0;
+  const ringUsed  = d.ring_used      || 0;
+  const ringCap   = d.ring_cap       || 262144;
+  const ringPct   = ringCap > 0 ? Math.round(ringUsed / ringCap * 100) : 0;
+  const diskFree  = d.disk_free_gb   || 0;
+  const diskGB    = diskFree.toFixed(1);
+  const uptime    = d.uptime_seconds || 0;
 
-  const cardClass = drops > 0 ? 'warn' : (status !== 'ok' ? 'err' : 'ok');
+  const anyDrops  = bufDrops > 0 || ringDrops > 0;
+  const cardClass = anyDrops ? 'warn' : 'ok';
   card.className  = `wcard ${cardClass}`;
 
   const diskPct = diskFree > 0 ? Math.min(100, (diskFree / 950) * 100) : 0;
@@ -421,14 +424,14 @@ function renderCard(w, d) {
       <span class="v">${fmtNum(msgs)}</span></div>
     <div class="metric"><span class="k">rows written</span>
       <span class="v">${fmtNum(d.total_rows_written||0)}</span></div>
-    <div class="metric"><span class="k">overflow drops</span>
-      <span class="v ${drops>0?'warn':'ok'}">${fmtNum(drops)}</span></div>
+    <div class="metric"><span class="k">ring fill</span>
+      <span class="v ${ringPct>80?'err':ringPct>40?'warn':'ok'}">${ringPct}% (${fmtNum(ringUsed)}/${fmtNum(ringCap)})</span></div>
+    <div class="metric"><span class="k">ring drops</span>
+      <span class="v ${ringDrops>0?'err':'ok'}">${fmtNum(ringDrops)}</span></div>
+    <div class="metric"><span class="k">buf drops</span>
+      <span class="v ${bufDrops>0?'warn':'ok'}">${fmtNum(bufDrops)}</span></div>
     <div class="metric"><span class="k">flush count</span>
       <span class="v">${d.flush_count||0}</span></div>
-    <div class="metric"><span class="k">wal replay rows</span>
-      <span class="v ${(d.wal_replay_rows||0)>0?'warn':''}">${fmtNum(d.wal_replay_rows||0)}</span></div>
-    <div class="metric"><span class="k">wal pending</span>
-      <span class="v ${walPend>0?'warn':''}">${fmtNum(walPend)}</span></div>
     <div class="disk-bar"><div class="disk-fill" style="width:${diskPct}%;background:${diskCol}"></div></div>
     <div class="metric" style="margin-top:2px"><span class="k">disk free</span>
       <span class="v">${diskGB} GB</span></div>`;
