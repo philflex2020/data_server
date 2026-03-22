@@ -173,6 +173,19 @@
   <div class="scard off" id="scard-d"><div class="scard-title">stress-d</div><div class="scard-rate">—</div><div class="scard-unit">msg/s</div></div>
 </div>
 
+<!-- ── Rate gap note ── -->
+<div style="background:#0d1f0d;border:1px solid #1a4a1a;border-radius:6px;padding:9px 14px;margin-bottom:14px;font-size:0.8rem;line-height:1.6;color:var(--muted)">
+  <strong style="color:var(--green)">Why stress rate &gt; writer input rate:</strong>
+  <span style="margin:0 6px;color:var(--border)">|</span>
+  <strong style="color:var(--text)">(1) Publisher count:</strong> <code>mosquitto_publish()</code> counts msgs queued into libmosquitto's outgoing buffer — not broker-confirmed delivery. TCP backpressure can inflate the figure.
+  <span style="margin:0 6px;color:var(--border)">|</span>
+  <strong style="color:var(--text)">(2) Ring overflow:</strong> at high load, if <code>flush_max_ms</code> exceeds <em>ring_cap / msg_rate</em> (e.g. 795 ms at 330k/s with 262k-slot ring), the ring fills and drops msgs for the remainder of the flush.
+  <span style="margin:0 6px;color:var(--border)">|</span>
+  <strong style="color:var(--text)">(3) CPU contention:</strong> when publishers, broker, and writers share the same host, they compete for cores — broker throughput is capped by available threads.
+  <span style="margin:0 6px;color:var(--border)">|</span>
+  Watch <code>overflow_drops</code> and <code>flush_max_ms</code> on the writer cards to diagnose.
+</div>
+
 <!-- ── Writer health cards ── -->
 <h2>Writers — Health & Throughput</h2>
 <div class="writers" id="writers-grid">
@@ -378,7 +391,6 @@ function pollNow() {
 }
 
 // ── stress runner cards ────────────────────────────────────────────────────
-const STRESS_MAX_MPS = 200000;  // C++ stress_pub bursts to ~200-400k/s per runner
 
 function updateStress(data) {
   ['a','b','c','d'].forEach(s => {
