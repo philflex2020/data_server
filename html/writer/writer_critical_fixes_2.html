@@ -206,14 +206,14 @@
 <table class="apply-order" style="margin-bottom:28px">
   <thead><tr><th>#</th><th>ID</th><th>Description</th><th>Severity</th><th>Lines changed</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td>NC3</td><td>fs::remove without error_code crashes flush thread</td><td><span class="badge badge-crit">CRITICAL</span></td><td>2</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>2</td><td>NC1</td><td>WAL timestamp lookup in r.ints should be r.floats</td><td><span class="badge badge-crit">CRITICAL</span></td><td>~8</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>3</td><td>NM2</td><td>FD_SET UB in health thread → replace with poll</td><td><span class="badge badge-major">MAJOR</span></td><td>3</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>4</td><td>NC4+NM1</td><td>Early flush pipe wakeup + remove dead condvar</td><td><span class="badge badge-crit">CRITICAL</span></td><td>~20</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>5</td><td>NC2</td><td>flush_partition temp+rename for atomic writes</td><td><span class="badge badge-crit">CRITICAL</span></td><td>~10</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>6</td><td>NM3</td><td>YAML type error discards rest of config</td><td><span class="badge badge-major">MAJOR</span></td><td>moderate</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>7</td><td>NM4</td><td>SensorKey identity fields only</td><td><span class="badge badge-major">MAJOR</span></td><td>~10</td><td><span class="badge badge-todo">TODO</span></td></tr>
-    <tr><td>8</td><td>nm1–nm7</td><td>Minor clean-ups</td><td><span class="badge badge-minor">minor</span></td><td>trivial</td><td><span class="badge badge-todo">TODO</span></td></tr>
+    <tr><td>1</td><td>NC3</td><td>fs::remove without error_code crashes flush thread</td><td><span class="badge badge-crit">CRITICAL</span></td><td>2</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>2</td><td>NC1</td><td>WAL timestamp lookup in r.ints should be r.floats</td><td><span class="badge badge-crit">CRITICAL</span></td><td>~8</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>3</td><td>NM2</td><td>FD_SET UB in health thread → replace with poll</td><td><span class="badge badge-major">MAJOR</span></td><td>3</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>4</td><td>NC4+NM1</td><td>Early flush pipe wakeup + remove dead condvar</td><td><span class="badge badge-crit">CRITICAL</span></td><td>~20</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>5</td><td>NC2</td><td>flush_partition temp+rename for atomic writes</td><td><span class="badge badge-crit">CRITICAL</span></td><td>~10</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>6</td><td>NM3</td><td>YAML type error discards rest of config</td><td><span class="badge badge-major">MAJOR</span></td><td>moderate</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>7</td><td>NM4</td><td>SensorKey identity fields only</td><td><span class="badge badge-major">MAJOR</span></td><td>~10</td><td><span class="badge badge-done">FIXED</span></td></tr>
+    <tr><td>8</td><td>nm1–nm7</td><td>Minor clean-ups</td><td><span class="badge badge-minor">minor</span></td><td>trivial</td><td><span class="badge badge-done">FIXED</span></td></tr>
     <tr><td>9</td><td>DL1</td><td>Signal pipe write end blocking → deadlock at 400k msg/s</td><td><span class="badge badge-crit">CRITICAL</span></td><td>1</td><td><span class="badge badge-done">FIXED</span></td></tr>
   </tbody>
 </table>
