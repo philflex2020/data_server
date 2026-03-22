@@ -1207,8 +1207,12 @@ int main(int argc, char* argv[]) {
         std::cerr << "[init] pipe() failed: " << strerror(errno) << "\n";
         return 1;
     }
-    // O_NONBLOCK on read end: drain loop in flush_thread_fn won't block after wakeup
+    // O_NONBLOCK on both ends: read end so drain loop won't block after wakeup;
+    // write end so process_raw_message's signal write never blocks while holding
+    // g_mutex (at 400k/s the pipe fills in ~165ms during a flush, causing deadlock).
+    // Dropping a wakeup byte is safe — g_flush_needed atomic tracks actual need.
     fcntl(g_signal_pipe[0], F_SETFL, O_NONBLOCK);
+    fcntl(g_signal_pipe[1], F_SETFL, O_NONBLOCK);
 
     // clean_session=true: correct for QoS-0 (broker can't queue QoS-0 anyway)
     // and prevents stale subscriptions from old configs being restored on reconnect.
