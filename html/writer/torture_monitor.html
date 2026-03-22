@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Torture Monitor — phil-256g</title>
+<title>Torture Monitor</title>
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
@@ -137,7 +137,7 @@
 </div>
 
 <div class="topbar">
-  <h1>Torture Monitor</h1>
+  <h1 id="page-title">Torture Monitor</h1>
   <input id="host-input" type="text" value="192.168.86.34" placeholder="host">
   <input id="port-input" type="text" value="8780" placeholder="port" style="width:70px">
   <button class="btn" id="connect-btn" onclick="toggleConnect()">Connect</button>
@@ -146,6 +146,22 @@
   <button class="btn" onclick="stackAction('up')">Stack Up</button>
   <button class="btn danger" onclick="stackAction('down')">Stack Down</button>
   <button class="btn" id="restart-btn" onclick="stackAction('restart')">Restart Writers</button>
+</div>
+
+<!-- ── Quick connect presets ── -->
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+  <span style="font-size:0.78rem;color:var(--muted)">Quick connect:</span>
+  <button class="btn" id="preset-34" onclick="quickConnect('192.168.86.34','8780')">
+    phil-256g (.34) — Xeon 56T / Docker
+  </button>
+  <button class="btn" id="preset-48" onclick="quickConnect('192.168.86.48','8780')">
+    spark1 (.48) — ARM 20C / Native
+  </button>
+</div>
+
+<!-- ── System info bar ── -->
+<div id="sys-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:9px 14px;margin-bottom:14px;font-size:0.81rem;line-height:1.6">
+  <span id="sys-text" style="color:var(--muted)">—</span>
 </div>
 
 <!-- ── Stress runner rate cards ── -->
@@ -167,9 +183,9 @@
 </div>
 
 <div class="grid2">
-  <!-- ── Container status ── -->
+  <!-- ── Container / process status ── -->
   <div class="section">
-    <div class="label">Container Status</div>
+    <div class="label" id="ps-label">Container Status</div>
     <table>
       <thead><tr><th>Name</th><th>Status</th><th>Image</th></tr></thead>
       <tbody id="containers-body"><tr><td colspan="3" style="color:var(--muted)">—</td></tr></tbody>
@@ -235,8 +251,10 @@
 
 <script>
 // ── state ──────────────────────────────────────────────────────────────────
-let pollTimer = null;
-let connected = false;
+let pollTimer     = null;
+let connected     = false;
+let sysInfo       = null;
+let STRESS_MAX_MPS = 400000;   // updated from /system on connect
 let prevMsgs  = {};           // writer-id → last msgs_received for rate calc
 let prevTs    = {};           // writer-id → last poll timestamp
 let rateHistory = {           // last 30 rate samples per writer
@@ -246,6 +264,14 @@ const RATE_LEN = 30;
 
 function apiBase() {
   return `http://${document.getElementById('host-input').value}:${document.getElementById('port-input').value}`;
+}
+
+// ── quick-connect presets ──────────────────────────────────────────────────
+function quickConnect(host, port) {
+  document.getElementById('host-input').value = host;
+  document.getElementById('port-input').value = port;
+  if (connected) disconnect();
+  connect();
 }
 
 // ── connection ─────────────────────────────────────────────────────────────
@@ -267,6 +293,11 @@ function connect() {
       document.getElementById('connect-btn').classList.add('active');
       setStatus('connected', 'ok');
       log('Connected to ' + apiBase(), 'ok');
+      // fetch system info to populate banner and adapt UI
+      fetch(apiBase() + '/system')
+        .then(r => r.json())
+        .then(updateSysBar)
+        .catch(() => {});
       pollNow();
       pollTimer = setInterval(pollNow, 2500);
     })
@@ -280,10 +311,41 @@ function disconnect() {
   clearInterval(pollTimer);
   pollTimer = null;
   connected = false;
+  sysInfo   = null;
   document.getElementById('connect-btn').textContent = 'Connect';
   document.getElementById('connect-btn').classList.remove('active');
+  document.getElementById('sys-bar').style.display = 'none';
   setStatus('disconnected', 'off');
   log('Disconnected', 'warn');
+}
+
+// ── system info banner ─────────────────────────────────────────────────────
+function updateSysBar(info) {
+  sysInfo        = info;
+  STRESS_MAX_MPS = info.stress_max_mps || 400000;
+
+  const sep = '<span style="margin:0 10px;color:var(--border)">|</span>';
+  document.getElementById('sys-text').innerHTML =
+    `<strong style="color:var(--accent)">${info.host}</strong>${sep}` +
+    `${info.cpu}${sep}` +
+    `<span style="color:var(--text)">${info.ram_gb} GB RAM</span>${sep}` +
+    `${info.storage}${sep}` +
+    `<span style="color:var(--green)">${info.broker}</span>${sep}` +
+    `<span style="color:var(--muted)">${info.description}</span>`;
+  document.getElementById('sys-bar').style.display = 'block';
+
+  // update page title and process-status label
+  document.getElementById('page-title').textContent =
+    `Torture Monitor — ${info.host}`;
+  document.getElementById('ps-label').textContent =
+    info.type === 'native' ? 'Process Status' : 'Container Status';
+
+  // highlight active preset button
+  ['34','48'].forEach(s => {
+    document.getElementById(`preset-${s}`).classList.remove('active');
+  });
+  if (info.host === 'phil-256g') document.getElementById('preset-34').classList.add('active');
+  if (info.host === 'spark1')    document.getElementById('preset-48').classList.add('active');
 }
 
 function setStatus(msg, level) {

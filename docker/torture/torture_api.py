@@ -122,6 +122,20 @@ class Handler(BaseHTTPRequestHandler):
             self.respond({"service": service,
                           "lines": (r.stdout + r.stderr).splitlines()})
 
+        elif path == "/system":
+            self.respond({
+                "host":           "phil-256g",
+                "ip":             "192.168.86.34",
+                "cpu":            "2× Intel Xeon E5-2690 v4 (14c/28t each, 56 threads total)",
+                "ram_gb":         256,
+                "storage":        "2× ~870 GB HDD (/mnt/tort-sdf, /mnt/tort-sdg)",
+                "gpu":            "none",
+                "broker":         "FlashMQ (Docker, 2 threads, NUMA-tuned)",
+                "type":           "docker",
+                "stress_max_mps": 400000,
+                "description":    "Supermicro 2U — dual Xeon E5-2690 v4, 256 GB DDR4, Docker torture stack",
+            })
+
         elif path == "/health":
             self.respond({"status": "ok", "api": "torture_api"})
 

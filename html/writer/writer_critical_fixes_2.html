@@ -201,6 +201,117 @@
   </p>
 </div>
 
+<!-- ═══════════════ RATE GAP INVESTIGATION ════════════════════════════════ -->
+<h2>Rate Gap Investigation — Stress → Writer Discrepancy</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:28px">
+
+  <p style="margin-bottom:14px;color:var(--muted)">
+    After fixing the client-ID collision, stress publishers reported ~330k msg/s each (×4 = 1.32M/s total)
+    but writers appeared to be receiving only ~200k/s each. Measured rates from two <code>msgs_received</code>
+    samples 5 seconds apart:
+  </p>
+
+  <table style="width:100%;border-collapse:collapse;font-size:0.84rem;margin-bottom:16px">
+    <thead>
+      <tr style="background:#21262d">
+        <th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);color:var(--muted)">Writer</th>
+        <th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--border);color:var(--muted)">msgs_received Δ (5 s)</th>
+        <th style="padding:8px 10px;text-align:right;border-bottom:2px solid var(--border);color:var(--muted)">Measured rate</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px"><code>writer-a</code> (8771)</td>
+        <td style="padding:8px 10px;text-align:right">1,105,666</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--yellow)">221,133 msg/s</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px"><code>writer-b</code> (8772)</td>
+        <td style="padding:8px 10px;text-align:right">1,116,418</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--yellow)">223,284 msg/s</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px"><code>writer-c</code> (8773)</td>
+        <td style="padding:8px 10px;text-align:right">1,118,060</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--yellow)">223,612 msg/s</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 10px"><code>writer-d</code> (8774)</td>
+        <td style="padding:8px 10px;text-align:right">1,137,142</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--yellow)">227,428 msg/s</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr style="border-top:2px solid var(--border)">
+        <td style="padding:8px 10px;font-weight:700">Total ingested</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:700">4,477,286</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:700;color:var(--yellow)">~895k msg/s</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <p style="margin-bottom:10px">
+    Stress claim: <strong style="color:var(--accent)">~1.32M/s</strong> &nbsp;→&nbsp;
+    Measured ingestion: <strong style="color:var(--yellow)">~895k/s</strong> &nbsp;→&nbsp;
+    <strong style="color:var(--red)">~32% loss</strong>
+  </p>
+
+  <h3 style="color:var(--orange);margin:16px 0 8px">Root Cause 1 — Episodic ring overflow during worst-case flushes</h3>
+  <p>
+    The ring holds <strong>262,144 slots</strong>. At 330k msg/s input it fills in:
+  </p>
+  <pre class="context">262,144 / 330,000 = 0.795 seconds until overflow</pre>
+  <p>
+    But observed <code>flush_max_ms</code> was <strong>2,786–3,006 ms</strong> across all four writers.
+    During a 3-second flush spike the ring overflows after 0.8 s and drops everything for the
+    remaining ~2.2 s:
+  </p>
+  <pre class="context">drop window ≈ 3000 ms − 795 ms = 2,205 ms × 330k msg/s ≈ 727k msgs dropped per spike</pre>
+  <p>
+    Between flushes <code>ring_used</code> reads 15–3,422 (near-empty). The drops are entirely
+    episodic — concentrated in worst-case flush stalls, not present in steady state.
+    Cumulative <code>ring_drops</code> at inspection: 177M–381M across the four writers.
+  </p>
+
+  <h3 style="color:var(--orange);margin:16px 0 8px">Root Cause 2 — mosquitto_publish() counts queued, not delivered</h3>
+  <p>
+    <code>mosquitto_publish()</code> returns success when the message is copied into
+    libmosquitto's internal outgoing buffer — not when the broker acknowledges receipt (QoS-0
+    has no ack anyway). Under sustained 330k/s load, TCP backpressure can cause the stress
+    publisher to count messages that are buffered but never transmitted before a socket reset.
+    This inflates the publisher-side rate figure by an unknown but non-zero amount.
+  </p>
+
+  <h3 style="color:var(--orange);margin:16px 0 8px">Fixes</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+    <thead>
+      <tr style="background:#21262d">
+        <th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);color:var(--muted)">Fix</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);color:var(--muted)">Effect</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);color:var(--muted)">Term</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px">Increase <code>max_total_buffer_rows</code> to 2M in torture configs</td>
+        <td style="padding:8px 10px">Doubles ring capacity → overflow threshold rises to ~6 s, absorbing most flush spikes</td>
+        <td style="padding:8px 10px;color:var(--green)">Short-term</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px">Async output queue (see writer_code_review_2.html)</td>
+        <td style="padding:8px 10px">Decouples disk I/O from parse_thread entirely — eliminates the multi-second flush stall</td>
+        <td style="padding:8px 10px;color:var(--yellow)">Medium-term</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 10px">SHM input ring with larger capacity</td>
+        <td style="padding:8px 10px">Persistent cross-restart queue; can be sized to absorb any burst</td>
+        <td style="padding:8px 10px;color:var(--muted)">Next session</td>
+      </tr>
+    </tbody>
+  </table>
+
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <h2>Apply Order</h2>
 <table class="apply-order" style="margin-bottom:28px">
