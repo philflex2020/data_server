@@ -29,69 +29,52 @@ services:
       retries: 10
       start_period: 5s
 
-  # ── Stress runners (one per writer, topic-sharded to eliminate fan-out) ──
+  # ── Stress runners (C++ — one per writer shard, ~300k msg/s each) ─────────
   stress-a:
-    image: python:3.10-slim
+    image: stress-pub:torture
+    build:
+      context: ../..
+      dockerfile: docker/torture/Dockerfile.stress
     container_name: torture_stress_a
     networks: [torture]
     depends_on:
       broker:
         condition: service_healthy
-    volumes:
-      - ../../source/stress_runner:/app
-      - ../../source/generator:/app/../generator
-    working_dir: /app
-    command: >
-      sh -c "pip install -q paho-mqtt pyyaml websockets &&
-             python stress_runner.py --config /app/stress_torture_a.yaml"
+    command: ["--host", "broker", "--port", "1883", "--prefix", "batteries_a",
+              "--racks", "12", "--modules", "8", "--cells", "52", "--conns", "1"]
     restart: unless-stopped
 
   stress-b:
-    image: python:3.10-slim
+    image: stress-pub:torture
     container_name: torture_stress_b
     networks: [torture]
     depends_on:
       broker:
         condition: service_healthy
-    volumes:
-      - ../../source/stress_runner:/app
-      - ../../source/generator:/app/../generator
-    working_dir: /app
-    command: >
-      sh -c "pip install -q paho-mqtt pyyaml websockets &&
-             python stress_runner.py --config /app/stress_torture_b.yaml"
+    command: ["--host", "broker", "--port", "1883", "--prefix", "batteries_b",
+              "--racks", "12", "--modules", "8", "--cells", "52", "--conns", "1"]
     restart: unless-stopped
 
   stress-c:
-    image: python:3.10-slim
+    image: stress-pub:torture
     container_name: torture_stress_c
     networks: [torture]
     depends_on:
       broker:
         condition: service_healthy
-    volumes:
-      - ../../source/stress_runner:/app
-      - ../../source/generator:/app/../generator
-    working_dir: /app
-    command: >
-      sh -c "pip install -q paho-mqtt pyyaml websockets &&
-             python stress_runner.py --config /app/stress_torture_c.yaml"
+    command: ["--host", "broker", "--port", "1883", "--prefix", "batteries_c",
+              "--racks", "12", "--modules", "8", "--cells", "52", "--conns", "1"]
     restart: unless-stopped
 
   stress-d:
-    image: python:3.10-slim
+    image: stress-pub:torture
     container_name: torture_stress_d
     networks: [torture]
     depends_on:
       broker:
         condition: service_healthy
-    volumes:
-      - ../../source/stress_runner:/app
-      - ../../source/generator:/app/../generator
-    working_dir: /app
-    command: >
-      sh -c "pip install -q paho-mqtt pyyaml websockets &&
-             python stress_runner.py --config /app/stress_torture_d.yaml"
+    command: ["--host", "broker", "--port", "1883", "--prefix", "batteries_d",
+              "--racks", "12", "--modules", "8", "--cells", "52", "--conns", "1"]
     restart: unless-stopped
 
   # ── Writer A — baseline, always running ─────────────────────────────────

@@ -1,0 +1,11 @@
+FROM ubuntu:22.04
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        g++ libmosquitto-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY source/stress_runner/stress_pub.cpp /build/stress_pub.cpp
+RUN g++ -O2 -std=c++17 -o /usr/local/bin/stress_pub /build/stress_pub.cpp -lmosquitto
+
+ENTRYPOINT ["/usr/local/bin/stress_pub"]
