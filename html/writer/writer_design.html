@@ -86,7 +86,7 @@
 <div class="subtitle">
   <code>source/parquet_writer_cpp/writer.cpp</code> &nbsp;·&nbsp;
   Branch: <code>03202026_run_with_real_data</code> &nbsp;·&nbsp;
-  Audience: intern &amp; engineering management &nbsp;·&nbsp;
+  Audience: BMS Team Members &nbsp;·&nbsp;
   Updated: 2026-03-23
 </div>
 
@@ -95,11 +95,15 @@
   <a href="#architecture">Architecture</a>
   <a href="#threads">Threads</a>
   <a href="#data-flow">Data Flow</a>
+  <a href="#realdata">Real Data</a>
   <a href="#config">Configuration</a>
   <a href="#robustness">Robustness</a>
   <a href="#performance">Performance</a>
   <a href="#deployment">Deployment</a>
-  <a href="#internals">Internals (Intern)</a>
+  <a href="#internals">Internals</a>
+  <a href="#ext-ws">Ext: WS/JSON</a>
+  <a href="#ext-shm-output">Ext: SHM Buffer</a>
+  <a href="#shm-takeover">SHM Takeover</a>
   <a href="#next">Roadmap</a>
 </div>
 
@@ -156,40 +160,42 @@
 <h2 id="architecture">2 · System Architecture</h2>
 
 <div class="section">
-  <p>The writer sits between an MQTT broker and local storage. Multiple instances can run
-     in parallel, each subscribing to all (or a subset of) topics and writing to their own
-     output directory.</p>
+  <p>A single writer instance sits between any FlashMQ broker and local storage.
+     It connects as an MQTT subscriber, parses incoming messages, and writes
+     partitioned Parquet files to disk.</p>
 
 <div class="arch-box">
-MQTT Publishers (stress_pub / real EMS devices)
-         │  QoS-0  ~80–300k msg/s
+EMS Devices / BMS Publishers
+         │  MQTT QoS-0
          ▼
    ┌──────────────┐
-   │   FlashMQ    │  ← high-performance C++ broker (single node, 20+ threads)
-   │   :1883      │
+   │   FlashMQ    │  ← high-performance C++ MQTT broker (any host, any port)
+   │   :1883      │    attach to existing broker — no broker changes required
    └──────┬───────┘
-          │  fan-out: broker delivers each message to every subscriber independently
-    ┌─────┴─────┬────────────┬────────────┐
-    ▼           ▼            ▼            ▼
- writer-a    writer-b    writer-c    writer-d
- :8771       :8772       :8773       :8774
-    │           │            │            │
-    ▼           ▼            ▼            ▼
- parquet-a/  parquet-b/  parquet-c/  parquet-d/
- (NVMe)      (NVMe)      (NVMe)      (NVMe)
+          │  MQTT subscribe  #
+          ▼
+   ┌──────────────┐
+   │   writer     │  ← single process, four internal threads
+   │   :8771      │    health/status HTTP endpoint
+   └──────┬───────┘
+          │
+          ▼
+   /srv/data/parquet/
+   (date-partitioned Parquet files on local storage)
 </div>
 
   <p>
-    Each writer instance is independent — they do not communicate with each other.
-    The broker handles fan-out: each message is delivered to all subscribers.
-    Running four parallel writers gives four identical copies of the data, useful
-    for testing fault tolerance (kill one, the others keep writing).
+    The writer attaches to whichever FlashMQ instance serves the BMS data — it
+    does not need to run on the same host as the broker, and the broker requires
+    no configuration changes. The <code>mqtt.host</code> and <code>mqtt.port</code>
+    in the writer config point to any reachable FlashMQ instance.
   </p>
 
   <div class="alert alert-info">
-    <strong>Multi-instance rule:</strong> each instance needs a unique
-    <code>mqtt.client_id</code>, <code>output.base_path</code>, and <code>health.port</code>.
-    Everything else (host, topic, QoS, compression) can be shared.
+    <strong>Torture test note:</strong> the stress/validation environment runs four
+    writer instances in parallel (writer-a through writer-d on ports 8771–8774),
+    each receiving the full message stream independently — useful for fault-tolerance
+    testing, but not the production deployment model.
   </div>
 </div>
 
@@ -332,7 +338,73 @@ MQTT Publishers (stress_pub / real EMS devices)
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="config">5 · Configuration</h2>
+<h2 id="realdata">5 · Real EMS Data Constraints (Longbow Recording)</h2>
+
+<div class="section">
+  <p>
+    A 459-second production recording from the Longbow EMS site (1.3 M messages, 47 BMS units,
+    1,770 distinct topics) was analysed against the writer's internal buffer limits.
+    Key findings are summarised here; full analysis in
+    <a href="writer_real_data.html" style="color:var(--accent)">writer_real_data.html</a>.
+  </p>
+
+  <h3>Topic length distribution</h3>
+  <p>
+    Topics follow the pattern <code>unit/&lt;id&gt;/&lt;device&gt;/&lt;instance&gt;/&lt;point_name&gt;/&lt;dtype&gt;</code>.
+    The unit ID segment is 8 hex chars; the point name is the dominant source of length variation.
+  </p>
+  <table>
+    <thead><tr><th>Length bucket</th><th>Topic count</th><th>% of total</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>≤ 64 bytes</td><td>384</td><td>21.7%</td><td class="ok">safe</td></tr>
+      <tr><td>65–96 bytes</td><td>654</td><td>36.9%</td><td class="ok">safe</td></tr>
+      <tr><td>97–128 bytes</td><td>724</td><td>40.9%</td><td class="ok">safe (cap is now 256)</td></tr>
+      <tr><td>129–136 bytes</td><td class="warn">8</td><td class="warn">0.45%</td><td class="warn">⚠ were silently truncated at old cap of 128</td></tr>
+      <tr><td>&gt; 136 bytes</td><td>0</td><td>0%</td><td class="ok">none seen in dataset</td></tr>
+    </tbody>
+  </table>
+  <ul style="margin-top:10px">
+    <li><strong>Average topic length:</strong> 84.4 bytes &nbsp;·&nbsp; <strong>Min:</strong> 32 bytes &nbsp;·&nbsp; <strong>Max:</strong> 136 bytes</li>
+    <li><strong>Worst truncation:</strong> <code>…Both_main_positive_relay_and_main_negative_relay_sticking_fault/integer</code> — last 9 chars of point name + entire dtype segment lost; value stored as float under wrong column name</li>
+    <li><strong>Fix applied:</strong> <code>MQRING_TOPIC_MAX</code> raised 128 → 256; <code>topic_truncations</code> counter exposed in <code>/health</code></li>
+  </ul>
+
+  <h3>Variable (point) name lengths</h3>
+  <p>
+    The <code>point_name</code> column in the Parquet output is extracted from topic segment 4.
+    Observed range across 1,770 production topics:
+  </p>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Shortest point name</td><td>~10 chars</td><td><code>PCS_1PCS_Grid_Frequency</code> style names</td></tr>
+      <tr><td>Typical point name</td><td>30–60 chars</td><td>Most BMS telemetry variables</td></tr>
+      <tr><td>Longest observed</td><td><strong>104 chars</strong></td><td>BMS MBMS fault/warning flag names (e.g. <code>Batt1_MBMS_…relay_sticking_fault</code>)</td></tr>
+      <tr><td>High cardinality</td><td>1,770 unique</td><td>Benefits from Parquet dictionary encoding — each name stored once per row-group</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>SHM ring design note:</strong> the current SHM slot layout reserves only 16 bytes for
+    field names (<code>ShmField::name[16]</code>), targeting embedded targets (gumby / imx93) with
+    short names like <code>AvgCellV</code>. If the EMS stream is ever routed through the SHM path,
+    this must be raised to at least <code>name[128]</code>.
+  </div>
+
+  <h3>Payload structure</h3>
+  <p>
+    All production payloads are JSON objects with exactly two keys:
+  </p>
+  <pre>{"ts":"2024-11-15T21:27:52.775Z","value":0.999393}   // float
+{"ts":"2024-11-15T21:27:52.775Z","value":1}           // integer / boolean_integer</pre>
+  <p>
+    Typical payload length: 48–55 bytes. <code>MQRING_PAY_MAX = 256</code> is safe with
+    large headroom for all observed values.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="config">6 · Configuration</h2>
 
 <div class="section">
   <p>All settings live in a YAML file (default: <code>writer_config.yaml</code>).
@@ -380,7 +452,7 @@ guard:
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="robustness">6 · Robustness Features</h2>
+<h2 id="robustness">7 · Robustness Features</h2>
 
 <div class="section">
   <table>
@@ -431,7 +503,7 @@ guard:
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="performance">7 · Performance</h2>
+<h2 id="performance">8 · Performance</h2>
 
 <div class="section">
   <p>Benchmarks run on <strong>spark1</strong> — ASUS NUC GX10, ARM Cortex-X925 + A725 (20 cores),
@@ -461,7 +533,7 @@ guard:
     <thead><tr><th>Metric</th><th>Production rate</th><th>Writer capacity</th><th>Headroom</th></tr></thead>
     <tbody>
       <tr><td>Fleet message rate</td><td>81,420 msg/s (46 units × 1,770 topics)</td><td>&gt;1,000,000 msg/s</td><td class="ok">12×</td></tr>
-      <tr><td>Torture test rate</td><td>300,000 msg/s (4 writers × 75k)</td><td>&gt;1,000,000 msg/s</td><td class="ok">3.3×</td></tr>
+      <tr><td>Stress test rate (single writer)</td><td>300,000 msg/s</td><td>&gt;1,000,000 msg/s</td><td class="ok">3.3×</td></tr>
       <tr><td>Topic parsing</td><td>81,420 calls/s</td><td>2,672,549 calls/s</td><td class="ok">33×</td></tr>
       <tr><td>Parquet flush</td><td>~80k rows per 60s interval</td><td>~1M rows/s</td><td class="ok">750×</td></tr>
     </tbody>
@@ -483,25 +555,28 @@ guard:
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="deployment">8 · Deployment</h2>
+<h2 id="deployment">9 · Deployment</h2>
 
 <div class="section">
-  <h3>Test environments</h3>
+  <h3>Stress / validation environments</h3>
+  <p>These environments run multiple writer instances in parallel against a high-rate
+     synthetic workload — for fault-tolerance testing only, not representative of
+     production deployment.</p>
   <table>
-    <thead><tr><th>Host</th><th>IP</th><th>Type</th><th>Writers</th><th>Stress rate</th></tr></thead>
+    <thead><tr><th>Host</th><th>IP</th><th>Type</th><th>Instances (stress only)</th><th>Stress rate</th></tr></thead>
     <tbody>
       <tr>
         <td><strong>phil-256g</strong></td>
         <td>192.168.86.34</td>
-        <td>Docker (4 containers)</td>
-        <td>writer-a/b/c/d :8771–8774</td>
+        <td>Docker</td>
+        <td>4 containers :8771–8774</td>
         <td>300k/s (adjustable via monitor)</td>
       </tr>
       <tr>
         <td><strong>spark1</strong></td>
         <td>192.168.86.48</td>
         <td>Native ARM binaries</td>
-        <td>writer-a/b/c/d :8771–8774</td>
+        <td>4 processes :8771–8774</td>
         <td>300k/s (adjustable via monitor)</td>
       </tr>
     </tbody>
@@ -546,7 +621,7 @@ make -C source/parquet_writer_cpp parquet_writer
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="internals">9 · Implementation Details (Intern Reference)</h2>
+<h2 id="internals">10 · Implementation Details</h2>
 
 <div class="section">
   <h3>Lock-free SPSC ring (<code>mqtt_ring.h</code>)</h3>
@@ -613,7 +688,170 @@ make -C source/parquet_writer_cpp parquet_writer
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="next">10 · Roadmap</h2>
+<h2 id="ext-ws">11 · Extension: WS/JSON Stream Input <span class="tag tag-yellow">Under Review</span></h2>
+
+<div class="section">
+  <p>
+    The current architecture accepts data exclusively via MQTT (libmosquitto). A proposed extension
+    adds a second input path that accepts a continuous WebSocket stream carrying the same
+    <code>{"ts":"…","value":…}</code> JSON payload format, removing the MQTT broker as a
+    dependency for sources that already produce a WebSocket feed.
+  </p>
+
+  <h3>Proposed architecture with WS/JSON path</h3>
+<div class="arch-box">
+EMS Devices / BMS Publishers
+    │                          │
+    │ MQTT QoS-0               │ WebSocket JSON stream
+    ▼                          ▼
+┌──────────────┐        ┌──────────────────┐
+│   FlashMQ    │        │  WS listener     │  ← new: single-thread libwebsockets
+│   :1883      │        │  :9001 (config)  │    or Boost.Beast — parses topic
+└──────┬───────┘        └────────┬─────────┘    from WS path or message header
+       │                         │
+       │  same on_message()      │  same push() call
+       └────────────┬────────────┘
+                    ▼
+          ┌──────────────────┐
+          │   MqttRing       │  ← shared lock-free SPSC ring (unchanged)
+          │   262,144 slots  │
+          └────────┬─────────┘
+                   ▼
+         parse_thread → flush_thread → Parquet
+</div>
+
+  <p>
+    The key design constraint is that the ring push interface is topic-agnostic: a slot holds
+    raw <code>char[256]</code> topic + <code>char[256]</code> payload bytes. The WS listener only
+    needs to extract these two fields from each incoming message before calling
+    <code>MqttRing::push()</code> — the entire downstream parse and flush pipeline is reused
+    without modification.
+  </p>
+
+  <h3>Integration points</h3>
+  <table>
+    <thead><tr><th>Concern</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Topic encoding</td><td>WS messages must carry the topic either as a URL path (<code>ws://host/unit/id/bms/…</code>) or as a JSON wrapper field (<code>{"topic":"…","ts":"…","value":…}</code>). The latter requires a two-level JSON parse on the hot path — URL path is preferred.</td></tr>
+      <tr><td>Backpressure</td><td>WS listener should apply the same ring-full guard as MQTT: if <code>MqttRing::push()</code> returns false (ring full), drop and increment a <code>ws_drops</code> counter exposed in <code>/health</code>.</td></tr>
+      <tr><td>Authentication</td><td>MQTT relies on broker-level ACLs; WS listener needs its own token or IP-whitelist mechanism before merging into production.</td></tr>
+      <tr><td>Topic length</td><td>URL path-encoded topics inherit the same 136-byte real-data maximum; <code>MQRING_TOPIC_MAX = 256</code> gives adequate headroom.</td></tr>
+      <tr><td>Config flag</td><td>New <code>ws.enabled</code> / <code>ws.port</code> YAML keys; WS listener thread started only when enabled — zero overhead when disabled.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Status — under review.</strong> The WS path adds a second socket listener thread
+    and a third entry point into <code>MqttRing::push()</code>. The ring is SPSC (single-producer);
+    dual-producer use requires either a mutex on the push side or promoting the ring to MPSC.
+    This trade-off must be resolved before implementation begins.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="ext-shm-output">12 · Extension: SHM Output File Buffer <span class="tag tag-yellow">Under Review</span></h2>
+
+<div class="section">
+  <p>
+    The flush thread currently writes Parquet files directly to a disk path
+    (<code>/srv/data/parquet/</code>). A proposed extension stages completed files in a
+    <code>/dev/shm/parquet_out/</code> ring of N slots before an async mover thread transfers
+    them to the final disk destination. This decouples flush latency from disk write latency.
+  </p>
+
+  <h3>Motivation</h3>
+  <ul>
+    <li><strong>Disk jitter isolation</strong> — spinning HDD write latency spikes (10–100 ms) no longer stall the flush thread; the flush thread writes to RAM at memory speed (&gt;10 GB/s), then returns to accumulating rows immediately.</li>
+    <li><strong>Burst absorption</strong> — at 1 M msg/s, a 60-second flush produces ~60 M rows. Staging in SHM allows the next interval's rows to start accumulating while the large file is being committed to disk.</li>
+    <li><strong>Crash-safe handover</strong> — files staged in <code>/dev/shm</code> survive a writer process crash (SHM persists until the OS reboots). A restarted writer (or companion recovery process) can inspect the output ring and complete any pending disk moves.</li>
+  </ul>
+
+  <h3>Proposed layout</h3>
+<div class="arch-box">
+/dev/shm/parquet_out/
+├── ring_header        ← shared header: N, write_slot, move_slot, pid, heartbeat_ns
+├── slot_0/            ← completed Parquet file staged here
+│   ├── data.parquet
+│   └── meta.json      ← destination path, size, flush timestamp
+├── slot_1/
+│   ⋮
+└── slot_{N-1}/
+</div>
+
+  <table>
+    <thead><tr><th>Parameter</th><th>Proposed default</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>N (slot count)</td><td>8</td><td>Covers ~8 flush intervals of backlog; each slot is one Parquet file (typically 2–10 MB compressed)</td></tr>
+      <tr><td>Max slot size</td><td>128 MB</td><td>Headroom for a 1 M msg/s × 60 s burst flush</td></tr>
+      <tr><td>Total SHM reservation</td><td>~1 GB</td><td>8 × 128 MB; actual usage much lower at normal rates</td></tr>
+      <tr><td>Move thread poll</td><td>100 ms or inotify</td><td>Picks up completed slots and rsync/copies to final path</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Status — under review.</strong> The SHM output buffer adds complexity to the flush
+    path and requires a companion move thread. The benefit is primarily for HDD targets; NVMe
+    hosts (spark1: 3.3 GB/s) gain little. Implementation should be conditioned on
+    <code>output.shm_buffer: true</code> in config and deferred until disk jitter is
+    measured as a real bottleneck.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="shm-takeover">13 · SHM Ownership Takeover on Crash</h2>
+
+<div class="section">
+  <p>
+    Both the SHM input ring (<code>/dev/shm/parquet_ring</code>) and the proposed SHM output
+    buffer (<code>/dev/shm/parquet_out/</code>) use the same ownership model: a PID +
+    heartbeat field in the shared header allows a replacement writer process to detect
+    that the previous owner has crashed and take over cleanly, without losing any data
+    that was in flight.
+  </p>
+
+  <h3>Ownership header (shared by input and output SHM regions)</h3>
+  <pre>struct ShmOwner {
+    uint32_t  owner_pid;        // PID of the writer that currently holds this region
+    uint64_t  heartbeat_ns;     // writer updates this every ~200 ms (CLOCK_MONOTONIC)
+    uint32_t  heartbeat_period; // declared update period in ms (default 200)
+    uint32_t  takeover_grace;   // ms to wait before declaring owner dead (default 600)
+};</pre>
+
+  <h3>Takeover protocol</h3>
+  <table>
+    <thead><tr><th>Step</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>1. Attach</td><td>New writer opens the SHM region (<code>shm_open + mmap</code>). If the region does not exist, it creates it and sets <code>owner_pid = getpid()</code>.</td></tr>
+      <tr><td>2. Check liveness</td><td>If <code>owner_pid != 0</code>, send <code>kill(owner_pid, 0)</code>. If the process exists, another writer is healthy — this instance exits or waits.</td></tr>
+      <tr><td>3. Heartbeat stale?</td><td>If <code>kill(owner_pid, 0)</code> returns <code>ESRCH</code> (process gone) <em>or</em> <code>now − heartbeat_ns &gt; takeover_grace ms</code>, the owner is considered crashed.</td></tr>
+      <tr><td>4. CAS takeover</td><td>Attempt <code>__atomic_compare_exchange</code> on <code>owner_pid</code>: expected = old PID, desired = <code>getpid()</code>. Only one of multiple racing restarts wins.</td></tr>
+      <tr><td>5. Resume</td><td>New owner reads the ring's <code>read_pos</code> / <code>write_pos</code> and continues from where the crashed writer stopped. No data is lost from the SHM ring.</td></tr>
+      <tr><td>6. Heartbeat loop</td><td>New owner updates <code>heartbeat_ns</code> every ~200 ms from a dedicated timer thread (or the health thread). If the writer's own health thread detects <code>g_shutdown</code>, it zeros <code>owner_pid</code> to release cleanly.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>What survives a crash</h3>
+  <table>
+    <thead><tr><th>Resource</th><th>Survives crash?</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>SHM input ring (<code>/dev/shm/parquet_ring</code>)</td><td class="ok">Yes</td><td>Kernel retains the region; unread slots are still there for the next owner</td></tr>
+      <tr><td>SHM output buffer (<code>/dev/shm/parquet_out/</code>)</td><td class="ok">Yes</td><td>Staged Parquet files remain; recovery writer can complete the disk move</td></tr>
+      <tr><td>In-memory row buffer (heap)</td><td class="err">No</td><td>Rows accumulated since last flush are lost — same as current behaviour</td></tr>
+      <tr><td>WAL / partial Parquet file on disk</td><td class="ok">Yes</td><td>Existing on-disk files are not corrupted by a crash; partial file is abandoned and named with <code>.partial</code> suffix</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Relationship to the SHM ring (SHM-0 → SHM-7):</strong> the takeover protocol described
+    here is the same mechanism specified in
+    <a href="writer_shm_ring.html" style="color:var(--accent)">writer_shm_ring.html</a>
+    for the input ring. The output buffer extension reuses the identical header layout and
+    CAS takeover step — one ownership model covers both SHM regions.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="next">14 · Roadmap</h2>
 
 <div class="section">
   <table>
