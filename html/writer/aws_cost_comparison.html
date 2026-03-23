@@ -170,6 +170,26 @@
   footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);
            font-size: 0.78rem; color: var(--muted); }
 
+  /* ── §12 query cost section ── */
+  .athena-box {
+    background: #0c2d6b22; border: 1px solid #1a4d9e;
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;
+  }
+  body.light .athena-box { background: #dbeafe; border-color: #93c5fd; }
+
+  .athena-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px;
+  }
+
+  .sql-pre {
+    background: #0d0d1a; border: 1px solid #1a1a4a;
+    font-size: 0.78rem; padding: 12px; border-radius: 6px; overflow-x: auto;
+    font-family: 'Consolas', 'Courier New', monospace; line-height: 1.6;
+    color: var(--code-text); margin: 0;
+  }
+  body.light .sql-pre { background: var(--code-bg); border-color: var(--border); }
+
   /* ── theme toggle button ── */
   .theme-toggle {
     position: fixed; top: 16px; right: 16px;
@@ -565,7 +585,7 @@
     the only difference is a small per-GB retrieval fee on cold data.
   </p>
 
-  <pre style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.82rem;color:#e6edf3">
+  <pre style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.82rem;color:var(--code-text)">
 # S3 lifecycle policy (JSON / Terraform)
 {
   "Rules": [{
@@ -1365,7 +1385,7 @@
 <div class="section">
 
   <!-- ── What is Athena? ─────────────────────────────────────────── -->
-  <div style="background:#0c2d6b22;border:1px solid #1a4d9e;border-radius:8px;padding:16px 20px;margin-bottom:20px">
+  <div class="athena-box">
     <div style="color:var(--accent);font-weight:700;font-size:0.9rem;margin-bottom:8px">What is AWS Athena?</div>
     <p style="margin-bottom:8px">
       Athena is Amazon's <strong>serverless SQL query service</strong>. You point it at Parquet
@@ -1381,7 +1401,7 @@
       is where the compute happens.
     </p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-      <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:12px">
+      <div class="athena-card">
         <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Athena</div>
         <ul style="font-size:0.82rem;margin-bottom:0">
           <li>No server — fully managed by AWS</li>
@@ -1392,7 +1412,7 @@
           <li>Same SQL as DuckDB — no relearning</li>
         </ul>
       </div>
-      <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:12px">
+      <div class="athena-card">
         <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">DuckDB local (spark1 / phil-dev)</div>
         <ul style="font-size:0.82rem;margin-bottom:0">
           <li>Runs on your own machine</li>
@@ -1423,7 +1443,7 @@
   <div class="two-col">
     <div class="box">
       <div class="box-title">Parquet / DuckDB / AWS Athena (SQL)</div>
-      <pre style="background:#0d0d1a;border:1px solid #1a1a4a;font-size:0.78rem;padding:12px;border-radius:6px;overflow-x:auto">-- works unchanged on local DuckDB, Athena, or InfluxDB 3.0
+      <pre class="sql-pre">-- works unchanged on local DuckDB, Athena, or InfluxDB 3.0
 SELECT
     regexp_extract(filename, 'unit/([^/]+)', 1) AS unit_id,
     strftime(to_timestamp(ts), '%Y-%m-%d')      AS day,
@@ -1435,7 +1455,7 @@ ORDER BY unit_id, day;</pre>
     </div>
     <div class="box">
       <div class="box-title">InfluxDB 2.x (Flux — required for InfluxDB 2.x)</div>
-      <pre style="background:#0d0d1a;border:1px solid #1a1a4a;font-size:0.78rem;padding:12px;border-radius:6px;overflow-x:auto">// Flux has no concept of column projection —
+      <pre class="sql-pre">// Flux has no concept of column projection —
 // entire series records are returned before filtering
 from(bucket: "bms_data")
   |> range(start: -1y)
