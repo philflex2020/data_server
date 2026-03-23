@@ -137,6 +137,7 @@
   <a href="#why">Why the gap</a>
   <a href="#processing">Processing costs</a>
   <a href="#dataloss">Data loss risk</a>
+  <a href="#influx3">InfluxDB 3</a>
   <a href="#notes">Notes &amp; caveats</a>
 </div>
 
@@ -835,7 +836,265 @@
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
-<h2 id="notes">11 · Notes and Caveats</h2>
+<h2 id="influx3">11 · InfluxDB 3.0 — Does It Change the Picture?</h2>
+
+<div class="section">
+  <p>
+    InfluxDB 3.0 (IOx engine, released 2024) is a substantial re-architecture of InfluxDB.
+    It replaces the TSM storage engine with Apache Arrow columnar Parquet files on object
+    storage, and replaces the Flux query language with SQL (via Apache DataFusion).
+    These are both directions our own Parquet/DuckDB approach already takes.
+    This section examines what InfluxDB 3.0 actually offers, whether it can consume
+    our existing Parquet files, and what a migration from InfluxDB 2.x would cost.
+  </p>
+
+  <h3>What changed in InfluxDB 3.0</h3>
+  <table>
+    <thead><tr><th>Dimension</th><th>InfluxDB 2.x</th><th>InfluxDB 3.0 (IOx)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Storage engine</strong></td>
+        <td class="err">TSM (Time-Structured Merge Tree) — proprietary columnar format on local EBS. No object storage in OSS edition.</td>
+        <td class="ok">Parquet files on S3 / GCS / Azure Blob. Object storage is the primary store, not an add-on.</td>
+      </tr>
+      <tr>
+        <td><strong>Query language</strong></td>
+        <td class="err">Flux (functional, purpose-built, complex). InfluxQL supported but limited.</td>
+        <td class="ok">SQL (ANSI-compatible via DataFusion). InfluxQL also supported. <strong>Flux is completely removed.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>Series cardinality</strong></td>
+        <td class="err">Hard RAM limit — TSI index held in memory. Millions of series → OOM.</td>
+        <td class="ok">No cardinality limit. Column-based storage handles high cardinality natively.</td>
+      </tr>
+      <tr>
+        <td><strong>WAL durability</strong></td>
+        <td class="err">WAL on local EBS — lost on instance failure if no snapshot. Crash window: ~3 min at default config.</td>
+        <td class="ok">WAL in object storage. Survives instance failure; replayed on restart automatically.</td>
+      </tr>
+      <tr>
+        <td><strong>Write protocol</strong></td>
+        <td class="warn">InfluxDB line protocol over HTTP. Telegraf still required for MQTT → line protocol conversion.</td>
+        <td class="warn">Line protocol + Apache Arrow Flight. <strong>Telegraf still required for MQTT ingest.</strong> Flight API adds options but does not eliminate the line protocol hop for MQTT sources.</td>
+      </tr>
+      <tr>
+        <td><strong>Data transfer API</strong></td>
+        <td class="warn">HTTP REST only.</td>
+        <td class="ok">Apache Arrow Flight (gRPC, columnar, high-throughput) available alongside HTTP.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Can InfluxDB 3.0 read our Parquet files?</h3>
+  <div class="alert alert-warn">
+    <strong>No.</strong> InfluxDB 3.0's query engine (DataFusion) only sees Parquet files
+    that are registered in its internal <strong>Catalog</strong> — a metadata store
+    (SQLite or PostgreSQL) that tracks every object, its schema, and its time bounds.
+    The Catalog is populated exclusively through InfluxDB's own write path (line protocol
+    or Flight API). There is no mechanism to point InfluxDB 3.0 at an S3 prefix of
+    externally-written Parquet files and query them.
+  </div>
+  <p>
+    This is the critical architectural difference from DuckDB/Athena, which treat S3 as a
+    generic file system: <code>SELECT * FROM 's3://bucket/parquet/**/*.parquet'</code> with
+    no catalog, no registration, no import step. InfluxDB 3.0's Parquet files are
+    indistinguishable from ours at the byte level, but they are invisible to each other's
+    query engines.
+  </p>
+  <table>
+    <thead><tr><th>Query tool</th><th>Can query our writer.cpp Parquet files?</th><th>Can query InfluxDB 3.0 Parquet files?</th></tr></thead>
+    <tbody>
+      <tr><td>DuckDB</td><td class="ok">Yes — direct S3 glob, no setup</td><td class="err">No — not in DuckDB catalog (unless manually registered)</td></tr>
+      <tr><td>AWS Athena</td><td class="ok">Yes — Glue catalog or direct S3</td><td class="err">No — InfluxDB catalog not exposed to Athena</td></tr>
+      <tr><td>InfluxDB 3.0 SQL</td><td class="err">No — not in InfluxDB catalog</td><td class="ok">Yes — native</td></tr>
+      <tr><td>Apache Spark</td><td class="ok">Yes — direct S3 path</td><td class="warn">Technically yes, but requires reverse-engineering the file layout</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Migration cost: InfluxDB 2.x → 3.0</h3>
+  <div class="alert alert-warn">
+    <strong>There is no supported migration path.</strong> InfluxDB has not provided an
+    official tool to convert TSM data to IOx Parquet format. Historical data in InfluxDB 2.x
+    remains queryable only by InfluxDB 2.x. A dual-stack must be maintained during any
+    transition period.
+  </div>
+  <table>
+    <thead><tr><th>Migration concern</th><th>Detail</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Flux → SQL query rewrite</strong></td>
+        <td>Every dashboard, alert, task, and script written in Flux must be rewritten.
+            Flux and SQL are not syntactically related — this is a full rewrite, not a
+            find-and-replace. Flux's pipe-forward operator, <code>filter()</code>,
+            <code>aggregateWindow()</code>, and <code>pivot()</code> functions all require
+            SQL equivalents. Typical Flux queries are 5–20 lines; SQL equivalents are
+            shorter but the translation is manual.</td>
+        <td class="err">High — every query, dashboard panel, and alert condition</td>
+      </tr>
+      <tr>
+        <td><strong>Historical data access</strong></td>
+        <td>All data written to InfluxDB 2.x stays in TSM format. To access it in InfluxDB 3.0
+            it must be re-exported via the InfluxDB 2.x query API and re-ingested into 3.0
+            via line protocol. At 81,420 rows/s × years of history, this is a
+            multi-week operation requiring both systems to run in parallel.</td>
+        <td class="err">Very high — years of data, manual pipeline, weeks of compute</td>
+      </tr>
+      <tr>
+        <td><strong>Telegraf configuration</strong></td>
+        <td>Telegraf output plugin changes from <code>outputs.influxdb_v2</code> to
+            <code>outputs.influxdb_v3</code> (or Flight). Input plugin and processor
+            chain unchanged. Minor config change.</td>
+        <td class="ok">Low — one config file change</td>
+      </tr>
+      <tr>
+        <td><strong>Client SDK updates</strong></td>
+        <td>InfluxDB client libraries have 3.0 versions (Python, Go, Java, etc.).
+            API calls change but the write/query patterns are similar. Any
+            code using Flux via the query API must be rewritten to SQL.</td>
+        <td class="warn">Medium — API calls similar, but any Flux queries in code need rewriting</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB Cloud migration</strong></td>
+        <td>InfluxDB Cloud (hosted 2.x) → Cloud Serverless (3.0) requires a manual
+            data export/import. Flux-based alerts and dashboards in the Cloud UI have
+            no automatic migration path. Tasks (scheduled Flux scripts) must be
+            converted to SQL tasks manually.</td>
+        <td class="err">High — Cloud UI dashboards, tasks, and alerts all require manual rebuild</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>InfluxDB 3.0 cost estimate vs InfluxDB 2.x</h3>
+  <p>
+    With Parquet on S3, storage costs improve significantly. Processing overhead
+    (Telegraf, relay) is unchanged. The IOx query server is lighter than the
+    InfluxDB 2.x TSM server because there is no in-memory TSI index.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th class="r">InfluxDB 2.x/month (yr 10)</th>
+        <th class="r">InfluxDB 3.0/month (yr 10)</th>
+        <th class="r">Parquet/DuckDB/month (yr 10)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Storage</td>
+        <td class="r num err">$35,400 (EBS, 443 TB)</td>
+        <td class="r num warn">$6,210 (S3, ~270 TB incl. catalog overhead)</td>
+        <td class="r num ok">$5,589 (S3, 243 TB)</td>
+      </tr>
+      <tr>
+        <td>InfluxDB / query server EC2</td>
+        <td class="r num err">$365 (r5.2xlarge)</td>
+        <td class="r num ok">$153 (m5.xlarge — no TSI in RAM)</td>
+        <td class="r num ok">$15 (t3.small)</td>
+      </tr>
+      <tr>
+        <td>FlashMQ relay EC2</td>
+        <td class="r num err">$70</td>
+        <td class="r num err">$70</td>
+        <td class="r ok">—</td>
+      </tr>
+      <tr>
+        <td>Telegraf EC2</td>
+        <td class="r num err">$120</td>
+        <td class="r num err">$120</td>
+        <td class="r ok">—</td>
+      </tr>
+      <tr>
+        <td>Backup / catalog overhead</td>
+        <td class="r num err">$85 (EBS snapshot)</td>
+        <td class="r num warn">$50 (catalog DB + WAL)</td>
+        <td class="r ok">— (S3 built-in)</td>
+      </tr>
+      <tr>
+        <td>Query costs (Athena equiv.)</td>
+        <td class="r num">—</td>
+        <td class="r num">—</td>
+        <td class="r num">$150</td>
+      </tr>
+      <tr style="font-weight:700">
+        <td>Total / month at year 10</td>
+        <td class="r num err">$36,040</td>
+        <td class="r num warn">$6,603</td>
+        <td class="r num ok">$5,754</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="savings-banner" style="margin-top:16px">
+    <div>
+      <div class="savings-big" style="color:var(--yellow)">$29,437</div>
+      <div class="savings-sub">saved vs InfluxDB 2.x<br>by moving to InfluxDB 3.0 (yr 10)</div>
+    </div>
+    <div>
+      <div class="savings-big">$849</div>
+      <div class="savings-sub">remaining gap at yr 10<br>InfluxDB 3.0 vs Parquet/DuckDB</div>
+    </div>
+    <div style="font-size:0.84rem;color:var(--muted);max-width:300px">
+      InfluxDB 3.0 closes most of the storage cost gap by adopting Parquet on S3.
+      The residual difference is the Telegraf + FlashMQ relay EC2 overhead
+      (~$190/month) that the Parquet path eliminates entirely — writer.cpp writes
+      directly to S3 from the edge with no AWS ingest compute.
+    </div>
+  </div>
+
+  <h3>Summary: does InfluxDB 3.0 change the recommendation?</h3>
+  <table>
+    <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Does InfluxDB 3.0 fix the storage cost problem?</td>
+        <td class="ok"><strong>Largely yes.</strong> Moving from EBS ($0.08/GB) to S3 ($0.023/GB)
+            reduces storage cost by ~3.5×. At year 10, storage drops from $35,400 to ~$6,210/month.</td>
+      </tr>
+      <tr>
+        <td>Can it read our existing Parquet files?</td>
+        <td class="err"><strong>No.</strong> InfluxDB 3.0 requires data to be ingested through its
+            own write path and registered in its Catalog. External Parquet files are invisible.</td>
+      </tr>
+      <tr>
+        <td>Does it eliminate Telegraf and the relay overhead?</td>
+        <td class="err"><strong>No.</strong> The MQTT → line protocol → InfluxDB 3.0 pipeline still
+            requires Telegraf and an AWS MQTT relay. These cost $190/month fixed — the same as 2.x.</td>
+      </tr>
+      <tr>
+        <td>What happens to all Flux queries?</td>
+        <td class="err"><strong>Full rewrite required.</strong> Flux is removed. Every dashboard,
+            alert, task, and script must be rewritten in SQL. There is no migration tool.</td>
+      </tr>
+      <tr>
+        <td>What happens to historical InfluxDB 2.x data?</td>
+        <td class="err"><strong>Inaccessible in 3.0 without re-ingestion.</strong> A dual-stack
+            must be maintained, or years of data must be re-piped through the new write
+            path at significant compute and time cost.</td>
+      </tr>
+      <tr>
+        <td>Is InfluxDB 3.0 cheaper than our Parquet path?</td>
+        <td class="warn"><strong>No — still 15% more expensive at year 10</strong> ($6,603 vs
+            $5,754/month), solely because of the Telegraf + relay EC2 overhead. The storage
+            costs are now almost identical.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info" style="margin-top:12px">
+    <strong>Strategic conclusion:</strong> InfluxDB 3.0 converges toward the same architecture
+    we already have — Parquet on S3 queried by a SQL engine. The difference is that InfluxDB 3.0
+    adds a proprietary Catalog layer and requires the MQTT ingest to pass through Telegraf and
+    line protocol, while our writer.cpp produces Parquet directly on the edge with no AWS
+    ingest compute. If the primary goal is BMS data retention, query flexibility, and cost
+    minimisation, moving to InfluxDB 3.0 is a step in the right direction but does not close
+    the gap — it also imposes a significant one-time migration cost (Flux rewrite + historical
+    data re-ingestion) with no equivalent one-time cost in our path.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="notes">12 · Notes and Caveats</h2>
 
 <div class="section">
   <ul>
