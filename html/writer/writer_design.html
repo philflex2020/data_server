@@ -320,7 +320,12 @@ EMS Devices / BMS Publishers
   <pre>/srv/data/parquet/batteries/project=0/site=0/2026/03/23/20260323T142001Z.parquet</pre>
   <p>
     Parquet files are self-describing — column names, types, and metadata are embedded.
-    DuckDB can query them directly with no import step.
+    DuckDB can query them directly with no import step. With
+    <code>topic_partition_segments: 2</code> the path becomes:
+  </p>
+  <pre>/srv/data/parquet/unit/02281660/2026/03/23/20260323T142001Z.parquet</pre>
+  <p>
+    See §6 Configuration for the full partitioning options.
   </p>
 
   <h3>Output schema</h3>
@@ -423,6 +428,7 @@ output:
   flush_interval_seconds: 60
   max_messages_per_part:  5000000
   max_total_buffer_rows:  2000000            # OOM guard (~25s at 80k msg/s)
+  topic_partition_segments: 0               # 0=off · 2=per-unit · 3=per-unit/subsystem
 
 health:
   enabled: true
@@ -449,6 +455,89 @@ guard:
       <tr><td><code>output.compression</code></td><td class="ok">No</td><td>Can differ between instances (trade CPU vs file size)</td></tr>
     </tbody>
   </table>
+
+  <h3 id="topic-partition">Topic-based file partitioning <span class="tag tag-blue">Config-selectable</span></h3>
+  <p>
+    By default the writer places all messages for a given source type into a single daily
+    Parquet file regardless of which device or subsystem sent them. The
+    <code>output.topic_partition_segments</code> option instructs the writer to fold the
+    first <em>N</em> segments of the MQTT topic into the output path, creating one file (or
+    subtree) per unique topic prefix. This makes per-device queries dramatically faster
+    because the query engine can prune entire files by path before reading a single byte.
+  </p>
+
+  <pre>output:
+  topic_partition_segments: 0   # 0 = disabled (current default)
+                                # 1 = first segment  → one dir per source type
+                                # 2 = first 2 segs   → one dir per unit/device
+                                # 3 = first 3 segs   → one dir per unit/subsystem</pre>
+
+  <h4>Path examples — Longbow EMS topic <code>unit/02281660/bms/bms_1/…/float</code></h4>
+  <table>
+    <thead><tr><th><code>topic_partition_segments</code></th><th>Output path</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="dim">0 (disabled)</td>
+        <td><code>base/unit/2026/03/23/20260323T142001Z.parquet</code></td>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td><code>base/unit/2026/03/23/20260323T142001Z.parquet</code>
+            <span class="dim"> — same as default (source type is already seg 0)</span></td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>base/unit/02281660/2026/03/23/20260323T142001Z.parquet</code>
+            <span class="dim"> — one daily file per physical unit</span></td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><code>base/unit/02281660/bms/2026/03/23/20260323T142001Z.parquet</code>
+            <span class="dim"> — one daily file per unit × subsystem (bms / pcs / rack)</span></td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><code>base/unit/02281660/bms/bms_1/2026/03/23/20260323T142001Z.parquet</code>
+            <span class="dim"> — one daily file per unit × instance</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Stress-test topic <code>batteries_a/site=0/rack=1/module=2/cell=3/voltage</code></h4>
+  <table>
+    <thead><tr><th><code>topic_partition_segments</code></th><th>Output path</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>2</td>
+        <td><code>base/batteries_a/site=0/2026/03/23/20260323T142001Z.parquet</code></td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><code>base/batteries_a/site=0/rack=1/2026/03/23/20260323T142001Z.parquet</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Trade-offs</h4>
+  <table>
+    <thead><tr><th>Segments</th><th>Files per day (Longbow, 47 units)</th><th>Query speedup</th><th>Flush overhead</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>1 per source type</td><td class="dim">—</td><td class="ok">minimal (one writer)</td></tr>
+      <tr><td>2 (unit)</td><td>47</td><td class="ok">DuckDB prunes 46/47 files for single-unit queries</td><td class="ok">low — 47 active partitions</td></tr>
+      <tr><td>3 (unit+device)</td><td>~141 (47 × 3 subsystems)</td><td class="ok">further pruning by subsystem</td><td class="warn">moderate — more Arrow builders in memory</td></tr>
+      <tr><td>4 (unit+device+instance)</td><td>~280+</td><td class="ok">finest granularity</td><td class="warn">many small files; diminishing returns</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Implementation note:</strong> <code>topic_partition_segments</code> affects only
+    the <em>PartitionKey</em> construction in <code>parse_topic()</code> — the first N raw
+    segments are appended to the directory path before the date components. No changes are
+    needed to the ring, JSON parser, Arrow schema, or flush thread. The existing
+    <code>max_messages_per_part</code> guard still applies per partition, so a very active
+    unit/subsystem will still roll to a new file within a flush interval if it exceeds the
+    row threshold.
+  </div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
