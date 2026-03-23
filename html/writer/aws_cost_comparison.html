@@ -4,16 +4,63 @@
 <meta charset="UTF-8">
 <title>AWS Cost Comparison — InfluxDB vs Parquet/DuckDB (Longbow Rate, 10-year)</title>
 <style>
+  /* ── dark mode (default) ── */
   :root {
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
     --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
     --green: #3fb950; --yellow: #d29922; --red: #f85149;
     --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --th-bg: #21262d; --tr-alt: #0d1117;
+    --kpi-bg: #0d1117; --surface2: #0d1117;
+    --bar-track: #0d1117;
+    --bar-red: #5a1010; --bar-grn: #0d3a1a; --bar-ylw: #3a2a00;
+    --tl-cell-r: #1a0a0a; --tl-cell-g: #0a1a0a; --tl-cell-y: #1a1500;
+    --tag-red-bg: #3d0a0a; --tag-grn-bg: #0d4429; --tag-ylw-bg: #2d2000;
+    --savings-bg: #0d3a1a;
   }
+
+  /* ── light / print mode ── */
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+    --kpi-bg: #f6f8fa; --surface2: #f6f8fa;
+    --bar-track: #e8ecf0;
+    --bar-red: #fde8e8; --bar-grn: #dcfce7; --bar-ylw: #fef9c3;
+    --tl-cell-r: #fde8e8; --tl-cell-g: #dcfce7; --tl-cell-y: #fef9c3;
+    --tag-red-bg: #fee2e2; --tag-grn-bg: #dcfce7; --tag-ylw-bg: #fef9c3;
+    --savings-bg: #dcfce7;
+  }
+
+  /* ── auto light on print ── */
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+      --kpi-bg: #f6f8fa; --surface2: #f6f8fa;
+      --bar-track: #e8ecf0;
+      --bar-red: #fde8e8; --bar-grn: #dcfce7; --bar-ylw: #fef9c3;
+      --tl-cell-r: #fde8e8; --tl-cell-g: #dcfce7; --tl-cell-y: #fef9c3;
+      --tag-red-bg: #fee2e2; --tag-grn-bg: #dcfce7; --tag-ylw-bg: #fef9c3;
+      --savings-bg: #dcfce7;
+    }
+    .theme-toggle { display: none; }
+    .nav { display: none; }
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text);
          font-family: 'Segoe UI', system-ui, sans-serif;
-         padding: 32px; line-height: 1.7; max-width: 1100px; margin: 0 auto; }
+         padding: 32px; line-height: 1.7; max-width: 1100px; margin: 0 auto;
+         transition: background 0.2s, color 0.2s; }
 
   h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
   .subtitle { color: var(--muted); font-size: 0.88rem; margin-bottom: 32px; }
@@ -29,14 +76,14 @@
              border-radius: 8px; padding: 22px 24px; margin-bottom: 20px; }
 
   pre, code { font-family: 'Consolas', 'Courier New', monospace; }
-  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px;
-         border-radius: 4px; font-size: 0.82rem; color: #e6edf3; }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 1px 5px;
+         border-radius: 4px; font-size: 0.82rem; color: var(--code-text); }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin: 10px 0; }
-  th    { background: #21262d; color: var(--accent); text-align: left;
+  th    { background: var(--th-bg); color: var(--accent); text-align: left;
           padding: 7px 12px; border: 1px solid var(--border); }
   td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
-  tr:nth-child(even) td { background: #0d1117; }
+  tr:nth-child(even) td { background: var(--tr-alt); }
   .num  { font-family: monospace; }
   .ok   { color: var(--green); }
   .warn { color: var(--yellow); }
@@ -46,8 +93,11 @@
 
   .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 0.84rem; }
   .alert-info { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
-  .alert-warn { background: #2d2000;   border: 1px solid #5a4000; color: var(--yellow); }
-  .alert-ok   { background: #0d4429;   border: 1px solid #1a6e3a; color: var(--green); }
+  .alert-warn { background: #2d200044; border: 1px solid #5a4000; color: var(--yellow); }
+  .alert-ok   { background: #0d442944; border: 1px solid #1a6e3a; color: var(--green); }
+  body.light .alert-info { background: #dbeafe; border-color: #93c5fd; color: var(--accent); }
+  body.light .alert-warn { background: #fef9c3; border-color: #fde047; color: var(--yellow); }
+  body.light .alert-ok   { background: #dcfce7; border-color: #86efac; color: var(--green); }
 
   .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
   .nav a { color: var(--muted); text-decoration: none; font-size: 0.8rem;
@@ -57,7 +107,7 @@
   /* KPI cards */
   .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 14px 0; }
   @media (max-width: 800px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-  .kpi-card { background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+  .kpi-card { background: var(--kpi-bg); border: 1px solid var(--border); border-radius: 6px;
               padding: 14px; text-align: center; }
   .kpi-val  { font-size: 1.5rem; font-family: monospace; line-height: 1.1; }
   .kpi-lbl  { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
@@ -70,12 +120,12 @@
   .bar-wrap { margin: 6px 0 4px; }
   .bar-row  { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.82rem; }
   .bar-label { width: 180px; flex-shrink: 0; color: var(--muted); }
-  .bar-track { flex: 1; background: #0d1117; border: 1px solid var(--border);
+  .bar-track { flex: 1; background: var(--bar-track); border: 1px solid var(--border);
                border-radius: 3px; height: 22px; position: relative; overflow: hidden; }
   .bar-fill  { height: 100%; border-radius: 3px; transition: width 0.3s; }
-  .bar-fill-red  { background: #5a1010; border-right: 2px solid var(--red); }
-  .bar-fill-grn  { background: #0d3a1a; border-right: 2px solid var(--green); }
-  .bar-fill-ylw  { background: #3a2a00; border-right: 2px solid var(--yellow); }
+  .bar-fill-red  { background: var(--bar-red); border-right: 2px solid var(--red); }
+  .bar-fill-grn  { background: var(--bar-grn); border-right: 2px solid var(--green); }
+  .bar-fill-ylw  { background: var(--bar-ylw); border-right: 2px solid var(--yellow); }
   .bar-val   { width: 90px; text-align: right; flex-shrink: 0;
                font-family: monospace; font-size: 0.82rem; }
 
@@ -83,7 +133,7 @@
   .timeline { display: grid; grid-template-columns: 80px repeat(6, 1fr); gap: 0;
               border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
               margin: 14px 0; font-size: 0.8rem; }
-  .tl-head  { background: #21262d; color: var(--accent); padding: 8px 10px;
+  .tl-head  { background: var(--th-bg); color: var(--accent); padding: 8px 10px;
               border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
               font-weight: 600; text-align: center; }
   .tl-cell  { padding: 8px 10px; border-right: 1px solid var(--border);
@@ -92,32 +142,61 @@
   .tl-label { padding: 8px 10px; border-right: 1px solid var(--border);
               border-bottom: 1px solid var(--border); color: var(--muted);
               font-size: 0.78rem; display: flex; align-items: center; }
-  .tl-cell-r { background: #1a0a0a; }
-  .tl-cell-g { background: #0a1a0a; }
-  .tl-cell-y { background: #1a1500; }
+  .tl-cell-r { background: var(--tl-cell-r); }
+  .tl-cell-g { background: var(--tl-cell-g); }
+  .tl-cell-y { background: var(--tl-cell-y); }
 
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
-  .box { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+  .box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
   .box-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
 
   .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem;
          font-weight: 700; margin-left: 4px; }
-  .tag-red  { background: #3d0a0a; color: var(--red);    border: 1px solid #7a1515; }
-  .tag-grn  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
-  .tag-ylw  { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .tag-red  { background: var(--tag-red-bg); color: var(--red);    border: 1px solid #7a1515; }
+  .tag-grn  { background: var(--tag-grn-bg); color: var(--green);  border: 1px solid #1a6e3a; }
+  .tag-ylw  { background: var(--tag-ylw-bg); color: var(--yellow); border: 1px solid #5a4000; }
+  body.light .tag-red  { border-color: #fca5a5; }
+  body.light .tag-grn  { border-color: #86efac; }
+  body.light .tag-ylw  { border-color: #fde047; }
 
-  .savings-banner { background: #0d3a1a; border: 1px solid #1a6e3a; border-radius: 8px;
+  .savings-banner { background: var(--savings-bg); border: 1px solid #1a6e3a; border-radius: 8px;
                     padding: 18px 24px; margin: 16px 0; display: flex;
                     align-items: center; gap: 24px; flex-wrap: wrap; }
+  body.light .savings-banner { border-color: #86efac; }
   .savings-big { font-size: 2.4rem; font-family: monospace; color: var(--green); font-weight: 700; }
   .savings-sub { font-size: 0.85rem; color: var(--muted); }
 
   footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);
            font-size: 0.78rem; color: var(--muted); }
+
+  /* ── theme toggle button ── */
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 14px;
+    font-size: 0.8rem; cursor: pointer; z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: background 0.2s, color 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 </style>
+
+<script>
+  function toggleTheme() {
+    const body = document.body;
+    const btn  = document.getElementById('theme-btn');
+    if (body.classList.toggle('light')) {
+      btn.textContent = '🌙 Dark mode';
+    } else {
+      btn.textContent = '🖨 Print / Light mode';
+    }
+  }
+</script>
 </head>
 <body>
+
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🖨 Print / Light mode</button>
 
 <h1>AWS Cost Comparison</h1>
 <div class="subtitle">
