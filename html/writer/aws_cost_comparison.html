@@ -965,59 +965,82 @@
     </tbody>
   </table>
 
-  <h3>The 7-day retention wall — and what it costs to remove it</h3>
-  <div class="alert alert-warn">
-    <strong>InfluxDB 3.0 Core (Apache 2.0 open source) enforces a hard 7-day data retention limit.</strong>
-    Data older than 7 days is automatically deleted. This is an architectural constraint built into
-    the OSS release, not a configuration option. For a BMS system requiring 5–10 years of data
-    retention for warranty, compliance, and degradation analysis, InfluxDB 3.0 Core is
-    completely unsuitable without additional licensing.
+  <h3>Retention and query limits by tier — clarified</h3>
+  <div class="alert alert-info">
+    <strong>Correction from earlier drafts:</strong> InfluxDB 3.0 Core does <em>not</em>
+    hard-delete data after 7 days. The actual limitations are more nuanced and depend on tier.
+    The "7 days" figure refers to default expiry on certain internal system tables in some
+    Enterprise configurations, not on user databases. The binding constraint in Core is
+    a <strong>72-hour maximum query range</strong> in early OSS Alpha releases, combined
+    with severe performance degradation on long-range queries because the
+    <strong>Compactor</strong> — the process that merges and re-sorts Parquet files for
+    efficient time-range scans — is an Enterprise-only component.
   </div>
-  <p>To exceed 7-day retention, three paths exist — all with significant cost implications:</p>
   <table>
-    <thead><tr><th>Path</th><th>Retention</th><th>Cost</th><th>Practical for 10-year BMS?</th></tr></thead>
+    <thead><tr><th>Tier</th><th>Query range limit</th><th>Long-range performance</th><th>Cost</th><th>Practical for 10-year BMS?</th></tr></thead>
     <tbody>
       <tr>
-        <td><strong>InfluxDB 3.0 Core (OSS)</strong></td>
-        <td class="err">7 days maximum</td>
-        <td class="ok">Free</td>
-        <td class="err">No — data deleted after 7 days</td>
+        <td><strong>OSS Core (Alpha)</strong></td>
+        <td class="err">72 hours per query in early releases</td>
+        <td class="err">Degrades over time — uncompacted Parquet files accumulate, scan times grow unboundedly without the Compactor</td>
+        <td class="ok">Free (Apache 2.0)</td>
+        <td class="err">No — 72h query limit rules out historical analysis; performance degrades without Compactor</td>
       </tr>
       <tr>
-        <td><strong>InfluxDB 3.0 Enterprise</strong></td>
+        <td><strong>Enterprise (home / non-commercial)</strong></td>
         <td class="ok">Unlimited</td>
-        <td class="err">Not publicly listed — estimated $50,000–$150,000+/year based on node/core count. Requires annual contract with InfluxData.</td>
-        <td class="warn">Yes — but Enterprise license cost alone exceeds the entire Parquet/S3 infrastructure budget</td>
+        <td class="ok">Full — Compactor included, long-range queries efficient</td>
+        <td class="ok">Free for personal / non-commercial use</td>
+        <td class="warn">Technically yes, but non-commercial licence prohibits production BMS deployment</td>
       </tr>
       <tr>
-        <td><strong>InfluxDB Cloud Serverless</strong></td>
-        <td class="ok">Configurable</td>
-        <td class="err">Usage-based — write ingestion alone is prohibitive at 81k msg/s (see below)</td>
-        <td class="err">No at this rate — write costs exceed $100k/month</td>
+        <td><strong>Enterprise (commercial)</strong></td>
+        <td class="ok">Unlimited</td>
+        <td class="ok">Full</td>
+        <td class="err">AWS Marketplace: ~$0.198/vCPU-hour. 8-vCPU node: ~$1,143/month. Custom quotes for full support contracts.</td>
+        <td class="warn">Yes — but licence adds ~$1,143+/month on top of infrastructure</td>
       </tr>
       <tr>
-        <td><strong>InfluxDB Cloud Dedicated</strong></td>
-        <td class="ok">Configurable</td>
-        <td class="err">Private cluster, pricing not public — enterprise contract required</td>
-        <td class="warn">Possibly — but cost opacity makes planning impossible without vendor engagement</td>
+        <td><strong>Cloud Serverless</strong></td>
+        <td class="ok">Unlimited (paid tier)</td>
+        <td class="ok">Full</td>
+        <td class="err">Usage-based — write ingestion is prohibitive at 81k msg/s (see below)</td>
+        <td class="err">No at this write rate</td>
+      </tr>
+      <tr>
+        <td><strong>Cloud Dedicated</strong></td>
+        <td class="ok">Unlimited</td>
+        <td class="ok">Full</td>
+        <td class="err">Private cluster — custom quote, not publicly listed</td>
+        <td class="warn">Possibly — cost opacity makes planning impossible without vendor engagement</td>
       </tr>
     </tbody>
   </table>
 
+  <div class="alert alert-warn" style="margin-top:10px">
+    <strong>The Compactor is the hidden dependency.</strong> Without it, every flush produces
+    a new set of small Parquet files that are never merged. A 10-year dataset would accumulate
+    millions of uncompacted files; scanning any long time range requires opening and reading
+    every file individually. Query time for a 1-year scan grows from minutes to hours or days
+    as the file count compounds. The Compactor reorganises files into time-sorted, size-optimised
+    chunks that allow DataFusion to prune efficiently — but it is only available in Enterprise
+    and Cloud tiers.
+  </div>
+
   <h3>InfluxDB Cloud Serverless — query and write pricing at Longbow rate</h3>
   <p>
     InfluxDB Cloud Serverless (the hosted IOx product) charges per MB written,
-    per GB-hour stored, and per GB queried. At the Longbow data rate these numbers
-    become severe.
+    per GB-hour stored, and per query execution. At the Longbow data rate the
+    write cost alone is the dominant factor.
   </p>
   <table>
     <thead><tr><th>Cost dimension</th><th>Unit price</th><th>At Longbow rate</th><th>Monthly cost</th></tr></thead>
     <tbody>
       <tr>
         <td><strong>Write ingestion</strong></td>
-        <td>$0.004 per MB of line protocol written</td>
-        <td>11.4 MB/s × 86,400 s = 984,960 MB/day</td>
-        <td class="err" style="font-weight:700">~$118,200/month</td>
+        <td>$0.0025 per MB of line protocol written</td>
+        <td>11.4 MB/s × 86,400 s × 30 days = 29,548,800 MB/month</td>
+        <td class="err" style="font-weight:700">~$73,872/month</td>
       </tr>
       <tr>
         <td><strong>Storage</strong> (per GB-hour)</td>
@@ -1027,20 +1050,28 @@
       </tr>
       <tr>
         <td><strong>Query</strong></td>
-        <td>$0.01 per GB of Parquet scanned</td>
-        <td>Full year scan: ~24 TB; full 10-year scan: ~243 TB</td>
-        <td class="warn">$240/query (year 1 full scan)<br>$2,430/query (10-year full scan)<br>~$0.50 per single-unit daily query (with partitioning)</td>
+        <td>$0.01 per 100 query executions<br><span class="dim" style="font-size:0.76rem">($0.0001 per query)</span></td>
+        <td>Even 10,000 queries/month = 100 batches</td>
+        <td class="ok">~$1/month typical — effectively negligible</td>
+      </tr>
+      <tr>
+        <td><strong>Data Out</strong></td>
+        <td>$0.09/GB egress</td>
+        <td>Depends on result set size</td>
+        <td class="warn">Variable; rarely dominant</td>
       </tr>
     </tbody>
   </table>
 
   <div class="alert alert-warn" style="margin-top:10px">
     <strong>Write cost at 81k msg/s makes InfluxDB Cloud Serverless non-viable.</strong>
-    The $0.004/MB write pricing is designed for IoT fleets with intermittent, low-rate devices.
+    The $0.0025/MB write pricing is designed for IoT fleets with intermittent, low-rate devices.
     At Longbow's sustained 11.4 MB/s line protocol rate, write ingestion alone costs
-    <strong>$118,200/month</strong> — more than three times the entire 10-year InfluxDB 2.x
-    storage bill per month. InfluxDB Cloud Serverless is the wrong product tier for this workload;
-    Cloud Dedicated (private cluster) would be required, at undisclosed enterprise pricing.
+    <strong>~$73,872/month</strong> — more than twice the entire 10-year InfluxDB 2.x
+    storage bill per month. Query costs are negligible ($0.0001/query) but storage costs
+    compound on top of write costs making total ownership unsustainable. InfluxDB Cloud
+    Serverless is the wrong product tier for this workload; Cloud Dedicated (private cluster)
+    would be required, at undisclosed enterprise pricing.
   </div>
 
   <h3>Query costs for self-hosted InfluxDB 3.0 Enterprise</h3>
@@ -1195,9 +1226,11 @@
       </tr>
       <tr>
         <td>Does InfluxDB 3.0 Core work for 10-year BMS retention?</td>
-        <td class="err"><strong>No.</strong> Core enforces a hard 7-day data retention limit.
-            All data older than 7 days is automatically deleted. Enterprise license required
-            for any longer retention.</td>
+        <td class="err"><strong>Not without the Compactor.</strong> OSS Core Alpha imposes a
+            72-hour query range limit and query performance degrades unboundedly without the
+            Compactor (Enterprise-only). The free home-use Enterprise tier includes the Compactor
+            but is restricted to non-commercial use. Commercial 10-year BMS retention requires
+            a paid Enterprise license.</td>
       </tr>
       <tr>
         <td>What does the Enterprise license cost?</td>
@@ -1208,9 +1241,10 @@
       </tr>
       <tr>
         <td>Is InfluxDB Cloud Serverless viable at 81k msg/s?</td>
-        <td class="err"><strong>No.</strong> Write ingestion charges at $0.004/MB applied to
-            11.4 MB/s of line protocol yield ~$118,200/month in write costs alone.
-            Cloud Dedicated (private cluster, enterprise pricing) would be required.</td>
+        <td class="err"><strong>No.</strong> Write ingestion at $0.0025/MB applied to
+            11.4 MB/s of line protocol yields ~$73,872/month in write costs alone — before
+            storage charges. Cloud Dedicated (private cluster, enterprise pricing) would be
+            required for high-rate ingestion workloads.</td>
       </tr>
       <tr>
         <td>Is InfluxDB 3.0 Enterprise cheaper than our Parquet path?</td>
@@ -1236,8 +1270,8 @@
   <div class="alert alert-info" style="margin-top:10px">
     <strong>Strategic conclusion:</strong> InfluxDB 3.0 converges toward the same
     architecture we already have (Parquet on S3, SQL query engine) but adds three
-    costs that our path does not incur: a mandatory Enterprise license for any
-    retention beyond 7 days, Telegraf + FlashMQ relay EC2 for MQTT ingest, and
+    costs that our path does not incur: a mandatory commercial Enterprise license
+    (the free home tier is non-commercial only), Telegraf + FlashMQ relay EC2 for MQTT ingest, and
     Catalog lock-in that prevents our files from being queried by InfluxDB and
     vice versa. The Flux → SQL migration is a further one-time cost with no
     equivalent in our path. At every time horizon the Parquet/DuckDB path is
