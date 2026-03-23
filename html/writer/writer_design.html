@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parquet Writer — Design Document</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 32px; line-height: 1.7; max-width: 1100px; margin: 0 auto; }
+
+  h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.88rem; margin-bottom: 36px; }
+  h2 { color: var(--accent); font-size: 1.15rem; margin: 36px 0 12px;
+       padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 20px 0 8px; }
+  h4 { color: var(--text); font-size: 0.88rem; margin: 14px 0 6px; }
+
+  p  { margin-bottom: 10px; font-size: 0.88rem; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { font-size: 0.88rem; margin-bottom: 4px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 22px 24px; margin-bottom: 20px; }
+
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px;
+         border-radius: 4px; font-size: 0.82rem; color: #e6edf3; }
+  pre  { background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+         padding: 14px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto;
+         color: #e6edf3; margin: 10px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin: 10px 0; }
+  th    { background: #21262d; color: var(--accent); text-align: left;
+          padding: 7px 12px; border: 1px solid var(--border); }
+  td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: #0d1117; }
+
+  .ok   { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .err  { color: var(--red); }
+  .dim  { color: var(--muted); }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 14px 0; }
+  @media (max-width: 800px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  .kpi-card { background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+              padding: 14px; text-align: center; }
+  .kpi-val  { font-size: 1.6rem; font-family: monospace; color: var(--green); line-height: 1.1; }
+  .kpi-lbl  { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+
+  .arch-box { background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+              padding: 16px; font-family: monospace; font-size: 0.82rem; line-height: 1.9;
+              white-space: pre; overflow-x: auto; margin: 10px 0; }
+
+  .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 0.84rem; }
+  .alert-info   { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
+  .alert-ok     { background: #0d4429; border: 1px solid #1a6e3a; color: var(--green); }
+  .alert-warn   { background: #2d2000; border: 1px solid #5a4000; color: var(--yellow); }
+
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem;
+         font-weight: 700; margin-left: 6px; }
+  .tag-green  { background: #0d4429; color: var(--green); border: 1px solid #1a6e3a; }
+  .tag-blue   { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .tag-yellow { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+
+  .thread-row { display: flex; gap: 12px; margin: 10px 0; }
+  .thread-box { flex: 1; background: #0d1117; border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px; }
+  .thread-name { font-size: 0.8rem; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+  .thread-desc { font-size: 0.8rem; color: var(--muted); }
+
+  .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.8rem;
+           padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Parquet Writer — Design Document</h1>
+<div class="subtitle">
+  <code>source/parquet_writer_cpp/writer.cpp</code> &nbsp;·&nbsp;
+  Branch: <code>03202026_run_with_real_data</code> &nbsp;·&nbsp;
+  Audience: intern &amp; engineering management &nbsp;·&nbsp;
+  Updated: 2026-03-23
+</div>
+
+<div class="nav">
+  <a href="#overview">Overview</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#threads">Threads</a>
+  <a href="#data-flow">Data Flow</a>
+  <a href="#config">Configuration</a>
+  <a href="#robustness">Robustness</a>
+  <a href="#performance">Performance</a>
+  <a href="#deployment">Deployment</a>
+  <a href="#internals">Internals (Intern)</a>
+  <a href="#next">Roadmap</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="overview">1 · Overview</h2>
+
+<div class="section">
+  <p>
+    <strong>parquet_writer</strong> is a C++17 daemon that consumes a high-rate MQTT telemetry
+    stream and writes it as partitioned <a href="https://parquet.apache.org" style="color:var(--accent)">Apache Parquet</a>
+    files on local storage. It is designed for battery-energy-storage (BESS) telemetry at
+    industrial scale — sustained rates above 80,000 messages/second — but works for any
+    time-series sensor data with an MQTT/JSON source.
+  </p>
+
+  <h3>Why Parquet?</h3>
+  <p>
+    Raw MQTT JSON is ~109 bytes per message. The same data stored as Parquet with Snappy
+    compression averages <strong>9.6 bytes per row</strong> — an <strong>11.4× compression
+    ratio</strong>. Parquet is also columnar, which makes analytical queries (average voltage
+    of all cells in rack 3 over the last hour) orders of magnitude faster than row-oriented
+    formats. Query engines like DuckDB can read these files directly without any database
+    import step.
+  </p>
+
+  <h3>What it does not do</h3>
+  <ul>
+    <li>It does not decode or interpret the sensor values — it stores them faithfully.</li>
+    <li>It does not require a running database — output is plain files on disk.</li>
+    <li>It does not require cloud connectivity — designed for edge deployment.</li>
+  </ul>
+
+  <div class="kpi-grid" style="margin-top:18px">
+    <div class="kpi-card">
+      <div class="kpi-val">11.4×</div>
+      <div class="kpi-lbl">compression vs raw JSON</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">&gt;1M</div>
+      <div class="kpi-lbl">rows/sec sustained write</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">33×</div>
+      <div class="kpi-lbl">headroom above 80k msg/s fleet rate</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">~10 MB</div>
+      <div class="kpi-lbl">binary size (statically linked)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="architecture">2 · System Architecture</h2>
+
+<div class="section">
+  <p>The writer sits between an MQTT broker and local storage. Multiple instances can run
+     in parallel, each subscribing to all (or a subset of) topics and writing to their own
+     output directory.</p>
+
+<div class="arch-box">
+MQTT Publishers (stress_pub / real EMS devices)
+         │  QoS-0  ~80–300k msg/s
+         ▼
+   ┌──────────────┐
+   │   FlashMQ    │  ← high-performance C++ broker (single node, 20+ threads)
+   │   :1883      │
+   └──────┬───────┘
+          │  fan-out: broker delivers each message to every subscriber independently
+    ┌─────┴─────┬────────────┬────────────┐
+    ▼           ▼            ▼            ▼
+ writer-a    writer-b    writer-c    writer-d
+ :8771       :8772       :8773       :8774
+    │           │            │            │
+    ▼           ▼            ▼            ▼
+ parquet-a/  parquet-b/  parquet-c/  parquet-d/
+ (NVMe)      (NVMe)      (NVMe)      (NVMe)
+</div>
+
+  <p>
+    Each writer instance is independent — they do not communicate with each other.
+    The broker handles fan-out: each message is delivered to all subscribers.
+    Running four parallel writers gives four identical copies of the data, useful
+    for testing fault tolerance (kill one, the others keep writing).
+  </p>
+
+  <div class="alert alert-info">
+    <strong>Multi-instance rule:</strong> each instance needs a unique
+    <code>mqtt.client_id</code>, <code>output.base_path</code>, and <code>health.port</code>.
+    Everything else (host, topic, QoS, compression) can be shared.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="threads">3 · Thread Model</h2>
+
+<div class="section">
+  <p>The writer uses <strong>four threads</strong>. Each has a single responsibility and they
+     communicate through lock-free or minimally-locked shared state.</p>
+
+  <div class="thread-row">
+    <div class="thread-box">
+      <div class="thread-name">① MQTT Network Thread</div>
+      <div class="thread-desc">
+        Managed by libmosquitto (<code>loop_start()</code>). Reads TCP socket,
+        calls <code>on_message()</code> for each arriving message.
+        <code>on_message()</code> does nothing but push raw bytes into the
+        lock-free ring buffer — no parsing, no locking.
+      </div>
+    </div>
+    <div class="thread-box">
+      <div class="thread-name">② Parse Thread</div>
+      <div class="thread-desc">
+        Drains the ring buffer. For each slot: parses the MQTT topic into
+        partition key + field name, parses the JSON payload, inserts a
+        <code>Row</code> into the in-memory buffer. Holds <code>g_mutex</code>
+        only for the brief buffer insert (~1 µs).
+      </div>
+    </div>
+    <div class="thread-box">
+      <div class="thread-name">③ Flush Thread</div>
+      <div class="thread-desc">
+        Wakes every <code>flush_interval_seconds</code> (or when buffer is
+        full). Swaps the buffer under <code>g_mutex</code> (pointer swap, O(1)),
+        releases the lock, then writes Parquet files to disk — the slow I/O
+        happens entirely outside the lock.
+      </div>
+    </div>
+    <div class="thread-box">
+      <div class="thread-name">④ Health Thread</div>
+      <div class="thread-desc">
+        Listens on a TCP port (default :8771). Responds to
+        <code>GET /health</code> with a JSON metrics snapshot:
+        messages received, ring utilisation, drop counts, flush timing.
+        Used by the monitoring dashboard and load balancers.
+      </div>
+    </div>
+  </div>
+
+  <h3>Synchronisation summary</h3>
+  <table>
+    <thead><tr><th>Between</th><th>Mechanism</th><th>Contention</th></tr></thead>
+    <tbody>
+      <tr><td>MQTT thread → Parse thread</td><td>Lock-free SPSC ring buffer (<code>mqtt_ring.h</code>)</td><td class="ok">Zero — atomic read/write</td></tr>
+      <tr><td>Parse thread → Flush thread (buffer)</td><td><code>g_mutex</code> — held &lt;1 µs for vector push_back</td><td class="ok">Minimal</td></tr>
+      <tr><td>Parse thread → Flush thread (wake)</td><td>Non-blocking write to <code>g_signal_pipe</code></td><td class="ok">None</td></tr>
+      <tr><td>Flush thread buffer swap</td><td><code>g_mutex</code> — held ~1 µs for pointer exchange</td><td class="ok">Minimal</td></tr>
+      <tr><td>Any thread → Health thread</td><td>Atomic reads of counters — no lock</td><td class="ok">None</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="data-flow">4 · Data Flow</h2>
+
+<div class="section">
+  <h3>Step 1 — MQTT ingest (lock-free ring)</h3>
+  <p>
+    When a message arrives, <code>on_message()</code> copies the topic and payload into
+    a pre-allocated slot in the <strong>MqttRing</strong> — a 262,144-slot circular buffer
+    (~135 MB BSS). The write is a single <code>atomic::store</code>; no mutex, no allocation.
+    If the ring is full, the message is dropped and a counter is incremented (visible in
+    <code>/health</code>).
+  </p>
+  <p>
+    The ring acts as a shock absorber: at 300,000 msg/s it holds ~870 ms of burst before
+    any drops occur, absorbing slow parquet flushes (observed up to ~300 ms on spinning disk).
+  </p>
+
+  <h3>Step 2 — Topic parsing</h3>
+  <p>
+    The parse thread reads each ring slot and calls <code>parse_topic()</code>. The topic
+    string follows a <em>key=value</em> segment format:
+  </p>
+  <pre>batteries/site=0/rack=1/module=2/cell=3/voltage</pre>
+  <p>
+    <code>parse_topic()</code> walks the string with a single pointer pass (no heap allocation,
+    no regex), extracting the <strong>source type</strong> (<code>batteries</code>),
+    the <strong>KV pairs</strong> (<code>site_id=0, rack_id=1, …</code>), and the
+    <strong>field name</strong> (<code>voltage</code>). These become the partition key
+    and column name in the output row.
+  </p>
+
+  <h3>Step 3 — JSON payload parsing</h3>
+  <p>
+    Payloads are JSON. The writer uses <strong>simdjson</strong> — a SIMD-accelerated parser
+    that runs at memory-bandwidth speed on modern CPUs. Two payload formats are accepted:
+  </p>
+  <table>
+    <thead><tr><th>Format</th><th>Example</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr><td>Nested (generator)</td><td><code>{"timestamp":1.23,"voltage":{"value":3.7,"unit":"V"}}</code></td><td>stress_pub, generator</td></tr>
+      <tr><td>Flat scalar (EMS)</td><td><code>{"ts":"2024-11-15T21:27:52Z","value":0.999}</code></td><td>Longbow / real EMS</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Step 4 — In-memory buffering</h3>
+  <p>
+    Parsed rows are stored in <code>g_buffers</code> — a map from <em>PartitionKey</em>
+    to a <code>vector&lt;Row&gt;</code>. The partition key encodes where in the directory
+    tree the rows will land (source type + site + date). Memory usage is bounded by
+    <code>max_total_buffer_rows</code> (default 2M rows).
+  </p>
+
+  <h3>Step 5 — Parquet flush</h3>
+  <p>
+    Every <code>flush_interval_seconds</code> (default 60 s, torture test 10 s), the flush
+    thread atomically swaps <code>g_buffers</code> with a fresh empty map (O(1) pointer
+    exchange under the mutex), then writes each partition's rows to a Parquet file outside
+    the lock. File naming includes a UTC timestamp to avoid collisions:
+  </p>
+  <pre>/srv/data/parquet/batteries/project=0/site=0/2026/03/23/20260323T142001Z.parquet</pre>
+  <p>
+    Parquet files are self-describing — column names, types, and metadata are embedded.
+    DuckDB can query them directly with no import step.
+  </p>
+
+  <h3>Output schema</h3>
+  <table>
+    <thead><tr><th>Column</th><th>Type</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td><code>rack_id</code></td><td>int64</td><td>topic kv <code>rack=N</code></td></tr>
+      <tr><td><code>module_id</code></td><td>int64</td><td>topic kv <code>module=N</code></td></tr>
+      <tr><td><code>cell_id</code></td><td>int64</td><td>topic kv <code>cell=N</code></td></tr>
+      <tr><td><code>field</code></td><td>string</td><td>last topic segment (<code>voltage</code>, <code>current</code>, …)</td></tr>
+      <tr><td><code>value</code></td><td>double</td><td>JSON payload value</td></tr>
+      <tr><td><code>ts</code></td><td>double</td><td>payload timestamp (Unix seconds)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="config">5 · Configuration</h2>
+
+<div class="section">
+  <p>All settings live in a YAML file (default: <code>writer_config.yaml</code>).
+     Individual values can be overridden with CLI flags without creating a new file.</p>
+
+  <pre>mqtt:
+  host:      localhost       # FlashMQ broker
+  port:      1883
+  client_id: parquet-writer  # ★ must be unique per instance
+  topic:     "#"             # subscribe to all topics
+  qos:       0               # QoS-0 for max throughput
+
+output:
+  base_path:              /srv/data/parquet   # ★ must be unique per instance
+  compression:            snappy             # snappy | zstd | gzip | none
+  flush_interval_seconds: 60
+  max_messages_per_part:  5000000
+  max_total_buffer_rows:  2000000            # OOM guard (~25s at 80k msg/s)
+
+health:
+  enabled: true
+  port: 8771                                 # ★ must be unique per instance
+
+wal:
+  enabled: false                             # write-ahead log (crash recovery)
+
+guard:
+  min_free_gb: 1.0                           # skip flush if disk nearly full</pre>
+
+  <h3>CLI overrides</h3>
+  <p>Useful for launching multiple instances without multiple config files:</p>
+  <pre>./parquet_writer --client-id parquet-writer-2 --output /srv/data/parquet-2 --health-port 8772</pre>
+
+  <h3>Configuration gotchas</h3>
+  <table>
+    <thead><tr><th>Setting</th><th>Must be unique per instance?</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>mqtt.client_id</code></td><td class="err">Yes</td><td>Broker kicks whichever client connects second with a duplicate ID</td></tr>
+      <tr><td><code>output.base_path</code></td><td class="err">Yes</td><td>Two writers in the same directory race on filenames</td></tr>
+      <tr><td><code>health.port</code></td><td class="err">Yes (if enabled)</td><td>Two processes cannot bind the same TCP port</td></tr>
+      <tr><td><code>mqtt.topic</code></td><td class="ok">No</td><td>Broker fans out each message to every subscriber independently</td></tr>
+      <tr><td><code>output.compression</code></td><td class="ok">No</td><td>Can differ between instances (trade CPU vs file size)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="robustness">6 · Robustness Features</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Feature</th><th>What it does</th><th>Config key</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>MQTT auto-reconnect</strong></td>
+        <td>Libmosquitto reconnects automatically with exponential backoff (2 s → 30 s) if the broker restarts or the TCP connection drops. Subscription is re-issued in <code>on_connect()</code> so it survives reconnects.</td>
+        <td><code>mqtt.reconnect_*</code></td>
+      </tr>
+      <tr>
+        <td><strong>Ring buffer overflow protection</strong></td>
+        <td>When the ring is full (e.g. during a slow flush), new messages are dropped rather than blocking the MQTT network thread. Drop count is tracked and exposed in <code>/health</code>. The ring holds ~870 ms of burst at 300k msg/s before any drops occur.</td>
+        <td>Fixed at 262,144 slots</td>
+      </tr>
+      <tr>
+        <td><strong>Buffer overflow guard</strong></td>
+        <td>If in-memory buffer rows exceed <code>max_total_buffer_rows</code>, the writer drops incoming messages and triggers an early flush to reclaim memory. Prevents OOM on very long flush pauses.</td>
+        <td><code>output.max_total_buffer_rows</code></td>
+      </tr>
+      <tr>
+        <td><strong>Disk space guard</strong></td>
+        <td>Before each flush, checks available disk space. If below <code>min_free_gb</code>, skips the flush and logs a warning. Prevents the writer from filling the disk and crashing the host.</td>
+        <td><code>guard.min_free_gb</code></td>
+      </tr>
+      <tr>
+        <td><strong>Write-ahead log (WAL)</strong></td>
+        <td>Optional. Writes rows to an Arrow IPC file before each Parquet flush. On restart after a crash, replays any surviving WAL files before accepting live data. Guarantees no data loss across writer crashes. Currently disabled in the torture test (NVMe is fast enough that flush timing is the bottleneck, not crash recovery).</td>
+        <td><code>wal.enabled</code></td>
+      </tr>
+      <tr>
+        <td><strong>Parquet flush retry</strong></td>
+        <td>If a Parquet file write fails (disk full, permission error, transient I/O), the writer retries up to <code>flush_max_retries</code> times with exponential backoff before logging a permanent failure.</td>
+        <td><code>output.flush_max_retries</code></td>
+      </tr>
+      <tr>
+        <td><strong>Graceful shutdown</strong></td>
+        <td>On SIGTERM or SIGINT, the writer completes any in-progress flush, performs a final flush of all buffered rows, disconnects from MQTT cleanly, and exits. No data is lost on a clean shutdown.</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><strong>Health endpoint</strong></td>
+        <td>HTTP/1.1 GET /health returns a JSON metrics object. Used by the monitoring dashboard to detect dead writers, track message rates, ring utilisation, and flush timing. Health thread shuts down within 100 ms of SIGTERM.</td>
+        <td><code>health.enabled / health.port</code></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="performance">7 · Performance</h2>
+
+<div class="section">
+  <p>Benchmarks run on <strong>spark1</strong> — ASUS NUC GX10, ARM Cortex-X925 + A725 (20 cores),
+     120 GB unified RAM, PCIe 4.0 NVMe (3.3 GB/s). Build: <code>g++ -O2 -std=c++17</code>.</p>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-val">2.67M</div>
+      <div class="kpi-lbl">parse_topic ops/sec (+62% from F3 fixes)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">491k</div>
+      <div class="kpi-lbl">parse + JSON payload ops/sec</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">~1M</div>
+      <div class="kpi-lbl">parquet flush rows/sec (NVMe)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">1.09M</div>
+      <div class="kpi-lbl">end-to-end rows/sec (full pipeline)</div>
+    </div>
+  </div>
+
+  <h3>Production workload vs capacity</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Production rate</th><th>Writer capacity</th><th>Headroom</th></tr></thead>
+    <tbody>
+      <tr><td>Fleet message rate</td><td>81,420 msg/s (46 units × 1,770 topics)</td><td>&gt;1,000,000 msg/s</td><td class="ok">12×</td></tr>
+      <tr><td>Torture test rate</td><td>300,000 msg/s (4 writers × 75k)</td><td>&gt;1,000,000 msg/s</td><td class="ok">3.3×</td></tr>
+      <tr><td>Topic parsing</td><td>81,420 calls/s</td><td>2,672,549 calls/s</td><td class="ok">33×</td></tr>
+      <tr><td>Parquet flush</td><td>~80k rows per 60s interval</td><td>~1M rows/s</td><td class="ok">750×</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key optimisations (F3 series)</h3>
+  <table>
+    <thead><tr><th>Fix</th><th>Change</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>F3-1</td><td>SIGPIPE → SIG_IGN</td><td>Health client disconnect no longer kills the writer</td></tr>
+      <tr><td>F3-2</td><td>Signal pipe O_NONBLOCK on both ends</td><td>Eliminates deadlock at 400k msg/s when pipe fills during flush</td></tr>
+      <tr><td>F3-3</td><td><code>mosquitto_loop_stop(force=true)</code></td><td>Shutdown no longer blocks up to reconnect_max_seconds</td></tr>
+      <tr><td>F3-4</td><td>Final flush moved after <code>loop_stop</code></td><td>All messages delivered up to broker disconnect are captured</td></tr>
+      <tr><td>F3-5</td><td>JSON parse moved outside <code>g_mutex</code></td><td>Mutex hold time reduced from ~200 µs to &lt;1 µs per message</td></tr>
+      <tr><td>F3-6</td><td><code>std::map</code> → <code>std::unordered_map</code> in Row</td><td>2–4× less allocation pressure at 300k msg/s</td></tr>
+      <tr><td>F3-7</td><td>Pointer-walk topic parser (no <code>istringstream</code>)</td><td>+62% parse throughput; zero heap allocation on hot path</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="deployment">8 · Deployment</h2>
+
+<div class="section">
+  <h3>Test environments</h3>
+  <table>
+    <thead><tr><th>Host</th><th>IP</th><th>Type</th><th>Writers</th><th>Stress rate</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>phil-256g</strong></td>
+        <td>192.168.86.34</td>
+        <td>Docker (4 containers)</td>
+        <td>writer-a/b/c/d :8771–8774</td>
+        <td>300k/s (adjustable via monitor)</td>
+      </tr>
+      <tr>
+        <td><strong>spark1</strong></td>
+        <td>192.168.86.48</td>
+        <td>Native ARM binaries</td>
+        <td>writer-a/b/c/d :8771–8774</td>
+        <td>300k/s (adjustable via monitor)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Build</h3>
+  <pre># Dependencies: libparquet-dev, libarrow-dev, libmosquitto-dev, libyaml-cpp-dev, libsimdjson-dev
+make -C source/parquet_writer_cpp parquet_writer
+
+# ARM cross-compile (imx93 SoM via Yocto SDK)
+# see project notes — gumby/SDK target</pre>
+
+  <h3>Run</h3>
+  <pre># Single instance
+./parquet_writer --config writer_config.yaml
+
+# Multiple instances (no second config file needed)
+./parquet_writer --config writer_config.yaml --client-id pw-b --output /srv/data/parquet-b --health-port 8772 &amp;</pre>
+
+  <h3>Monitor</h3>
+  <p>The torture test monitoring dashboard is at
+     <code>http://192.168.86.46:8080/writer/torture_monitor.html</code>.
+     It shows real-time stress rates, writer health metrics (ring utilisation, drop counts,
+     flush timing), container status, and includes a rate control slider and fault injection
+     panel.</p>
+
+  <h3>Health endpoint</h3>
+  <pre>$ curl http://192.168.86.48:8771/health
+{
+  "msgs_received":    1217551,
+  "buffer_rows":      42318,
+  "overflow_drops":   0,
+  "ring_used":        12,
+  "ring_cap":         262144,
+  "ring_drops":       0,
+  "flush_count":      14,
+  "flush_avg_ms":     68,
+  "flush_max_ms":     151,
+  "topic_truncations": 0,
+  "payload_truncations": 0
+}</pre>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="internals">9 · Implementation Details (Intern Reference)</h2>
+
+<div class="section">
+  <h3>Lock-free SPSC ring (<code>mqtt_ring.h</code>)</h3>
+  <p>
+    The <code>MqttRing</code> is a single-producer / single-consumer ring buffer using
+    two <code>std::atomic&lt;uint64_t&gt;</code> counters (<code>write_pos</code>,
+    <code>read_pos</code>) on separate 64-byte cache lines to avoid false sharing.
+  </p>
+  <p>
+    <strong>Producer</strong> (<code>on_message</code>, MQTT thread): loads <code>write_pos</code>
+    with relaxed ordering, checks fullness with acquire on <code>read_pos</code>, copies topic
+    + payload into the slot, then stores <code>write_pos+1</code> with release ordering.
+  </p>
+  <p>
+    <strong>Consumer</strong> (<code>parse_thread_fn</code>): loads <code>read_pos</code>
+    with relaxed, checks emptiness with acquire on <code>write_pos</code>, copies the slot,
+    stores <code>read_pos+1</code> with release. The acquire/release pair is the memory
+    barrier that guarantees the consumer sees the fully-written slot.
+  </p>
+  <p>
+    Slot size: 516 bytes (4-byte header + 256-byte topic + 256-byte payload).
+    Total ring: 262,144 slots × 516 B ≈ <strong>135 MB</strong> (BSS, zero-initialised at startup).
+  </p>
+
+  <h3>Topic truncation counters</h3>
+  <p>
+    Real EMS topics reach 136 bytes. The ring's <code>MQRING_TOPIC_MAX</code> is 256 bytes —
+    safe headroom. If a topic or payload would be truncated, atomic counters
+    <code>topic_truncations</code> / <code>payload_truncations</code> are incremented and
+    exposed in <code>/health</code>. A non-zero count means the physical sensor topic
+    structure has changed and the constant needs to be updated.
+  </p>
+
+  <h3>Flush thread wake mechanism</h3>
+  <p>
+    Rather than a condition variable (which would require a mutex for the wait), the flush
+    thread polls a <code>g_signal_pipe</code> (a standard Unix pipe) using <code>poll()</code>
+    with a timeout equal to <code>flush_interval_seconds</code>. When a message arrives or
+    the buffer is full, <code>process_raw_message()</code> writes a single byte to the write
+    end of the pipe. The flush thread wakes immediately instead of waiting the full interval.
+    Both ends of the pipe are <code>O_NONBLOCK</code> to prevent the fast write path from
+    ever blocking.
+  </p>
+
+  <h3>Shutdown sequence</h3>
+  <pre>SIGTERM →  handle_signal() sets g_shutdown=true, writes to signal pipe
+          → flush_thread: current flush completes, exits while(!g_shutdown) loop
+          → main: flusher.join()
+          → main: mosquitto_disconnect + mosquitto_loop_stop(force=true)
+          → main: sets g_mqtt_stopped=true — parse_thread drains ring to empty
+          → main: parser.join()
+          → main: final flush of any remaining buffer rows
+          → main: health_thr.join() (exits within 100ms of g_shutdown)
+          → process exits cleanly</pre>
+
+  <h3>Parquet schema construction</h3>
+  <p>
+    The Parquet schema is built from the first row seen for each partition.
+    Columns are: one int64 per topic KV field, plus <code>field</code> (string),
+    <code>value</code> (double), <code>ts</code> (double). Arrow builders accumulate
+    rows in memory; at flush time the builders are finalised into an Arrow Table and
+    written via <code>parquet::arrow::WriteTable()</code>.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="next">10 · Roadmap</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Item</th><th>Description</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>SHM ring (SHM-0 → SHM-7)</strong></td>
+        <td>
+          A second input path via a POSIX shared-memory ring buffer
+          (<code>/dev/shm/parquet_ring</code>). Primary use case: embedded targets
+          (imx93 SoM / gumby) that cannot run an MQTT stack. The SHM ring survives
+          writer restarts — a new writer instance takes ownership and resumes from the
+          last read cursor, giving lossless restart without a WAL.
+          Designed with PID + heartbeat ownership takeover and a futex-based cross-process
+          wake mechanism. Full design in <code>html/writer/writer_shm_ring.html</code>.
+        </td>
+        <td class="warn">In design — implementation next</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-7: parse_thread futex wake</strong></td>
+        <td>
+          The parse thread currently sleeps 50 µs when the ring is empty, causing 20,000
+          unnecessary wakeups/sec at idle. Replace with <code>FUTEX_WAIT</code> on a
+          <code>wake_seq</code> atomic in the ring — parse thread blocks until a message
+          arrives, saving CPU and reducing first-message latency.
+        </td>
+        <td class="warn">Pending</td>
+      </tr>
+      <tr>
+        <td><strong>ARM deployment (imx93 SoM)</strong></td>
+        <td>
+          Cross-compile via Yocto SDK on gumby. Arrow/Parquet dev headers available
+          natively on the target. Binary already tested on spark1 (ARM Cortex-X925).
+        </td>
+        <td class="warn">Pending integration</td>
+      </tr>
+      <tr>
+        <td><strong>Topic truncation alert</strong></td>
+        <td>
+          <code>topic_truncations</code> counter in <code>/health</code> is currently
+          a silent metric. Wire it into the monitoring dashboard as a visible warning
+          badge so operators notice if a new device type pushes topic lengths past 256 bytes.
+        </td>
+        <td class="warn">Pending</td>
+      </tr>
+      <tr>
+        <td><strong>Push agent integration</strong></td>
+        <td>
+          The push agent (<code>source/rsync_push/push_agent.py</code>) rsyncs the parquet
+          output directory to the AWS-sim host (fractal-phil) where DuckDB queries it.
+          Currently separate; may be folded into the writer's post-flush hook.
+        </td>
+        <td class="ok">Operational (separate process)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div style="margin-top:32px;padding-top:16px;border-top:1px solid var(--border);font-size:0.78rem;color:var(--muted)">
+  Document generated 2026-03-23 &nbsp;·&nbsp; Branch: <code>03202026_run_with_real_data</code>
+  &nbsp;·&nbsp; Source: <code>source/parquet_writer_cpp/writer.cpp</code>,
+  <code>mqtt_ring.h</code>, <code>writer_config.yaml</code>
+</div>
+
+</body>
+</html>
