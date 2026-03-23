@@ -26,7 +26,7 @@
 #include <cstring>
 
 static constexpr uint32_t MQRING_CAPACITY  = 1u << 18;  // 262144 — must be power-of-2
-static constexpr uint32_t MQRING_TOPIC_MAX = 128;
+static constexpr uint32_t MQRING_TOPIC_MAX = 256;  // real EMS topics reach 136 bytes; 256 gives safe headroom
 static constexpr uint32_t MQRING_PAY_MAX   = 256;
 
 struct MqSlot {
@@ -42,6 +42,11 @@ struct MqttRing {
     alignas(64) std::atomic<uint64_t> read_pos{0};
     alignas(64) MqSlot slots[MQRING_CAPACITY];
 
+    // Counts silent truncations — exposed in /health so operator sees them without log diving.
+    // Truncation corrupts parse_topic() silently; bump MQRING_TOPIC_MAX/MQRING_PAY_MAX if nonzero.
+    std::atomic<uint64_t> topic_truncations{0};
+    std::atomic<uint64_t> payload_truncations{0};
+
     // Called from on_message (libmosquitto network thread).
     // Returns false when ring is full — caller counts as overflow drop.
     bool push(const char* topic,   int tlen,
@@ -51,6 +56,8 @@ struct MqttRing {
         if (w - r >= MQRING_CAPACITY) return false;
 
         auto& s       = slots[w & (MQRING_CAPACITY - 1)];
+        if (tlen >= (int)MQRING_TOPIC_MAX) topic_truncations.fetch_add(1, std::memory_order_relaxed);
+        if (plen >= (int)MQRING_PAY_MAX)   payload_truncations.fetch_add(1, std::memory_order_relaxed);
         s.topic_len   = static_cast<uint16_t>(std::min(tlen,   (int)MQRING_TOPIC_MAX - 1));
         s.payload_len = static_cast<uint16_t>(std::min(plen,   (int)MQRING_PAY_MAX   - 1));
         std::memcpy(s.topic,   topic,   s.topic_len);   s.topic  [s.topic_len]   = '\0';
