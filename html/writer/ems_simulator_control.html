@@ -265,6 +265,138 @@
   <div style="color:var(--muted);font-size:.82rem;padding:12px">Connect to see unit status…</div>
 </div>
 
+<!-- real_writer reminder -->
+<h2>Run real_writer</h2>
+<div style="background:#0a0d11;border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:16px;font-family:'Consolas',monospace;font-size:0.78rem;color:var(--muted);line-height:1.9">
+  <span style="color:var(--accent);font-weight:700">One-time setup</span><br>
+  <span style="color:var(--green)">sudo</span> mkdir -p /srv/data/parquet-ems &amp;&amp; <span style="color:var(--green)">sudo</span> chown $USER /srv/data/parquet-ems<br>
+  <br>
+  <span style="color:var(--accent);font-weight:700">Start writer</span>
+  <span style="color:#444c57">&nbsp;&nbsp;# from repo root</span><br>
+  <span style="color:var(--green)">cd</span> source/parquet_writer_cpp<br>
+  <span style="color:var(--green)">./real_writer</span> <span style="color:var(--yellow)">--config real_writer_config.yaml</span>
+  <span style="color:#444c57">&nbsp;&nbsp;# subscribes unit/# · flushes every 60 s · health :8771</span><br>
+  <br>
+  <span style="color:var(--accent);font-weight:700">Check health</span><br>
+  <span style="color:var(--green)">curl</span> http://localhost:8771/health
+  <span style="color:#444c57">&nbsp;&nbsp;# msgs_received, flush_count, buffer_rows, last_flush_ms</span>
+</div>
+
+<!-- DuckDB verification -->
+<h2>Verify Parquet Output (DuckDB)</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+  <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">
+    After the first flush (60 s by default) run these queries on the writer machine to confirm rows are landing correctly.
+  </p>
+
+  <div style="margin-bottom:10px">
+    <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+      Parquet path &amp; site_id
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="dq-path"    value="/srv/data/parquet-ems" style="width:260px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:.82rem;font-family:'Consolas',monospace">
+      <input type="text" id="dq-site"    value="0215D1D8"              style="width:110px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:.82rem;font-family:'Consolas',monospace">
+      <input type="number" id="dq-limit" value="20" min="1" max="1000" style="width:70px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:.82rem">
+      <span style="font-size:.72rem;color:var(--muted)">rows</span>
+    </div>
+  </div>
+
+  <!-- Query cards -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Sample rows</div>
+      <pre id="dq-sample" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('sample')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Row count by unit</div>
+      <pre id="dq-count" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('count')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Latest value per signal</div>
+      <pre id="dq-latest" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('latest')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">SOC time-series for one unit</div>
+      <pre id="dq-soc" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('soc')">Copy</button>
+    </div>
+
+  </div>
+
+  <div style="background:#0a0d11;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.76rem;color:var(--muted)">
+    <strong style="color:var(--text)">Run from the writer machine:</strong>
+    <code style="color:var(--accent);margin-left:6px">duckdb -c "$(query)"</code>
+    &nbsp;·&nbsp; or paste into <code style="color:var(--accent)">duckdb</code> interactive shell
+    &nbsp;·&nbsp; install: <code style="color:var(--accent)">sudo apt install duckdb</code>
+    or <code style="color:var(--accent)">pip install duckdb</code>
+  </div>
+</div>
+
+<!-- Noise analysis queries -->
+<h2>Noise Analysis Queries (DuckDB)</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+  <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">
+    Run these after injecting noise (<code style="font-size:.8rem">set_noise amplitude &gt; 0</code>) and collecting at least one flush.
+    Uses the same path/site/limit as the verification queries above.
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">1 — Coefficient of variation</span>
+        <span style="color:var(--muted);margin-left:6px">rank signals by noise level</span>
+      </div>
+      <pre id="nq-cv" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_cv')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">2 — Delta percentiles</span>
+        <span style="color:var(--muted);margin-left:6px">deadband sizing per signal</span>
+      </div>
+      <pre id="nq-delta" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_delta')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">3 — Frozen sensor detection</span>
+        <span style="color:var(--muted);margin-left:6px">stuck values / never-changing signals</span>
+      </div>
+      <pre id="nq-frozen" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_frozen')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">4 — Z-score outlier scan</span>
+        <span style="color:var(--muted);margin-left:6px">readings &gt; N sigma from mean</span>
+      </div>
+      <pre id="nq-zscore" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_zscore')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px;grid-column:1/-1">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">5 — Physics consistency</span>
+        <span style="color:var(--muted);margin-left:6px">voltage vs SOC residual  (V − (1320 + 0.74×SOC)); outliers &gt; ±30 V</span>
+      </div>
+      <pre id="nq-physics" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_physics')">Copy</button>
+    </div>
+
+  </div>
+</div>
+
 <!-- Event log -->
 <h2>Event Log</h2>
 <div id="log"><span class="ev-info">Waiting for connection…</span></div>
@@ -308,9 +440,11 @@ function setConn(ok) {
 
 function handleMsg(msg) {
   if (msg.type !== 'status' && msg.type !== 'stats') return;
+  const firstConnect = !lastStats;
   lastStats = msg;
   updateFleet(msg);
   updateUnitGrid(msg.units || []);
+  if (firstConnect) renderDuckQueries();  // refresh SOC query with real unit ID
 }
 
 // Normalise faults: server sends object {overtemp:bool,...}, we want array of names
@@ -499,8 +633,191 @@ function setText(id, val) {
   if (el) el.textContent = val;
 }
 
+// ── DuckDB query builder ─────────────────────────────────────────────────────
+
+function dqGlob() {
+  const path = document.getElementById('dq-path').value.trim().replace(/\/$/, '');
+  const site = document.getElementById('dq-site').value.trim();
+  return `'${path}/unit/site=${site}/**/*.parquet'`;
+}
+
+function dqLimit() {
+  return parseInt(document.getElementById('dq-limit').value) || 20;
+}
+
+const QUERIES = {
+  sample: () =>
+    `SELECT unit_id, device, instance, point_name,\n` +
+    `       value_f, value_i,\n` +
+    `       epoch_ms(CAST(ts * 1000 AS BIGINT)) AS time\n` +
+    `FROM ${dqGlob()}\n` +
+    `LIMIT ${dqLimit()};`,
+
+  count: () =>
+    `SELECT unit_id, device,\n` +
+    `       COUNT(*) AS rows,\n` +
+    `       COUNT(DISTINCT point_name) AS signals,\n` +
+    `       MIN(epoch_ms(CAST(ts*1000 AS BIGINT))) AS first_ts,\n` +
+    `       MAX(epoch_ms(CAST(ts*1000 AS BIGINT))) AS last_ts\n` +
+    `FROM ${dqGlob()}\n` +
+    `GROUP BY unit_id, device\n` +
+    `ORDER BY unit_id, device;`,
+
+  latest: () =>
+    `SELECT unit_id, device, point_name,\n` +
+    `       COALESCE(value_f, CAST(value_i AS DOUBLE)) AS value,\n` +
+    `       epoch_ms(CAST(ts*1000 AS BIGINT)) AS time\n` +
+    `FROM (\n` +
+    `  SELECT *, ROW_NUMBER() OVER\n` +
+    `    (PARTITION BY unit_id, point_name ORDER BY ts DESC) AS rn\n` +
+    `  FROM ${dqGlob()}\n` +
+    `) WHERE rn = 1\n` +
+    `ORDER BY unit_id, device, point_name\n` +
+    `LIMIT ${dqLimit()};`,
+
+  soc: () => {
+    const uid = (lastStats && lastStats.units && lastStats.units[0])
+                  ? lastStats.units[0].id : '0215F5DD';
+    return (
+      `SELECT epoch_ms(CAST(ts*1000 AS BIGINT)) AS time,\n` +
+      `       value_f AS soc_pct\n` +
+      `FROM ${dqGlob()}\n` +
+      `WHERE unit_id = '${uid}'\n` +
+      `  AND point_name LIKE '%MBMS_SOC%'\n` +
+      `ORDER BY ts\n` +
+      `LIMIT ${dqLimit()};`
+    );
+  },
+
+  // ── Noise analysis queries ──────────────────────────────────────────────
+
+  nq_cv: () =>
+    `SELECT point_name, device,\n` +
+    `       ROUND(AVG(value_f), 4)    AS mean,\n` +
+    `       ROUND(STDDEV(value_f), 4) AS stddev,\n` +
+    `       ROUND(STDDEV(value_f) / NULLIF(ABS(AVG(value_f)), 0), 6) AS cv\n` +
+    `FROM ${dqGlob()}\n` +
+    `WHERE value_f IS NOT NULL\n` +
+    `GROUP BY point_name, device\n` +
+    `ORDER BY cv DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_delta: () =>
+    `WITH deltas AS (\n` +
+    `  SELECT point_name, device,\n` +
+    `         ABS(value_f - LAG(value_f) OVER\n` +
+    `           (PARTITION BY unit_id, point_name ORDER BY ts)) AS delta\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT point_name, device,\n` +
+    `       ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY delta), 4) AS p50,\n` +
+    `       ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY delta), 4) AS p95,\n` +
+    `       ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY delta), 4) AS p99,\n` +
+    `       ROUND(MAX(delta), 4) AS max_delta\n` +
+    `FROM deltas WHERE delta IS NOT NULL\n` +
+    `GROUP BY point_name, device\n` +
+    `ORDER BY p95 DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_frozen: () =>
+    `WITH runs AS (\n` +
+    `  SELECT unit_id, point_name, value_f,\n` +
+    `         ROW_NUMBER() OVER (PARTITION BY unit_id, point_name ORDER BY ts)\n` +
+    `       - ROW_NUMBER() OVER (PARTITION BY unit_id, point_name, value_f ORDER BY ts)\n` +
+    `         AS grp\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT unit_id, point_name,\n` +
+    `       value_f AS stuck_value,\n` +
+    `       COUNT(*) AS consecutive_count\n` +
+    `FROM runs\n` +
+    `GROUP BY unit_id, point_name, value_f, grp\n` +
+    `HAVING COUNT(*) > 20\n` +
+    `ORDER BY consecutive_count DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_zscore: () =>
+    `WITH stats AS (\n` +
+    `  SELECT point_name, device,\n` +
+    `         AVG(value_f) AS mu, STDDEV(value_f) AS sigma\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE value_f IS NOT NULL\n` +
+    `  GROUP BY point_name, device\n` +
+    `),\n` +
+    `scored AS (\n` +
+    `  SELECT d.unit_id, d.point_name, d.device, d.value_f,\n` +
+    `         epoch_ms(CAST(d.ts*1000 AS BIGINT)) AS time,\n` +
+    `         ABS(d.value_f - s.mu) / NULLIF(s.sigma, 0) AS z_score\n` +
+    `  FROM ${dqGlob()} d\n` +
+    `  JOIN stats s USING (point_name, device)\n` +
+    `  WHERE d.value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT * FROM scored\n` +
+    `WHERE z_score > 3\n` +
+    `ORDER BY z_score DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_physics: () =>
+    `WITH volt AS (\n` +
+    `  SELECT unit_id, ts, value_f AS voltage\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE point_name LIKE '%MBMS_Voltage%' AND value_f IS NOT NULL\n` +
+    `),\n` +
+    `soc AS (\n` +
+    `  SELECT unit_id, ts, value_f AS soc\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE point_name LIKE '%MBMS_SOC%' AND value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT v.unit_id,\n` +
+    `       epoch_ms(CAST(v.ts*1000 AS BIGINT)) AS time,\n` +
+    `       ROUND(v.voltage, 2)   AS voltage,\n` +
+    `       ROUND(s.soc, 2)       AS soc,\n` +
+    `       ROUND(v.voltage - (1320 + 0.74 * s.soc), 2) AS residual\n` +
+    `FROM volt v\n` +
+    `JOIN soc s ON v.unit_id = s.unit_id AND ABS(v.ts - s.ts) < 1\n` +
+    `WHERE ABS(v.voltage - (1320 + 0.74 * s.soc)) > 30\n` +
+    `ORDER BY ABS(v.voltage - (1320 + 0.74 * s.soc)) DESC\n` +
+    `LIMIT ${dqLimit()};`,
+};
+
+function queryEl(key) {
+  // handles both dq-sample (existing) and nq_cv → nq-cv (noise queries)
+  return document.getElementById(`dq-${key}`) ||
+         document.getElementById(key.replace(/_/g, '-'));
+}
+
+function renderDuckQueries() {
+  for (const [key, fn] of Object.entries(QUERIES)) {
+    const el = queryEl(key);
+    if (el) el.textContent = fn();
+  }
+}
+
+function copyQuery(key) {
+  const text = QUERIES[key]();
+  navigator.clipboard.writeText(text).then(() => {
+    logEv('ok', `Copied ${key} query to clipboard`);
+  }).catch(() => {
+    // fallback: select the pre text
+    const el = queryEl(key);
+    if (!el) return;
+    const range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+
+// Re-render queries when path/site/limit inputs change
+['dq-path','dq-site','dq-limit'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', renderDuckQueries);
+});
+
 // Auto-connect if URL has ?host=
 window.addEventListener('DOMContentLoaded', () => {
+  renderDuckQueries();
   const p = new URLSearchParams(window.location.search);
   if (p.get('host')) {
     document.getElementById('ws-host').value = p.get('host');
