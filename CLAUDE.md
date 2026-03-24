@@ -55,19 +55,65 @@ cd source/rsync_push && /home/phil/work/gen-ai/data_server/.venv/bin/python push
 
 ### gx10-d94c (192.168.86.48) — git repo at ~/work/gen-ai/data_server
 
-```bash
-# Evelyn simulation (46 units × 1770 points = 81,420 topics/sweep)
-bash scripts/gx10-evelyn-start.sh   # logs → /data/logs/,  data → /data/parquet-evelyn/
-bash scripts/gx10-evelyn-stop.sh
+**External drive:** `/dev/sda` → `/data` (1.8TB ext4, fstab entry present) — sudo password: `spark1`
 
-# Health check
+**Logs:** `/data/logs/YYYY/MM/DD/` — **Parquet:** `/data/parquet-evelyn/{a,b,c,d}/`
+
+#### Mode 1 — single simulator (baseline / WAL testing)
+
+```bash
+bash scripts/gx10-evelyn-start.sh    # 1 sim + 1 writer, 81,420 msg/s, topic: unit/#
+bash scripts/gx10-evelyn-stop.sh
 curl http://localhost:8771/health
 ```
 
-- External drive: `/dev/sda` mounted at `/data` (1.8TB ext4, fstab entry present)
-- Logs: `/data/logs/`
-- Parquet data: `/data/parquet-evelyn/`
-- sudo password: spark1
+#### Mode 2 — 4 simulators + 4 writers (scenario testing)
+
+46 Evelyn units split across 4 prefixed namespaces:
+
+| Slice | Prefix | Units | msg/s | WS port | Health port | Parquet path |
+|---|---|---|---|---|---|---|
+| A | `A/unit/#` | 0–11  (12) | 21,240 | 8769 | 8771 | `/data/parquet-evelyn/a/` |
+| B | `B/unit/#` | 12–23 (12) | 21,240 | 8779 | 8772 | `/data/parquet-evelyn/b/` |
+| C | `C/unit/#` | 24–34 (11) | 19,470 | 8789 | 8773 | `/data/parquet-evelyn/c/` |
+| D | `D/unit/#` | 35–45 (11) | 19,470 | 8799 | 8774 | `/data/parquet-evelyn/d/` |
+
+```bash
+bash scripts/gx10-evelyn-4sim-start.sh   # launch all 4 sim+writer pairs
+bash scripts/gx10-evelyn-4sim-stop.sh
+```
+
+#### Mode 3 — writers only (real hardware or external publisher)
+
+```bash
+bash scripts/gx10-evelyn-writers-only-start.sh   # 4 writers, no simulators
+bash scripts/gx10-evelyn-writers-only-stop.sh
+```
+
+#### Scenario generator (run from phil-dev or gx10, requires PyYAML)
+
+```bash
+# Run against gx10 from phil-dev:
+python3 scripts/scenario_generator.py \
+    --scenario scripts/scenarios/overtemp_cascade.yaml \
+    --host 192.168.86.48
+
+# WebSocket commands: set_mode, set_contactor, inject_fault,
+#                     clear_faults, set_noise, set_rate, get_status
+# Scenario YAML: scripts/scenarios/overtemp_cascade.yaml (example)
+```
+
+#### EMS simulator WebSocket control UI
+
+Open `http://192.168.86.46:8080/writer/ems_simulator_control.html`
+— connect to `192.168.86.48` port `8769` (sim A), `8779` (B), `8789` (C), `8799` (D)
+
+#### Build on gx10
+
+```bash
+cd source/parquet_writer_cpp && make real_writer
+cd source/stress_runner      && make stress_real_pub
+```
 
 ### lp3 (192.168.86.20) — git repo at ~/work/gen-ai/data_server
 
@@ -109,10 +155,15 @@ python manager/manager.py --config manager/config.fractal.yaml
 | 8765 | Generator WebSocket | phil-dev |
 | 8767 | subscriber_api WebSocket | fractal-phil |
 | 8768 | subscriber_api flux HTTP | fractal-phil |
-| 8769 | stress_runner WebSocket | phil-dev / lp3 |
+| 8769 | stress_runner / sim-A WebSocket | phil-dev / lp3 / gx10 |
 | 8770 | push_agent HTTP API | phil-dev / lp3 |
-| 8771 | parquet_writer health | phil-dev / lp3 |
-| 8772 | parquet_writer health (test) | lp3 (test writer only) |
+| 8771 | parquet_writer health / writer-A health | phil-dev / lp3 / gx10 |
+| 8772 | parquet_writer health (test) / writer-B health | lp3 / gx10 |
+| 8773 | writer-C health | gx10 |
+| 8774 | writer-D health | gx10 |
+| 8779 | sim-B WebSocket | gx10 |
+| 8789 | sim-C WebSocket | gx10 |
+| 8799 | sim-D WebSocket | gx10 |
 
 ## Key paths
 
@@ -121,8 +172,9 @@ python manager/manager.py --config manager/config.fractal.yaml
 | `/srv/data/parquet/` | phil-dev / lp3 | writer.cpp output (partitioned parquet) |
 | `/srv/data/parquet-test/` | lp3 | test writer output (config_test.yaml) |
 | `/srv/data/parquet-aws-sim/` | fractal-phil | rsynced copy (DuckDB source) |
-| `/data/parquet-evelyn/` | gx10 | real_writer Evelyn sim output (external drive) |
-| `/data/logs/` | gx10 | real_writer + stress_real_pub logs (external drive) |
+| `/data/parquet-evelyn/` | gx10 | single-sim real_writer output (external drive) |
+| `/data/parquet-evelyn/{a,b,c,d}/` | gx10 | 4-sim writer outputs, one dir per slice |
+| `/data/logs/YYYY/MM/DD/` | gx10 | real_writer + stress_real_pub logs (dated, external drive) |
 | `/etc/flashmq/bridge-conf.d/` | phil-dev / lp3 | FlashMQ bridge config (generated) |
 
 ## Python environment
