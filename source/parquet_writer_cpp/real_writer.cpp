@@ -429,7 +429,7 @@ std::string make_output_path(const Config& cfg,
 
     std::error_code ec;
     fs::create_directories(dir, ec);
-    if (ec) std::cerr << "[path] create_directories: " << ec.message() << "\n";
+    if (ec) std::cerr << "[path] create_directories: " << ec.message() << "\n" << std::flush;
 
     return (dir / (std::string(ts) + ".parquet")).string();
 }
@@ -625,7 +625,7 @@ static std::vector<Row> wal_replay_file(const std::string& path) {
             rows.push_back(std::move(row));
         }
     } catch (const std::exception& e) {
-        std::cerr << "[wal] replay error for " << path << ": " << e.what() << "\n";
+        std::cerr << "[wal] replay error for " << path << ": " << e.what() << "\n" << std::flush;
     }
     return rows;
 }
@@ -669,7 +669,7 @@ static int compact_directory(const fs::path& dir,
         auto r = read_parquet_table(f.string());
         if (!r.ok()) {
             std::cerr << "[compact] skip " << f.filename().string()
-                      << ": " << r.status().ToString() << "\n";
+                      << ": " << r.status().ToString() << "\n" << std::flush;
             return 0;  // bail — don't delete anything if any read fails
         }
         tables.push_back(*r);
@@ -681,7 +681,7 @@ static int compact_directory(const fs::path& dir,
     auto r_merged = arrow::ConcatenateTables(tables, opts);
     if (!r_merged.ok()) {
         std::cerr << "[compact] merge failed in " << dir.string()
-                  << ": " << r_merged.status().ToString() << "\n";
+                  << ": " << r_merged.status().ToString() << "\n" << std::flush;
         return 0;
     }
     auto merged = *r_merged;
@@ -692,7 +692,7 @@ static int compact_directory(const fs::path& dir,
 
     auto st = write_parquet_table(tmp_path, merged, cfg.compression);
     if (!st.ok()) {
-        std::cerr << "[compact] write failed: " << st.ToString() << "\n";
+        std::cerr << "[compact] write failed: " << st.ToString() << "\n" << std::flush;
         std::error_code ec; fs::remove(tmp_path, ec);
         return 0;
     }
@@ -700,7 +700,7 @@ static int compact_directory(const fs::path& dir,
     std::error_code ec;
     fs::rename(tmp_path, out_path, ec);
     if (ec) {
-        std::cerr << "[compact] rename failed: " << ec.message() << "\n";
+        std::cerr << "[compact] rename failed: " << ec.message() << "\n" << std::flush;
         fs::remove(tmp_path, ec);
         return 0;
     }
@@ -710,7 +710,7 @@ static int compact_directory(const fs::path& dir,
         fs::remove(f, ec);
         if (!ec) ++deleted;
         else std::cerr << "[compact] remove " << f.filename().string()
-                       << " failed: " << ec.message() << "\n";
+                       << " failed: " << ec.message() << "\n" << std::flush;
     }
 
     std::cout << "[compact] " << deleted << " → " << out_path
@@ -759,7 +759,7 @@ static void compact_thread_fn() {
 
             dir_files[p.parent_path()].push_back(p);
         }
-        if (ec) std::cerr << "[compact] scan error: " << ec.message() << "\n";
+        if (ec) std::cerr << "[compact] scan error: " << ec.message() << "\n" << std::flush;
 
         int total_consumed = 0;
         for (auto& [dir, files] : dir_files) {
@@ -807,7 +807,7 @@ static bool check_disk_space(const std::string& path, uint64_t min_bytes) {
     std::error_code ec;
     auto si = fs::space(path, ec);
     if (ec) {
-        std::cerr << "[disk] space check failed: " << ec.message() << "\n";
+        std::cerr << "[disk] space check failed: " << ec.message() << "\n" << std::flush;
         return true;  // don't block flush on stat failure
     }
     uint64_t free_gb_x10 = si.available / (1024 * 1024 * 1024 / 10);
@@ -874,30 +874,30 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
         for (int attempt = 0; attempt <= MAX_RETRIES; ++attempt) {
             if (attempt > 0) {
                 std::cerr << "[flush] retry " << attempt << "/" << MAX_RETRIES
-                          << " for " << path << "\n";
+                          << " for " << path << "\n" << std::flush;
                 std::this_thread::sleep_for(std::chrono::seconds(1 << (attempt - 1)));
             }
             status = flush_partition(path, part.rows, g_cfg->compression);
             if (status.ok()) break;
             std::cerr << "[flush] attempt " << attempt + 1 << " failed: "
-                      << status.ToString() << "\n";
+                      << status.ToString() << "\n" << std::flush;
         }
 
         if (status.ok()) {
             flush_rows += part.rows.size();
-            std::cout << "[flush] " << part.rows.size() << " rows → " << path << "\n";
+            std::cout << "[flush] " << part.rows.size() << " rows → " << path << "\n" << std::flush;
             // WAL no longer needed — parquet is safe
             if (!wal_file.empty()) {
                 std::error_code ec;
                 fs::remove(wal_file, ec);
-                if (ec) std::cerr << "[wal] remove failed: " << ec.message() << "\n";
+                if (ec) std::cerr << "[wal] remove failed: " << ec.message() << "\n" << std::flush;
             }
         } else {
             std::cerr << "[flush] PERMANENT ERROR — " << part.rows.size()
                       << " rows LOST for " << key.source_type << "/" << key.partition_value
-                      << ": " << status.ToString() << "\n";
+                      << ": " << status.ToString() << "\n" << std::flush;
             if (!wal_file.empty())
-                std::cerr << "[wal] WAL retained for recovery: " << wal_file << "\n";
+                std::cerr << "[wal] WAL retained for recovery: " << wal_file << "\n" << std::flush;
         }
     }
 
@@ -908,11 +908,11 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
         if (status.ok()) {
             std::error_code ec;
             fs::rename(tmp, g_cfg->hot_file_path, ec);
-            if (ec) std::cerr << "[hot] rename failed: " << ec.message() << "\n";
+            if (ec) std::cerr << "[hot] rename failed: " << ec.message() << "\n" << std::flush;
             else    std::cout << "[hot] " << hot_rows.size() << " rows → "
-                              << g_cfg->hot_file_path << "\n";
+                              << g_cfg->hot_file_path << "\n" << std::flush;
         } else {
-            std::cerr << "[hot] write failed: " << status.ToString() << "\n";
+            std::cerr << "[hot] write failed: " << status.ToString() << "\n" << std::flush;
             fs::remove(tmp);
         }
     }
@@ -927,11 +927,11 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
         if (status.ok()) {
             std::error_code ec;
             fs::rename(tmp, g_cfg->current_state_path, ec);
-            if (ec) std::cerr << "[cs] rename failed: " << ec.message() << "\n";
+            if (ec) std::cerr << "[cs] rename failed: " << ec.message() << "\n" << std::flush;
             else    std::cout << "[cs] " << cs_rows.size() << " sensors → "
-                              << g_cfg->current_state_path << "\n";
+                              << g_cfg->current_state_path << "\n" << std::flush;
         } else {
-            std::cerr << "[cs] write failed: " << status.ToString() << "\n";
+            std::cerr << "[cs] write failed: " << status.ToString() << "\n" << std::flush;
             fs::remove(tmp);
         }
     }
@@ -950,7 +950,7 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
                   << "  rows=" << flush_rows
                   << "  duration=" << flush_ms << "ms"
                   << "  rows/s=" << static_cast<uint64_t>(rps)
-                  << "  total=" << g_total_rows_written.load() << "\n";
+                  << "  total=" << g_total_rows_written.load() << "\n" << std::flush;
     }
 }
 
@@ -982,7 +982,7 @@ static void replay_wal_files() {
             continue;
         }
 
-        std::cout << "[wal] replaying " << rows.size() << " rows from " << wp.filename() << "\n";
+        std::cout << "[wal] replaying " << rows.size() << " rows from " << wp.filename() << "\n" << std::flush;
         g_wal_replay_rows.fetch_add(rows.size());
 
         // Immediately flush replayed rows to production parquet (don't hold in buffer)
@@ -1005,9 +1005,9 @@ static void replay_wal_files() {
             auto path   = make_output_path(*g_cfg, key.source_type, key.partition_value);
             auto status = flush_partition(path, part_rows, g_cfg->compression);
             if (status.ok()) {
-                std::cout << "[wal] flushed " << part_rows.size() << " replayed rows → " << path << "\n";
+                std::cout << "[wal] flushed " << part_rows.size() << " replayed rows → " << path << "\n" << std::flush;
             } else {
-                std::cerr << "[wal] replay flush failed: " << status.ToString() << "\n";
+                std::cerr << "[wal] replay flush failed: " << status.ToString() << "\n" << std::flush;
                 all_ok = false;
             }
         }
@@ -1059,7 +1059,7 @@ static void health_thread_fn() {
     addr.sin_port        = htons(static_cast<uint16_t>(g_cfg->health_port));
 
     if (::bind(server_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        std::cerr << "[health] bind() failed on port " << g_cfg->health_port << "\n";
+        std::cerr << "[health] bind() failed on port " << g_cfg->health_port << "\n" << std::flush;
         ::close(server_fd);
         return;
     }
@@ -1126,12 +1126,12 @@ static struct mosquitto* g_mosq{nullptr};
 
 static void on_connect(struct mosquitto*, void*, int rc) {
     if (rc == 0) {
-        std::cout << "[mqtt] connected to " << g_cfg->mqtt_host << ":" << g_cfg->mqtt_port << "\n";
+        std::cout << "[mqtt] connected to " << g_cfg->mqtt_host << ":" << g_cfg->mqtt_port << "\n" << std::flush;
         int sub_rc = mosquitto_subscribe(g_mosq, nullptr, g_cfg->mqtt_topic.c_str(), g_cfg->mqtt_qos);
         if (sub_rc != MOSQ_ERR_SUCCESS)
-            std::cerr << "[mqtt] subscribe failed: " << mosquitto_strerror(sub_rc) << "\n";
+            std::cerr << "[mqtt] subscribe failed: " << mosquitto_strerror(sub_rc) << "\n" << std::flush;
     } else {
-        std::cerr << "[mqtt] connect failed: " << mosquitto_connack_string(rc) << "\n";
+        std::cerr << "[mqtt] connect failed: " << mosquitto_connack_string(rc) << "\n" << std::flush;
     }
 }
 
@@ -1167,12 +1167,12 @@ static void handle_sync_message(const std::string& payload) {
                   << "  DROPS: expected=" << interval_pub
                   << "  received=" << received
                   << "  dropped=" << dropped
-                  << "  cumulative=" << g_sync_drops_detected << "\n";
+                  << "  cumulative=" << g_sync_drops_detected << "\n" << std::flush;
     } else {
         std::cout << "[sync] #" << seq
                   << "  OK  received=" << received
                   << "  expected=" << interval_pub
-                  << "  total_published=" << total_pub << "\n";
+                  << "  total_published=" << total_pub << "\n" << std::flush;
     }
 }
 
@@ -1249,7 +1249,7 @@ static void on_disconnect(struct mosquitto*, void*, int rc) {
 
 static void on_log(struct mosquitto*, void*, int level, const char* str) {
     if (level == MOSQ_LOG_ERR || level == MOSQ_LOG_WARNING)
-        std::cerr << "[mqtt] " << str << "\n";
+        std::cerr << "[mqtt] " << str << "\n" << std::flush;
 }
 
 static void handle_signal(int) { g_shutdown = true; g_flush_cv.notify_all(); }
@@ -1273,7 +1273,7 @@ static bool validate_config(const Config& cfg) {
     fs::create_directories(cfg.base_path, ec);
     if (ec) {
         std::cerr << "[startup] ERROR: cannot create base_path " << cfg.base_path
-                  << ": " << ec.message() << "\n";
+                  << ": " << ec.message() << "\n" << std::flush;
         return false;
     }
     // Write-test
@@ -1323,7 +1323,7 @@ int main(int argc, char* argv[]) {
               << "  topic='" << cfg.mqtt_topic << "'"
               << "  flush=" << cfg.flush_interval_seconds << "s"
               << "  wal=" << (cfg.wal_enabled ? "on" : "off")
-              << "  health=:" << cfg.health_port << "\n";
+              << "  health=:" << cfg.health_port << "\n" << std::flush;
 
     // Replay any WAL files from a previous crash before going live
     if (cfg.wal_enabled) replay_wal_files();
