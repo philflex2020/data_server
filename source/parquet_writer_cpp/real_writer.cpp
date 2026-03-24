@@ -843,13 +843,28 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
             for (const auto& r : part.rows) hot_rows.push_back(r);
 
         // --- WAL: write before parquet (Arrow IPC — C++17, no parquet read dependency) ---
+        // Write to .tmp first, then rename atomically so a mid-write kill never
+        // leaves a partial file in the .wal/ directory (replay skips non-.arrow).
         std::string wal_file;
         if (g_cfg->wal_enabled) {
             wal_file = wal_path_for(*g_cfg, key.source_type, key.partition_value);
-            auto ws = write_wal_ipc(wal_file, part.rows);
-            if (!ws.ok())
+            const std::string wal_tmp = wal_file + ".tmp";
+            auto ws = write_wal_ipc(wal_tmp, part.rows);
+            if (!ws.ok()) {
                 std::cerr << "[wal] write failed (" << ws.ToString()
                           << ") — proceeding without WAL for this batch\n";
+                std::error_code ec; fs::remove(wal_tmp, ec);
+                wal_file.clear();
+            } else {
+                std::error_code ec;
+                fs::rename(wal_tmp, wal_file, ec);
+                if (ec) {
+                    std::cerr << "[wal] rename failed: " << ec.message()
+                              << " — proceeding without WAL for this batch\n";
+                    fs::remove(wal_tmp, ec);
+                    wal_file.clear();
+                }
+            }
         }
 
         // --- Production parquet write (with retries) ---
