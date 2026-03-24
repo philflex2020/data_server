@@ -43,13 +43,13 @@ output:
     - "{month}"
     - "{day}"
   compression: snappy
-  flush_interval_seconds: 60
+  flush_interval_seconds: 5
   max_messages_per_part: 10000000
-  max_total_buffer_rows: 5000000   # ~61s at 81k msg/s — matches flush interval
+  max_total_buffer_rows: 500000    # ~6s at 81k msg/s — matches flush interval
 
 wal:
   enabled: true
-  # path: ""   # default: /srv/data/parquet-evelyn/.wal/
+  # path: ""   # default: /data/parquet-evelyn/.wal/
 
 health:
   enabled: true
