@@ -213,6 +213,8 @@ static std::mutex               g_state_mtx;
 static std::atomic<bool>        g_stop{false};
 static std::atomic<uint64_t>    g_published{0};
 static std::atomic<int>         g_rate{0};
+static std::string              g_site_id;
+static std::string              g_topic_prefix;   // e.g. "A" → publishes "A/unit/{id}/..."
 
 // WebSocket broadcast — list of connected client fds
 static std::mutex               g_ws_mtx;
@@ -429,8 +431,6 @@ static std::vector<TopicEntry> build_topics(const std::string& path,
 // Peripheral simulation globals
 // ============================================================================
 
-static std::string g_site_id;
-static std::string g_topic_prefix;   // e.g. "A" → publishes "A/unit/{id}/..."
 static std::string g_mqtt_host_g;
 static int         g_mqtt_port_g = 1883;
 
