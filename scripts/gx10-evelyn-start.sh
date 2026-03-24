@@ -5,12 +5,12 @@
 # Run from repo root on gx10:
 #   bash scripts/gx10-evelyn-start.sh
 #
-# Logs:   ~/logs/real_writer.log   ~/logs/stress_real_pub.log
+# Logs:   /data/logs/YYYY/MM/DD/real_writer.log
 # Health: curl http://localhost:8771/health
 
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOGS="/data/logs"
+LOGS="/data/logs/$(date +%Y/%m/%d)"
 mkdir -p "$LOGS"
 
 WRITER_BIN="$REPO/source/parquet_writer_cpp/real_writer"
