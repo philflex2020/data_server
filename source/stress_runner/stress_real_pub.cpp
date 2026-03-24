@@ -405,6 +405,8 @@ static std::vector<TopicEntry> build_topics(const std::string& path,
         entries.push_back({std::string(dv),std::string(iv),std::string(pv),std::string(tv)});
     }
 
+    const std::string pfx = g_topic_prefix.empty() ? "" : g_topic_prefix + "/";
+
     std::vector<TopicEntry> result;
     result.reserve(unit_ids.size() * entries.size());
     uint32_t pool = 0;
@@ -414,8 +416,7 @@ static std::vector<TopicEntry> build_topics(const std::string& path,
             bool is_int = (e.dtype == "integer" || e.dtype == "boolean_integer");
             int rack_idx = -1;
             Sig sig = classify(e.device, e.instance, e.point, is_int, rack_idx);
-            std::string topic = (g_topic_prefix.empty() ? "" : g_topic_prefix + "/")
-                              + "unit/" + unit_ids[ui] + "/" + e.device + "/" +
+            std::string topic = pfx + "unit/" + unit_ids[ui] + "/" + e.device + "/" +
                                 e.instance + "/" + e.point + "/" + e.dtype;
             result.push_back({ std::move(topic), is_int, sig,
                                (int)ui, rack_idx, pool++ });
