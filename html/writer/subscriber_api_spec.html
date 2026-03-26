@@ -324,7 +324,7 @@
     <h3 style="color:var(--yellow)">Out of scope — handle separately</h3>
     <ul style="font-size:.85rem">
       <li>High-rate live streaming of full broker traffic (≥ 1k msg/s per client)</li>
-      <li>Bulk data export (&gt; 50k rows) — use archive job output directly</li>
+      <li>Bulk data export (&gt; 50k rows) — use Athena direct / archive job output; subscriber_api row limit is 50k</li>
       <li>Real-time alerting / threshold evaluation — use Telegraf processors</li>
       <li>Multi-tenant isolation / auth — add API gateway in front if needed</li>
     </ul>
@@ -353,13 +353,14 @@
 <span class="cm"># Implemented by:</span>
 <span class="cm">#   InfluxDB2Backend   — Flux or InfluxQL over HTTP</span>
 <span class="cm">#   InfluxDB3Backend   — SQL over HTTP or Arrow Flight</span>
-<span class="cm">#   DuckDBBackend      — read_parquet() from S3 or local path</span></pre>
+<span class="cm">#   DuckDBBackend      — read_parquet() from S3 or local path  (dev / fractal-phil)</span>
+<span class="cm">#   AthenaBackend      — boto3 start_query_execution + poll     (AWS production)</span></pre>
 
 <!-- ── Router logic ── -->
 <h2>Query Router</h2>
 <pre><span class="kw">class</span> <span class="ty">QueryRouter</span>:
     hot_backend:    <span class="ty">QueryBackend</span>   <span class="cm"># InfluxDB2 or InfluxDB3 (config-driven)</span>
-    cold_backend:   <span class="ty">DuckDBBackend</span>  <span class="cm"># always DuckDB/parquet</span>
+    cold_backend:   <span class="ty">QueryBackend</span>   <span class="cm"># DuckDB (dev/fractal-phil) or Athena (AWS prod)</span>
     hot_window_days: <span class="ty">int</span>           <span class="cm"># default 90</span>
     shadow_mode:    <span class="ty">bool</span>           <span class="cm"># run both hot backends, log diff</span>
 
@@ -542,8 +543,9 @@ server:
 
 router:
   hot_window_days: <span class="nu">90</span>
-  hot_backend: <span class="st">"influxdb2"</span>   <span class="cm"># influxdb2 | influxdb3</span>
-  shadow_mode: <span class="nu">false</span>          <span class="cm"># true during v2→v3 migration</span>
+  hot_backend:  <span class="st">"influxdb2"</span>   <span class="cm"># influxdb2 | influxdb3</span>
+  cold_backend: <span class="st">"duckdb"</span>      <span class="cm"># duckdb (dev/fractal-phil) | athena (AWS prod)</span>
+  shadow_mode:  <span class="nu">false</span>         <span class="cm"># true during v2→v3 migration</span>
 
 influxdb2:
   url:    <span class="st">"http://localhost:8086"</span>
@@ -558,10 +560,19 @@ influxdb3:
 
 parquet:
   path: <span class="st">"s3://ems-archive/parquet"</span>   <span class="cm"># or local /data/parquet-archive</span>
+  partition: <span class="st">"hive"</span>              <span class="cm"># year=YYYY/month=MM/day=DD/ — required for both DuckDB and Athena</span>
   s3:
     region:     <span class="st">"us-east-1"</span>
     access_key: <span class="st">"..."</span>
     secret_key: <span class="st">"..."</span>
+
+athena:
+  database:      <span class="st">"ems_archive"</span>
+  workgroup:     <span class="st">"primary"</span>
+  output_bucket: <span class="st">"s3://ems-athena-results/"</span>
+  region:        <span class="st">"us-east-1"</span>
+  poll_interval_ms: <span class="nu">500</span>          <span class="cm"># boto3 poll cadence while query runs</span>
+  timeout_s:        <span class="nu">30</span>           <span class="cm"># fail if Athena hasn't finished in 30s</span>
 
 live:
   backend: <span class="st">"mqtt"</span>
@@ -665,6 +676,53 @@ live:
   </div>
 </div>
 
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num todo">6</div>
+    <div class="phase-title">Athena cold backend — AWS production
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+80 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li>Implement <code>AthenaBackend</code> — boto3 <code>start_query_execution</code> → poll → <code>get_query_results</code></li>
+      <li>Same SQL as DuckDB (Hive-partitioned parquet); Athena uses the same <code>year=/month=/day=</code> layout</li>
+      <li>Config flag <code>cold_backend: athena</code> to switch — zero caller change; DuckDB tests validate SQL first</li>
+      <li>Glue Data Catalog table auto-crawled from S3 prefix on first archive run</li>
+      <li>Query result pagination: Athena returns max 1,000 rows per page; backend loops <code>get_query_results</code> with <code>NextToken</code> until <code>limit</code> reached</li>
+      <li><strong>Local simulation:</strong> DuckDB with identical SQL and partition layout — Phase 0 DuckDB tests are the Athena integration test proxy. If DuckDB passes, Athena will work.</li>
+      <li><strong>Tests:</strong> unit test with mock boto3 (moto library); integration test against real Athena on a small date-range once archive is in S3</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout good" style="margin-bottom:1.5rem">
+  <strong>DuckDB as local Athena simulator:</strong> the partition layout
+  (<code>year=YYYY/month=MM/day=DD/</code>) and SQL dialect are identical between DuckDB and Athena.
+  Write the archive files once; DuckDB queries them locally during development and CI,
+  Athena queries the same files in production. Switch with one config line — no SQL changes.
+  <br><br>
+  <strong>Partition format matters:</strong> the archive job must write
+  <code>s3://ems-archive/parquet/site_id=42/year=2025/month=06/day=01/data.parquet</code>
+  — Athena's partition pruning and Glue crawler both depend on this exact layout.
+</div>
+
+<h3>DuckDB vs Athena — cold backend comparison</h3>
+<table class="matrix" style="margin-bottom:1.5rem">
+  <thead>
+    <tr><th>Property</th><th>DuckDB (local / fractal-phil)</th><th>Athena (AWS production)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Query latency (30-day range, 1 site)</td><td class="num">≤ 3s</td><td class="num">5–15s</td></tr>
+    <tr><td>Cost per query</td><td class="num green">free</td><td class="num">~$0.005 (1 GB scanned × $5/TB)</td></tr>
+    <tr><td>Concurrent queries</td><td>limited by EC2 RAM</td><td>managed, scales automatically</td></tr>
+    <tr><td>External tool access</td><td>only via subscriber_api</td><td>Grafana, QuickSight, console SQL</td></tr>
+    <tr><td>SQL dialect</td><td>DuckDB SQL</td><td>Presto/Trino SQL — nearly identical</td></tr>
+    <tr><td>Partition pruning</td><td>✓ Hive path filter</td><td>✓ Glue catalog partitions</td></tr>
+    <tr><td>Setup required</td><td>none — already running</td><td>Glue crawler + Athena workgroup</td></tr>
+    <tr><td>When to use</td><td>dev, CI, fractal-phil queries</td><td>production AWS archive queries</td></tr>
+  </tbody>
+</table>
+
 <!-- ── Test matrix ── -->
 <h2>Test Matrix</h2>
 <table class="matrix">
@@ -688,6 +746,9 @@ live:
     <tr><td>InfluxDB3 cutover — zero client impact</td><td>4</td><td>flip config, run existing test suite</td><td>all existing tests pass unchanged</td><td class="t-todo">todo</td></tr>
     <tr><td>FlashMQ live broadcast — 100 messages</td><td>5</td><td>local FlashMQ, WS client</td><td>100/100 received, &lt;50ms each</td><td class="t-todo">todo</td></tr>
     <tr><td>Live feed reconnect after broker restart</td><td>5</td><td>kill FlashMQ, restart, publish</td><td>reconnects within 10s, no missed msgs after reconnect</td><td class="t-todo">todo</td></tr>
+    <tr><td>Athena backend — mock boto3 (moto)</td><td>6</td><td>unit test, moto mock_athena</td><td>SQL correct, pagination loops until limit, timeout raises</td><td class="t-todo">todo</td></tr>
+    <tr><td>DuckDB ↔ Athena SQL parity</td><td>6</td><td>run same query on both, compare rows</td><td>identical result set (row count + values match)</td><td class="t-todo">todo</td></tr>
+    <tr><td>cold_backend switchover — no client change</td><td>6</td><td>flip config duckdb→athena, run existing cold tests</td><td>all Phase 0/1 cold-path tests pass unchanged</td><td class="t-todo">todo</td></tr>
   </tbody>
 </table>
 
@@ -700,7 +761,8 @@ live:
     base.py              <span class="cm"># QueryBackend protocol definition</span>
     influxdb2.py         <span class="cm"># InfluxDB2Backend (Flux/InfluxQL)</span>
     influxdb3.py         <span class="cm"># InfluxDB3Backend (SQL/Flight)</span>
-    duckdb_backend.py    <span class="cm"># DuckDBBackend (parquet, S3 or local)</span>
+    duckdb_backend.py    <span class="cm"># DuckDBBackend (parquet, S3 or local) — local Athena simulator</span>
+    athena_backend.py    <span class="cm"># AthenaBackend (boto3, AWS production)</span>
   router.py              <span class="cm"># QueryRouter — hot/cold/union dispatch</span>
   archive.py             <span class="cm"># archive job — extract → parquet → delete</span>
   live/
