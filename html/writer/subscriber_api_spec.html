@@ -130,7 +130,7 @@
 
 <h1>subscriber_api — Extended Architecture Spec</h1>
 <p class="subtitle">
-  Evolving from a 276-line NATS→WebSocket bridge into a unified data access layer —
+  Evolving from a 276-line MQTT→WebSocket bridge into a unified data access layer —
   InfluxDB2 · InfluxDB3 · DuckDB/Parquet · seamless routing · archive · live feed
 </p>
 
@@ -187,7 +187,7 @@
   <!-- Live feed -->
   <rect x="320" y="52" width="135" height="48" rx="4" fill="#1a0f2e44" stroke="#bc8cff" stroke-width="1"/>
   <text x="387" y="70" text-anchor="middle" class="lbl-purple">Live Feed</text>
-  <text x="387" y="83" text-anchor="middle" class="lbl-sub">NATS → MQTT (config)</text>
+  <text x="387" y="83" text-anchor="middle" class="lbl-sub">FlashMQ MQTT</text>
 
   <!-- Archive -->
   <rect x="320" y="108" width="135" height="48" rx="4" fill="#0d442944" stroke="#3fb950" stroke-width="1"/>
@@ -225,9 +225,9 @@
 
   <!-- NATS/MQTT -->
   <rect x="700" y="20" width="140" height="55" rx="6" fill="#1a0f2e44" stroke="#bc8cff" stroke-width="1.5"/>
-  <text x="770" y="42" text-anchor="middle" class="lbl-title">NATS / MQTT</text>
+  <text x="770" y="42" text-anchor="middle" class="lbl-title">FlashMQ (MQTT)</text>
   <text x="770" y="56" text-anchor="middle" class="lbl-sub">live telemetry feed</text>
-  <text x="770" y="68" text-anchor="middle" class="lbl-purple">configurable</text>
+  <text x="770" y="68" text-anchor="middle" class="lbl-purple">:1883 / :1884</text>
 
   <!-- Router → backends arrows -->
   <path d="M455,185 C480,185 490,60 508,60" stroke="#58a6ff88" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrBlue)"/>
@@ -250,7 +250,7 @@
   <rect x="700" y="200" width="245" height="90" rx="4" fill="#0d442922" stroke="#3fb950" stroke-width="1"/>
   <text x="822" y="220" text-anchor="middle" class="lbl-green">Current state (v0)</text>
   <text x="822" y="235" text-anchor="middle" class="lbl-sub">✓ DuckDB → S3 parquet history</text>
-  <text x="822" y="249" text-anchor="middle" class="lbl-sub">✓ NATS → WebSocket live</text>
+  <text x="822" y="249" text-anchor="middle" class="lbl-sub">✓ MQTT → WebSocket live</text>
   <text x="822" y="263" text-anchor="middle" class="lbl-sub">✗ InfluxDB backend</text>
   <text x="822" y="277" text-anchor="middle" class="lbl-sub">✗ HTTP endpoint  ✗ archive</text>
 </svg>
@@ -442,8 +442,8 @@ GET /live/status
 <div class="uc">
   <span class="uc-id">UC-09</span>
   <div class="uc-body">
-    <h4>Live telemetry broadcast — MQTT or NATS</h4>
-    <p>Edge sends MQTT messages; subscriber_api subscribes and broadcasts to all connected WebSocket clients. Config switches between NATS (current) and MQTT (edge architecture).</p>
+    <h4>Live telemetry broadcast — FlashMQ (MQTT)</h4>
+    <p>Edge sends MQTT messages to FlashMQ; subscriber_api subscribes via paho-mqtt and broadcasts to all connected WebSocket clients. Same FlashMQ broker used for both edge data ingest and live-feed subscription.</p>
   </div>
   <span class="uc-backend any">live feed</span>
 </div>
@@ -489,13 +489,10 @@ parquet:
     secret_key: <span class="st">"..."</span>
 
 live:
-  backend: <span class="st">"nats"</span>            <span class="cm"># nats | mqtt</span>
-  nats:
-    url:            <span class="st">"nats://localhost:4222"</span>
-    subject_filter: <span class="st">"batteries.>"</span>
+  backend: <span class="st">"mqtt"</span>
   mqtt:
-    url:            <span class="st">"tcp://localhost:1883"</span>
-    topics:         [<span class="st">"ems/#"</span>]</pre>
+    url:    <span class="st">"tcp://localhost:1883"</span>        <span class="cm"># :1884 for aws-sim FlashMQ</span>
+    topics: [<span class="st">"unit/#"</span>]                   <span class="cm"># A/unit/# B/unit/# etc for multi-sim</span></pre>
 
 <!-- ── Implementation phases ── -->
 <h2>Implementation Phases</h2>
@@ -503,11 +500,11 @@ live:
 <div class="phase">
   <div class="phase-hdr">
     <div class="phase-num done">0</div>
-    <div class="phase-title" style="color:var(--green)">Current state — DuckDB/S3 + NATS live feed
+    <div class="phase-title" style="color:var(--green)">Current state — DuckDB/S3 + MQTT live feed
       &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">276 lines · working</span></div>
   </div>
   <div class="phase-body">
-    <p style="color:var(--muted);font-size:.8rem">✓ WebSocket server · ✓ DuckDB → S3 parquet history · ✓ NATS → WS broadcast · ✓ Hour-partition query optimisation</p>
+    <p style="color:var(--muted);font-size:.8rem">✓ WebSocket server · ✓ DuckDB → S3 parquet history · ✓ MQTT → WS broadcast · ✓ Hour-partition query optimisation</p>
   </div>
 </div>
 
@@ -580,15 +577,15 @@ live:
 <div class="phase">
   <div class="phase-hdr">
     <div class="phase-num todo">5</div>
-    <div class="phase-title">MQTT live feed option
+    <div class="phase-title">FlashMQ live feed
       &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+50 lines</span></div>
   </div>
   <div class="phase-body">
     <ul style="font-size:.8rem;color:var(--muted)">
-      <li>Add <code>MQTTLiveFeed</code> alongside existing <code>NATSLiveFeed</code></li>
-      <li>Config switches between them — zero code change for callers</li>
-      <li>Supports edge dual-output architecture where live data comes from edge MQTT directly</li>
-      <li><strong>Tests:</strong> run mosquitto locally, publish 100 test messages, assert all 100 broadcast to connected WS client</li>
+      <li>Implement <code>MQTTLiveFeed</code> using paho-mqtt — subscribes to FlashMQ, broadcasts to WS clients</li>
+      <li>Config-driven topic filter — <code>unit/#</code> or <code>A/unit/#</code> etc for multi-sim namespaces</li>
+      <li>Auto-reconnect on broker restart — paho loop_start() handles this</li>
+      <li><strong>Tests:</strong> run local FlashMQ (or mosquitto), publish 100 test messages, assert all 100 broadcast to connected WS client within 50ms</li>
     </ul>
   </div>
 </div>
@@ -603,7 +600,7 @@ live:
   </thead>
   <tbody>
     <tr><td>DuckDB history query — S3 parquet</td><td>0</td><td>existing WS client</td><td>returns rows, correct columns</td><td class="t-pass">✓ passing</td></tr>
-    <tr><td>NATS → WS broadcast latency</td><td>0</td><td>publish 1 msg, measure WS receive</td><td>&lt;50ms</td><td class="t-pass">✓ passing</td></tr>
+    <tr><td>MQTT → WS broadcast latency</td><td>0</td><td>publish 1 msg, measure WS receive</td><td>&lt;50ms</td><td class="t-pass">✓ passing</td></tr>
     <tr><td>Router: hot range → InfluxDB only</td><td>1</td><td>unit test, mock backends</td><td>cold backend never called</td><td class="t-todo">todo</td></tr>
     <tr><td>Router: cold range → DuckDB only</td><td>1</td><td>unit test, mock backends</td><td>hot backend never called</td><td class="t-todo">todo</td></tr>
     <tr><td>Router: union — result ordered by ts</td><td>1</td><td>unit test, mock backends</td><td>no duplicates at boundary, sorted</td><td class="t-todo">todo</td></tr>
@@ -614,8 +611,8 @@ live:
     <tr><td>Archive row count integrity</td><td>3</td><td>archive + DuckDB count vs InfluxDB count</td><td>counts match within 0.01%</td><td class="t-todo">todo</td></tr>
     <tr><td>Shadow mode diff rate</td><td>4</td><td>24h shadow on dual-write bucket</td><td>diff rate &lt;0.1%</td><td class="t-todo">todo</td></tr>
     <tr><td>InfluxDB3 cutover — zero client impact</td><td>4</td><td>flip config, run existing test suite</td><td>all existing tests pass unchanged</td><td class="t-todo">todo</td></tr>
-    <tr><td>MQTT live broadcast — 100 messages</td><td>5</td><td>local mosquitto, WS client</td><td>100/100 received, &lt;50ms each</td><td class="t-todo">todo</td></tr>
-    <tr><td>Live feed reconnect after broker restart</td><td>5</td><td>kill broker, restart, publish</td><td>reconnects within 10s, no missed msgs after reconnect</td><td class="t-todo">todo</td></tr>
+    <tr><td>FlashMQ live broadcast — 100 messages</td><td>5</td><td>local FlashMQ, WS client</td><td>100/100 received, &lt;50ms each</td><td class="t-todo">todo</td></tr>
+    <tr><td>Live feed reconnect after broker restart</td><td>5</td><td>kill FlashMQ, restart, publish</td><td>reconnects within 10s, no missed msgs after reconnect</td><td class="t-todo">todo</td></tr>
   </tbody>
 </table>
 
@@ -632,8 +629,7 @@ live:
   router.py              <span class="cm"># QueryRouter — hot/cold/union dispatch</span>
   archive.py             <span class="cm"># archive job — extract → parquet → delete</span>
   live/
-    nats_feed.py         <span class="cm"># existing NATS subscriber</span>
-    mqtt_feed.py         <span class="cm"># new MQTT subscriber</span>
+    mqtt_feed.py         <span class="cm"># FlashMQ subscriber (paho-mqtt) → WS broadcast</span>
   tests/
     test_router.py       <span class="cm"># unit tests — mock backends</span>
     test_backends.py     <span class="cm"># integration tests — real InfluxDB/DuckDB</span>
