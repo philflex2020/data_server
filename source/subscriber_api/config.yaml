@@ -1,19 +1,22 @@
-# NATS — used only for the live subscription (plain core subscribe, no consumer)
-nats:
-  url: "nats://localhost:4222"
-  stream_name: BATTERY_DATA          # still needed if you ever want JetStream history replay
-  subject_filter: "batteries.>"
+# Subscriber API — fractal-phil config
+#
+# Path layout: s3://{bucket}/{prefix}/{site}/{instance}/{yyyy}/{mm}/{dd}/*.parquet
+# e.g.         s3://ems-archive/parquet/evelyn/unit-3/2025/06/01/data.parquet
 
-# S3 / MinIO — Parquet history store
-s3:
-  endpoint_url: "http://localhost:9000"   # MinIO (local dev); remove for real AWS S3
-  bucket: battery-data
-  region: us-east-1
-  access_key: minioadmin
-  secret_key: minioadmin
-  prefix: ""                              # set if parquet_writer uses a key prefix
-
-# WebSocket server
 server:
   host: "0.0.0.0"
   port: 8767
+
+live:
+  backend: "mqtt"
+  mqtt:
+    url:    "tcp://localhost:1884"     # FlashMQ aws-sim port on fractal-phil
+    topics: ["unit/#"]                 # A/unit/# B/unit/# etc for multi-sim
+
+s3:
+  endpoint_url: "http://localhost:9000"   # MinIO (local dev); remove for real AWS S3
+  bucket:       "ems-archive"
+  region:       "us-east-1"
+  access_key:   "minioadmin"
+  secret_key:   "minioadmin"
+  prefix:       "parquet"               # files live under s3://ems-archive/parquet/
