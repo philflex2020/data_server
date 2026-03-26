@@ -337,11 +337,12 @@
 <pre><span class="kw">class</span> <span class="ty">QueryBackend</span>(Protocol):
     <span class="kw">def</span> <span class="fn">query</span>(
         self,
-        site_id: <span class="ty">str</span>,
-        from_ts: <span class="ty">float</span>,   <span class="cm"># unix seconds UTC</span>
-        to_ts:   <span class="ty">float</span>,
-        limit:   <span class="ty">int</span>,
-        fields:  <span class="ty">list</span>[<span class="ty">str</span>] | <span class="nu">None</span> = <span class="nu">None</span>,   <span class="cm"># None = all</span>
+        site:     <span class="ty">str</span>,
+        instance: <span class="ty">str</span>,         <span class="cm"># unit/device within the site, e.g. "unit-3"</span>
+        from_ts:  <span class="ty">float</span>,        <span class="cm"># unix seconds UTC</span>
+        to_ts:    <span class="ty">float</span>,
+        limit:    <span class="ty">int</span>,
+        fields:   <span class="ty">list</span>[<span class="ty">str</span>] | <span class="nu">None</span> = <span class="nu">None</span>,   <span class="cm"># None = all</span>
     ) -> tuple[<span class="ty">list</span>[<span class="ty">str</span>], <span class="ty">list</span>[<span class="ty">tuple</span>]]:
         <span class="cm">"""Returns (column_names, rows). Raises on error."""</span>
         ...
@@ -364,16 +365,16 @@
     hot_window_days: <span class="ty">int</span>           <span class="cm"># default 90</span>
     shadow_mode:    <span class="ty">bool</span>           <span class="cm"># run both hot backends, log diff</span>
 
-    <span class="kw">def</span> <span class="fn">query</span>(self, site_id, from_ts, to_ts, limit, fields=<span class="nu">None</span>):
+    <span class="kw">def</span> <span class="fn">query</span>(self, site, instance, from_ts, to_ts, limit, fields=<span class="nu">None</span>):
         cutoff = time.time() - self.hot_window_days * <span class="nu">86400</span>
 
         <span class="kw">if</span>   from_ts >= cutoff:               <span class="cm"># entirely hot</span>
-            <span class="kw">return</span> self.hot_backend.<span class="fn">query</span>(...)
+            <span class="kw">return</span> self.hot_backend.<span class="fn">query</span>(site, instance, ...)
         <span class="kw">elif</span> to_ts   <  cutoff:               <span class="cm"># entirely cold</span>
-            <span class="kw">return</span> self.cold_backend.<span class="fn">query</span>(...)
+            <span class="kw">return</span> self.cold_backend.<span class="fn">query</span>(site, instance, ...)
         <span class="kw">else</span>:                                  <span class="cm"># spans boundary — union</span>
-            cold = self.cold_backend.<span class="fn">query</span>(..., to_ts=cutoff)
-            hot  = self.hot_backend.<span class="fn">query</span>(..., from_ts=cutoff)
+            cold = self.cold_backend.<span class="fn">query</span>(site, instance, ..., to_ts=cutoff)
+            hot  = self.hot_backend.<span class="fn">query</span>(site, instance, ..., from_ts=cutoff)
             <span class="kw">return</span> <span class="fn">_merge</span>(cold, hot)           <span class="cm"># dedup on timestamp</span></pre>
 
 <div class="callout good">
@@ -391,7 +392,8 @@
 {
   <span class="st">"type"</span>:       <span class="st">"query_history"</span>,
   <span class="st">"query_id"</span>:   <span class="st">"1"</span>,
-  <span class="st">"site_id"</span>:    <span class="st">"0"</span>,
+  <span class="st">"site"</span>:       <span class="st">"evelyn"</span>,
+  <span class="st">"instance"</span>:   <span class="st">"unit-3"</span>,
   <span class="st">"from_ts"</span>:    <span class="nu">1234567890.0</span>,
   <span class="st">"to_ts"</span>:      <span class="nu">1234567999.0</span>,
   <span class="st">"limit"</span>:      <span class="nu">2000</span>,
@@ -412,7 +414,7 @@
   <div class="card blue">
     <h3>HTTP (new)</h3>
     <pre style="font-size:.72rem"><span class="cm"># History query</span>
-GET /query?site_id=0&from_ts=...&to_ts=...&limit=2000
+GET /query?site=evelyn&instance=unit-3&from_ts=...&to_ts=...&limit=2000
 → {"columns":[...],"rows":[...],"total":N,"elapsed_ms":N,"backend":"..."}
 
 <span class="cm"># Health check</span>
@@ -560,7 +562,7 @@ influxdb3:
 
 parquet:
   path: <span class="st">"s3://ems-archive/parquet"</span>   <span class="cm"># or local /data/parquet-archive</span>
-  <span class="cm"># path layout: {bucket}/parquet/{site_id}/{yyyy}/{mm}/{dd}/data.parquet</span>
+  <span class="cm"># path layout: {bucket}/parquet/{site}/{instance}/{yyyy}/{mm}/{dd}/data.parquet</span>
   s3:
     region:     <span class="st">"us-east-1"</span>
     access_key: <span class="st">"..."</span>
@@ -685,7 +687,7 @@ live:
   <div class="phase-body">
     <ul style="font-size:.8rem;color:var(--muted)">
       <li>Implement <code>AthenaBackend</code> — boto3 <code>start_query_execution</code> → poll → <code>get_query_results</code></li>
-      <li>Same SQL as DuckDB; plain path layout <code>{site_id}/{yyyy}/{mm}/{dd}/</code> — no Hive key=value paths needed</li>
+      <li>Same SQL as DuckDB; plain path layout <code>{site}/{instance}/{yyyy}/{mm}/{dd}/</code> — no Hive key=value paths needed</li>
       <li>Config flag <code>cold_backend: athena</code> to switch — zero caller change; DuckDB tests validate SQL first</li>
       <li>Athena table uses <strong>partition projection</strong> (table property) — no Glue crawler, no <code>MSCK REPAIR TABLE</code>; Athena derives partitions from the path template at query time</li>
       <li>Query result pagination: Athena returns max 1,000 rows per page; backend loops <code>get_query_results</code> with <code>NextToken</code> until <code>limit</code> reached</li>
@@ -701,10 +703,11 @@ live:
   locally during development and CI, Athena queries the same files in production.
   Switch with one config line — no SQL changes, no file changes.
   <br><br>
-  <strong>Path layout:</strong> <code>s3://ems-archive/parquet/{site_id}/{yyyy}/{mm}/{dd}/data.parquet</code>
+  <strong>Path layout:</strong> <code>s3://ems-archive/parquet/{site}/{instance}/{yyyy}/{mm}/{dd}/data.parquet</code>
   — simple, human-readable, no <code>key=value</code> segments required.
-  DuckDB uses a glob (<code>42/2025/06/**</code>); Athena uses partition projection with a
+  DuckDB uses a glob (<code>evelyn/unit-3/2025/06/**</code>); Athena uses partition projection with a
   <code>storage.location.template</code> pointing at the same path pattern. No Glue crawler needed.
+  The <code>instance</code> level lets you query a single unit without scanning the whole site.
 </div>
 
 <h3>DuckDB vs Athena — cold backend comparison</h3>
