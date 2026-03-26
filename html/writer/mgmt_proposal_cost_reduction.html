@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AWS Cost Reduction Proposal</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+    --green-bg:#0d4429; --yellow-bg:#2d2000; --blue-bg:#0c2d6b44;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:24px; max-width:1100px; margin:0 auto; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:var(--blue-bg); }
+
+  h1 { color:var(--accent); font-size:1.4rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.84rem; margin-bottom:6px; }
+  .doc-meta { font-size:.76rem; color:var(--muted); margin-bottom:28px;
+              padding-bottom:12px; border-bottom:1px solid var(--border); }
+
+  h2 { color:var(--orange); font-size:1rem; margin:32px 0 12px;
+       padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--accent); font-size:.88rem; margin:18px 0 8px; }
+
+  p  { font-size:.84rem; line-height:1.7; margin-bottom:10px; }
+  ul { font-size:.84rem; line-height:1.8; padding-left:20px; margin-bottom:12px; }
+  li { margin-bottom:2px; }
+
+  /* Executive summary box */
+  .exec-summary { background:var(--surface); border:2px solid var(--accent);
+                  border-radius:10px; padding:20px 24px; margin-bottom:28px; }
+  .exec-summary h2 { margin-top:0; border:none; padding:0; color:var(--accent); font-size:.95rem; }
+
+  /* Big number cards */
+  .metric-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+  @media(max-width:800px) { .metric-row { grid-template-columns:1fr 1fr; } }
+  .metric { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+            padding:14px 16px; text-align:center; }
+  .metric-val { font-size:1.6rem; font-weight:700; font-family:'Consolas',monospace; margin-bottom:4px; }
+  .metric-lbl { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .metric-sub { font-size:.72rem; color:var(--muted); margin-top:4px; }
+
+  /* Phase timeline */
+  .phase { display:flex; gap:16px; background:var(--surface);
+           border:1px solid var(--border); border-radius:8px;
+           padding:16px 18px; margin-bottom:10px; align-items:flex-start; }
+  .phase-badge { display:flex; flex-direction:column; align-items:center;
+                 flex-shrink:0; width:52px; }
+  .phase-num { width:36px; height:36px; border-radius:50%; display:flex; align-items:center;
+               justify-content:center; font-size:.9rem; font-weight:700; }
+  .phase-dur { font-size:.68rem; color:var(--muted); margin-top:4px; text-align:center; }
+  .phase-body { flex:1; }
+  .phase-body h3 { margin-top:0; }
+  .phase-body p  { margin-bottom:6px; }
+  .phase-body ul { margin-bottom:6px; }
+  .phase-risk { font-size:.76rem; margin-top:8px; padding:6px 10px;
+                border-radius:4px; display:inline-block; }
+  .risk-low  { background:#0d442922; color:var(--green); border:1px solid var(--green); }
+  .risk-med  { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow); }
+  .risk-high { background:#2d000022; color:var(--red); border:1px solid var(--red); }
+
+  /* Cost table */
+  table.costs { width:100%; border-collapse:collapse; font-size:.83rem; margin-bottom:16px; }
+  table.costs th { text-align:left; padding:8px 12px; color:var(--muted);
+                   font-weight:700; border-bottom:2px solid var(--border); }
+  table.costs td { padding:7px 12px; border-bottom:1px solid var(--border); }
+  table.costs tr.total-row td { font-weight:700; border-top:2px solid var(--border);
+                                 border-bottom:none; color:var(--text); }
+  table.costs tr.section-hdr td { color:var(--orange); font-size:.76rem;
+                                   text-transform:uppercase; letter-spacing:.06em;
+                                   padding-top:14px; border-bottom:1px solid var(--border);
+                                   background:var(--surface); }
+  .num { font-family:'Consolas',monospace; }
+  .green { color:var(--green); }
+  .red   { color:var(--red); }
+  .yellow { color:var(--yellow); }
+  .muted { color:var(--muted); }
+
+  /* Savings chart (CSS bar chart) */
+  .bar-chart { margin-bottom:20px; }
+  .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .bar-lbl { font-size:.78rem; color:var(--muted); width:220px; flex-shrink:0; text-align:right; }
+  .bar-wrap { flex:1; background:var(--surface); border:1px solid var(--border);
+              border-radius:3px; height:22px; position:relative; }
+  .bar-fill { height:100%; border-radius:3px; display:flex; align-items:center;
+              padding-left:8px; font-size:.72rem; font-weight:700; font-family:'Consolas',monospace; }
+  .bar-val  { font-size:.76rem; font-family:'Consolas',monospace; color:var(--text); width:80px; }
+
+  /* callout */
+  .callout { border-radius:6px; padding:12px 16px; margin-bottom:16px; font-size:.83rem; line-height:1.65; }
+  .callout.good   { background:#0d442922; border-left:3px solid var(--green); }
+  .callout.warn   { background:var(--yellow-bg); border-left:3px solid var(--yellow); }
+  .callout.info   { background:var(--blue-bg);   border-left:3px solid var(--accent); }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+  @media(max-width:700px) { .grid2 { grid-template-columns:1fr; } }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+
+  /* assumptions footnote */
+  .footnotes { font-size:.74rem; color:var(--muted); border-top:1px solid var(--border);
+               margin-top:28px; padding-top:12px; line-height:1.8; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="telegraf_demo_control.html">Demo Control</a>
+  <a href="subscriber_api_spec.html">subscriber_api spec</a>
+  <a href="mgmt_proposal_cost_reduction.html" class="here">Management Proposal</a>
+</div>
+
+<h1>AWS Cost Reduction — Management Proposal</h1>
+<p class="subtitle">Infrastructure optimisation: data archival + edge filtering + InfluxDB migration path</p>
+<p class="doc-meta">Prepared: March 2026 &nbsp;·&nbsp; Author: Engineering &nbsp;·&nbsp; Status: Proposal — awaiting approval</p>
+
+<!-- ── Executive Summary ── -->
+<div class="exec-summary">
+  <h2>Executive Summary</h2>
+  <p>
+    AWS spend peaked at <strong>$88k/month in September 2025</strong> and has been reduced to
+    <strong>$55k/month in March 2026</strong> through IoT Core and Lambda migration work already completed.
+    However, two cost lines are now growing: <strong>Elastic File System (InfluxDB storage) +60%</strong>
+    and <strong>EC2 (compute) +15%</strong> over the same period, driven by new client onboarding.
+    Without further action these will reverse the savings already made.
+  </p>
+  <p>
+    This proposal outlines two engineering initiatives that together are estimated to save
+    <strong>$13,000–16,000/month ($156k–192k/year)</strong> and hold the bill roughly flat as
+    new clients are added — effectively making future growth near cost-neutral on infrastructure.
+  </p>
+  <p style="margin-bottom:0">
+    Both initiatives build on work already in progress. Combined engineering effort is estimated at
+    <strong>6–8 weeks</strong> with no customer-facing risk — all changes are in the data backend,
+    not the product UI or data collection pipeline.
+  </p>
+</div>
+
+<!-- ── Current state numbers ── -->
+<h2>Current AWS Spend — March 2026</h2>
+<div class="metric-row">
+  <div class="metric">
+    <div class="metric-val" style="color:var(--accent)">$55k</div>
+    <div class="metric-lbl">Monthly bill (Mar)</div>
+    <div class="metric-sub">after discounts</div>
+  </div>
+  <div class="metric">
+    <div class="metric-val" style="color:var(--red)">$660k</div>
+    <div class="metric-lbl">Annual run rate</div>
+    <div class="metric-sub">at current trajectory</div>
+  </div>
+  <div class="metric">
+    <div class="metric-val" style="color:var(--yellow)">$8.3k</div>
+    <div class="metric-lbl">EFS / month</div>
+    <div class="metric-sub">+60% in 6 months</div>
+  </div>
+  <div class="metric">
+    <div class="metric-val" style="color:var(--yellow)">$33.4k</div>
+    <div class="metric-lbl">EC2 / month</div>
+    <div class="metric-sub">+15% in 6 months</div>
+  </div>
+</div>
+
+<div class="callout good">
+  <strong>Already saved:</strong> IoT Core (-94%), Lambda (-97%), API Gateway (-100%), CloudWatch (-84%) —
+  combined saving of ~$17k/month vs September 2025. This proposal is the next wave.
+</div>
+
+<h3>The growth problem</h3>
+<p>
+  EFS stores all InfluxDB2 time-series data. Every new client site adds series and write volume permanently.
+  At the current growth rate of ~10%/month, EFS alone reaches <strong>$20k/month by end of 2026</strong>.
+  EC2 follows a similar curve as InfluxDB ingest and query load grows. The two together will
+  exceed the IoT/Lambda savings within 6 months without action.
+</p>
+
+<div class="bar-chart">
+  <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">EFS cost trajectory — actual vs projected</div>
+  <div class="bar-row">
+    <div class="bar-lbl">Sep 2025 (actual)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:26%;background:#58a6ff88">$5.2k</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Mar 2026 (actual)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:42%;background:#d2992288">$8.3k</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Sep 2026 (no action)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:74%;background:#f8514966">~$14.7k</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Dec 2026 (no action)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:98%;background:#f8514966">~$19.6k</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Sep 2026 (with archival)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:16%;background:#3fb95088">~$3.1k</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Dec 2026 (with archival + filter)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:12%;background:#3fb95088">~$2.4k</div></div>
+  </div>
+</div>
+
+<!-- ── Initiatives ── -->
+<h2>Proposed Initiatives</h2>
+
+<!-- Initiative 1 -->
+<h3>Initiative 1 — Data Archival: move historical InfluxDB data to cheap cold storage</h3>
+<p>
+  InfluxDB2 stores all data on EFS at ~$0.30/GB. Data older than 90 days is rarely queried
+  in real time but must be retained for warranty, compliance, and engineering analysis.
+  Parquet files on S3 store the same data at <strong>~$0.023/GB — 13× cheaper</strong>,
+  with better compression giving an effective ratio of ~130× vs InfluxDB on EFS.
+</p>
+<p>
+  The query tool (<code>subscriber_api</code>) already reads parquet files via DuckDB.
+  A routing layer means callers — including Grafana and the UI — see a single API regardless
+  of whether data is in InfluxDB or the parquet archive. <strong>No product change required.</strong>
+</p>
+
+<!-- Initiative 2 -->
+<h3>Initiative 2 — Edge Filtering: reduce data volume before it reaches AWS</h3>
+<p>
+  Today, every sensor reading from every site is sent to AWS whether or not the value changed.
+  A Telegraf processor on the edge system (our hardware at each site) suppresses readings that
+  are within a configurable tolerance of the previous value. Testing shows this reduces
+  message volume by <strong>~27–30%</strong> with no loss of meaningful data.
+</p>
+<p>
+  This reduces EC2 write load, EFS write volume, and data transfer simultaneously.
+  The edge processor is a configuration change — no firmware update, no customer impact.
+</p>
+
+<!-- ── The Plan ── -->
+<h2>Execution Plan</h2>
+
+<div class="phase">
+  <div class="phase-badge">
+    <div class="phase-num" style="background:var(--blue-bg);color:var(--accent);border:1px solid var(--accent)">1</div>
+    <div class="phase-dur">2 weeks</div>
+  </div>
+  <div class="phase-body">
+    <h3>Harden the query API (<code>subscriber_api</code>)</h3>
+    <p>
+      Extend the existing data query service to support both InfluxDB2 (live/recent data) and
+      DuckDB/parquet (archive data) behind a single API. Queries crossing the boundary between
+      the two are merged transparently. Add a health endpoint and HTTP interface alongside
+      the existing WebSocket.
+    </p>
+    <ul>
+      <li>No changes to InfluxDB, no data moved yet</li>
+      <li>Validated against real data on fractal-phil</li>
+      <li>Full test suite: unit tests + integration tests against live InfluxDB</li>
+    </ul>
+    <span class="phase-risk risk-low">Risk: Low — additive only, no existing behaviour changed</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-badge">
+    <div class="phase-num" style="background:var(--blue-bg);color:var(--accent);border:1px solid var(--accent)">2</div>
+    <div class="phase-dur">1 week</div>
+  </div>
+  <div class="phase-body">
+    <h3>Extract historical data to parquet — no deletion yet</h3>
+    <p>
+      Run the archive job against production InfluxDB2. All data older than 90 days is extracted,
+      written to date-partitioned parquet files on S3, and verified (row counts must match exactly
+      before we proceed). Nothing is deleted from InfluxDB at this stage.
+    </p>
+    <ul>
+      <li>Parquet files are the safety net — data exists in two places simultaneously</li>
+      <li>Archive job runs in the background; no service interruption</li>
+      <li>Row count verification is automated and logged</li>
+    </ul>
+    <span class="phase-risk risk-low">Risk: Low — read-only operation on InfluxDB, data is duplicated not moved</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-badge">
+    <div class="phase-num" style="background:var(--blue-bg);color:var(--accent);border:1px solid var(--accent)">3</div>
+    <div class="phase-dur">1–2 weeks</div>
+  </div>
+  <div class="phase-body">
+    <h3>Validation — query both backends, compare results</h3>
+    <p>
+      With data in both InfluxDB and parquet, run identical queries against both backends and
+      compare results. Grafana dashboards, the UI, and engineering spot-checks all run against
+      the new unified API. Sign-off required before proceeding to deletion.
+    </p>
+    <ul>
+      <li>Automated diff tests: same query → same results from both backends</li>
+      <li>Manual spot-check: engineering team validates 3–5 representative sites</li>
+      <li>No time pressure — InfluxDB data remains intact throughout</li>
+    </ul>
+    <span class="phase-risk risk-low">Risk: Low — no data deleted, rollback is trivially "keep using InfluxDB"</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-badge">
+    <div class="phase-num" style="background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)">4</div>
+    <div class="phase-dur">1 day</div>
+  </div>
+  <div class="phase-body">
+    <h3>Delete historical data from InfluxDB — EFS bill drops immediately</h3>
+    <p>
+      Once validation passes, delete data older than 90 days from InfluxDB2 buckets.
+      InfluxDB releases the EFS space within hours. The bill reduction appears on the
+      next AWS billing cycle.
+    </p>
+    <ul>
+      <li>Deletion is per-bucket, per-time-range — can be done incrementally by site if preferred</li>
+      <li>Parquet archive is the permanent record; InfluxDB is now a 90-day rolling window</li>
+      <li>Set InfluxDB2 retention policy to 90 days to automate going forward</li>
+    </ul>
+    <span class="phase-risk risk-med">Risk: Medium — irreversible, but only after Phase 3 sign-off. Parquet is the backup.</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-badge">
+    <div class="phase-num" style="background:#0d442944;color:var(--green);border:1px solid var(--green)">5</div>
+    <div class="phase-dur">2–3 weeks</div>
+  </div>
+  <div class="phase-body">
+    <h3>Edge filtering — deploy to production sites (rolling)</h3>
+    <p>
+      Roll out the Telegraf dedup/filter configuration to edge systems site by site.
+      Each deployment is a config file update and Telegraf restart — no firmware change,
+      no outage. Monitor InfluxDB write rate and EFS growth after each site is updated.
+    </p>
+    <ul>
+      <li>Start with 2–3 pilot sites, measure actual reduction, then roll out broadly</li>
+      <li>Configurable tolerance per signal type — conservative defaults, tunable per site</li>
+      <li>The <code>subscriber_api</code> is already in place from Phase 1, so historical queries are unaffected</li>
+    </ul>
+    <span class="phase-risk risk-low">Risk: Low — config change only, easily reverted per site</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-badge">
+    <div class="phase-num" style="background:#1a0f2e44;color:var(--purple);border:1px solid var(--purple)">6</div>
+    <div class="phase-dur">ongoing</div>
+  </div>
+  <div class="phase-body">
+    <h3>InfluxDB2 → InfluxDB3 migration (parallel track, no deadline)</h3>
+    <p>
+      The <code>subscriber_api</code> routing layer built in Phase 1 is designed to support
+      InfluxDB3 as a drop-in hot backend. When the team decides to migrate, a shadow mode
+      runs both databases in parallel and compares query results until confidence is high,
+      then a single config change cuts over. No product change required.
+    </p>
+    <ul>
+      <li>InfluxDB3 stores data as parquet on S3 natively — EFS cost disappears entirely</li>
+      <li>This initiative is not on the critical path for the cost savings above</li>
+      <li>The archival work in Phases 1–4 also serves as the migration dataset for v3</li>
+    </ul>
+    <span class="phase-risk risk-low">Risk: Low — shadow mode validates before cutover, rollback is one config line</span>
+  </div>
+</div>
+
+<!-- ── Cost model ── -->
+<h2>Cost Model</h2>
+
+<table class="costs">
+  <thead>
+    <tr>
+      <th>Cost Line</th>
+      <th class="num">Mar 2026</th>
+      <th class="num">After Initiative 1&amp;2</th>
+      <th class="num">Monthly Saving</th>
+      <th class="num">Annual Saving</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="section-hdr"><td colspan="5">Initiative 1 — Data Archival (Phases 1–4)</td></tr>
+    <tr>
+      <td>EFS — historical data (&gt;90 days, ~70% of total)<sup>1</sup></td>
+      <td class="num">$5,820</td>
+      <td class="num green">$450</td>
+      <td class="num green">$5,370</td>
+      <td class="num green">$64,400</td>
+    </tr>
+    <tr>
+      <td>EFS — hot data (90 days, holds flat after archival)</td>
+      <td class="num">$2,495</td>
+      <td class="num yellow">$2,495</td>
+      <td class="num muted">—</td>
+      <td class="num muted">—</td>
+    </tr>
+    <tr>
+      <td>S3 storage for parquet archive (new cost)<sup>2</sup></td>
+      <td class="num muted">—</td>
+      <td class="num red">−$420</td>
+      <td class="num red">−$420</td>
+      <td class="num red">−$5,040</td>
+    </tr>
+
+    <tr class="section-hdr"><td colspan="5">Initiative 2 — Edge Filtering (~30% data reduction, Phase 5)</td></tr>
+    <tr>
+      <td>EC2 — InfluxDB ingest + query CPU (30% less write load)<sup>3</sup></td>
+      <td class="num">$33,404</td>
+      <td class="num green">$28,400</td>
+      <td class="num green">$5,000</td>
+      <td class="num green">$60,000</td>
+    </tr>
+    <tr>
+      <td>EFS — hot data (30% less written per day)</td>
+      <td class="num">$2,495</td>
+      <td class="num green">$1,750</td>
+      <td class="num green">$745</td>
+      <td class="num green">$8,940</td>
+    </tr>
+    <tr>
+      <td>Data Transfer — 30% less MQTT / HTTP to AWS</td>
+      <td class="num">$3,174</td>
+      <td class="num green">$2,220</td>
+      <td class="num green">$954</td>
+      <td class="num green">$11,450</td>
+    </tr>
+
+    <tr class="section-hdr"><td colspan="5">Growth avoided (both initiatives)</td></tr>
+    <tr>
+      <td>EFS growth avoided (would reach ~$20k/month by Dec 2026 without action)</td>
+      <td class="num muted">—</td>
+      <td class="num muted">—</td>
+      <td class="num green">$3,000–8,000</td>
+      <td class="num green">$36k–96k</td>
+    </tr>
+
+    <tr class="total-row">
+      <td>Total direct monthly saving (conservative)</td>
+      <td class="num">$55,000</td>
+      <td class="num green">$41,800</td>
+      <td class="num green">$13,200</td>
+      <td class="num green">$158,400</td>
+    </tr>
+    <tr class="total-row">
+      <td>Total direct monthly saving (with growth avoided)</td>
+      <td></td>
+      <td></td>
+      <td class="num green">$16,000–21,000</td>
+      <td class="num green">$192k–252k</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Projected monthly bill</h3>
+<div class="bar-chart">
+  <div class="bar-row">
+    <div class="bar-lbl">Sep 2025 (peak)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:100%;background:#f8514955">$88k</div></div>
+    <div class="bar-val">$88k</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Mar 2026 (today)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:63%;background:#d2992255">$55k</div></div>
+    <div class="bar-val">$55k</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Dec 2026 (no action)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:82%;background:#f8514944">~$72k</div></div>
+    <div class="bar-val">~$72k</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">After Phase 4 (archival done)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:49%;background:#58a6ff55">~$43k</div></div>
+    <div class="bar-val">~$43k</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">After Phase 5 (filtering deployed)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:41%;background:#3fb95088">~$36k</div></div>
+    <div class="bar-val">~$36k</div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-lbl">Dec 2026 (both, growth absorbed)</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:38%;background:#3fb95088">~$33k</div></div>
+    <div class="bar-val">~$33k</div>
+  </div>
+</div>
+
+<!-- ── Why now ── -->
+<h2>Why Now</h2>
+<div class="grid2">
+  <div class="card" style="border-left:3px solid var(--green)">
+    <h3>Low risk window</h3>
+    <ul>
+      <li>No code changes to the data collection pipeline or product UI</li>
+      <li>Parquet archive is read-only extraction — data is duplicated before anything is deleted</li>
+      <li>Edge filter is a Telegraf config update, reversible per site in minutes</li>
+      <li>subscriber_api changes are additive — existing WebSocket clients unaffected</li>
+    </ul>
+  </div>
+  <div class="card" style="border-left:3px solid var(--yellow)">
+    <h3>Cost of waiting</h3>
+    <ul>
+      <li>Each month without archival: ~$5,370 in avoidable EFS spend</li>
+      <li>Each month without edge filtering: ~$6,700 in avoidable EC2/EFS/transfer spend</li>
+      <li>EFS growth compounds — delay of 6 months costs ~$50k extra before saving begins</li>
+      <li>InfluxDB3 migration becomes cheaper once v2 has a 90-day retention and parquet archive is in place</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── Ask ── -->
+<h2>Ask</h2>
+<div class="callout info">
+  <strong>Engineering request:</strong> 6–8 weeks of focused engineering time to execute Phases 1–5.
+  No additional infrastructure procurement required. No customer communication required.
+  Estimated payback period: <strong>&lt;3 weeks</strong> from Phase 4 completion
+  (first reduced EFS bill covers the engineering cost).
+</div>
+
+<ul>
+  <li><strong>Phase 1–3:</strong> engineering-only, no approvals needed to proceed</li>
+  <li><strong>Phase 4 (delete from InfluxDB):</strong> requires sign-off from engineering lead after validation report</li>
+  <li><strong>Phase 5 (edge filter rollout):</strong> requires site-by-site co-ordination with field/DevOps team</li>
+  <li><strong>Phase 6 (InfluxDB3):</strong> separate decision, not on critical path for cost savings</li>
+</ul>
+
+<!-- ── Footnotes ── -->
+<div class="footnotes">
+  <strong>Assumptions:</strong><br>
+  1. 70% of EFS data assumed to be &gt;90 days old based on service start dates in client DB. Actual split to be confirmed before Phase 4.<br>
+  2. S3 Standard at $0.023/GB. Parquet compression vs InfluxDB assumed 8× net (conservative). Actual S3 cost depends on data volume extracted.<br>
+  3. EC2 saving estimated at 15% of $33k based on 30% write load reduction — InfluxDB ingest is CPU-bound. Actual saving depends on instance utilisation headroom; may be lower if EC2 is already underutilised.<br>
+  4. All figures based on AWS Cost Explorer data Sep 2025–Mar 2026. Growth projections assume current new-client onboarding rate continues.<br>
+  5. CK discount structure not modelled — savings shown are gross; net saving after discount adjustment may differ slightly.<br>
+</div>
+
+</body>
+</html>
