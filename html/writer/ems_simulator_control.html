@@ -836,8 +836,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (p.get('host')) {
     document.getElementById('ws-host').value = p.get('host');
     if (p.get('port')) document.getElementById('ws-port').value = p.get('port');
-    toggleConnect();
   }
+  if (saved_host || p.get('host')) toggleConnect();
 });
 </script>
 </body>
