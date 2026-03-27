@@ -19,6 +19,7 @@ mkdir -p "$LOGS"
 WRITER_BIN="$REPO/source/parquet_writer_cpp/real_writer"
 STRESS_BIN="$REPO/source/stress_runner/stress_real_pub"
 STRESS_TPL="$REPO/source/stress_runner/ems_topic_template.json"
+FLASHMQ_BIN="/tmp/FlashMQ/build/flashmq"
 
 # ── sanity checks ─────────────────────────────────────────────────────────
 for f in "$WRITER_BIN" "$STRESS_BIN" "$STRESS_TPL"; do
@@ -28,12 +29,31 @@ for s in a b c d; do
     cfg="$REPO/source/parquet_writer_cpp/config.gx10-evelyn-${s}.yaml"
     [[ -f "$cfg" ]] || { echo "ERROR: missing $cfg"; exit 1; }
 done
+[[ -x "$FLASHMQ_BIN" ]] || { echo "ERROR: FlashMQ binary not found at $FLASHMQ_BIN"; exit 1; }
 
 # ── stop any existing instances ────────────────────────────────────────────
 pkill -f "real_writer.*config.gx10-evelyn"   2>/dev/null && echo "stopped old real_writer(s)"   || true
 pkill -f "stress_real_pub.*topic-prefix"     2>/dev/null && echo "stopped old stress_real_pub(s)" || true
 pkill -f "stress_real_pub.*8769\|stress_real_pub.*8779\|stress_real_pub.*8789\|stress_real_pub.*8799" 2>/dev/null || true
+pkill -f "flashmq.*gx10-evelyn"              2>/dev/null && echo "stopped old FlashMQ"            || true
 sleep 1
+
+# ── start FlashMQ broker ───────────────────────────────────────────────────
+# client_initial_buffer_size 4MB: prevents QoS-0 drops at ~81k msg/s
+# (system mosquitto has a fixed ~64KB socket buffer and drops under load)
+cat > /tmp/flashmq-gx10-evelyn.conf << 'EOF'
+allow_anonymous true
+storage_dir /tmp/flashmq-evelyn-data
+client_initial_buffer_size 4194304
+EOF
+mkdir -p /tmp/flashmq-evelyn-data
+nohup "$FLASHMQ_BIN" --config-file /tmp/flashmq-gx10-evelyn.conf \
+    > "$LOGS/flashmq.log" 2>&1 &
+echo "FlashMQ  pid=$!  config=/tmp/flashmq-gx10-evelyn.conf  log=$LOGS/flashmq.log"
+sleep 2
+mosquitto_pub -h localhost -p 1883 -t _test -m ping 2>/dev/null \
+    && echo "FlashMQ OK" \
+    || { echo "ERROR: FlashMQ failed to start — check $LOGS/flashmq.log"; exit 1; }
 
 # ── unit ID slices from ems_topic_template.json ────────────────────────────
 # 46 units: A=0..11, B=12..23, C=24..34, D=35..45
@@ -66,6 +86,7 @@ for SIM in a b c d; do
         --host localhost \
         --template "$STRESS_TPL" \
         --topic-prefix "$PREFIX" \
+        --id "ems-stress-${SIM}" \
         $(unit_flags "${UNITS[@]}") \
         --rate "$RATE" \
         --ws-port "$WS" \

@@ -147,6 +147,8 @@ struct TopicEntry {
     int         unit_idx;   // index into g_units
     int         rack_idx;   // 0-based; -1 = system-level
     uint32_t    pool_idx;   // for GENERIC_FLOAT pool
+    int         slow_interval_ms = 0;    // 0 = every sweep; >0 = min ms between publishes
+    mutable int64_t last_pub_ms  = 0;   // wall-clock ms of last publish
 };
 
 // ============================================================================
@@ -216,7 +218,7 @@ static std::atomic<uint64_t>    g_published{0};
 static std::atomic<int>         g_rate{0};
 static std::string              g_site_id;         // first site (backward compat)
 static std::vector<std::string> g_site_ids;        // all sites (parsed from --site-id a,b,c)
-static std::string              g_topic_prefix;    // legacy, no longer used for unit topics
+static std::string              g_topic_prefix;    // optional prefix; if set, topics are {prefix}/unit/... else ems/site/{site}/unit/...
 
 // WebSocket broadcast — list of connected client fds
 static std::mutex               g_ws_mtx;
@@ -417,15 +419,31 @@ static std::vector<TopicEntry> build_topics(const std::string& path,
         // Assign unit to site round-robin
         const std::string& site = g_site_ids.empty() ? g_site_id :
                                   g_site_ids[ui % g_site_ids.size()];
-        const std::string site_pfx = "ems/site/" + site + "/unit/";
+        const std::string site_pfx = g_topic_prefix.empty()
+            ? "ems/site/" + site + "/unit/"
+            : g_topic_prefix + "/unit/";
         for (const auto& e : entries) {
             bool is_int = (e.dtype == "integer" || e.dtype == "boolean_integer");
             int rack_idx = -1;
             Sig sig = classify(e.device, e.instance, e.point, is_int, rack_idx);
             std::string topic = site_pfx + unit_ids[ui] + "/" + e.device + "/" +
                                 e.instance + "/" + e.point + "/" + e.dtype;
-            result.push_back({ std::move(topic), is_int, sig,
-                               (int)ui, rack_idx, pool++ });
+            TopicEntry te{ std::move(topic), is_int, sig,
+                           (int)ui, rack_idx, pool++ };
+            // Slow-changing signals: publish at most every 20 s
+            switch (sig) {
+                case Sig::MAX_CELL_V:
+                case Sig::MIN_CELL_V:
+                case Sig::RACK_TEMP:
+                case Sig::CHARGE_KWH:
+                case Sig::DISCHARGE_KWH:
+                case Sig::PCS_HZ:
+                case Sig::PCS_PF:
+                case Sig::PCS_V:
+                    te.slow_interval_ms = 20000; break;
+                default: break;
+            }
+            result.push_back(std::move(te));
         }
     }
     return result;
@@ -727,6 +745,13 @@ static void publish_thread_fn(const std::string& host, int port,
 
         for (const auto& e : g_topics) {
             if (g_stop.load()) break;
+            // Skip slow signals until their interval has elapsed
+            if (e.slow_interval_ms > 0) {
+                auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                if (now_ms - e.last_pub_ms < e.slow_interval_ms) continue;
+                e.last_pub_ms = now_ms;
+            }
             double val = gen_value(e);
             int plen;
             if (e.is_int)

@@ -10,6 +10,15 @@ venv/
 manager/nats-server
 aws/data_store/minio
 
+# C++ build outputs — compile per-arch, never commit
+source/parquet_writer_cpp/parquet_writer
+source/parquet_writer_cpp/real_writer
+source/parquet_writer_cpp/kpi_writer
+source/parquet_writer_cpp/kpi_real_writer
+source/stress_runner/stress_pub
+source/stress_runner/stress_real_pub
+source/telegraf_plugins/float_dedup/float_dedup
+
 # Data directories
 manager/nats-data/
 aws/data_store/minio-data/
