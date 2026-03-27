@@ -474,8 +474,6 @@ function updateFleet(msg) {
   setText('f-charging', charging);
   setText('f-faults',   faults);
 
-  // Sync rate input to generator's current target rate
-  if (rate !== null) document.getElementById('rate-val').value = rate;
 
   // Update target dropdown if unit list changed
   const sel   = document.getElementById('target-sel');
