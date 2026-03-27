@@ -35,6 +35,7 @@
  *                             "rack":0,         (0-based rack index, -1=all)
  *                             "value":55.0,     (temp °C for overtemp; SOC% for low_soc; spread% for imbalance)
  *                             "current_a":650}  (for overcurrent)
+ *   {"type":"set_current",    "units":["ALL"|"ID"...], "current_a":200}
  *   {"type":"clear_faults",  "units":["ALL"|"ID"...]}
  *   {"type":"set_noise",     "units":["ALL"|"ID"...], "amplitude":2.5}
  *   {"type":"set_rate",      "rate":81420}
@@ -958,6 +959,11 @@ static void handle_command(const std::string& raw) {
                 if (m == Mode::OFFLINE) { u->contactor = false; u->current = 0; }
                 else                    { u->contactor = true; }
             }
+
+        } else if (type == "set_current") {
+            float current_a = 0.0f;
+            auto cv = doc["current_a"]; if (!cv.error()) current_a = (float)cv.get_double();
+            for (auto* u : targets) u->current = current_a;
 
         } else if (type == "set_contactor") {
             bool closed = doc["closed"].get_bool();

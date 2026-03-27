@@ -198,6 +198,7 @@
     <div class="ctrl-sep"></div>
     <span class="ctrl-label" style="min-width:80px">Current (A):</span>
     <input type="number" id="current-val" value="150" min="0" max="900" step="10">
+    <button class="btn" onclick="sendSetCurrent()">Set Current</button>
   </div>
   <div class="ctrl-row">
     <span class="ctrl-label">Noise (%):</span>
@@ -592,6 +593,13 @@ function sendSetRate() {
   const rate = parseInt(document.getElementById('rate-val').value) || 0;
   logEv('sent', `set_rate → ${rate.toLocaleString()} msg/s`);
   send({ type:'set_rate', rate });
+}
+
+function sendSetCurrent() {
+  const current_a = parseFloat(document.getElementById('current-val').value) || 0;
+  const cmd = { type:'set_current', units: getTargetArray(), current_a };
+  logEv('sent', `set_current → ${current_a}A  target: ${cmd.units.join(',')}`);
+  send(cmd);
 }
 
 function injectFault(fault, value) {
