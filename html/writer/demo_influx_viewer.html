@@ -211,8 +211,11 @@
             <label style="font-size:.72rem">Limit
               <input type="number" id="limit-base" value="200" style="width:56px" min="10" max="2000">
             </label>
+            <label style="font-size:.72rem">Meas.
+              <input type="text" id="meas-base" value="unit" style="width:72px" placeholder="all" title="Measurement filter — blank = all measurements">
+            </label>
             <label style="font-size:.72rem">Field
-              <input type="text" id="field-filter-base" value="" style="width:90px" placeholder="all">
+              <input type="text" id="field-filter-base" value="" style="width:80px" placeholder="all">
             </label>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
@@ -234,7 +237,7 @@
   <div class="side-wrap filt">
     <div class="side-hdr filt">
       <span class="side-title">Filtered</span>
-      <span class="side-sub">:8097 · ems-filtered · Filter A+B</span>
+      <span class="side-sub">:8097 · ems-filtered · float_dedup execd</span>
       <button class="btn btn-sm" style="margin-left:auto" onclick="fetchData('filt')">Refresh</button>
     </div>
     <div class="stats-bar filt" style="padding:0 1px">
@@ -254,8 +257,11 @@
             <label style="font-size:.72rem">Limit
               <input type="number" id="limit-filt" value="200" style="width:56px" min="10" max="2000">
             </label>
+            <label style="font-size:.72rem">Meas.
+              <input type="text" id="meas-filt" value="unit" style="width:72px" placeholder="all" title="Measurement filter — blank = all measurements">
+            </label>
             <label style="font-size:.72rem">Field
-              <input type="text" id="field-filter-filt" value="" style="width:90px" placeholder="all">
+              <input type="text" id="field-filter-filt" value="" style="width:80px" placeholder="all">
             </label>
           </div>
           <div class="legend" style="margin-bottom:5px">
@@ -446,10 +452,10 @@ function loadBoth() { loadSchema('base'); loadSchema('filt'); }
 async function fetchData(side) {
   const c     = cfg(side);
   const lim   = parseInt(document.getElementById(`limit-${side}`).value) || 200;
+  const meas  = document.getElementById(`meas-${side}`).value.trim();
   const ffilt = document.getElementById(`field-filter-${side}`).value.trim();
-  let q = `from(bucket:"${c.bucket}")
-  |> range(start:-${c.range}s)
-  |> filter(fn:(r)=>r._measurement=="unit")`;
+  let q = `from(bucket:"${c.bucket}")\n  |> range(start:-${c.range}s)`;
+  if (meas)  q += `\n  |> filter(fn:(r)=>r._measurement=="${meas}")`;
   if (ffilt) q += `\n  |> filter(fn:(r)=>r._field=="${ffilt}")`;
   q += `\n  |> sort(columns:["_time"], desc:true)\n  |> limit(n:${lim})`;
 
@@ -458,7 +464,8 @@ async function fetchData(side) {
     const csv = await flux(q, c);
     const { rows } = parseCSV(csv);
     if (!rows.length) {
-      feed.innerHTML = '<span style="color:var(--muted)">no rows — check range / measurement</span>';
+      const measDesc = meas ? `measurement="${meas}"` : 'all measurements';
+      feed.innerHTML = `<span style="color:var(--yellow)">no rows — ${c.host}:${c.port} bucket="${c.bucket}" ${measDesc} range=-${c.range}s</span>`;
       return;
     }
 
