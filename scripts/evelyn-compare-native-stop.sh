@@ -18,12 +18,10 @@ stop_proc() {
     fi
 }
 
-stop_proc "generator-base"  "stress_real_pub.*11888"
-stop_proc "generator-filt"  "stress_real_pub.*11889"
+stop_proc "flashmq"         "flashmq.*fmq.conf"
+stop_proc "generator"       "stress_real_pub"
 stop_proc "telegraf-base"   "telegraf.*telegraf-native-base"
 stop_proc "telegraf-filt"   "telegraf.*telegraf-native-filt"
-stop_proc "flashmq-base"    "flashmq.*fmq-base.conf"
-stop_proc "flashmq-filt"    "flashmq.*fmq-filt.conf"
 stop_proc "influxd-base"    "influxd.*influx-base"
 stop_proc "influxd-filt"    "influxd.*influx-filt"
 

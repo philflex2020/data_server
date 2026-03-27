@@ -57,30 +57,18 @@ done
 
 # ── stop any existing compare processes ───────────────────────────────────────
 echo "Stopping any existing compare processes..."
-pkill -f "flashmq.*fmq-base.conf"     2>/dev/null && echo "  stopped flashmq-base"     || true
-pkill -f "flashmq.*fmq-filt.conf"     2>/dev/null && echo "  stopped flashmq-filt"     || true
+pkill -f "flashmq.*fmq.conf"          2>/dev/null && echo "  stopped flashmq"           || true
 pkill -f "telegraf.*telegraf-native-base" 2>/dev/null && echo "  stopped telegraf-base" || true
 pkill -f "telegraf.*telegraf-native-filt" 2>/dev/null && echo "  stopped telegraf-filt" || true
 pkill -f "influxd.*influx-base"        2>/dev/null && echo "  stopped influxd-base"     || true
 pkill -f "influxd.*influx-filt"        2>/dev/null && echo "  stopped influxd-filt"     || true
-pkill -f "stress_real_pub.*11888"      2>/dev/null && echo "  stopped generator-base"   || true
-pkill -f "stress_real_pub.*11889"      2>/dev/null && echo "  stopped generator-filt"   || true
+pkill -f "stress_real_pub"             2>/dev/null && echo "  stopped generator"        || true
 sleep 1
 
 # ── write config files to /tmp ────────────────────────────────────────────────
-cat > /tmp/fmq-base.conf <<'EOF'
+cat > /tmp/fmq.conf <<'EOF'
 listen {
     port 11888
-    protocol mqtt
-}
-allow_anonymous true
-max_packet_size 65536
-client_max_write_buffer_size 67108864
-EOF
-
-cat > /tmp/fmq-filt.conf <<'EOF'
-listen {
-    port 11889
     protocol mqtt
 }
 allow_anonymous true
@@ -168,7 +156,7 @@ cat > /tmp/telegraf-native-filt.conf <<'EOF'
   omit_hostname         = true
 
 [[inputs.mqtt_consumer]]
-  servers            = ["tcp://localhost:11889"]
+  servers            = ["tcp://localhost:11888"]
   topics             = ["ems/#"]
   qos                = 0
   client_id          = "telegraf-compare-filt"
@@ -236,13 +224,9 @@ echo "Config files written to /tmp."
 mkdir -p /data/influx-base /data/influx-filt
 
 # ── start FlashMQ ─────────────────────────────────────────────────────────────
-nohup "$FLASHMQ_BIN" --config-file /tmp/fmq-base.conf \
-    > "$LOGS/compare_flashmq_base.log" 2>&1 &
-echo "flashmq-base   pid=$!  port=11888  log=$LOGS/compare_flashmq_base.log"
-
-nohup "$FLASHMQ_BIN" --config-file /tmp/fmq-filt.conf \
-    > "$LOGS/compare_flashmq_filt.log" 2>&1 &
-echo "flashmq-filt   pid=$!  port=11889  log=$LOGS/compare_flashmq_filt.log"
+nohup "$FLASHMQ_BIN" --config-file /tmp/fmq.conf \
+    > "$LOGS/compare_flashmq.log" 2>&1 &
+echo "flashmq        pid=$!  port=11888  log=$LOGS/compare_flashmq.log"
 
 sleep 1
 
@@ -320,21 +304,13 @@ echo "Starting generators: rate=$RATE  units=$UNITS"
 
 nohup "$STRESS_BIN" \
     --host localhost --port 11888 \
+    --ws-port 8769 \
     --template "$STRESS_TPL" \
     --rate "$RATE" \
     --site-id "0215D1D8" \
     "${UNIT_ID_ARGS[@]}" \
-    > "$LOGS/compare_gen_base.log" 2>&1 &
-echo "generator-base pid=$!  port=11888  log=$LOGS/compare_gen_base.log"
-
-nohup "$STRESS_BIN" \
-    --host localhost --port 11889 \
-    --template "$STRESS_TPL" \
-    --rate "$RATE" \
-    --site-id "0215D1D8" \
-    "${UNIT_ID_ARGS[@]}" \
-    > "$LOGS/compare_gen_filt.log" 2>&1 &
-echo "generator-filt pid=$!  port=11889  log=$LOGS/compare_gen_filt.log"
+    > "$LOGS/compare_gen.log" 2>&1 &
+echo "generator      pid=$!  port=11888  ws=8769  log=$LOGS/compare_gen.log"
 
 echo ""
 echo "All processes started."
