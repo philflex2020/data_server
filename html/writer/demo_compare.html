@@ -127,7 +127,7 @@
 <!-- Architecture diagram -->
 <h2>System Layout</h2>
 <div class="diagram-wrap">
-<svg class="arch" width="780" height="295" viewBox="0 0 780 295">
+<svg class="arch" width="780" height="310" viewBox="0 0 780 310">
   <defs>
     <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
       <polygon points="0 0, 8 3, 0 6" fill="#30363d"/>
@@ -207,6 +207,11 @@
   <!-- Row count live labels -->
   <text x="630" y="138" text-anchor="middle" class="lbl-accent" id="svg-base-rps">— rows/s</text>
   <text x="630" y="282" text-anchor="middle" class="lbl-green"  id="svg-filt-rps">— rows/s</text>
+
+  <!-- Note: why rows/s varies -->
+  <text x="390" y="302" text-anchor="middle" style="fill:#8b949e;font-size:9px;font-family:'Consolas',monospace;font-style:italic;">
+    * rows/s varies: generator publishes in ~10 s bursts; Telegraf flushes every 5 s — 60 s window smooths but doesn't fully eliminate the jitter
+  </text>
 </svg>
 <div class="legend">
   <div class="legend-item"><div class="legend-swatch" style="background:var(--accent)"></div><span>Baseline path (all signals)</span></div>
