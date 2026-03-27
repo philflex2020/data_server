@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parquet Viewer</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:16px; }
+
+  /* host bar */
+  .host-bar { display:flex; align-items:center; gap:10px; margin-bottom:12px;
+              background:var(--surface); border:1px solid var(--border);
+              border-radius:8px; padding:8px 12px; flex-wrap:wrap; }
+  .host-bar label { color:var(--muted); font-size:.8rem; }
+  .host-bar input { background:var(--code-bg); border:1px solid var(--border);
+                    color:var(--text); border-radius:4px; padding:4px 8px;
+                    font-family:'Consolas',monospace; font-size:.82rem; width:160px; }
+  .host-bar button { border:none; border-radius:4px; padding:5px 14px;
+                     font-size:.8rem; cursor:pointer; font-weight:600; }
+  .host-bar button:hover { opacity:.85; }
+  #btn-connect.connecting { background:var(--accent); color:#000; }
+  #btn-connect.disconnecting { background:transparent; color:var(--red);
+                                border:1px solid var(--red); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+         margin-right:5px; background:var(--muted); }
+  .dot.ok  { background:var(--green); }
+  .dot.err { background:var(--red); }
+  #conn-status { font-size:.8rem; font-family:'Consolas',monospace; }
+
+  /* query bar */
+  .query-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+               background:var(--surface); border:1px solid var(--border);
+               border-radius:8px; padding:8px 12px; margin-bottom:10px; }
+  .query-bar label { color:var(--muted); font-size:.78rem; white-space:nowrap; }
+  .query-bar input[type=text] { background:var(--code-bg); border:1px solid var(--border);
+                                color:var(--text); border-radius:4px; padding:4px 8px;
+                                font-family:'Consolas',monospace; font-size:.82rem; width:280px; }
+  .query-bar input[type=datetime-local] {
+                                background:var(--code-bg); border:1px solid var(--border);
+                                color:var(--text); border-radius:4px; padding:4px 8px;
+                                font-family:'Consolas',monospace; font-size:.78rem; }
+  .btn-range { background:var(--code-bg); color:var(--muted); border:1px solid var(--border);
+               border-radius:4px; padding:4px 8px; font-size:.75rem; cursor:pointer; }
+  .btn-range:hover { color:var(--accent); border-color:var(--accent); }
+  .btn-query { background:var(--accent); color:#000; border:none; border-radius:4px;
+               padding:5px 14px; font-size:.8rem; cursor:pointer; font-weight:600; }
+  .btn-query:hover { opacity:.85; }
+  .btn-clear { background:transparent; color:var(--muted); border:1px solid var(--border);
+               border-radius:4px; padding:5px 12px; font-size:.8rem; cursor:pointer; }
+  .btn-clear:hover { color:var(--red); border-color:var(--red); }
+  .btn-export { background:transparent; color:var(--green); border:1px solid var(--green);
+                border-radius:4px; padding:5px 12px; font-size:.8rem; cursor:pointer; }
+  .btn-export:hover { background:#3fb95022; }
+
+  /* storage info */
+  .storage-info { font-size:.75rem; color:var(--muted); font-family:'Consolas',monospace;
+                  margin-bottom:12px; padding:6px 10px;
+                  background:var(--surface); border:1px solid var(--border); border-radius:6px; }
+  .storage-info span { color:var(--text); }
+
+  /* summary bar */
+  .summary-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .scard { background:var(--surface); border:1px solid var(--border);
+           border-radius:8px; padding:8px 12px; }
+  .scard-k { font-size:.63rem; color:var(--muted); text-transform:uppercase;
+             letter-spacing:.05em; margin-bottom:2px; }
+  .scard-v { font-size:1rem; font-weight:700; font-family:'Consolas',monospace;
+             color:var(--accent); }
+
+  /* chart */
+  .chart-wrap { background:var(--surface); border:1px solid var(--border);
+                border-radius:8px; padding:12px; margin-bottom:12px; position:relative; }
+  #chart-canvas { display:block; width:100%; height:400px; cursor:crosshair; }
+  #chart-tooltip { position:absolute; background:var(--code-bg); border:1px solid var(--border);
+                   border-radius:4px; padding:5px 8px; font-size:.72rem;
+                   font-family:'Consolas',monospace; color:var(--text);
+                   pointer-events:none; display:none; white-space:nowrap; }
+
+  /* table */
+  .table-wrap { background:var(--surface); border:1px solid var(--border);
+                border-radius:8px; padding:12px; margin-bottom:12px; overflow-x:auto; }
+  .table-note { font-size:.72rem; color:var(--muted); margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:.75rem; }
+  th { color:var(--muted); text-align:left; padding:5px 10px; font-weight:600;
+       text-transform:uppercase; letter-spacing:.04em; font-size:.68rem;
+       border-bottom:1px solid var(--border); }
+  td { padding:4px 10px; border-bottom:1px solid var(--border);
+       font-family:'Consolas',monospace; color:var(--text); }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#ffffff08; }
+
+  /* status / error */
+  .status-msg { font-size:.8rem; color:var(--yellow); font-family:'Consolas',monospace;
+                margin-bottom:8px; }
+  .err-msg { font-size:.8rem; color:var(--red); font-family:'Consolas',monospace;
+             margin-bottom:8px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="evelyn_docker_34.html">Evelyn .34 Live</a>
+  <a href="parquet_viewer.html" class="here">Parquet Viewer</a>
+</nav>
+
+<h1>Parquet Viewer</h1>
+<p class="subtitle">Query EMS parquet files via DuckDB — wide-sparse format, one signal per query</p>
+
+<!-- Host bar -->
+<div class="host-bar">
+  <label>Host</label>
+  <input id="host-input" type="text" value="192.168.86.34" placeholder="host IP">
+  <button id="btn-connect" class="connecting" onclick="toggleConnect()">Connect</button>
+  <span id="conn-status"><span class="dot" id="conn-dot"></span>disconnected</span>
+</div>
+
+<!-- Storage info -->
+<div class="storage-info" id="storage-info">
+  path: — &nbsp;|&nbsp; files: — &nbsp;|&nbsp; range: —
+</div>
+
+<!-- Query bar -->
+<div class="query-bar">
+  <label>Signal</label>
+  <input id="sig-input" type="text" list="sig-list" placeholder="signal name (empty = snapshot)">
+  <datalist id="sig-list"></datalist>
+
+  <label>Range</label>
+  <button class="btn-range" onclick="setRange(5)">5m</button>
+  <button class="btn-range" onclick="setRange(30)">30m</button>
+  <button class="btn-range" onclick="setRange(60)">1h</button>
+  <button class="btn-range" onclick="setRange(360)">6h</button>
+  <button class="btn-range" onclick="setRange(1440)">24h</button>
+
+  <label>From</label>
+  <input id="from-dt" type="datetime-local">
+  <label>To</label>
+  <input id="to-dt" type="datetime-local">
+
+  <button class="btn-query" onclick="runQuery()">Query</button>
+  <button class="btn-clear" onclick="clearResults()">Clear</button>
+  <button class="btn-export" id="btn-export" onclick="exportCsv()" disabled>Export CSV</button>
+</div>
+
+<div id="status-line" class="status-msg hidden"></div>
+<div id="error-line" class="err-msg hidden"></div>
+
+<!-- Summary cards (mode A) -->
+<div class="summary-bar hidden" id="summary-bar">
+  <div class="scard"><div class="scard-k">Signal</div><div class="scard-v" id="s-signal">—</div></div>
+  <div class="scard"><div class="scard-k">Points</div><div class="scard-v" id="s-count">—</div></div>
+  <div class="scard"><div class="scard-k">Min</div><div class="scard-v" id="s-min">—</div></div>
+  <div class="scard"><div class="scard-k">Max</div><div class="scard-v" id="s-max">—</div></div>
+  <div class="scard"><div class="scard-k">Avg</div><div class="scard-v" id="s-avg">—</div></div>
+  <div class="scard"><div class="scard-k">Span</div><div class="scard-v" id="s-span">—</div></div>
+</div>
+
+<!-- Chart (mode A) -->
+<div class="chart-wrap hidden" id="chart-wrap">
+  <canvas id="chart-canvas"></canvas>
+  <div id="chart-tooltip"></div>
+</div>
+
+<!-- Results table -->
+<div class="table-wrap hidden" id="table-wrap">
+  <div class="table-note" id="table-note"></div>
+  <table id="results-table">
+    <thead id="results-thead"></thead>
+    <tbody id="results-tbody"></tbody>
+  </table>
+</div>
+
+<!-- Snapshot note (mode B) -->
+<div id="snapshot-note" class="storage-info hidden" style="margin-bottom:12px;"></div>
+
+<script>
+// ── state ─────────────────────────────────────────────────────────────────────
+let connected = false;
+let currentData = null;   // last query result for export
+let latestFileTsMs = null; // epoch ms of most recent file
+
+function apiUrl(path) {
+  const host = document.getElementById('host-input').value.trim() || '192.168.86.34';
+  return `http://${host}:8772${path}`;
+}
+
+// ── connect / disconnect ───────────────────────────────────────────────────────
+async function toggleConnect() {
+  if (connected) {
+    disconnect();
+  } else {
+    await doConnect();
+  }
+}
+
+function disconnect() {
+  connected = false;
+  setConnStatus(false, 'disconnected');
+  document.getElementById('btn-connect').textContent = 'Connect';
+  document.getElementById('btn-connect').className = 'connecting';
+  document.getElementById('storage-info').innerHTML = 'path: — &nbsp;|&nbsp; files: — &nbsp;|&nbsp; range: —';
+  document.getElementById('sig-list').innerHTML = '';
+}
+
+async function doConnect() {
+  showStatus('connecting…');
+  try {
+    const [filesResp, sigsResp] = await Promise.all([
+      fetch(apiUrl('/query/files')),
+      fetch(apiUrl('/query/signals')),
+    ]);
+    if (!filesResp.ok) throw new Error(`/query/files ${filesResp.status}`);
+    if (!sigsResp.ok) throw new Error(`/query/signals ${sigsResp.status}`);
+    const filesData = await filesResp.json();
+    const sigsData  = await sigsResp.json();
+
+    connected = true;
+    setConnStatus(true, `connected — ${filesData.total} files`);
+    document.getElementById('btn-connect').textContent = 'Disconnect';
+    document.getElementById('btn-connect').className = 'disconnecting';
+    clearStatus();
+
+    // storage info
+    let rangeStr = '—';
+    if (filesData.files.length >= 2) {
+      const newest = filesData.files[0].ts_iso;
+      const oldest = filesData.files[filesData.files.length - 1].ts_iso;
+      rangeStr = `${fmtTs(oldest)} → ${fmtTs(newest)}`;
+    } else if (filesData.files.length === 1) {
+      rangeStr = fmtTs(filesData.files[0].ts_iso);
+    }
+    document.getElementById('storage-info').innerHTML =
+      `path: <span>${filesData.path}</span> &nbsp;|&nbsp; ` +
+      `files: <span>${filesData.total}</span> &nbsp;|&nbsp; ` +
+      `range: <span>${rangeStr}</span>`;
+
+    // default time range: last 30 min of available data
+    if (filesData.files.length > 0) {
+      const newestMs = new Date(filesData.files[0].ts_iso).getTime();
+      latestFileTsMs = newestMs;
+      setFromToAbsolute(newestMs - 30 * 60 * 1000, newestMs);
+    }
+
+    // populate datalist
+    const dl = document.getElementById('sig-list');
+    dl.innerHTML = '';
+    for (const s of sigsData.signals) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      dl.appendChild(opt);
+    }
+
+  } catch (e) {
+    setConnStatus(false, 'error');
+    showError(`Connect failed: ${e.message}`);
+  }
+}
+
+// ── time helpers ──────────────────────────────────────────────────────────────
+function toLocalInputStr(ms) {
+  // datetime-local needs "YYYY-MM-DDTHH:MM" in local time
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setFromToAbsolute(fromMs, toMs) {
+  document.getElementById('from-dt').value = toLocalInputStr(fromMs);
+  document.getElementById('to-dt').value   = toLocalInputStr(toMs);
+}
+
+function setRange(minutes) {
+  const now = latestFileTsMs || Date.now();
+  setFromToAbsolute(now - minutes * 60 * 1000, now);
+}
+
+function inputToIso(id) {
+  const v = document.getElementById(id).value;
+  if (!v) return null;
+  return new Date(v).toISOString();
+}
+
+function fmtTs(iso) {
+  return new Date(iso).toLocaleString();
+}
+
+// ── status helpers ────────────────────────────────────────────────────────────
+function setConnStatus(ok, msg) {
+  const dot = document.getElementById('conn-dot');
+  dot.className = 'dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('conn-status').innerHTML = `<span class="dot ${ok?'ok':'err'}"></span>${msg}`;
+  // replace the dot element properly
+  const statusEl = document.getElementById('conn-status');
+  statusEl.innerHTML = '';
+  const dotEl = document.createElement('span');
+  dotEl.className = 'dot ' + (ok ? 'ok' : 'err');
+  statusEl.appendChild(dotEl);
+  statusEl.appendChild(document.createTextNode(msg));
+}
+
+function showStatus(msg) {
+  const el = document.getElementById('status-line');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('error-line').classList.add('hidden');
+}
+function clearStatus() {
+  document.getElementById('status-line').classList.add('hidden');
+}
+function showError(msg) {
+  const el = document.getElementById('error-line');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('status-line').classList.add('hidden');
+}
+
+// ── query ─────────────────────────────────────────────────────────────────────
+async function runQuery() {
+  if (!connected) { showError('Not connected'); return; }
+  const signal = document.getElementById('sig-input').value.trim();
+  const fromIso = inputToIso('from-dt');
+  const toIso   = inputToIso('to-dt');
+
+  clearResults();
+  showStatus('querying…');
+
+  try {
+    if (signal) {
+      // Mode A: time series
+      if (!fromIso || !toIso) { showError('from and to required for signal query'); return; }
+      const url = apiUrl(`/query/data?signal=${encodeURIComponent(signal)}&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}&limit=500`);
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (!resp.ok) { showError(data.error || `HTTP ${resp.status}`); return; }
+      clearStatus();
+      renderTimeSeries(data);
+    } else {
+      // Mode B: snapshot
+      if (!fromIso) { showError('Set "from" datetime for snapshot'); return; }
+      const url = apiUrl(`/query/snapshot?ts=${encodeURIComponent(fromIso)}`);
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (!resp.ok) { showError(data.error || `HTTP ${resp.status}`); return; }
+      clearStatus();
+      renderSnapshot(data);
+    }
+  } catch (e) {
+    showError(`Query failed: ${e.message}`);
+  }
+}
+
+function clearResults() {
+  document.getElementById('summary-bar').classList.add('hidden');
+  document.getElementById('chart-wrap').classList.add('hidden');
+  document.getElementById('table-wrap').classList.add('hidden');
+  document.getElementById('snapshot-note').classList.add('hidden');
+  document.getElementById('btn-export').disabled = true;
+  currentData = null;
+  clearStatus();
+  document.getElementById('error-line').classList.add('hidden');
+}
+
+// ── mode A: time series ───────────────────────────────────────────────────────
+function renderTimeSeries(data) {
+  currentData = { mode: 'timeseries', data };
+  document.getElementById('btn-export').disabled = false;
+
+  const pts = data.points;
+  if (pts.length === 0) {
+    showStatus(`No data for signal "${data.signal}" in range`);
+    return;
+  }
+
+  // summary
+  const vals = pts.map(p => p.value);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const avg = vals.reduce((a,b) => a+b, 0) / vals.length;
+  const span = pts.length >= 2
+    ? timeDiff(new Date(pts[0].ts), new Date(pts[pts.length-1].ts))
+    : '—';
+
+  document.getElementById('s-signal').textContent = data.signal.length > 30
+    ? data.signal.slice(0,28)+'…' : data.signal;
+  document.getElementById('s-signal').title = data.signal;
+  document.getElementById('s-count').textContent = pts.length;
+  document.getElementById('s-min').textContent = fmt4(mn);
+  document.getElementById('s-max').textContent = fmt4(mx);
+  document.getElementById('s-avg').textContent = fmt4(avg);
+  document.getElementById('s-span').textContent = span;
+  document.getElementById('summary-bar').classList.remove('hidden');
+
+  // chart
+  document.getElementById('chart-wrap').classList.remove('hidden');
+  drawChart(pts, data.signal);
+
+  // table (up to 200 rows)
+  const MAX_ROWS = 200;
+  const shown = pts.slice(0, MAX_ROWS);
+  document.getElementById('table-note').textContent =
+    pts.length > MAX_ROWS ? `Showing ${MAX_ROWS} of ${pts.length} points` : `${pts.length} points`;
+  document.getElementById('results-thead').innerHTML = '<tr><th>Timestamp</th><th>Value</th></tr>';
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  for (const p of shown) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtTs(p.ts)}</td><td>${p.value}</td>`;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('table-wrap').classList.remove('hidden');
+}
+
+function fmt4(v) {
+  if (v === undefined || v === null) return '—';
+  if (Number.isInteger(v)) return String(v);
+  return v.toPrecision(5);
+}
+
+function timeDiff(a, b) {
+  let s = Math.abs(b - a) / 1000;
+  if (s < 60) return `${s.toFixed(0)}s`;
+  if (s < 3600) return `${(s/60).toFixed(1)}m`;
+  return `${(s/3600).toFixed(1)}h`;
+}
+
+// ── mode B: snapshot ──────────────────────────────────────────────────────────
+function renderSnapshot(data) {
+  currentData = { mode: 'snapshot', data };
+  document.getElementById('btn-export').disabled = false;
+
+  document.getElementById('snapshot-note').textContent =
+    `Snapshot from file: ${data.file}  (${fmtTs(data.file_ts)})`;
+  document.getElementById('snapshot-note').classList.remove('hidden');
+
+  const sigs = data.signals;
+  document.getElementById('table-note').textContent = `${sigs.length} signals with values`;
+  document.getElementById('results-thead').innerHTML = '<tr><th>Signal</th><th>Value</th></tr>';
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  for (const s of sigs) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${s.name}</td><td>${s.value}</td>`;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('table-wrap').classList.remove('hidden');
+}
+
+// ── chart ─────────────────────────────────────────────────────────────────────
+let _chartData = null;
+let _chartSignal = '';
+
+function drawChart(pts, signal) {
+  _chartData = pts;
+  _chartSignal = signal;
+  requestAnimationFrame(_drawChartFrame);
+}
+
+function _drawChartFrame() {
+  const canvas = document.getElementById('chart-canvas');
+  const wrap = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth - 24;
+  const H = 400;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const pts = _chartData;
+  if (!pts || pts.length === 0) return;
+
+  const PAD = { top: 20, right: 20, bottom: 50, left: 70 };
+  const CW = W - PAD.left - PAD.right;
+  const CH = H - PAD.top - PAD.bottom;
+
+  const vals = pts.map(p => p.value);
+  const times = pts.map(p => new Date(p.ts).getTime());
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const minT = Math.min(...times), maxT = Math.max(...times);
+  const rangeV = maxV - minV || 1;
+  const rangeT = maxT - minT || 1;
+
+  function xOf(t) { return PAD.left + (t - minT) / rangeT * CW; }
+  function yOf(v) { return PAD.top + (1 - (v - minV) / rangeV) * CH; }
+
+  // background
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  // grid lines
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 1;
+  const GRID_Y = 5;
+  for (let i = 0; i <= GRID_Y; i++) {
+    const y = PAD.top + (i / GRID_Y) * CH;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + CW, y); ctx.stroke();
+    const v = maxV - (i / GRID_Y) * rangeV;
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px Consolas,monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(fmt4(v), PAD.left - 5, y + 4);
+  }
+  const GRID_X = Math.min(6, pts.length - 1);
+  for (let i = 0; i <= GRID_X; i++) {
+    const t = minT + (i / GRID_X) * rangeT;
+    const x = xOf(t);
+    ctx.strokeStyle = '#30363d';
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + CH); ctx.stroke();
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px Consolas,monospace';
+    ctx.textAlign = 'center';
+    const lbl = new Date(t).toLocaleTimeString();
+    ctx.fillText(lbl, x, H - PAD.bottom + 16);
+  }
+
+  // axes
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, PAD.top);
+  ctx.lineTo(PAD.left, PAD.top + CH);
+  ctx.lineTo(PAD.left + CW, PAD.top + CH);
+  ctx.stroke();
+
+  // line
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const x = xOf(new Date(p.ts).getTime());
+    const y = yOf(p.value);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // dots
+  ctx.fillStyle = '#58a6ff';
+  for (const p of pts) {
+    const x = xOf(new Date(p.ts).getTime());
+    const y = yOf(p.value);
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2*Math.PI); ctx.fill();
+  }
+}
+
+// tooltip
+document.getElementById('chart-canvas').addEventListener('mousemove', function(e) {
+  if (!_chartData || _chartData.length === 0) return;
+  const canvas = this;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  const PAD = { top: 20, right: 20, bottom: 50, left: 70 };
+  const CW = W - PAD.left - PAD.right;
+
+  const times = _chartData.map(p => new Date(p.ts).getTime());
+  const minT = Math.min(...times), maxT = Math.max(...times);
+  const rangeT = maxT - minT || 1;
+
+  // find nearest point
+  let best = null, bestDx = Infinity;
+  for (const p of _chartData) {
+    const x = PAD.left + (new Date(p.ts).getTime() - minT) / rangeT * CW;
+    const dx = Math.abs(x - mx);
+    if (dx < bestDx) { bestDx = dx; best = p; }
+  }
+
+  const tip = document.getElementById('chart-tooltip');
+  if (best && bestDx < 30) {
+    tip.style.display = 'block';
+    tip.innerHTML = `<b>${fmtTs(best.ts)}</b><br>${best.value}`;
+    let tx = mx + 12, ty = my - 10;
+    if (tx + 180 > W) tx = mx - 180;
+    if (ty < 0) ty = 0;
+    tip.style.left = tx + 'px';
+    tip.style.top  = ty + 'px';
+  } else {
+    tip.style.display = 'none';
+  }
+});
+
+document.getElementById('chart-canvas').addEventListener('mouseleave', function() {
+  document.getElementById('chart-tooltip').style.display = 'none';
+});
+
+window.addEventListener('resize', function() {
+  if (_chartData) requestAnimationFrame(_drawChartFrame);
+});
+
+// ── export CSV ────────────────────────────────────────────────────────────────
+function exportCsv() {
+  if (!currentData) return;
+  let csv = '', filename = 'parquet_export.csv';
+  if (currentData.mode === 'timeseries') {
+    const d = currentData.data;
+    filename = `${d.signal.replace(/[^a-zA-Z0-9_]/g,'_')}_${d.from.replace(/[:.]/g,'-')}.csv`;
+    csv = 'ts,value\n' + d.points.map(p => `"${p.ts}",${p.value}`).join('\n');
+  } else {
+    const d = currentData.data;
+    filename = `snapshot_${d.file_ts.replace(/[:.]/g,'-')}.csv`;
+    csv = 'signal,value\n' + d.signals.map(s => `"${s.name}",${s.value}`).join('\n');
+  }
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+</script>
+</body>
+</html>

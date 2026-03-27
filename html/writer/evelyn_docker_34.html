@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evelyn Demo — phil-256g (.34)</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:16px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:20px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  code { font-family:'Consolas',monospace; font-size:.75rem;
+         background:var(--code-bg); padding:1px 4px; border-radius:3px; color:var(--orange); }
+
+  /* ── host bar ── */
+  .host-bar { display:flex; align-items:center; gap:10px; margin-bottom:16px;
+              background:var(--surface); border:1px solid var(--border);
+              border-radius:8px; padding:8px 12px; flex-wrap:wrap; }
+  .host-bar label { color:var(--muted); font-size:.8rem; }
+  .host-bar input { background:var(--code-bg); border:1px solid var(--border);
+                    color:var(--text); border-radius:4px; padding:4px 8px;
+                    font-family:'Consolas',monospace; font-size:.82rem; width:160px; }
+  .host-bar button { border:none; border-radius:4px; padding:5px 14px;
+                     font-size:.8rem; cursor:pointer; font-weight:600; }
+  .host-bar button:hover { opacity:.85; }
+  #btn-connect.connecting { background:var(--accent); color:#000; }
+  #btn-connect.disconnecting { background:transparent; color:var(--red);
+                                border:1px solid var(--red); }
+  #conn-status { font-size:.8rem; font-family:'Consolas',monospace; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+         margin-right:5px; background:var(--muted); }
+  .dot.ok  { background:var(--green); }
+  .dot.err { background:var(--red); }
+
+  /* ── summary cards ── */
+  .summary-bar { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:16px; }
+  @media(max-width:900px){ .summary-bar{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:500px){ .summary-bar{ grid-template-columns:repeat(2,1fr); } }
+  .scard { background:var(--surface); border:1px solid var(--border);
+           border-radius:8px; padding:10px 12px; }
+  .scard-k { font-size:.63rem; color:var(--muted); text-transform:uppercase;
+             letter-spacing:.05em; margin-bottom:3px; }
+  .scard-v { font-size:1.1rem; font-weight:700; font-family:'Consolas',monospace; }
+  .scard-sub { font-size:.66rem; color:var(--muted); margin-top:2px; }
+  .c-green  { color:var(--green); }
+  .c-yellow { color:var(--yellow); }
+  .c-accent { color:var(--accent); }
+  .c-red    { color:var(--red); }
+  .c-muted  { color:var(--muted); }
+  .c-orange { color:var(--orange); }
+
+  /* ── metrics grid ── */
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+  @media(max-width:700px){ .metrics-grid{ grid-template-columns:1fr; } }
+  .mcard { background:var(--surface); border:1px solid var(--border);
+           border-radius:8px; padding:12px 14px; }
+  .mcard h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+              letter-spacing:.05em; margin-bottom:10px;
+              padding-bottom:4px; border-bottom:1px solid var(--border); }
+  .mcard-row { display:flex; justify-content:space-between; font-size:.76rem;
+               margin-bottom:5px; align-items:baseline; }
+  .mcard-k { color:var(--muted); }
+  .mcard-v { font-family:'Consolas',monospace; color:var(--text); }
+  .mcard-v.good { color:var(--green); }
+  .mcard-v.warn { color:var(--yellow); }
+  .mcard-v.bad  { color:var(--red); }
+
+  /* ── sparkline ── */
+  .spark-wrap { background:var(--surface); border:1px solid var(--border);
+                border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+  .spark-wrap h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+                   letter-spacing:.05em; margin-bottom:8px; }
+  .spark-legend { display:flex; gap:16px; font-size:.72rem; color:var(--muted);
+                  margin-bottom:6px; }
+  .spark-legend span { display:flex; align-items:center; gap:4px; }
+  .leg-dot { width:10px; height:3px; border-radius:2px; display:inline-block; }
+  canvas { width:100%; display:block; border-radius:4px; }
+
+  /* ── compactor ── */
+  .compact-bar { background:var(--surface); border:1px solid var(--border);
+                 border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+  .compact-bar h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+                    letter-spacing:.05em; margin-bottom:10px; }
+  .compact-info { display:flex; gap:20px; flex-wrap:wrap; font-size:.78rem; }
+  .ci-item { display:flex; flex-direction:column; gap:2px; }
+  .ci-k { color:var(--muted); font-size:.68rem; }
+  .ci-v { font-family:'Consolas',monospace; font-weight:700; }
+  .progress-track { flex:1; background:var(--code-bg); border-radius:4px;
+                    height:10px; overflow:hidden; min-width:120px; }
+  .progress-fill { height:100%; border-radius:4px; background:var(--accent);
+                   transition:width .5s; }
+
+  /* ── config panel ── */
+  .config-panel { background:var(--surface); border:1px solid var(--border);
+                  border-radius:8px; padding:12px 14px; }
+  .config-panel h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+                     letter-spacing:.05em; margin-bottom:10px; }
+  .config-table { display:grid; grid-template-columns:auto 1fr; gap:4px 16px;
+                  font-size:.76rem; }
+  .cfg-k { color:var(--muted); white-space:nowrap; }
+  .cfg-v { font-family:'Consolas',monospace; color:var(--text); }
+
+  /* ── note ── */
+  .note { background:#0c2d6b22; border:1px solid var(--accent); border-radius:6px;
+          padding:8px 12px; font-size:.78rem; line-height:1.7; margin-bottom:12px; }
+
+  .poll-ts { color:var(--muted); font-size:.7rem; margin-top:4px; }
+
+  /* ── stack control panel ── */
+  .stack-panel { background:var(--surface); border:1px solid var(--border);
+                 border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+  .stack-panel h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+                    letter-spacing:.05em; margin-bottom:10px;
+                    padding-bottom:4px; border-bottom:1px solid var(--border); }
+  .stack-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .ctr-badge { display:inline-flex; align-items:center; gap:5px; font-size:.76rem;
+               font-family:'Consolas',monospace; background:var(--code-bg);
+               border:1px solid var(--border); border-radius:4px; padding:3px 8px; }
+  .btn-start { background:var(--green); color:#000; border:none; border-radius:4px;
+               padding:5px 14px; font-size:.8rem; cursor:pointer; font-weight:600; }
+  .btn-start:hover { opacity:.85; }
+  .btn-stop  { background:transparent; color:var(--red); border:1px solid var(--red);
+               border-radius:4px; padding:5px 12px; font-size:.8rem; cursor:pointer; }
+  .btn-stop:hover { background:#f8514922; }
+  .stack-msg { font-size:.76rem; color:var(--yellow); font-family:'Consolas',monospace; }
+
+  /* ── storage panel ── */
+  .storage-panel { background:var(--surface); border:1px solid var(--border);
+                   border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+  .storage-panel h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+                      letter-spacing:.05em; margin-bottom:10px;
+                      padding-bottom:4px; border-bottom:1px solid var(--border); }
+  .storage-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .storage-row input { background:var(--code-bg); border:1px solid var(--border);
+                       color:var(--text); border-radius:4px; padding:4px 8px;
+                       font-family:'Consolas',monospace; font-size:.82rem; width:300px; }
+  .storage-hint { font-size:.72rem; color:var(--muted); margin-top:5px; font-family:'Consolas',monospace; }
+
+  /* ── bridge config panel ── */
+  .bridge-panel { background:var(--surface); border:1px solid var(--border);
+                  border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+  .bridge-panel h3 { font-size:.78rem; color:var(--muted); text-transform:uppercase;
+                     letter-spacing:.05em; margin-bottom:10px;
+                     padding-bottom:4px; border-bottom:1px solid var(--border); }
+  .bridge-form { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .bridge-form label { color:var(--muted); font-size:.78rem; white-space:nowrap; }
+  .bridge-form input { background:var(--code-bg); border:1px solid var(--border);
+                       color:var(--text); border-radius:4px; padding:4px 8px;
+                       font-family:'Consolas',monospace; font-size:.82rem; }
+  .bridge-form input.addr { width:160px; }
+  .bridge-form input.port { width:70px; }
+  .bridge-form input.topic { width:110px; }
+  .btn-apply { background:var(--accent); color:#000; border:none; border-radius:4px;
+               padding:5px 14px; font-size:.8rem; cursor:pointer; font-weight:600; }
+  .btn-apply:hover { opacity:.85; }
+  .btn-clear { background:transparent; color:var(--red); border:1px solid var(--red);
+               border-radius:4px; padding:5px 12px; font-size:.8rem; cursor:pointer; }
+  .btn-clear:hover { background:#f8514922; }
+  .bridge-status { display:flex; align-items:center; gap:8px; margin-top:8px;
+                   font-size:.76rem; font-family:'Consolas',monospace; }
+  .bridge-active { color:var(--green); }
+  .bridge-inactive { color:var(--muted); }
+  .bridge-msg { color:var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="demo2_compare.html">Demo2 Compare</a>
+  <a href="demo_eval.html">Pipeline Eval</a>
+  <a href="stress_report_34.html">Stress Report .34</a>
+  <a href="evelyn_docker_34.html" class="here">Evelyn .34 Live</a>
+  <a href="parquet_viewer.html">Parquet Viewer</a>
+</div>
+
+<h1>Evelyn Demo — phil-256g (.34)</h1>
+<p class="subtitle">1 unit · 175 msg/s · smooth mode · parquet-writer:latest · compactor enabled (10 min)</p>
+
+<!-- Host / connect bar -->
+<div class="host-bar">
+  <label>Host</label>
+  <input id="host" type="text" value="192.168.86.34">
+  <label>Port</label>
+  <input id="port" type="text" value="8771" style="width:70px">
+  <button id="btn-connect" class="connecting" onclick="toggleConnect()">Connect</button>
+  <span id="conn-status"><span class="dot" id="dot"></span><span id="conn-text">disconnected</span></span>
+  <span class="poll-ts" id="poll-ts"></span>
+</div>
+
+<!-- System layout diagram -->
+<details open style="margin-bottom:12px;">
+<summary style="color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;user-select:none;padding:8px 0;">System Layout</summary>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;overflow-x:auto;">
+<svg viewBox="0 0 860 375" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:640px;display:block;">
+<defs>
+  <marker id="am" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <path d="M0,0 L7,3.5 L0,7 Z" fill="#8b949e"/>
+  </marker>
+  <marker id="ag" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <path d="M0,0 L7,3.5 L0,7 Z" fill="#3fb950"/>
+  </marker>
+  <marker id="ab" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <path d="M0,0 L7,3.5 L0,7 Z" fill="#58a6ff"/>
+  </marker>
+  <marker id="ao" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <path d="M0,0 L7,3.5 L0,7 Z" fill="#d29922"/>
+  </marker>
+  <marker id="ap" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <path d="M0,0 L7,3.5 L0,7 Z" fill="#bc8cff"/>
+  </marker>
+  <style>
+    .lbl  { font:600 11px 'Segoe UI',sans-serif; }
+    .lbl2 { font:400 10px 'Segoe UI',sans-serif; }
+    .mono { font:400 10px 'Consolas',monospace; }
+    .ca   { fill:#58a6ff; }
+    .cg   { fill:#3fb950; }
+    .co   { fill:#d29922; }
+    .cm   { fill:#8b949e; }
+    .cp   { fill:#bc8cff; }
+    .ct   { fill:#c9d1d9; }
+  </style>
+</defs>
+
+<!-- ── HOST box ─────────────────────────────────────────────────────── -->
+<rect x="148" y="8"  width="704" height="308" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+<text x="163" y="26" class="lbl cm">HOST: phil-256g (.34)  —  192.168.86.34</text>
+
+<!-- ── REMOTE box (outside host) ──────────────────────────────────── -->
+<rect x="4"  y="52" width="136" height="124" rx="5" fill="#d2992210" stroke="#d29922" stroke-width="1.5" stroke-dasharray="5,3"/>
+<text x="11" y="70"  class="lbl2 co">REMOTE (optional)</text>
+<rect x="12" y="78"  width="120" height="84" rx="4" fill="#21262d" stroke="#d29922" stroke-width="1"/>
+<text x="20" y="97"  class="lbl co">EMS / gx10</text>
+<text x="20" y="111" class="lbl2 cm">any MQTT broker</text>
+<text x="20" y="126" class="mono cm">:1883</text>
+<text x="20" y="144" class="lbl2 co">→ FlashMQ bridge</text>
+
+<!-- ── Docker network box ─────────────────────────────────────────── -->
+<rect x="158" y="38" width="428" height="264" rx="5" fill="#58a6ff0a" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="168" y="55"  class="lbl2 ca">Docker  —  evelyn34_net (bridge)</text>
+
+<!-- ── evelyn34_broker ────────────────────────────────────────────── -->
+<rect x="168" y="63" width="182" height="116" rx="4" fill="#0c1f40" stroke="#58a6ff" stroke-width="1.5"/>
+<text x="177" y="81"  class="lbl ca">evelyn34_broker</text>
+<text x="177" y="95"  class="lbl2 cm">FlashMQ 1.26</text>
+<text x="177" y="111" class="mono cm">:1883  (internal)</text>
+<text x="177" y="126" class="mono cm">:11883 (host port)</text>
+<text x="177" y="141" class="lbl2 cm">fan-out: ems/#</text>
+<text x="177" y="155" class="lbl2 cm">bridge config: flashmq.conf</text>
+
+<!-- ── evelyn34_writer ────────────────────────────────────────────── -->
+<rect x="368" y="63" width="205" height="116" rx="4" fill="#0a1c0e" stroke="#3fb950" stroke-width="1.5"/>
+<text x="377" y="81"  class="lbl cg">evelyn34_writer</text>
+<text x="377" y="95"  class="lbl2 cm">parquet-writer:latest</text>
+<text x="377" y="111" class="mono cm">health :8771</text>
+<text x="377" y="126" class="lbl2 cm">sub: ems/#  qos 0</text>
+<text x="377" y="141" class="lbl2 cm">snappy · flush 10s</text>
+<text x="377" y="155" class="lbl2 cm">compact 600s · min_files 3</text>
+
+<!-- ── volume mount (inside docker) ──────────────────────────────── -->
+<rect x="368" y="193" width="205" height="94" rx="4" fill="#1c1c1c" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
+<text x="377" y="211" class="lbl2 cm">volume: /data/parquet</text>
+<text x="377" y="227" class="mono ct">= ${PARQUET_PATH}</text>
+<text x="377" y="243" class="mono cm">  /mnt/tort-sdf/evelyn/</text>
+<text x="377" y="259" class="lbl2 cm">853 GB free · ext4</text>
+<text x="377" y="274" class="lbl2 cm">parquet partitions + compacted</text>
+
+<!-- ── stress_real_pub (native) ───────────────────────────────────── -->
+<rect x="598" y="38" width="246" height="116" rx="4" fill="#0a1a08" stroke="#3fb950" stroke-width="1.5"/>
+<text x="607" y="56"  class="lbl cg">stress_real_pub</text>
+<text x="607" y="70"  class="lbl2 cm">native on host</text>
+<text x="607" y="86"  class="mono cm">1 unit · 175 msg/s</text>
+<text x="607" y="101" class="lbl2 cm">smooth (1s cadence)</text>
+<text x="607" y="116" class="mono cm">→ localhost:11883</text>
+<text x="607" y="131" class="lbl2 cm">pid: /tmp/evelyn34_sim.pid</text>
+<text x="607" y="146" class="lbl2 cm">log: /data/logs/YYYY/MM/DD/</text>
+
+<!-- ── bridge_api.py (native) ────────────────────────────────────── -->
+<rect x="598" y="170" width="246" height="132" rx="4" fill="#140c28" stroke="#bc8cff" stroke-width="1.5"/>
+<text x="607" y="188" class="lbl cp">bridge_api[_native].py</text>
+<text x="607" y="202" class="lbl2 cm">native on host  ·  :8772</text>
+<text x="607" y="219" class="mono cm">GET  /status</text>
+<text x="607" y="233" class="mono cm">POST /start  /stop</text>
+<text x="607" y="247" class="mono cm">GET|POST /storage</text>
+<text x="607" y="261" class="mono cm">GET|POST /bridge</text>
+<text x="607" y="275" class="mono cm">POST /bridge/clear</text>
+<text x="607" y="292" class="lbl2 cm">Docker: docker compose/restart</text>
+
+<!-- ── Dashboard ─────────────────────────────────────────────────── -->
+<rect x="272" y="338" width="312" height="32" rx="5" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+<text x="282" y="351" class="lbl cm">Dashboard  (browser · .46:8080)</text>
+<text x="282" y="364" class="mono cm">health :8771    mgmt :8772</text>
+
+<!-- ── Arrows ────────────────────────────────────────────────────── -->
+
+<!-- Remote → broker  (dashed orange) -->
+<line x1="140" y1="115" x2="168" y2="115" stroke="#d29922" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#ao)"/>
+
+<!-- stress_real_pub → broker via :11883 -->
+<line x1="598" y1="100" x2="350" y2="100" stroke="#3fb950" stroke-width="1.5" marker-end="url(#ag)"/>
+<text x="432" y="95"  class="lbl2 cm">:11883</text>
+
+<!-- broker → writer  (internal, solid blue) -->
+<line x1="350" y1="121" x2="368" y2="121" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#ab)"/>
+<text x="351" y="116" class="lbl2 ca">ems/#</text>
+
+<!-- writer → volume mount -->
+<line x1="470" y1="179" x2="470" y2="193" stroke="#8b949e" stroke-width="1.5" marker-end="url(#am)"/>
+
+<!-- bridge_api → broker (dashed purple — config + restart) -->
+<path d="M598,225 L530,225 L530,155 L350,155" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="5,3" fill="none" marker-end="url(#ap)"/>
+<text x="394" y="218" class="lbl2 cp">config + restart</text>
+
+<!-- dashboard → writer health :8771  (dashed muted) -->
+<path d="M360,338 L360,315 L470,315 L470,287" stroke="#8b949e" stroke-width="1" stroke-dasharray="4,3" fill="none" marker-end="url(#am)"/>
+<text x="364" y="311" class="lbl2 cm">:8771</text>
+
+<!-- dashboard → bridge_api :8772  (dashed purple) -->
+<path d="M528,338 L528,315 L720,315 L720,302" stroke="#bc8cff" stroke-width="1" stroke-dasharray="4,3" fill="none" marker-end="url(#ap)"/>
+<text x="640" y="311" class="lbl2 cp">:8772</text>
+
+</svg>
+</div>
+</details>
+
+<!-- Stack control -->
+<div class="stack-panel">
+  <h3>Stack Control — bridge_api :8772</h3>
+  <div class="stack-row">
+    <span class="ctr-badge"><span class="dot" id="st-br-dot"></span><span id="st-br">broker —</span></span>
+    <span class="ctr-badge"><span class="dot" id="st-wr-dot"></span><span id="st-wr">writer —</span></span>
+    <span class="ctr-badge"><span class="dot" id="st-sim-dot"></span><span id="st-sim">sim —</span></span>
+    <button class="btn-start" onclick="stackStart()">Start Stack</button>
+    <button class="btn-stop"  onclick="stackStop()">Stop Stack</button>
+    <span class="stack-msg" id="stack-msg"></span>
+  </div>
+</div>
+
+<!-- Storage path -->
+<div class="storage-panel">
+  <h3>Parquet Storage Path</h3>
+  <div class="storage-row">
+    <input id="stor-path" type="text" placeholder="/mnt/tort-sdf/evelyn">
+    <button class="btn-apply" onclick="applyStorage()">Apply &amp; Restart Writer</button>
+  </div>
+  <div class="storage-hint" id="stor-hint"></div>
+</div>
+
+<!-- Bridge config panel -->
+<div class="bridge-panel">
+  <h3>FlashMQ Data Source Bridge</h3>
+  <div class="bridge-form">
+    <label>Source host</label>
+    <input id="br-addr"  class="addr"  type="text"   placeholder="e.g. 192.168.86.48">
+    <label>Port</label>
+    <input id="br-port"  class="port"  type="number" value="1883">
+    <label>Topic</label>
+    <input id="br-topic" class="topic" type="text"   value="ems/#">
+    <button class="btn-apply" onclick="applyBridge()">Apply &amp; Restart Broker</button>
+    <button class="btn-clear" onclick="clearBridge()">Clear Bridge</button>
+  </div>
+  <div class="bridge-status">
+    <span class="dot" id="br-dot"></span>
+    <span id="br-status" class="bridge-inactive">loading...</span>
+    <span id="br-msg" class="bridge-msg"></span>
+  </div>
+</div>
+
+<!-- Summary cards -->
+<div class="summary-bar">
+  <div class="scard">
+    <div class="scard-k">msg/s (live)</div>
+    <div class="scard-v c-accent" id="s-mps">—</div>
+    <div class="scard-sub">from health delta</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">rows/s (live)</div>
+    <div class="scard-v c-green" id="s-rps">—</div>
+    <div class="scard-sub">rows written</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Total rows</div>
+    <div class="scard-v c-accent" id="s-rows">—</div>
+    <div class="scard-sub">since start</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Flush avg</div>
+    <div class="scard-v c-yellow" id="s-favg">—</div>
+    <div class="scard-sub" id="s-fmax-sub">max — ms</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Disk free</div>
+    <div class="scard-v c-green" id="s-disk">—</div>
+    <div class="scard-sub">/mnt/tort-sdf</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Drops</div>
+    <div class="scard-v c-green" id="s-drops">0</div>
+    <div class="scard-sub">overflow + ring</div>
+  </div>
+</div>
+
+<!-- Sparkline -->
+<div class="spark-wrap">
+  <h3>Live throughput — last 5 minutes</h3>
+  <div class="spark-legend">
+    <span><span class="leg-dot" style="background:var(--accent)"></span> msg/s</span>
+    <span><span class="leg-dot" style="background:var(--green)"></span> rows/s</span>
+  </div>
+  <canvas id="spark" height="80"></canvas>
+</div>
+
+<!-- Metrics detail -->
+<div class="metrics-grid">
+  <div class="mcard">
+    <h3>Ingest</h3>
+    <div class="mcard-row">
+      <span class="mcard-k">msgs received</span>
+      <span class="mcard-v" id="m-msgs">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">buffer rows</span>
+      <span class="mcard-v" id="m-buf">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">overflow drops</span>
+      <span class="mcard-v" id="m-ovf">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">ring drops</span>
+      <span class="mcard-v" id="m-ring">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">ring used / cap</span>
+      <span class="mcard-v" id="m-ringc">—</span>
+    </div>
+  </div>
+  <div class="mcard">
+    <h3>Flush</h3>
+    <div class="mcard-row">
+      <span class="mcard-k">flush count</span>
+      <span class="mcard-v" id="m-fc">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">last flush rows</span>
+      <span class="mcard-v" id="m-lfr">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">flush avg ms</span>
+      <span class="mcard-v" id="m-favg">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">flush max ms</span>
+      <span class="mcard-v" id="m-fmax">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">flush active</span>
+      <span class="mcard-v" id="m-fact">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">total rows written</span>
+      <span class="mcard-v" id="m-rows">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- Compactor -->
+<div class="compact-bar">
+  <h3>Compactor — 10-minute merge (min_files: 3)</h3>
+  <div class="compact-info">
+    <div class="ci-item">
+      <span class="ci-k">interval</span>
+      <span class="ci-v c-accent">600 s</span>
+    </div>
+    <div class="ci-item">
+      <span class="ci-k">min_files</span>
+      <span class="ci-v">3</span>
+    </div>
+    <div class="ci-item">
+      <span class="ci-k">next run in</span>
+      <span class="ci-v c-yellow" id="compact-eta">—</span>
+    </div>
+    <div class="ci-item" style="flex:1; min-width:160px;">
+      <span class="ci-k">cycle progress</span>
+      <div class="progress-track" style="margin-top:6px;">
+        <div class="progress-fill" id="compact-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="ci-item">
+      <span class="ci-k">flush files / window</span>
+      <span class="ci-v" id="compact-files">~60 per 10 min</span>
+    </div>
+    <div class="ci-item">
+      <span class="ci-k">expected chunk rows</span>
+      <span class="ci-v">~156 k</span>
+    </div>
+  </div>
+</div>
+
+<div class="metrics-grid">
+  <!-- WAL / guard -->
+  <div class="mcard">
+    <h3>WAL / Guard</h3>
+    <div class="mcard-row">
+      <span class="mcard-k">WAL enabled</span>
+      <span class="mcard-v c-muted">false</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">WAL replay rows</span>
+      <span class="mcard-v" id="m-wal">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">disk free</span>
+      <span class="mcard-v" id="m-disk">—</span>
+    </div>
+    <div class="mcard-row">
+      <span class="mcard-k">guard min_free_gb</span>
+      <span class="mcard-v">1.0 GB</span>
+    </div>
+  </div>
+  <!-- Config -->
+  <div class="mcard">
+    <h3>Stack Config</h3>
+    <div class="config-table">
+      <span class="cfg-k">image</span>      <span class="cfg-v">parquet-writer:latest</span>
+      <span class="cfg-k">topic</span>      <span class="cfg-v">ems/#</span>
+      <span class="cfg-k">broker</span>     <span class="cfg-v">evelyn34_broker :11883</span>
+      <span class="cfg-k">generator</span>  <span class="cfg-v">stress_real_pub (native)</span>
+      <span class="cfg-k">units</span>      <span class="cfg-v">1 unit · 175 msg/s</span>
+      <span class="cfg-k">mode</span>       <span class="cfg-v">smooth (g_slow_interval_ms=1000)</span>
+      <span class="cfg-k">flush</span>      <span class="cfg-v">10 s · 50k rows/part</span>
+      <span class="cfg-k">compression</span><span class="cfg-v">snappy</span>
+      <span class="cfg-k">compact</span>    <span class="cfg-v">600 s · min_files=3</span>
+      <span class="cfg-k">parquet</span>    <span class="cfg-v">/mnt/tort-sdf/evelyn/</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const POLL_MS = 3000;
+const BRIDGE_API_PORT = 8772;
+
+// ── Stack management API ────────────────────────────────────────────────────
+function apiUrl(path) {
+  const host = document.getElementById('host').value.trim();
+  return `http://${host}:${BRIDGE_API_PORT}${path}`;
+}
+
+// dot colour helpers
+function dotClass(state) {
+  if (state === 'running') return 'dot ok';
+  if (state === 'absent' || state === 'exited') return 'dot err';
+  return 'dot';
+}
+
+function renderStatus(s) {
+  if (!s) {
+    ['st-br-dot','st-wr-dot','st-sim-dot'].forEach(id =>
+      document.getElementById(id).className = 'dot err');
+    document.getElementById('st-br').textContent  = 'broker — unreachable';
+    document.getElementById('st-wr').textContent  = 'writer — unreachable';
+    document.getElementById('st-sim').textContent = 'sim — ?';
+    return;
+  }
+  const b = s.broker, w = s.writer, sim = s.sim;
+  document.getElementById('st-br-dot').className = dotClass(b.state);
+  document.getElementById('st-br').textContent   =
+    `broker — ${b.state}${b.health ? ' ('+b.health+')' : ''}`;
+  document.getElementById('st-wr-dot').className = dotClass(w.state);
+  document.getElementById('st-wr').textContent   = `writer — ${w.state}`;
+  document.getElementById('st-sim-dot').className = sim.running ? 'dot ok' : 'dot';
+  document.getElementById('st-sim').textContent  =
+    sim.running ? `sim — running (pid ${sim.pid})` : 'sim — stopped';
+
+  // populate storage if empty
+  const sp = document.getElementById('stor-path');
+  if (!sp.value && s.storage) sp.value = s.storage;
+
+  // populate bridge fields
+  renderBridgeState(s.bridge);
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch(apiUrl('/status'), { signal: AbortSignal.timeout(4000) });
+    renderStatus(await r.json());
+  } catch { renderStatus(null); }
+}
+
+async function stackStart() {
+  const msg = document.getElementById('stack-msg');
+  msg.textContent = 'starting…';
+  try {
+    const r = await fetch(apiUrl('/start'), { method:'POST', signal: AbortSignal.timeout(40000) });
+    const j = await r.json();
+    msg.textContent = j.ok ? 'started' : ('error: ' + j.output);
+    setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 2000);
+  } catch(e) { msg.textContent = 'error: ' + e.message; }
+}
+
+async function stackStop() {
+  const msg = document.getElementById('stack-msg');
+  msg.textContent = 'stopping…';
+  try {
+    const r = await fetch(apiUrl('/stop'), { method:'POST', signal: AbortSignal.timeout(40000) });
+    const j = await r.json();
+    msg.textContent = j.ok ? 'stopped' : ('error: ' + j.output);
+    setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 2000);
+  } catch(e) { msg.textContent = 'error: ' + e.message; }
+}
+
+// ── Storage ─────────────────────────────────────────────────────────────────
+async function applyStorage() {
+  const path = document.getElementById('stor-path').value.trim();
+  const hint = document.getElementById('stor-hint');
+  if (!path) { hint.textContent = 'path required'; return; }
+  hint.textContent = 'applying…';
+  try {
+    const r = await fetch(apiUrl('/storage'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+      signal: AbortSignal.timeout(40000),
+    });
+    const j = await r.json();
+    if (j.error) {
+      hint.textContent = j.error;
+    } else {
+      hint.textContent = j.ok ? `set → ${j.path}` : ('error: ' + j.output);
+    }
+    setTimeout(() => fetchStatus(), 3000);
+  } catch(e) { hint.textContent = 'error: ' + e.message; }
+}
+
+// ── Bridge ──────────────────────────────────────────────────────────────────
+function renderBridgeState(b) {
+  const dot  = document.getElementById('br-dot');
+  const stat = document.getElementById('br-status');
+  if (!b) {
+    dot.className  = 'dot';
+    stat.textContent = 'bridge_api unreachable';
+    stat.className = 'bridge-inactive';
+    return;
+  }
+  if (b.enabled) {
+    dot.className  = 'dot ok';
+    stat.textContent = `bridging from  ${b.address}:${b.port}  topic: ${b.topic}`;
+    stat.className = 'bridge-active';
+    document.getElementById('br-addr').value  = b.address;
+    document.getElementById('br-port').value  = b.port;
+    document.getElementById('br-topic').value = b.topic;
+  } else {
+    dot.className  = 'dot';
+    stat.textContent = 'no bridge — local only (stress_real_pub → :11883)';
+    stat.className = 'bridge-inactive';
+  }
+}
+
+async function fetchBridgeState() { await fetchStatus(); }
+
+async function applyBridge() {
+  const addr  = document.getElementById('br-addr').value.trim();
+  const port  = parseInt(document.getElementById('br-port').value) || 1883;
+  const topic = document.getElementById('br-topic').value.trim() || 'ems/#';
+  const msg   = document.getElementById('br-msg');
+  if (!addr) { msg.textContent = 'address required'; return; }
+  msg.textContent = 'applying…';
+  try {
+    const r = await fetch(apiUrl('/bridge'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: addr, port, topic }),
+      signal: AbortSignal.timeout(35000),
+    });
+    const j = await r.json();
+    msg.textContent = j.ok ? 'applied — broker restarting' : ('error: ' + (j.error||''));
+    setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 3000);
+  } catch(e) { msg.textContent = 'error: ' + e.message; }
+}
+
+async function clearBridge() {
+  const msg = document.getElementById('br-msg');
+  msg.textContent = 'clearing…';
+  try {
+    const r = await fetch(apiUrl('/bridge/clear'), {
+      method:'POST', signal: AbortSignal.timeout(35000),
+    });
+    const j = await r.json();
+    msg.textContent = j.ok ? 'bridge removed — broker restarting' : ('error: ' + (j.error||''));
+    setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 3000);
+  } catch(e) { msg.textContent = 'error: ' + e.message; }
+}
+let timer = null;
+let prev = null;
+let prevTime = null;
+let startTime = null;
+let history = [];   // {t, mps, rps}
+const MAX_HIST = 100; // ~5 min at 3s poll
+
+// ── compact cycle tracker ──────────────────────────────────────────────────
+const COMPACT_INTERVAL = 600;
+let compactStart = null;
+
+function fmtNum(n) {
+  if (n === undefined || n === null) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + ' B';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + ' M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + ' k';
+  return String(n);
+}
+
+function fmtRate(r) {
+  if (r === null || r < 0) return '—';
+  if (r >= 1e6) return (r/1e6).toFixed(2) + ' M/s';
+  if (r >= 1e3) return (r/1e3).toFixed(1) + ' k/s';
+  return r.toFixed(0) + '/s';
+}
+
+function setEl(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  if (cls) { el.className = 'scard-v ' + cls; }
+}
+
+function setMCard(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  el.className = 'mcard-v' + (cls ? ' ' + cls : '');
+}
+
+function dropClass(n) {
+  return n === 0 ? 'good' : 'bad';
+}
+
+function updateCompactETA() {
+  if (!compactStart) return;
+  const elapsed = (Date.now() - compactStart) / 1000;
+  const remaining = COMPACT_INTERVAL - (elapsed % COMPACT_INTERVAL);
+  const pct = ((elapsed % COMPACT_INTERVAL) / COMPACT_INTERVAL * 100).toFixed(0);
+  document.getElementById('compact-eta').textContent =
+    remaining.toFixed(0) + ' s';
+  document.getElementById('compact-bar').style.width = pct + '%';
+}
+
+function render(j) {
+  const now = Date.now();
+  let mps = null, rps = null;
+  if (prev && prevTime) {
+    const dt = (now - prevTime) / 1000;
+    if (dt > 0) {
+      mps = Math.max(0, (j.msgs_received - prev.msgs_received) / dt);
+      rps = Math.max(0, (j.total_rows_written - prev.total_rows_written) / dt);
+    }
+  }
+  prev = j;
+  prevTime = now;
+  if (!startTime) { startTime = now; compactStart = now; }
+
+  history.push({ t: now, mps: mps ?? 0, rps: rps ?? 0 });
+  if (history.length > MAX_HIST) history.shift();
+
+  // summary
+  setEl('s-mps', mps !== null ? fmtRate(mps) : '—', mps !== null ? 'c-accent' : 'c-muted');
+  setEl('s-rps', rps !== null ? fmtRate(rps) : '—', rps !== null ? 'c-green' : 'c-muted');
+  setEl('s-rows', fmtNum(j.total_rows_written));
+  setEl('s-favg', j.flush_avg_ms + ' ms', 'c-yellow');
+  document.getElementById('s-fmax-sub').textContent = 'max ' + j.flush_max_ms + ' ms';
+  setEl('s-disk', j.disk_free_gb.toFixed(0) + ' GB', j.disk_free_gb > 50 ? 'c-green' : 'c-red');
+  const drops = j.overflow_drops + j.ring_drops;
+  setEl('s-drops', drops === 0 ? '0' : drops.toString(), drops === 0 ? 'c-green' : 'c-red');
+
+  // ingest
+  setMCard('m-msgs', fmtNum(j.msgs_received));
+  setMCard('m-buf',  fmtNum(j.buffer_rows));
+  setMCard('m-ovf',  j.overflow_drops, dropClass(j.overflow_drops));
+  setMCard('m-ring', j.ring_drops, dropClass(j.ring_drops));
+  setMCard('m-ringc', j.ring_used + ' / ' + fmtNum(j.ring_cap));
+
+  // flush
+  setMCard('m-fc',   j.flush_count);
+  setMCard('m-lfr',  fmtNum(j.last_flush_rows));
+  setMCard('m-favg', j.flush_avg_ms + ' ms');
+  setMCard('m-fmax', j.flush_max_ms + ' ms', j.flush_max_ms > 500 ? 'warn' : '');
+  setMCard('m-fact', j.flush_active ? 'yes' : 'no', j.flush_active ? 'warn' : 'good');
+  setMCard('m-rows', fmtNum(j.total_rows_written));
+
+  // wal/guard
+  setMCard('m-wal',  j.wal_replay_rows);
+  setMCard('m-disk', j.disk_free_gb.toFixed(1) + ' GB',
+           j.disk_free_gb > 50 ? 'good' : j.disk_free_gb > 5 ? 'warn' : 'bad');
+
+  updateCompactETA();
+  drawSpark();
+}
+
+// ── Sparkline ──────────────────────────────────────────────────────────────
+function drawSpark() {
+  const canvas = document.getElementById('spark');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth, H = canvas.offsetHeight || 80;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = getComputedStyle(document.documentElement)
+                    .getPropertyValue('--code-bg').trim();
+  ctx.fillRect(0, 0, W, H);
+
+  if (history.length < 2) return;
+
+  const mpsVals = history.map(h => h.mps);
+  const rpsVals = history.map(h => h.rps);
+  const maxV = Math.max(...mpsVals, ...rpsVals, 1);
+
+  function drawLine(vals, color) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    vals.forEach((v, i) => {
+      const x = (i / (history.length - 1)) * W;
+      const y = H - 4 - (v / maxV) * (H - 8);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  drawLine(mpsVals, '#58a6ff');
+  drawLine(rpsVals, '#3fb950');
+
+  // y-axis label
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '9px Consolas, monospace';
+  ctx.fillText(fmtRate(maxV), 2, 10);
+}
+
+// ── Polling ────────────────────────────────────────────────────────────────
+async function poll() {
+  const host = document.getElementById('host').value.trim();
+  const port = document.getElementById('port').value.trim();
+  const dot  = document.getElementById('dot');
+  const txt  = document.getElementById('conn-text');
+  const ts   = document.getElementById('poll-ts');
+  try {
+    const r = await fetch(`http://${host}:${port}/health`,
+                          { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    dot.className = 'dot ok';
+    txt.textContent = host + ':' + port;
+    ts.textContent = new Date().toLocaleTimeString();
+    render(j);
+  } catch(e) {
+    dot.className = 'dot err';
+    txt.textContent = 'error: ' + e.message;
+  }
+}
+
+let statusTimer = null;
+
+function setConnected(yes) {
+  const btn = document.getElementById('btn-connect');
+  if (yes) {
+    btn.textContent = 'Disconnect';
+    btn.className = 'disconnecting';
+  } else {
+    btn.textContent = 'Connect';
+    btn.className = 'connecting';
+    document.getElementById('dot').className = 'dot';
+    document.getElementById('conn-text').textContent = 'disconnected';
+    document.getElementById('poll-ts').textContent = '';
+  }
+}
+
+function stopPolling() {
+  if (timer)       { clearInterval(timer);       timer = null; }
+  if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+  prev = null; prevTime = null; startTime = null;
+  compactStart = null; history = [];
+  setConnected(false);
+}
+
+function startPolling() {
+  stopPolling();
+  poll();
+  timer = setInterval(poll, POLL_MS);
+  fetchStatus();
+  statusTimer = setInterval(fetchStatus, 10000);
+  setConnected(true);
+}
+
+function toggleConnect() {
+  if (timer) stopPolling(); else startPolling();
+}
+
+// compact progress ticks every second
+setInterval(() => { if (compactStart) updateCompactETA(); }, 1000);
+
+// auto-start
+window.addEventListener('load', startPolling);
+window.addEventListener('resize', drawSpark);
+</script>
+</body>
+</html>

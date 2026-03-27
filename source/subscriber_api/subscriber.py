@@ -47,6 +47,11 @@ import paho.mqtt.client as mqtt
 import websockets
 import yaml
 
+from backends.duckdb_backend import DuckDBBackend
+from backends.influxdb2 import InfluxDB2Backend
+from router import QueryRouter
+import http_server as _http
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
@@ -188,7 +193,7 @@ async def _broadcast(msg: dict) -> None:
     )
 
 
-async def _ws_handler(websocket, cfg: dict) -> None:
+async def _ws_handler(websocket, cfg: dict, router=None) -> None:
     _clients.add(websocket)
     log.info("Client connected %s  (total: %d)", websocket.remote_address, len(_clients))
     try:
@@ -211,9 +216,15 @@ async def _ws_handler(websocket, cfg: dict) -> None:
             t0 = time.monotonic()
             try:
                 loop = asyncio.get_running_loop()
-                cols, rows = await loop.run_in_executor(
-                    _executor, _query_history, cfg, site, instance, from_ts, to_ts, limit
-                )
+                if router:
+                    cols, rows, backend = await loop.run_in_executor(
+                        _executor, router.query, site, instance, from_ts, to_ts, limit
+                    )
+                else:
+                    cols, rows = await loop.run_in_executor(
+                        _executor, _query_history, cfg, site, instance, from_ts, to_ts, limit
+                    )
+                    backend = "duckdb"
                 elapsed = int((time.monotonic() - t0) * 1000)
                 await websocket.send(json.dumps({
                     "type":       "history",
@@ -222,7 +233,7 @@ async def _ws_handler(websocket, cfg: dict) -> None:
                     "rows":       [list(r) for r in rows],
                     "total":      len(rows),
                     "elapsed_ms": elapsed,
-                    "backend":    "duckdb",
+                    "backend":    backend,
                 }, default=str))
                 log.info("History  site=%s  instance=%s  rows=%d  %dms",
                          site, instance, len(rows), elapsed)
@@ -260,6 +271,7 @@ def _start_mqtt(cfg: dict, loop: asyncio.AbstractEventLoop) -> None:
             for topic in topics:
                 client.subscribe(topic)
             log.info("MQTT connected %s:%d  topics=%s", host, port, topics)
+            _http.set_live_status(True, url, topics)
         else:
             log.warning("MQTT connect failed rc=%d", rc)
 
@@ -273,6 +285,7 @@ def _start_mqtt(cfg: dict, loop: asyncio.AbstractEventLoop) -> None:
 
     def on_disconnect(client, userdata, rc):
         log.warning("MQTT disconnected rc=%d — paho will reconnect", rc)
+        _http.set_live_status(False, url, topics)
 
     client = mqtt.Client()
     client.on_connect    = on_connect
@@ -288,12 +301,33 @@ def _start_mqtt(cfg: dict, loop: asyncio.AbstractEventLoop) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _build_router(cfg: dict) -> QueryRouter | None:
+    """Build QueryRouter if both backends are configured; return None if not."""
+    has_influx = "influxdb2" in cfg
+    has_duckdb = "s3" in cfg
+    if not (has_influx and has_duckdb):
+        log.info("Router disabled — missing influxdb2 or s3 config; using DuckDB only")
+        return None
+    cold = DuckDBBackend(cfg)
+    hot  = InfluxDB2Backend(cfg)
+    router_cfg = cfg.get("router", {})
+    secs = router_cfg.get("hot_window_seconds")
+    days = router_cfg.get("hot_window_days", 90)
+    if secs is not None:
+        log.info("QueryRouter: hot=influxdb2  cold=duckdb  window=%ds", secs)
+        return QueryRouter(hot, cold, hot_window_seconds=secs)
+    log.info("QueryRouter: hot=influxdb2  cold=duckdb  window=%dd", days)
+    return QueryRouter(hot, cold, hot_window_days=days)
+
+
 async def run(cfg: dict) -> None:
     global _loop
     _loop = asyncio.get_running_loop()
 
-    host = cfg["server"].get("host", "0.0.0.0")
-    port = cfg["server"].get("port", 8767)
+    host     = cfg["server"].get("host", "0.0.0.0")
+    ws_port  = cfg["server"].get("ws_port",   cfg["server"].get("port", 8767))
+    http_port = cfg["server"].get("http_port", 8768)
+    router   = _build_router(cfg)
 
     mqtt_thread = threading.Thread(
         target=_start_mqtt, args=(cfg, _loop), daemon=True, name="mqtt-live"
@@ -306,12 +340,16 @@ async def run(cfg: dict) -> None:
     loop.add_signal_handler(signal.SIGTERM, stop.set)
 
     async def handler(websocket):
-        await _ws_handler(websocket, cfg)
+        await _ws_handler(websocket, cfg, router)
 
-    async with websockets.serve(handler, host, port):
-        log.info("Subscriber API  ws://%s:%d", host, port)
+    http_srv = await _http.start(host, http_port, router, _executor)
+    async with websockets.serve(handler, host, ws_port):
+        log.info("Subscriber API  ws://%s:%d  http://%s:%d",
+                 host, ws_port, host, http_port)
         await stop.wait()
 
+    http_srv.close()
+    await http_srv.wait_closed()
     log.info("Shutdown complete")
 
 

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tesla Edge Storage — Telemetry Architecture</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149; --orange:#e3b341;
+    --purple:#bc8cff; --code-bg:#21262d;
+    --green-bg:#0d4429; --yellow-bg:#2d2000; --blue-bg:#0c2d6b;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:28px 32px; line-height:1.6;
+         max-width:960px; }
+  h1  { color:var(--accent); font-size:1.4rem; margin-bottom:4px; }
+  h2  { color:var(--orange); font-size:1rem; margin:28px 0 10px;
+        padding-bottom:5px; border-bottom:1px solid var(--border); }
+  h3  { color:var(--accent); font-size:.9rem; margin:16px 0 6px; }
+  .meta { color:var(--muted); font-size:.82rem; margin-bottom:24px; }
+  p   { font-size:.88rem; margin-bottom:10px; }
+  code { background:var(--code-bg); padding:1px 5px; border-radius:3px;
+         font-size:.85em; color:var(--accent); }
+
+  .section { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+             padding:18px 20px; margin-bottom:20px; }
+
+  ul  { padding-left:1.4em; font-size:.88rem; margin-bottom:10px; }
+  li  { margin-bottom:5px; }
+  li strong { color:var(--orange); }
+
+  /* technique cards */
+  .techniques { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+                gap:12px; margin-top:12px; }
+  .tcard { background:var(--code-bg); border:1px solid var(--border); border-radius:6px;
+           padding:13px 15px; }
+  .tcard-title { color:var(--accent); font-size:.85rem; font-weight:700; margin-bottom:6px; }
+  .tcard-body  { color:var(--muted); font-size:.8rem; line-height:1.5; }
+
+  /* mapping table */
+  table { border-collapse:collapse; width:100%; font-size:.83rem; margin-top:10px; }
+  thead tr { background:var(--code-bg); }
+  th { padding:7px 12px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:6px 12px; border-bottom:1px solid #1e2530; vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  td:first-child { color:var(--text); white-space:nowrap; }
+  td:last-child  { color:var(--muted); }
+
+  /* gap callout */
+  .callout { border-left:3px solid var(--yellow); background:var(--yellow-bg);
+             border-radius:0 6px 6px 0; padding:12px 16px; margin-top:14px;
+             font-size:.86rem; }
+  .callout strong { color:var(--yellow); }
+</style>
+</head>
+<body>
+
+<h1>Tesla Edge Storage — Telemetry Architecture</h1>
+<p class="meta">Reference notes · mapping to Evelyn edge ingest problem</p>
+
+<!-- On-vehicle -->
+<h2>On-vehicle (edge)</h2>
+<div class="section">
+  <ul>
+    <li>Logs to a local <strong>SQLite</strong> database on the vehicle's Linux filesystem</li>
+    <li>Also writes binary <strong><code>.clog</code> / <code>.bz2</code></strong> compressed log files per subsystem (CAN bus, motor controller, thermal, etc.)</li>
+    <li>A dedicated "diag" partition (~few GB) is reserved on the eMMC</li>
+    <li>Sampling rates vary by signal:
+      <ul>
+        <li>High-frequency (motor current, torque): ~100 Hz</li>
+        <li>Slow signals (SOC, temperatures): ~1 Hz</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<!-- Upload -->
+<h2>Upload to Tesla servers</h2>
+<div class="section">
+  <ul>
+    <li>Opportunistic — triggered when parked on WiFi (home, Supercharger)</li>
+    <li>Batched, not real-time</li>
+    <li>Estimated <strong>~1–2 GB/day</strong> per vehicle of raw telemetry</li>
+    <li>At fleet scale (~6M vehicles): potentially <strong>petabytes/day</strong> ingested</li>
+    <li>Destination: Tesla backend (mix of AWS and own DCs)</li>
+  </ul>
+</div>
+
+<!-- Compression -->
+<h2>Compression &amp; reduction techniques</h2>
+<div class="section">
+  <div class="techniques">
+    <div class="tcard">
+      <div class="tcard-title">Delta encoding</div>
+      <div class="tcard-body">Store first value then only the difference. A signal holding at 72.3 °C for 30 s becomes one value plus a run of near-zero deltas.</div>
+    </div>
+    <div class="tcard">
+      <div class="tcard-title">Run-length encoding (RLE)</div>
+      <div class="tcard-body">For boolean / discrete signals that hold a value for extended periods, store value + duration rather than repeating samples.</div>
+    </div>
+    <div class="tcard">
+      <div class="tcard-title">Adaptive downsampling</div>
+      <div class="tcard-body">High-frequency signals logged at full rate only during transients. When signal variance is low the log rate drops to ~1 Hz automatically.</div>
+    </div>
+    <div class="tcard">
+      <div class="tcard-title">Deadband threshold</div>
+      <div class="tcard-body">A new sample is only written if the value has moved by more than X% from the last logged value — applied at logger level, not downstream.</div>
+    </div>
+    <div class="tcard">
+      <div class="tcard-title">Protobuf serialisation</div>
+      <div class="tcard-body">Binary wire format (not JSON), schema-versioned. Compact and CPU-efficient to encode/decode.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Mapping table -->
+<h2>Mapping to Evelyn edge ingest</h2>
+<div class="section">
+  <table>
+    <thead>
+      <tr><th>Tesla technique</th><th>Evelyn / our filter equivalent</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Deadband on analog signals</td><td>Filter B (dedup) — time-window today, value-delta is the stretch goal</td></tr>
+      <tr><td>Drop quiescent boolean signals</td><td>Filter B <code>tagpass</code> on <code>boolean_integer</code></td></tr>
+      <tr><td>Drop string / enum signals</td><td>Filter A</td></tr>
+      <tr><td>Protobuf binary on-wire</td><td>Parquet columnar binary at rest</td></tr>
+      <tr><td>SQLite / clog on eMMC</td><td>Parquet on <code>/data</code> (external drive)</td></tr>
+      <tr><td>CAN bus → local writer</td><td>MQTT → <code>real_writer</code></td></tr>
+      <tr><td>WiFi batch upload</td><td><code>push_agent</code> rsync</td></tr>
+      <tr><td>Tesla backend TSDB</td><td>InfluxDB / DuckDB</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Gap callout -->
+<h2>Key gap in current Evelyn approach</h2>
+<div class="section">
+  <p>Our Filter B uses <code>dedup_interval = 60s</code> — <strong>time-based</strong>: one sample passes per minute regardless of whether the value changed.</p>
+  <p>Tesla's deadband is <strong>value-based</strong>: only store on meaningful change.</p>
+  <div class="callout">
+    <strong>Conservative scenario (~27% reduction)</strong> — time-based dedup (current)<br><br>
+    <strong>Aggressive scenario (~85% reduction)</strong> — value-based deadband (stretch goal)<br><br>
+    Telegraf native <code>processors.dedup</code> does not support deadband.
+    A <code>starlark</code> processor would be needed to implement per-signal thresholds.
+  </div>
+</div>
+
+</body>
+</html>

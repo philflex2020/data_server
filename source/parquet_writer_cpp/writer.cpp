@@ -765,6 +765,7 @@ static void health_thread_fn(int port) {
             ",\"disk_free_gb\":"     + std::to_string(g_disk_free_gb_x10.load() / 10.0) +
             "}\n";
         std::string resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                           "Access-Control-Allow-Origin: *\r\n"
                            "Content-Length: " + std::to_string(body.size()) +
                            "\r\nConnection: close\r\n\r\n" + body;
         send(cli, resp.c_str(), resp.size(), MSG_NOSIGNAL);  // F3-1: defence-in-depth with SIG_IGN above

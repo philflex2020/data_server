@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Demo2 — Raw vs Burst vs float_dedup</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff;
+    --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:16px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:18px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  /* ── host bar ── */
+  .host-bar {
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:8px 14px; margin-bottom:12px; font-size:.82rem;
+  }
+  .host-bar label { color:var(--muted); }
+  .host-bar input, .host-bar select {
+    background:var(--code-bg); border:1px solid var(--border);
+    color:var(--text); border-radius:4px; padding:3px 8px;
+    font-family:'Consolas',monospace; font-size:.8rem;
+  }
+  .btn {
+    background:var(--surface); border:1px solid var(--border);
+    color:var(--accent); border-radius:4px; padding:3px 10px;
+    cursor:pointer; font-size:.8rem;
+  }
+  .btn:hover { border-color:var(--accent); }
+  #refresh-st { font-size:.72rem; color:var(--muted); }
+  #refresh-st.live { color:var(--green); }
+
+  /* ── stats bar ── */
+  .stats-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:16px; }
+  @media(max-width:700px){ .stats-bar{ grid-template-columns:repeat(3,1fr); } }
+  .scard { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 10px; }
+  .scard-k { font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px; }
+  .scard-v { font-size:1.05rem; font-weight:700; font-family:'Consolas',monospace; }
+  .c-raw  { color:var(--yellow); }
+  .c-base { color:var(--accent); }
+  .c-filt { color:var(--green); }
+  .c-red  { color:var(--red); }
+
+  /* ── diagram ── */
+  .diagram-wrap { background:var(--surface); border:1px solid var(--border);
+                  border-radius:8px; padding:16px; margin-bottom:16px; overflow-x:auto; }
+  svg.arch { display:block; margin:0 auto; }
+  .box-yellow { fill:#2d200044; stroke:#d29922; stroke-width:1.5; }
+  .box-accent { fill:#0c2d6b44; stroke:#58a6ff; stroke-width:1.5; }
+  .box-green  { fill:#0d442944; stroke:#3fb950; stroke-width:1.5; }
+  .box-plain  { fill:#21262d;   stroke:#30363d; stroke-width:1.5; }
+  .box-purple { fill:#1a0f2e44; stroke:#bc8cff; stroke-width:1.5; }
+  .lt { fill:#c9d1d9; font-size:11px; font-weight:700; font-family:'Consolas',monospace; }
+  .ls { fill:#8b949e; font-size:9px;  font-family:'Consolas',monospace; }
+  .ly { fill:#d29922; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .lb { fill:#58a6ff; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .lg { fill:#3fb950; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .ay { stroke:#d2992288; stroke-width:2; fill:none; marker-end:url(#aY); stroke-dasharray:6,3; }
+  .ab { stroke:#58a6ff88; stroke-width:2; fill:none; marker-end:url(#aB); stroke-dasharray:6,3; }
+  .ag { stroke:#3fb95088; stroke-width:2; fill:none; marker-end:url(#aG); stroke-dasharray:6,3; }
+  .as { stroke:#30363d;   stroke-width:2; fill:none; marker-end:url(#aS); }
+
+  /* ── panels ── */
+  /* RAW — full width */
+  .panel-raw {
+    background:var(--surface);
+    border:2px solid var(--yellow);
+    border-radius:8px; overflow:hidden; margin-bottom:10px;
+  }
+  .panel-raw-hdr {
+    background:#2d200066; padding:8px 16px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .panel-raw-hdr .badge-raw {
+    font-size:.72rem; font-weight:700; color:var(--yellow);
+    border:1px solid var(--yellow); border-radius:10px;
+    padding:2px 10px; font-family:'Consolas',monospace;
+  }
+  .panel-raw-body {
+    display:grid; grid-template-columns:180px 1fr 1fr; gap:0;
+  }
+  @media(max-width:800px){ .panel-raw-body{ grid-template-columns:1fr; } }
+
+  /* burst panels — side by side */
+  .burst-panels { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media(max-width:800px){ .burst-panels{ grid-template-columns:1fr; } }
+
+  .panel-burst {
+    background:var(--surface); border:1px solid var(--accent);
+    border-radius:8px; overflow:hidden;
+  }
+  .panel-filt {
+    background:var(--surface); border:1px solid var(--green);
+    border-radius:8px; overflow:hidden;
+  }
+  .panel-hdr {
+    padding:8px 14px; font-size:.82rem; font-weight:700;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .panel-hdr.burst { background:#0c2d6b44; border-bottom:2px solid var(--accent); color:var(--accent); }
+  .panel-hdr.filt  { background:#0d442944; border-bottom:2px solid var(--green);  color:var(--green); }
+  .panel-hdr small { font-size:.7rem; font-weight:400; color:var(--muted); }
+  .panel-body { padding:12px 14px; }
+
+  /* ── metric display ── */
+  .big-num {
+    font-family:'Consolas',monospace; font-size:2rem; font-weight:700; line-height:1;
+  }
+  .num-label { font-size:.7rem; color:var(--muted); margin-bottom:10px; margin-top:2px; }
+  canvas.spark { display:block; width:100%; height:44px; margin-bottom:10px; }
+
+  .meta { font-size:.76rem; line-height:1.75; }
+  .meta-k { color:var(--muted); }
+  .meta-v { font-family:'Consolas',monospace; color:var(--text); }
+  code { font-family:'Consolas',monospace; font-size:.73rem;
+         background:var(--code-bg); padding:1px 4px; border-radius:3px; color:var(--orange); }
+
+  /* raw big metric section */
+  .raw-metric {
+    border-right:1px solid var(--border); padding:14px 16px;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .raw-info  { padding:14px 16px; }
+  .raw-spark { padding:10px 16px 0; border-left:1px solid var(--border); }
+
+  /* status badges */
+  .sbadge {
+    display:inline-block; padding:2px 8px; border-radius:8px;
+    font-size:.66rem; font-family:'Consolas',monospace; font-weight:700;
+  }
+  .s-live    { background:#0d442944; border:1px solid var(--green);  color:var(--green); }
+  .s-planned { background:#21262d;   border:1px solid var(--muted);  color:var(--muted); }
+  .s-todo    { background:#2d000022; border:1px solid var(--red);    color:var(--red); }
+
+  /* ── checklist ── */
+  .ck { list-style:none; font-size:.78rem; line-height:1.85; }
+  .ck li { display:flex; gap:8px; }
+  .ck-y { color:var(--green); font-family:'Consolas',monospace; }
+  .ck-n { color:var(--muted); font-family:'Consolas',monospace; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="evelyn_live_compare.html">Live Compare</a>
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="demo2_compare.html" class="here">Demo2 Compare</a>
+  <a href="ems_simulator_control.html">Sim Control</a>
+  <a href="demo_influx_viewer.html">Demo InfluxDB</a>
+  <a href="demo_eval.html">Pipeline Eval</a>
+</div>
+
+<h1>Demo2 — Raw 1 s/signal vs Burst + float_dedup</h1>
+<p class="subtitle">
+  One generator, two MQTT outputs — smooth/raw path (1 s per signal) and burst path (real Evelyn cadence).
+  Burst path feeds both unfiltered baseline and float_dedup.
+</p>
+
+<!-- host bar -->
+<div class="host-bar">
+  <label>Host:</label>
+  <input id="host" value="192.168.86.48" style="width:140px;" oninput="updateLabels()">
+  <label>Token:</label>
+  <input id="token" value="ems-token-secret" style="width:150px;">
+  <label>Org:</label>
+  <input id="org" value="ems-org" style="width:80px;">
+  <button class="btn" onclick="fetchAll()">Refresh</button>
+  <select id="refresh-sel" onchange="setRefresh()">
+    <option value="0">Auto: off</option>
+    <option value="5000" selected>Auto: 5 s</option>
+    <option value="15000">Auto: 15 s</option>
+  </select>
+  <span id="refresh-st">idle</span>
+</div>
+
+<!-- stats bar -->
+<div class="stats-bar">
+  <div class="scard">
+    <div class="scard-k">Raw rows/s</div>
+    <div class="scard-v c-raw" id="st-raw-rps">—</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Baseline rows/s</div>
+    <div class="scard-v c-base" id="st-base-rps">—</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">float_dedup rows/s</div>
+    <div class="scard-v c-filt" id="st-filt-rps">—</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Raw → Burst reduction</div>
+    <div class="scard-v c-red" id="st-raw-base-pct" title="how much the burst cadence alone reduces vs smooth 1s">—</div>
+  </div>
+  <div class="scard">
+    <div class="scard-k">Burst → Filtered reduction</div>
+    <div class="scard-v c-filt" id="st-base-filt-pct" title="float_dedup saving on top of burst cadence">—</div>
+  </div>
+</div>
+
+<!-- Architecture diagram — InfluxDB -->
+<details open style="margin-bottom:10px">
+<summary style="font-size:.82rem;color:var(--orange);cursor:pointer;padding:4px 0;
+                border-bottom:1px solid var(--border);margin-bottom:8px;">
+  System Layout — InfluxDB
+</summary>
+<div class="diagram-wrap">
+<svg class="arch" width="900" height="350" viewBox="0 0 900 350">
+  <defs>
+    <marker id="aY" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#d2992288"/></marker>
+    <marker id="aB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#58a6ff88"/></marker>
+    <marker id="aG" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb95088"/></marker>
+    <marker id="aS" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#30363d"/></marker>
+  </defs>
+
+  <!-- Generator (left, centre) -->
+  <rect x="10" y="110" width="140" height="90" rx="6" class="box-purple"/>
+  <text x="80" y="133" text-anchor="middle" class="lt">Generator</text>
+  <text x="80" y="148" text-anchor="middle" class="ls">stress_real_pub</text>
+  <text x="80" y="162" text-anchor="middle" class="ls">46 Evelyn units</text>
+  <text x="80" y="178" text-anchor="middle" class="ls">ws :8769</text>
+  <text x="80" y="192" text-anchor="middle" class="ls">two MQTT outputs</text>
+
+  <!-- Smooth output label -->
+  <text x="155" y="80" class="ly" text-anchor="middle">smooth out</text>
+  <text x="155" y="93" class="ls" text-anchor="middle" fill="#d29922">1 s/signal</text>
+
+  <!-- Burst output label -->
+  <text x="155" y="232" class="lb" text-anchor="middle">burst out</text>
+  <text x="155" y="245" class="ls" text-anchor="middle" fill="#58a6ff">20 s slow cadence</text>
+
+  <!-- arrows from generator -->
+  <path d="M150,135 Q170,100 195,75" class="ay"/>
+  <path d="M150,175 Q170,210 195,230" class="ab"/>
+
+  <!-- FlashMQ Raw :11887 (top) -->
+  <rect x="200" y="30" width="120" height="75" rx="6" class="box-yellow"/>
+  <text x="260" y="52"  text-anchor="middle" class="lt">FlashMQ</text>
+  <text x="260" y="67"  text-anchor="middle" class="ly">:11887</text>
+  <text x="260" y="81"  text-anchor="middle" class="ls">smooth topics</text>
+  <text x="260" y="95"  text-anchor="middle" class="ls">smooth/ems/#</text>
+
+  <!-- FlashMQ Burst :11888 (bottom) -->
+  <rect x="200" y="205" width="120" height="75" rx="6" class="box-accent"/>
+  <text x="260" y="227" text-anchor="middle" class="lt">FlashMQ</text>
+  <text x="260" y="242" text-anchor="middle" class="lb">:11888</text>
+  <text x="260" y="256" text-anchor="middle" class="ls">burst topics</text>
+  <text x="260" y="270" text-anchor="middle" class="ls">ems/#</text>
+
+  <!-- arrow: fmq-raw → telegraf-raw -->
+  <line x1="320" y1="67" x2="370" y2="67" class="ay"/>
+
+  <!-- arrow: fmq-burst → telegraf-base & telegraf-filt -->
+  <line x1="320" y1="235" x2="370" y2="195" class="ab"/>
+  <line x1="320" y1="255" x2="370" y2="275" class="ag"/>
+
+  <!-- Telegraf Raw (top) -->
+  <rect x="370" y="20" width="145" height="90" rx="6" class="box-yellow"/>
+  <text x="442" y="42"  text-anchor="middle" class="lt">Telegraf / RAW</text>
+  <text x="442" y="57"  text-anchor="middle" class="ls">sub: smooth/ems/#</text>
+  <text x="442" y="71"  text-anchor="middle" class="ls">json_v2 · pivot</text>
+  <text x="442" y="85"  text-anchor="middle" class="ls">no filter — all signals</text>
+  <text x="442" y="100" text-anchor="middle" class="ly">→ :8099 ems-raw</text>
+
+  <!-- Telegraf Baseline (middle-right) -->
+  <rect x="370" y="155" width="145" height="80" rx="6" class="box-accent"/>
+  <text x="442" y="175" text-anchor="middle" class="lt">Telegraf / Baseline</text>
+  <text x="442" y="190" text-anchor="middle" class="ls">sub: ems/#</text>
+  <text x="442" y="204" text-anchor="middle" class="ls">json_v2 · pivot · no filter</text>
+  <text x="442" y="225" text-anchor="middle" class="lb">→ :8096 ems-baseline</text>
+
+  <!-- Telegraf float_dedup (bottom-right) -->
+  <rect x="370" y="250" width="145" height="90" rx="6" class="box-green"/>
+  <text x="442" y="270" text-anchor="middle" class="lt">Telegraf / float_dedup</text>
+  <text x="442" y="285" text-anchor="middle" class="ls">sub: ems/#</text>
+  <text x="442" y="299" text-anchor="middle" class="lg">execd float_dedup</text>
+  <text x="442" y="313" text-anchor="middle" class="ls">ε-threshold · hb=60s</text>
+  <text x="442" y="328" text-anchor="middle" class="lg">→ :8097 ems-filtered</text>
+
+  <!-- arrows: telegraf → influxdb -->
+  <line x1="515" y1="65"  x2="560" y2="65"  class="ay"/>
+  <line x1="515" y1="193" x2="560" y2="193" class="ab"/>
+  <line x1="515" y1="295" x2="560" y2="295" class="ag"/>
+
+  <!-- InfluxDB RAW -->
+  <rect x="560" y="20" width="130" height="90" rx="6" class="box-yellow"/>
+  <text x="625" y="42"  text-anchor="middle" class="lt">InfluxDB</text>
+  <text x="625" y="57"  text-anchor="middle" class="ly">:8099</text>
+  <text x="625" y="71"  text-anchor="middle" class="ls">ems-raw</text>
+  <text x="625" y="85"  text-anchor="middle" class="ls">all signals every 1 s</text>
+  <text x="625" y="100" text-anchor="middle" class="ly">HIGH row rate</text>
+
+  <!-- InfluxDB Baseline -->
+  <rect x="560" y="155" width="130" height="80" rx="6" class="box-accent"/>
+  <text x="625" y="175" text-anchor="middle" class="lt">InfluxDB</text>
+  <text x="625" y="190" text-anchor="middle" class="lb">:8096</text>
+  <text x="625" y="205" text-anchor="middle" class="ls">ems-baseline</text>
+  <text x="625" y="222" text-anchor="middle" class="lb">real cadence rows</text>
+
+  <!-- InfluxDB Filtered -->
+  <rect x="560" y="250" width="130" height="90" rx="6" class="box-green"/>
+  <text x="625" y="270" text-anchor="middle" class="lt">InfluxDB</text>
+  <text x="625" y="285" text-anchor="middle" class="lg">:8097</text>
+  <text x="625" y="299" text-anchor="middle" class="ls">ems-filtered</text>
+  <text x="625" y="313" text-anchor="middle" class="ls">deduped all types</text>
+  <text x="625" y="328" text-anchor="middle" class="lg">LOWEST row rate</text>
+
+  <!-- comparison brackets on right -->
+  <line x1="700" y1="65"  x2="720" y2="65"  stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="700" y1="193" x2="720" y2="193" stroke="#58a6ff" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="700" y1="295" x2="720" y2="295" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="720" y1="65"  x2="720" y2="295" stroke="#555" stroke-width="1"/>
+  <line x1="720" y1="129" x2="730" y2="129" stroke="#555" stroke-width="1"/>
+  <text x="735" y="120" fill="#8b949e" font-size="8" font-family="Consolas">cadence</text>
+  <text x="735" y="131" fill="#8b949e" font-size="8" font-family="Consolas">effect</text>
+  <line x1="720" y1="244" x2="730" y2="244" stroke="#555" stroke-width="1"/>
+  <text x="735" y="235" fill="#8b949e" font-size="8" font-family="Consolas">float_dedup</text>
+  <text x="735" y="246" fill="#8b949e" font-size="8" font-family="Consolas">effect</text>
+</svg>
+</div>
+</details>
+
+<!-- Architecture diagram — Parquet Writer -->
+<details style="margin-bottom:14px">
+<summary style="font-size:.82rem;color:var(--orange);cursor:pointer;padding:4px 0;
+                border-bottom:1px solid var(--border);margin-bottom:8px;">
+  System Layout — Parquet Writer
+</summary>
+<div class="diagram-wrap">
+<svg class="arch" width="860" height="360" viewBox="0 0 860 360">
+  <defs>
+    <marker id="pY"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#d2992288"/></marker>
+    <marker id="pB"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#58a6ff88"/></marker>
+    <marker id="pGd" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb95044"/></marker>
+  </defs>
+
+  <!-- FlashMQ :11887 (greyed — shared with Influx diagram) -->
+  <rect x="10" y="28" width="115" height="72" rx="6"
+        fill="#2d200022" stroke="#d2992244" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="67" y="50"  text-anchor="middle" fill="#d2992266" font-size="10" font-family="Consolas" font-weight="700">FlashMQ</text>
+  <text x="67" y="65"  text-anchor="middle" fill="#d2992266" font-size="10" font-family="Consolas" font-weight="700">:11887</text>
+  <text x="67" y="79"  text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">smooth/ems/#</text>
+  <text x="67" y="91"  text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">(shared)</text>
+
+  <!-- FlashMQ :11888 (greyed — shared with Influx diagram) -->
+  <rect x="10" y="205" width="115" height="72" rx="6"
+        fill="#0c2d6b22" stroke="#58a6ff44" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="67" y="227" text-anchor="middle" fill="#58a6ff66" font-size="10" font-family="Consolas" font-weight="700">FlashMQ</text>
+  <text x="67" y="242" text-anchor="middle" fill="#58a6ff66" font-size="10" font-family="Consolas" font-weight="700">:11888</text>
+  <text x="67" y="256" text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">ems/#</text>
+  <text x="67" y="268" text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">(shared)</text>
+
+  <!-- smooth → raw writer -->
+  <line x1="125" y1="64"  x2="220" y2="64"
+        stroke="#d2992266" stroke-width="2" fill="none"
+        marker-end="url(#pY)" stroke-dasharray="6,3"/>
+  <!-- burst → baseline writer -->
+  <line x1="125" y1="232" x2="220" y2="200"
+        stroke="#58a6ff66" stroke-width="2" fill="none"
+        marker-end="url(#pB)" stroke-dasharray="6,3"/>
+  <!-- burst → float_dedup bridge -->
+  <line x1="125" y1="252" x2="220" y2="305"
+        stroke="#3fb95044" stroke-width="2" fill="none"
+        marker-end="url(#pGd)" stroke-dasharray="4,4"/>
+
+  <!-- parquet_writer RAW -->
+  <rect x="220" y="20" width="155" height="88" rx="6" class="box-yellow"/>
+  <text x="297" y="42"  text-anchor="middle" class="lt">parquet_writer</text>
+  <text x="297" y="57"  text-anchor="middle" class="ly">RAW</text>
+  <text x="297" y="72"  text-anchor="middle" class="ls">sub: smooth/ems/#</text>
+  <text x="297" y="86"  text-anchor="middle" class="ls">no filter · all signals · 1 s</text>
+  <text x="297" y="100" text-anchor="middle" class="ly">health :8881</text>
+
+  <!-- parquet_writer Baseline -->
+  <rect x="220" y="155" width="155" height="88" rx="6" class="box-accent"/>
+  <text x="297" y="177" text-anchor="middle" class="lt">parquet_writer</text>
+  <text x="297" y="192" text-anchor="middle" class="lb">Baseline</text>
+  <text x="297" y="207" text-anchor="middle" class="ls">sub: ems/#</text>
+  <text x="297" y="221" text-anchor="middle" class="ls">no filter · burst cadence</text>
+  <text x="297" y="235" text-anchor="middle" class="lb">health :8882</text>
+
+  <!-- float_dedup bridge (TBD) -->
+  <rect x="220" y="270" width="155" height="76" rx="6"
+        fill="#0d442922" stroke="#3fb95066" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="297" y="292" text-anchor="middle" fill="#3fb95099" font-size="11" font-family="Consolas" font-weight="700">float_dedup bridge</text>
+  <text x="297" y="308" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">TBD: Telegraf mqtt→mqtt</text>
+  <text x="297" y="322" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">or inline in writer</text>
+  <text x="297" y="336" text-anchor="middle" fill="#3fb95066" font-size="9"  font-family="Consolas">? → filtered topic</text>
+
+  <!-- bridge → filtered writer -->
+  <line x1="375" y1="308" x2="430" y2="290"
+        stroke="#3fb95066" stroke-width="2" fill="none"
+        marker-end="url(#pGd)" stroke-dasharray="4,4"/>
+
+  <!-- parquet_writer float_dedup (planned/dashed) -->
+  <rect x="430" y="248" width="155" height="100" rx="6"
+        fill="#0d442922" stroke="#3fb95088" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="507" y="270" text-anchor="middle" fill="#3fb950bb" font-size="11" font-family="Consolas" font-weight="700">parquet_writer</text>
+  <text x="507" y="285" text-anchor="middle" fill="#3fb950bb" font-size="10" font-family="Consolas" font-weight="700">float_dedup</text>
+  <text x="507" y="300" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">sub: filtered topic</text>
+  <text x="507" y="314" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">ε-threshold · hb=60s</text>
+  <text x="507" y="330" text-anchor="middle" fill="#3fb95088" font-size="9"  font-family="Consolas">health :8883  (planned)</text>
+  <text x="507" y="343" text-anchor="middle" fill="#3fb95066" font-size="9"  font-family="Consolas">⚠ bridge path TBD</text>
+
+  <!-- writer → output path arrows -->
+  <line x1="375" y1="64"  x2="430" y2="64"
+        stroke="#d2992266" stroke-width="2" fill="none" marker-end="url(#pY)" stroke-dasharray="6,3"/>
+  <line x1="375" y1="199" x2="430" y2="170"
+        stroke="#58a6ff66" stroke-width="2" fill="none" marker-end="url(#pB)" stroke-dasharray="6,3"/>
+
+  <!-- Output: RAW -->
+  <rect x="430" y="20" width="190" height="88" rx="6" class="box-yellow"/>
+  <text x="525" y="42"  text-anchor="middle" class="lt">Parquet output</text>
+  <text x="525" y="57"  text-anchor="middle" class="ly">/data/parquet-eval/raw/</text>
+  <text x="525" y="72"  text-anchor="middle" class="ls">Arrow/Parquet files</text>
+  <text x="525" y="86"  text-anchor="middle" class="ls">all types · flush every N rows</text>
+  <text x="525" y="100" text-anchor="middle" class="ly">HIGH file growth rate</text>
+
+  <!-- Output: Baseline -->
+  <rect x="430" y="130" width="190" height="88" rx="6" class="box-accent"/>
+  <text x="525" y="152" text-anchor="middle" class="lt">Parquet output</text>
+  <text x="525" y="167" text-anchor="middle" class="lb">/data/parquet-eval/base/</text>
+  <text x="525" y="182" text-anchor="middle" class="ls">Arrow/Parquet files</text>
+  <text x="525" y="196" text-anchor="middle" class="ls">burst cadence · real rate</text>
+  <text x="525" y="210" text-anchor="middle" class="lb">real cadence file growth</text>
+
+  <!-- Health endpoints reference -->
+  <rect x="660" y="28" width="185" height="172" rx="6"
+        fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="752" y="48"  text-anchor="middle" fill="#8b949e" font-size="10" font-family="Consolas" font-weight="700">Health endpoints</text>
+  <text x="670" y="66"  fill="#d29922" font-size="9"  font-family="Consolas">:8881 /health  (RAW)</text>
+  <text x="670" y="80"  fill="#8b949e" font-size="8"  font-family="Consolas">  msgs_received</text>
+  <text x="670" y="92"  fill="#8b949e" font-size="8"  font-family="Consolas">  total_rows_written</text>
+  <text x="670" y="104" fill="#8b949e" font-size="8"  font-family="Consolas">  flush_count · last_flush_rows</text>
+  <text x="670" y="116" fill="#8b949e" font-size="8"  font-family="Consolas">  disk_free_gb</text>
+  <text x="670" y="132" fill="#58a6ff" font-size="9"  font-family="Consolas">:8882 /health  (Baseline)</text>
+  <text x="670" y="146" fill="#8b949e" font-size="8"  font-family="Consolas">  (same fields)</text>
+  <text x="670" y="162" fill="#3fb95066" font-size="9" font-family="Consolas">:8883 /health  (float_dedup)</text>
+  <text x="670" y="176" fill="#8b949e66" font-size="8" font-family="Consolas">  (planned)</text>
+  <text x="670" y="192" fill="#f8514966" font-size="8" font-family="Consolas">  cpu_pct / rss_mb: TBD</text>
+
+  <!-- legend -->
+  <text x="10" y="352" fill="#8b949e" font-size="8" font-family="Consolas">Solid border = ready/planned · Dashed = TBD / needs design · Greyed FlashMQ = shared with InfluxDB paths above</text>
+</svg>
+</div>
+
+<!-- Parquet writer health tiles -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">
+  <div style="background:var(--surface);border:1px solid var(--yellow);border-radius:6px;padding:8px 12px;">
+    <div style="font-size:.68rem;color:var(--yellow);font-weight:700;margin-bottom:5px;">
+      parquet_writer RAW &nbsp;<code style="font-size:.65rem;color:var(--muted);">:8881</code>
+    </div>
+    <div id="pw-raw-status" style="font-size:.72rem;color:var(--muted);">not connected</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.72rem;margin-top:5px;">
+      <span style="color:var(--muted);">rows written</span><span id="pw-raw-rows"  style="font-family:'Consolas',monospace;color:var(--yellow);">—</span>
+      <span style="color:var(--muted);">msgs recv</span>   <span id="pw-raw-msgs"  style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">flushes</span>     <span id="pw-raw-flush" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">disk free</span>   <span id="pw-raw-disk"  style="font-family:'Consolas',monospace;">—</span>
+    </div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--accent);border-radius:6px;padding:8px 12px;">
+    <div style="font-size:.68rem;color:var(--accent);font-weight:700;margin-bottom:5px;">
+      parquet_writer Baseline &nbsp;<code style="font-size:.65rem;color:var(--muted);">:8882</code>
+    </div>
+    <div id="pw-base-status" style="font-size:.72rem;color:var(--muted);">not connected</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.72rem;margin-top:5px;">
+      <span style="color:var(--muted);">rows written</span><span id="pw-base-rows"  style="font-family:'Consolas',monospace;color:var(--accent);">—</span>
+      <span style="color:var(--muted);">msgs recv</span>   <span id="pw-base-msgs"  style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">flushes</span>     <span id="pw-base-flush" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">disk free</span>   <span id="pw-base-disk"  style="font-family:'Consolas',monospace;">—</span>
+    </div>
+  </div>
+  <div style="background:var(--surface);border:1px solid #3fb95044;border-radius:6px;padding:8px 12px;">
+    <div style="font-size:.68rem;color:#3fb95099;font-weight:700;margin-bottom:5px;">
+      parquet_writer float_dedup &nbsp;<code style="font-size:.65rem;color:var(--muted);">:8883</code>
+      <span style="font-size:.62rem;color:var(--muted);font-weight:400;">(planned)</span>
+    </div>
+    <div id="pw-filt-status" style="font-size:.72rem;color:var(--muted);">not connected</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.72rem;margin-top:5px;">
+      <span style="color:var(--muted);">rows written</span><span id="pw-filt-rows"  style="font-family:'Consolas',monospace;color:#3fb95088;">—</span>
+      <span style="color:var(--muted);">msgs recv</span>   <span id="pw-filt-msgs"  style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">flushes</span>     <span id="pw-filt-flush" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">disk free</span>   <span id="pw-filt-disk"  style="font-family:'Consolas',monospace;">—</span>
+    </div>
+  </div>
+</div>
+</details>
+
+<!-- ── RAW panel (full width) ── -->
+<h2>Live Data</h2>
+
+<div class="panel-raw">
+  <div class="panel-raw-hdr">
+    <span class="badge-raw">RAW — 1 second per signal</span>
+    <span style="color:var(--yellow);font-size:.82rem;font-weight:700;">FlashMQ :11887 → Telegraf-raw → InfluxDB :8099 &nbsp;<code style="font-size:.72rem;color:var(--yellow);">ems-raw</code></span>
+    <span style="flex:1;"></span>
+    <span class="sbadge s-todo" id="badge-raw">needs build</span>
+  </div>
+  <div class="panel-raw-body">
+    <div class="raw-metric">
+      <div class="big-num c-raw" id="p-raw-rps">—</div>
+      <div class="num-label">rows / second</div>
+      <div style="font-size:.72rem;color:var(--muted);">Host: <span id="lbl-raw-host" style="font-family:'Consolas',monospace;">—</span></div>
+    </div>
+    <div class="raw-info meta">
+      <div><span class="meta-k">Generator mode: </span><span class="meta-v" style="color:var(--yellow);">smooth — every signal every 1 s</span></div>
+      <div><span class="meta-k">Broker:         </span><span class="meta-v"><code>:11887</code> &nbsp;topics: <code>smooth/ems/#</code></span></div>
+      <div><span class="meta-k">Filter:         </span><span class="meta-v">none — pivot only, all types pass</span></div>
+      <div><span class="meta-k">Expected rate:  </span><span class="meta-v" style="color:var(--yellow);">highest — slow signals fire every second</span></div>
+      <div><span class="meta-k">Total rows:     </span><span class="meta-v" id="p-raw-total">—</span></div>
+    </div>
+    <div class="raw-spark">
+      <canvas class="spark" id="spark-raw" height="44"></canvas>
+      <div style="font-size:.68rem;color:var(--muted);text-align:right;">last 40 samples</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Burst panels (side by side) ── -->
+<div class="burst-panels">
+
+  <!-- Baseline -->
+  <div class="panel-burst">
+    <div class="panel-hdr burst">
+      Burst / Baseline — InfluxDB :8096
+      <small><span class="sbadge s-live">live</span></small>
+    </div>
+    <div class="panel-body">
+      <div class="big-num c-base" id="p-base-rps">—</div>
+      <div class="num-label">rows / second</div>
+      <canvas class="spark" id="spark-base" height="44"></canvas>
+      <div class="meta">
+        <div><span class="meta-k">Broker:  </span><span class="meta-v"><code>:11888</code> &nbsp;topics: <code>ems/#</code></span></div>
+        <div><span class="meta-k">Mode:    </span><span class="meta-v" style="color:var(--accent);">burst — slow signals every 20 s</span></div>
+        <div><span class="meta-k">Filter:  </span><span class="meta-v">none — pivot only</span></div>
+        <div><span class="meta-k">Bucket:  </span><span class="meta-v"><code>ems-baseline</code></span></div>
+        <div><span class="meta-k">Total:   </span><span class="meta-v" id="p-base-total">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- float_dedup -->
+  <div class="panel-filt">
+    <div class="panel-hdr filt">
+      Burst / float_dedup — InfluxDB :8097
+      <small><span class="sbadge s-planned">planned</span></small>
+    </div>
+    <div class="panel-body">
+      <div class="big-num c-filt" id="p-filt-rps">—</div>
+      <div class="num-label">rows / second</div>
+      <canvas class="spark" id="spark-filt" height="44"></canvas>
+      <div class="meta">
+        <div><span class="meta-k">Broker:  </span><span class="meta-v"><code>:11888</code> &nbsp;topics: <code>ems/#</code></span></div>
+        <div><span class="meta-k">Mode:    </span><span class="meta-v" style="color:var(--green);">burst — float ε-threshold + hb 60 s</span></div>
+        <div><span class="meta-k">Filter:  </span><span class="meta-v"><code>float_dedup execd</code> — all types</span></div>
+        <div><span class="meta-k">Bucket:  </span><span class="meta-v"><code>ems-filtered</code></span></div>
+        <div><span class="meta-k">Total:   </span><span class="meta-v" id="p-filt-total">—</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Build status -->
+<h2>What needs building</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;">
+  <ul class="ck">
+    <li><span class="ck-y">[x]</span> Burst sim → FlashMQ :11888 → Telegraf-baseline → InfluxDB :8096</li>
+    <li><span class="ck-n">[ ]</span> Simulator dual MQTT output — smooth path publishes to <code>:11887</code> topic prefix <code>smooth/ems/</code></li>
+    <li><span class="ck-n">[ ]</span> FlashMQ :11887 instance for smooth/raw topics</li>
+    <li><span class="ck-n">[ ]</span> Telegraf-raw config — <code>sub: smooth/ems/#</code>, pivot only, → InfluxDB :8099 <code>ems-raw</code></li>
+    <li><span class="ck-n">[ ]</span> InfluxDB :8099 instance — <code>/data/influx-raw/</code></li>
+    <li><span class="ck-n">[ ]</span> Telegraf-floatdedup config — <code>sub: ems/#</code>, <code>processors.execd float_dedup</code>, → InfluxDB :8097 <code>ems-filtered</code></li>
+    <li><span class="ck-n">[ ]</span> InfluxDB :8097 swap to <code>ems-filtered</code> bucket (currently <code>ems-dedup</code> per old Filter B)</li>
+    <li><span class="ck-n">[ ]</span> Extend <code>evelyn-compare-native-start.sh</code> to launch all three paths</li>
+  </ul>
+</div>
+
+<script>
+// ── config ───────────────────────────────────────────────────────────────────
+
+const PATHS = {
+  raw:  { port: 8099, bucket: 'ems-raw',      color: '#d29922' },
+  base: { port: 8096, bucket: 'ems-baseline', color: '#58a6ff' },
+  filt: { port: 8097, bucket: 'ems-filtered', color: '#3fb950' },
+};
+const RANGE_S   = 30;
+const MAX_HIST  = 40;
+const LS_DEMO   = 'demo_compare_stats';
+
+const hist = { raw: [], base: [], filt: [] };
+
+// ── init ─────────────────────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadHost();
+  updateLabels();
+  fetchAll();
+  setRefresh();
+});
+
+function loadHost() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_DEMO) || '{}');
+    if (s.host) document.getElementById('host').value = s.host;
+  } catch(e) {}
+}
+
+function updateLabels() {
+  const h = document.getElementById('host').value.trim();
+  document.getElementById('lbl-raw-host').textContent = `${h}:${PATHS.raw.port}`;
+}
+
+// ── refresh ───────────────────────────────────────────────────────────────────
+
+let timer = null;
+
+function setRefresh() {
+  clearInterval(timer);
+  const ms = parseInt(document.getElementById('refresh-sel').value);
+  const st = document.getElementById('refresh-st');
+  if (ms > 0) {
+    timer = setInterval(fetchAll, ms);
+    st.textContent = `auto ${ms/1000}s`; st.className = 'live';
+  } else {
+    st.textContent = 'manual'; st.className = '';
+  }
+}
+
+function fetchAll() {
+  const host  = document.getElementById('host').value.trim();
+  const token = document.getElementById('token').value.trim();
+  const org   = document.getElementById('org').value.trim();
+  updateLabels();
+  for (const [side, cfg] of Object.entries(PATHS)) {
+    queryRps(host, cfg.port, cfg.bucket, token, org, side);
+  }
+}
+
+// ── Flux query ────────────────────────────────────────────────────────────────
+
+async function queryRps(host, port, bucket, token, org, side) {
+  const flux = `
+from(bucket: "${bucket}")
+  |> range(start: -${RANGE_S}s)
+  |> filter(fn: (r) =>
+      r._field == "float" or r._field == "integer" or
+      r._field == "boolean_integer" or r._field == "string")
+  |> count()
+  |> sum()
+`.trim();
+
+  const url = `http://${host}:${port}/api/v2/query?org=${encodeURIComponent(org)}`;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type':  'application/vnd.flux',
+        'Accept':        'application/csv',
+      },
+      body: flux,
+    });
+    if (!resp.ok) { setRps(side, null, null); return; }
+    const text = await resp.text();
+    let total = null;
+    for (const line of text.split('\n')) {
+      if (line.startsWith('#') || !line.trim()) continue;
+      const parts = line.split(',');
+      const last  = parts[parts.length - 1].trim();
+      if (/^\d+$/.test(last)) total = parseInt(last);
+    }
+    setRps(side, total !== null ? Math.round(total / RANGE_S) : 0, total ?? 0);
+  } catch(e) {
+    setRps(side, null, null);
+  }
+}
+
+// ── display ───────────────────────────────────────────────────────────────────
+
+function setRps(side, rps, total) {
+  const rpsEl   = document.getElementById(`p-${side}-rps`);
+  const totEl   = document.getElementById(`p-${side}-total`);
+  const stEl    = document.getElementById(`st-${side}-rps`);
+
+  rpsEl.textContent = rps !== null ? rps.toLocaleString() : '—';
+  if (totEl) totEl.textContent = total !== null ? total.toLocaleString() : '—';
+  if (stEl)  stEl.textContent  = rps !== null ? rps.toLocaleString() : '—';
+
+  hist[side].push(rps ?? 0);
+  if (hist[side].length > MAX_HIST) hist[side].shift();
+  drawSpark(side);
+  updateReductions();
+}
+
+function updateReductions() {
+  const raw  = numOf('p-raw-rps');
+  const base = numOf('p-base-rps');
+  const filt = numOf('p-filt-rps');
+
+  const rbEl = document.getElementById('st-raw-base-pct');
+  const bfEl = document.getElementById('st-base-filt-pct');
+
+  if (raw > 0 && base > 0) {
+    const pct = ((raw - base) / raw * 100).toFixed(1);
+    rbEl.textContent = `−${pct}%`;
+  } else { rbEl.textContent = '—'; }
+
+  if (base > 0 && filt > 0) {
+    const pct = ((base - filt) / base * 100).toFixed(1);
+    bfEl.textContent = `−${pct}%`;
+  } else { bfEl.textContent = '—'; }
+}
+
+function numOf(id) {
+  return parseInt(document.getElementById(id).textContent.replace(/,/g,'')) || 0;
+}
+
+// ── sparklines ────────────────────────────────────────────────────────────────
+
+function drawSpark(side) {
+  const canvas = document.getElementById(`spark-${side}`);
+  if (!canvas) return;
+  canvas.width  = canvas.offsetWidth  || 350;
+  canvas.height = canvas.offsetHeight || 44;
+  const ctx  = canvas.getContext('2d');
+  const data = hist[side];
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (data.length < 2) return;
+  const mx = Math.max(...data, 1);
+  const col = PATHS[side].color;
+  ctx.beginPath();
+  ctx.strokeStyle = col;
+  ctx.lineWidth   = 1.5;
+  data.forEach((v, i) => {
+    const x = (i / (MAX_HIST - 1)) * W;
+    const y = H - (v / mx) * (H - 4) - 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.lineTo((data.length - 1) / (MAX_HIST - 1) * W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = col + '22';
+  ctx.fill();
+}
+
+// ── parquet writer health ─────────────────────────────────────────────────────
+
+const PW_PORTS = { raw: 8881, base: 8882, filt: 8883 };
+
+async function fetchParquetHealth(side) {
+  const host = document.getElementById('host').value.trim();
+  const port = PW_PORTS[side];
+  const statusEl = document.getElementById(`pw-${side}-status`);
+  try {
+    const resp = await fetch(`http://${host}:${port}/health`,
+                             { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const j = await resp.json();
+    statusEl.textContent = 'ok';
+    statusEl.style.color = 'var(--green)';
+    const set = (id, val) => {
+      const el = document.getElementById(`pw-${side}-${id}`);
+      if (el) el.textContent = val != null
+        ? (typeof val === 'number' ? val.toLocaleString() : val) : '—';
+    };
+    set('rows',  j.total_rows_written);
+    set('msgs',  j.msgs_received);
+    set('flush', j.flush_count);
+    set('disk',  j.disk_free_gb != null ? j.disk_free_gb.toFixed(1) + ' GB' : '—');
+  } catch(e) {
+    statusEl.textContent = e.name === 'TimeoutError' ? 'timeout' : 'offline';
+    statusEl.style.color = 'var(--muted)';
+  }
+}
+
+function fetchAllParquetHealth() {
+  fetchParquetHealth('raw');
+  fetchParquetHealth('base');
+  fetchParquetHealth('filt');
+}
+
+// poll parquet health every 10s
+setInterval(fetchAllParquetHealth, 10000);
+window.addEventListener('DOMContentLoaded', fetchAllParquetHealth);
+</script>
+</body>
+</html>

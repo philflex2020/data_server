@@ -1108,6 +1108,7 @@ static void health_thread_fn() {
         std::ostringstream resp;
         resp << "HTTP/1.1 200 OK\r\n"
              << "Content-Type: application/json\r\n"
+             << "Access-Control-Allow-Origin: *\r\n"
              << "Content-Length: " << b.size() << "\r\n"
              << "Connection: close\r\n\r\n"
              << b;

@@ -1,0 +1,43 @@
+version: "3.9"
+
+networks:
+  evelyn:
+    name: evelyn34_net
+    driver: bridge
+
+# Evelyn demo stack — single unit, smooth mode
+#   broker: FlashMQ on host:11883
+#   writer: parquet-writer:latest — ems/#, compactor enabled, health :8771
+#   generator: stress_real_pub runs NATIVELY on .34 host (see start-evelyn.sh)
+
+services:
+
+  broker:
+    image: flashmq:torture
+    container_name: evelyn34_broker
+    networks: [evelyn]
+    ports:
+      - "11883:1883"
+    volumes:
+      - ./configs/flashmq.conf:/etc/flashmq/flashmq.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "hc", "-m", "1", "-q", "0"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  writer:
+    image: parquet-writer:latest
+    container_name: evelyn34_writer
+    networks: [evelyn]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ${PARQUET_PATH:-/mnt/tort-sdf/evelyn}:/data/parquet
+      - ./configs/writer-evelyn.yaml:/etc/writer/config.yaml:ro
+    ports:
+      - "8771:8771"
+    restart: unless-stopped
