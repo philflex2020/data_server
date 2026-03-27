@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Demo InfluxDB Viewer</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+    --base-col:#58a6ff; --filt-col:#3fb950;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:10px; }
+  .topbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .topbar label { font-size:.8rem; color:var(--muted); }
+  input[type=text], input[type=number], select {
+    background:var(--surface); border:1px solid var(--border); color:var(--text);
+    padding:4px 8px; border-radius:4px; font-size:.82rem; }
+  input:focus, select:focus { outline:none; border-color:var(--accent); }
+  .btn { border:1px solid var(--border); background:var(--surface); color:var(--text);
+         padding:4px 12px; border-radius:4px; cursor:pointer; font-size:.82rem;
+         transition:border-color .15s, color .15s; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn.active { background:var(--green); border-color:var(--green); color:#0d1117; font-weight:700; }
+  .btn-sm { padding:2px 8px; font-size:.75rem; }
+
+  /* ── dual column layout ── */
+  .dual-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+  @media(max-width:1000px) { .dual-grid { grid-template-columns:1fr; } }
+
+  .side-wrap { display:flex; flex-direction:column; gap:8px; }
+  .side-hdr  { display:flex; align-items:center; gap:8px; padding:6px 12px;
+               border-radius:6px 6px 0 0; border:1px solid var(--border); border-bottom:none; }
+  .side-hdr.base { border-color:var(--base-col); background:#0c2d6b18; }
+  .side-hdr.filt { border-color:var(--filt-col); background:#0d441818; }
+  .side-title { font-weight:700; font-size:.85rem; }
+  .side-hdr.base .side-title { color:var(--base-col); }
+  .side-hdr.filt .side-title { color:var(--filt-col); }
+  .side-sub   { font-size:.72rem; color:var(--muted); font-family:'Consolas',monospace; }
+
+  /* ── stats row ── */
+  .stats-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+  .scard { background:var(--surface); border:1px solid var(--border); border-radius:5px; padding:5px 8px; }
+  .scard-k { font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .scard-v { font-size:1rem; font-weight:700; font-family:'Consolas',monospace; }
+  .base .scard-v { color:var(--base-col); }
+  .filt .scard-v { color:var(--filt-col); }
+
+  /* ── panel / schema ── */
+  .side-body { background:var(--surface); border:1px solid var(--border);
+               border-top:none; border-radius:0 0 8px 8px; padding:8px; }
+  .side-body.base { border-color:var(--base-col); }
+  .side-body.filt { border-color:var(--filt-col); }
+  .panel-layout { display:grid; grid-template-columns:180px 1fr; gap:8px; }
+  @media(max-width:1400px) { .panel-layout { grid-template-columns:150px 1fr; } }
+  .schema-panel { overflow-y:auto; max-height:320px; }
+  .panel-title { font-size:.68rem; color:var(--muted); text-transform:uppercase;
+                 letter-spacing:.05em; margin-bottom:6px; }
+  .schema-item { font-size:.72rem; font-family:'Consolas',monospace; padding:2px 4px;
+                 border-radius:3px; cursor:pointer; }
+  .schema-item:hover { background:var(--code-bg); }
+  .schema-item .si-field { color:var(--green); }
+  .schema-item .si-tag   { color:var(--purple); }
+  .schema-sep  { font-size:.65rem; color:var(--border); text-transform:uppercase;
+                 letter-spacing:.06em; padding:4px 4px 1px; }
+
+  /* ── feed ── */
+  .feed-head { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:5px; }
+  .feed { background:#0a0d11; border:1px solid var(--border); border-radius:5px;
+          padding:5px 8px; font-family:'Consolas',monospace; font-size:.7rem;
+          height:280px; overflow-y:auto; }
+  .row-hdr  { display:grid; gap:4px; padding:2px 0 3px;
+              border-bottom:2px solid var(--border); color:var(--muted); font-size:.65rem;
+              text-transform:uppercase; letter-spacing:.04em; }
+  .data-row { display:grid; gap:4px; padding:2px 0;
+              border-bottom:1px solid #1c2128; align-items:baseline; cursor:pointer; }
+  .data-row:hover { background:#1c2128; }
+  .data-row:last-child { border:none; }
+  .c-ts    { color:#444c57; font-size:.65rem; white-space:nowrap; }
+  .c-meas  { color:var(--yellow); }
+  .c-tags  { color:var(--purple); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .c-field { color:var(--green); }
+  .c-val   { color:var(--accent); text-align:right; }
+
+  /* ── flux query box ── */
+  .query-box { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+               padding:10px; margin-bottom:14px; }
+  .query-box h3 { font-size:.78rem; color:var(--muted); margin-bottom:8px; }
+  textarea { width:100%; height:72px; background:var(--code-bg); border:1px solid var(--border);
+             color:var(--text); font-family:'Consolas',monospace; font-size:.75rem;
+             padding:5px 8px; border-radius:4px; resize:vertical; }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  #query-result { background:#0a0d11; border:1px solid var(--border); border-radius:4px;
+                  padding:8px; font-family:'Consolas',monospace; font-size:.72rem;
+                  color:var(--text); max-height:200px; overflow:auto; margin-top:8px;
+                  white-space:pre; }
+  .err { color:var(--red); }
+
+  /* ── history modal ── */
+  .modal-overlay { position:fixed; inset:0; background:#000000bb;
+                   display:flex; align-items:center; justify-content:center; z-index:1000; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+           padding:18px 20px; width:min(820px,95vw); max-height:90vh;
+           display:flex; flex-direction:column; gap:12px; box-shadow:0 16px 48px #00000099; }
+  .modal-hdr  { display:flex; justify-content:space-between; align-items:flex-start; }
+  .modal-title { font-size:.95rem; font-weight:700; color:var(--accent); }
+  .modal-sub   { font-size:.75rem; color:var(--muted); margin-top:3px; }
+  .modal-close { background:none; border:none; color:var(--muted); font-size:1.3rem;
+                 cursor:pointer; line-height:1; padding:0 4px; }
+  .modal-close:hover { color:var(--red); }
+  .modal-chart { background:#0a0d11; border:1px solid var(--border); border-radius:6px; padding:8px; }
+  canvas#hist-canvas { display:block; width:100%; height:160px; }
+  .modal-stats { display:flex; gap:16px; font-size:.78rem; font-family:'Consolas',monospace; }
+  .modal-stats span { color:var(--muted); }
+  .modal-stats strong { color:var(--text); margin-left:4px; }
+  .hist-table-wrap { overflow-y:auto; max-height:260px;
+                     background:#0a0d11; border:1px solid var(--border); border-radius:6px; }
+  .hist-table { width:100%; border-collapse:collapse; font-family:'Consolas',monospace; font-size:.74rem; }
+  .hist-table th { padding:4px 10px; text-align:left; color:var(--muted); font-size:.68rem;
+                   text-transform:uppercase; letter-spacing:.04em;
+                   border-bottom:2px solid var(--border); position:sticky; top:0; background:#0a0d11; }
+  .hist-table td { padding:3px 10px; border-bottom:1px solid #1c2128; }
+  .hist-table tr:last-child td { border:none; }
+  .hist-table .td-ts    { color:#444c57; }
+  .hist-table .td-val   { color:var(--accent); text-align:right; }
+  .hist-table .td-delta { font-size:.68rem; text-align:right; }
+  .hist-table .td-delta.pos { color:var(--green); }
+  .hist-table .td-delta.neg { color:var(--red); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="evelyn_live_compare.html">Live Compare</a>
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="ems_simulator_control.html">Sim Control</a>
+  <a href="demo_influx_viewer.html" class="here">Demo InfluxDB</a>
+  <a href="telegraf_configs.html">Telegraf Configs</a>
+</div>
+
+<h1>Demo InfluxDB Viewer — Baseline vs Filtered</h1>
+
+<div class="topbar">
+  <label>Host
+    <input type="text" id="host" value="192.168.86.48" style="width:140px"
+           oninput="onHostChange()">
+  </label>
+  <label>Token <input type="text" id="token" value="ems-token-secret" style="width:150px"></label>
+  <label>Org   <input type="text" id="org"   value="ems-org"          style="width:80px"></label>
+  <label>Range
+    <select id="range-s" style="width:74px">
+      <option value="30">30s</option>
+      <option value="60" selected>60s</option>
+      <option value="300">5m</option>
+      <option value="900">15m</option>
+    </select>
+  </label>
+  <button class="btn" onclick="loadBoth()">Load Schema</button>
+  <button class="btn" id="auto-btn" onclick="toggleAuto()">Auto-refresh off</button>
+</div>
+
+<!-- ── dual panels ─────────────────────────────────────────────────────────── -->
+<div class="dual-grid">
+
+  <!-- Baseline :8096 -->
+  <div class="side-wrap base">
+    <div class="side-hdr base">
+      <span class="side-title">Baseline</span>
+      <span class="side-sub">:8096 · ems-baseline · no filters</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="fetchData('base')">Refresh</button>
+    </div>
+    <div class="stats-bar base" style="padding:0 1px">
+      <div class="scard"><div class="scard-k">Rows/s</div><div class="scard-v" id="s-rps-base">—</div></div>
+      <div class="scard"><div class="scard-k">Measurements</div><div class="scard-v" id="s-meas-base">—</div></div>
+      <div class="scard"><div class="scard-k">Series</div><div class="scard-v" id="s-series-base">—</div></div>
+      <div class="scard"><div class="scard-k">Last fetch</div><div class="scard-v" id="s-ts-base" style="font-size:.72rem">—</div></div>
+    </div>
+    <div class="side-body base">
+      <div class="panel-layout">
+        <div class="schema-panel">
+          <div class="panel-title">Schema</div>
+          <div id="schema-list-base"><span style="color:var(--muted);font-size:.75rem">click Load Schema</span></div>
+        </div>
+        <div>
+          <div class="feed-head">
+            <label style="font-size:.72rem">Limit
+              <input type="number" id="limit-base" value="200" style="width:56px" min="10" max="2000">
+            </label>
+            <label style="font-size:.72rem">Field
+              <input type="text" id="field-filter-base" value="" style="width:90px" placeholder="all">
+            </label>
+          </div>
+          <div class="feed" id="feed-base"><span style="color:var(--muted)">no data yet</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtered :8097 -->
+  <div class="side-wrap filt">
+    <div class="side-hdr filt">
+      <span class="side-title">Filtered</span>
+      <span class="side-sub">:8097 · ems-filtered · Filter A+B</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="fetchData('filt')">Refresh</button>
+    </div>
+    <div class="stats-bar filt" style="padding:0 1px">
+      <div class="scard"><div class="scard-k">Rows/s</div><div class="scard-v" id="s-rps-filt">—</div></div>
+      <div class="scard"><div class="scard-k">Measurements</div><div class="scard-v" id="s-meas-filt">—</div></div>
+      <div class="scard"><div class="scard-k">Series</div><div class="scard-v" id="s-series-filt">—</div></div>
+      <div class="scard"><div class="scard-k">Last fetch</div><div class="scard-v" id="s-ts-filt" style="font-size:.72rem">—</div></div>
+    </div>
+    <div class="side-body filt">
+      <div class="panel-layout">
+        <div class="schema-panel">
+          <div class="panel-title">Schema</div>
+          <div id="schema-list-filt"><span style="color:var(--muted);font-size:.75rem">click Load Schema</span></div>
+        </div>
+        <div>
+          <div class="feed-head">
+            <label style="font-size:.72rem">Limit
+              <input type="number" id="limit-filt" value="200" style="width:56px" min="10" max="2000">
+            </label>
+            <label style="font-size:.72rem">Field
+              <input type="text" id="field-filter-filt" value="" style="width:90px" placeholder="all">
+            </label>
+          </div>
+          <div class="feed" id="feed-filt"><span style="color:var(--muted)">no data yet</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.dual-grid -->
+
+<!-- ── Custom Flux query ─────────────────────────────────────────────────── -->
+<div class="query-box">
+  <h3>Custom Flux query &nbsp;
+    <label style="font-size:.75rem;font-weight:400">Target
+      <select id="query-target" style="width:160px">
+        <option value="base">Baseline :8096</option>
+        <option value="filt">Filtered :8097</option>
+      </select>
+    </label>
+  </h3>
+  <textarea id="flux-query">from(bucket:"ems-baseline")
+  |> range(start:-60s)
+  |> filter(fn:(r)=>r._measurement=="unit")
+  |> limit(n:20)</textarea>
+  <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+    <button class="btn" onclick="runQuery()">Run</button>
+    <button class="btn" onclick="runCount()">Count rows</button>
+    <button class="btn" onclick="listMeasurements()">List measurements</button>
+    <button class="btn" onclick="listFields()">List fields</button>
+    <button class="btn" onclick="listTags()">List tags</button>
+  </div>
+  <pre id="query-result">—</pre>
+</div>
+
+<!-- ── History modal ──────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="modal-title">—</div>
+        <div class="modal-sub"  id="modal-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-chart"><canvas id="hist-canvas" height="160"></canvas></div>
+    <div class="modal-stats" id="modal-stats"></div>
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead><tr>
+          <th>#</th><th>Time</th><th style="text-align:right">Value</th><th style="text-align:right">Δ</th>
+        </tr></thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const PORTS   = { base: 8096, filt: 8097 };
+const BUCKETS = { base: 'ems-baseline', filt: 'ems-filtered' };
+const LS_DEMO = 'demo_compare_stats';   // shared with demo_compare.html
+
+let autoTimer = null;
+let autoOn    = false;
+
+// ── config helpers ─────────────────────────────────────────────────────────
+
+function cfg(side) {
+  return {
+    host:   document.getElementById('host').value.trim(),
+    port:   PORTS[side],
+    token:  document.getElementById('token').value.trim(),
+    org:    document.getElementById('org').value.trim(),
+    bucket: BUCKETS[side],
+    range:  document.getElementById('range-s').value,
+  };
+}
+
+function influxUrl(c) { return `http://${c.host}:${c.port}`; }
+
+async function flux(query, c) {
+  const resp = await fetch(`${influxUrl(c)}/api/v2/query?org=${encodeURIComponent(c.org)}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Token ${c.token}`,
+      'Content-Type':  'application/vnd.flux',
+      'Accept':        'application/csv',
+    },
+    body: query,
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+  return resp.text();
+}
+
+function parseCSV(csv) {
+  const lines = csv.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = lines.slice(1).map(l => {
+    const vals = l.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (vals[i] || '').trim());
+    return obj;
+  });
+  return { headers, rows };
+}
+
+// ── host inheritance from demo_compare localStorage ────────────────────────
+
+function loadHostFromDemoCompare() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_DEMO) || '{}');
+    if (saved.host) {
+      document.getElementById('host').value = saved.host;
+    }
+  } catch(e) { /* ignore */ }
+}
+
+function onHostChange() {
+  // persist host back so demo_compare also picks it up if reloaded
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_DEMO) || '{}');
+    saved.host = document.getElementById('host').value.trim();
+    localStorage.setItem(LS_DEMO, JSON.stringify(saved));
+  } catch(e) { /* ignore */ }
+}
+
+// ── schema loading ─────────────────────────────────────────────────────────
+
+async function loadSchema(side) {
+  const c = cfg(side);
+  const el = document.getElementById(`schema-list-${side}`);
+  el.innerHTML = '<span style="color:var(--muted);font-size:.75rem">loading…</span>';
+  try {
+    const measCsv = await flux(
+      `import "influxdata/influxdb/schema"\nschema.measurements(bucket: "${c.bucket}")`, c);
+    const { rows: measRows } = parseCSV(measCsv);
+    const measurements = measRows.map(r => r._value).filter(Boolean);
+
+    const fieldsCsv = await flux(
+      `import "influxdata/influxdb/schema"\nschema.fieldKeys(bucket: "${c.bucket}", start: -${c.range}s)`, c);
+    const { rows: fieldRows } = parseCSV(fieldsCsv);
+    const fields = fieldRows.map(r => r._value).filter(Boolean);
+
+    const tagsCsv = await flux(
+      `import "influxdata/influxdb/schema"\nschema.tagKeys(bucket: "${c.bucket}", start: -${c.range}s)`, c);
+    const { rows: tagRows } = parseCSV(tagsCsv);
+    const tags = tagRows.map(r => r._value).filter(v => v && !v.startsWith('_'));
+
+    document.getElementById(`s-meas-${side}`).textContent = measurements.length;
+
+    let html = '';
+    if (measurements.length) {
+      html += `<div class="schema-sep">Measurements</div>`;
+      html += measurements.map(m =>
+        `<div class="schema-item"><span class="si-field">⊞ ${m}</span></div>`).join('');
+    }
+    if (fields.length) {
+      html += `<div class="schema-sep">Fields</div>`;
+      html += fields.map(f =>
+        `<div class="schema-item"><span class="si-field">▸ ${f}</span></div>`).join('');
+    }
+    if (tags.length) {
+      html += `<div class="schema-sep">Tags</div>`;
+      html += tags.map(t =>
+        `<div class="schema-item"><span class="si-tag">⬡ ${t}</span></div>`).join('');
+    }
+    if (!html) html = '<span style="color:var(--muted);font-size:.75rem">no schema — increase range</span>';
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+}
+
+function loadBoth() { loadSchema('base'); loadSchema('filt'); }
+
+// ── data fetch ─────────────────────────────────────────────────────────────
+
+async function fetchData(side) {
+  const c     = cfg(side);
+  const lim   = parseInt(document.getElementById(`limit-${side}`).value) || 200;
+  const ffilt = document.getElementById(`field-filter-${side}`).value.trim();
+  let q = `from(bucket:"${c.bucket}")
+  |> range(start:-${c.range}s)
+  |> filter(fn:(r)=>r._measurement=="unit")`;
+  if (ffilt) q += `\n  |> filter(fn:(r)=>r._field=="${ffilt}")`;
+  q += `\n  |> sort(columns:["_time"], desc:true)\n  |> limit(n:${lim})`;
+
+  const feed = document.getElementById(`feed-${side}`);
+  try {
+    const csv = await flux(q, c);
+    const { rows } = parseCSV(csv);
+    if (!rows.length) {
+      feed.innerHTML = '<span style="color:var(--muted)">no rows — check range / measurement</span>';
+      return;
+    }
+
+    const sampleKeys = Object.keys(rows[0]).filter(k =>
+      !k.startsWith('_') && k !== 'result' && k !== 'table');
+
+    const seriesSet = new Set(rows.map(r => r._field));
+    document.getElementById(`s-series-${side}`).textContent = seriesSet.size;
+    document.getElementById(`s-ts-${side}`).textContent     = new Date().toLocaleTimeString();
+    document.getElementById(`s-rps-${side}`).textContent    =
+      (rows.length / parseInt(c.range)).toFixed(1);
+
+    const cols = `120px 60px repeat(${sampleKeys.length},1fr) 90px 80px`;
+
+    const rowMeta = [];
+    let html = `<div class="row-hdr" style="grid-template-columns:${cols}">` +
+      `<span>time</span><span>meas</span>` +
+      sampleKeys.map(k => `<span>${k}</span>`).join('') +
+      `<span>field</span><span style="text-align:right">value</span></div>`;
+
+    for (const r of rows) {
+      const ts    = (r._time||'').slice(11,23);
+      const meas  = r._measurement || '';
+      const field = r._field || '';
+      const val   = r._value || '';
+      const tagCells = sampleKeys.map(k =>
+        `<span class="c-tags" title="${r[k]||''}">${(r[k]||'').slice(-12)}</span>`).join('');
+      const idx = rowMeta.length;
+      const tags = {};
+      sampleKeys.forEach(k => { if (r[k]) tags[k] = r[k]; });
+      rowMeta.push({ meas, field, tags, side });
+      html += `<div class="data-row" style="grid-template-columns:${cols}" data-idx="${idx}">` +
+        `<span class="c-ts">${ts}</span>` +
+        `<span class="c-meas">${meas}</span>` +
+        tagCells +
+        `<span class="c-field">${field}</span>` +
+        `<span class="c-val">${parseFloat(val).toFixed ? parseFloat(val).toFixed(4) : val}</span>` +
+        `</div>`;
+    }
+    feed.innerHTML = html;
+    feed.querySelectorAll('.data-row').forEach(el => {
+      el.addEventListener('click', () => {
+        const meta = rowMeta[parseInt(el.dataset.idx)];
+        if (meta) showHistory(meta);
+      });
+    });
+  } catch(e) {
+    feed.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+}
+
+function fetchBoth() { fetchData('base'); fetchData('filt'); }
+
+// ── auto-refresh ───────────────────────────────────────────────────────────
+
+function toggleAuto() {
+  autoOn = !autoOn;
+  const btn = document.getElementById('auto-btn');
+  if (autoOn) {
+    btn.textContent = 'Auto-refresh ON';
+    btn.classList.add('active');
+    fetchBoth();
+    autoTimer = setInterval(fetchBoth, 5000);
+  } else {
+    btn.textContent = 'Auto-refresh off';
+    btn.classList.remove('active');
+    clearInterval(autoTimer);
+  }
+}
+
+// ── custom flux query ──────────────────────────────────────────────────────
+
+function queryCfg() {
+  const side = document.getElementById('query-target').value;
+  return cfg(side);
+}
+
+async function runQuery() {
+  const c   = queryCfg();
+  const q   = document.getElementById('flux-query').value;
+  const out = document.getElementById('query-result');
+  out.className = '';
+  out.textContent = 'running…';
+  try {
+    const csv = await flux(q, c);
+    const { rows } = parseCSV(csv);
+    if (!rows.length) { out.textContent = '(no rows)'; return; }
+    const keys = Object.keys(rows[0]).filter(k => k !== 'result' && k !== 'table' && k !== '');
+    const widths = keys.map(k => Math.max(k.length, ...rows.slice(0,100).map(r => (r[k]||'').length)));
+    const header = keys.map((k,i) => k.padEnd(widths[i])).join('  ');
+    const sep    = widths.map(w => '-'.repeat(w)).join('  ');
+    const body   = rows.slice(0,200).map(r =>
+      keys.map((k,i) => (r[k]||'').padEnd(widths[i])).join('  ')).join('\n');
+    out.textContent = `${header}\n${sep}\n${body}\n\n(${rows.length} rows)`;
+  } catch(e) {
+    out.className = 'err';
+    out.textContent = e.message;
+  }
+}
+
+async function runCount() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `from(bucket:"${c.bucket}")\n  |> range(start:-${c.range}s)\n  |> filter(fn:(r)=>r._measurement=="unit")\n  |> group()\n  |> count()`;
+  await runQuery();
+}
+
+async function listMeasurements() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `import "influxdata/influxdb/schema"\nschema.measurements(bucket: "${c.bucket}")`;
+  await runQuery();
+}
+
+async function listFields() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `import "influxdata/influxdb/schema"\nschema.fieldKeys(bucket: "${c.bucket}", start: -${c.range}s)`;
+  await runQuery();
+}
+
+async function listTags() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `import "influxdata/influxdb/schema"\nschema.tagKeys(bucket: "${c.bucket}", start: -${c.range}s)`;
+  await runQuery();
+}
+
+// update query bucket hint when target changes
+document.getElementById('query-target').addEventListener('change', () => {
+  const side = document.getElementById('query-target').value;
+  const q = document.getElementById('flux-query').value;
+  document.getElementById('flux-query').value =
+    q.replace(/bucket:"[^"]*"/, `bucket:"${BUCKETS[side]}"`);
+});
+
+// ── history modal ──────────────────────────────────────────────────────────
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal'))
+    document.getElementById('modal').style.display = 'none';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('modal').style.display = 'none';
+});
+
+async function showHistory(meta) {
+  const c = cfg(meta.side);
+  const pointName = meta.tags.point_name || meta.field;
+  const unitId    = meta.tags.unit_id    || meta.tags.site_id || '';
+  const instance  = meta.tags.instance   || meta.tags.device  || '';
+
+  const sideLabel = meta.side === 'base' ? 'Baseline :8096' : 'Filtered :8097';
+  document.getElementById('modal-title').textContent = `${pointName}  [${meta.field}]`;
+  document.getElementById('modal-sub').textContent   =
+    [sideLabel, unitId, instance, meta.tags.device, meta.meas].filter(Boolean).join(' · ');
+  document.getElementById('modal-stats').textContent = 'loading…';
+  document.getElementById('hist-tbody').innerHTML    =
+    '<tr><td colspan="4" style="color:var(--muted);padding:8px">querying…</td></tr>';
+  document.getElementById('modal').style.display    = 'flex';
+
+  let tagFilters = '';
+  for (const [k, v] of Object.entries(meta.tags))
+    tagFilters += `\n  |> filter(fn:(r) => r.${k} == "${v}")`;
+
+  const q = `from(bucket:"${c.bucket}")
+  |> range(start:-1h)
+  |> filter(fn:(r) => r._measurement == "${meta.meas}")
+  |> filter(fn:(r) => r._field == "${meta.field}")${tagFilters}
+  |> sort(columns:["_time"], desc:true)
+  |> limit(n:200)`;
+
+  try {
+    const csv = await flux(q, c);
+    const { rows } = parseCSV(csv);
+    if (!rows.length) {
+      document.getElementById('hist-tbody').innerHTML =
+        '<tr><td colspan="4" style="color:var(--muted);padding:8px">no data in last 1h</td></tr>';
+      document.getElementById('modal-stats').innerHTML = '';
+      clearHistChart();
+      return;
+    }
+
+    const sorted = [...rows].sort((a,b) => (a._time||'').localeCompare(b._time||''));
+    const values = sorted.map(r => parseFloat(r._value));
+    const times  = sorted.map(r => r._time||'');
+    const nums   = values.filter(v => !isNaN(v));
+    const vmin   = Math.min(...nums), vmax = Math.max(...nums);
+    const vmean  = nums.reduce((a,b)=>a+b,0) / nums.length;
+    const vlast  = nums[nums.length-1];
+
+    document.getElementById('modal-stats').innerHTML =
+      `<span>min <strong>${vmin.toFixed(4)}</strong></span>` +
+      `<span>max <strong>${vmax.toFixed(4)}</strong></span>` +
+      `<span>mean <strong>${vmean.toFixed(4)}</strong></span>` +
+      `<span>last <strong>${vlast.toFixed(4)}</strong></span>` +
+      `<span>n <strong>${nums.length}</strong></span>`;
+
+    drawHistChart(values, times, meta.side === 'filt');
+
+    const tbody = document.getElementById('hist-tbody');
+    tbody.innerHTML = '';
+    rows.forEach((r, i) => {
+      const val   = parseFloat(r._value);
+      const prev  = i + 1 < rows.length ? parseFloat(rows[i+1]._value) : null;
+      const delta = (prev !== null && !isNaN(prev) && !isNaN(val)) ? (val - prev) : null;
+      const dStr  = delta !== null ? (delta >= 0 ? '+' : '') + delta.toFixed(4) : '—';
+      const dCls  = delta === null ? '' : delta > 0 ? 'pos' : delta < 0 ? 'neg' : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td class="td-ts">${i+1}</td>` +
+        `<td class="td-ts">${(r._time||'').slice(0,23).replace('T',' ')}</td>` +
+        `<td class="td-val">${isNaN(val) ? r._value : val.toFixed(4)}</td>` +
+        `<td class="td-delta ${dCls}">${dStr}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e) {
+    document.getElementById('hist-tbody').innerHTML =
+      `<tr><td colspan="4" class="err" style="padding:8px">${e.message}</td></tr>`;
+  }
+}
+
+function clearHistChart() {
+  const canvas = document.getElementById('hist-canvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawHistChart(values, times, green) {
+  const canvas = document.getElementById('hist-canvas');
+  const W = canvas.offsetWidth || 760;
+  const H = 160;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const nums = values.filter(v => !isNaN(v));
+  if (nums.length < 2) return;
+  const pad = { t:10, r:8, b:28, l:54 };
+  const cw  = W - pad.l - pad.r;
+  const ch  = H - pad.t - pad.b;
+  const vmin = Math.min(...nums), vmax = Math.max(...nums);
+  const vrange = vmax - vmin || 1;
+  const xOf = i => pad.l + (i / (values.length - 1)) * cw;
+  const yOf = v => pad.t + ch - ((v - vmin) / vrange) * ch;
+  const lineCol = green ? '#3fb950' : '#58a6ff';
+  const fillCol = green ? '#3fb95018' : '#58a6ff18';
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (i / 4) * ch;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+  }
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px Consolas,monospace'; ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = vmax - (i / 4) * vrange;
+    ctx.fillText(v.toFixed(3), pad.l - 4, pad.t + (i / 4) * ch + 4);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillText((times[0]||'').slice(11,19), pad.l, H - 6);
+  ctx.textAlign = 'right';
+  ctx.fillText((times[times.length-1]||'').slice(11,19), pad.l + cw, H - 6);
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = xOf(i), y = isNaN(v) ? yOf(vmin) : yOf(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(xOf(values.length-1), pad.t + ch);
+  ctx.lineTo(pad.l, pad.t + ch);
+  ctx.closePath(); ctx.fillStyle = fillCol; ctx.fill();
+  ctx.beginPath(); ctx.strokeStyle = lineCol; ctx.lineWidth = 1.5;
+  values.forEach((v, i) => {
+    if (isNaN(v)) return;
+    const x = xOf(i), y = yOf(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  const lv = values[values.length - 1];
+  if (!isNaN(lv)) {
+    ctx.beginPath();
+    ctx.arc(xOf(values.length-1), yOf(lv), 3.5, 0, Math.PI*2);
+    ctx.fillStyle = lineCol; ctx.fill();
+  }
+}
+
+// ── init ───────────────────────────────────────────────────────────────────
+loadHostFromDemoCompare();
+</script>
+</body>
+</html>
