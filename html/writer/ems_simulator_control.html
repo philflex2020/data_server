@@ -174,7 +174,6 @@
 <!-- Fleet overview -->
 <div class="fleet-bar" id="fleet-bar">
   <div class="fcard"><div class="fcard-label">Units</div><div class="fcard-val" id="f-units">—</div></div>
-  <div class="fcard"><div class="fcard-label">Actual msg/s</div><div class="fcard-val" id="f-mps">—</div></div>
   <div class="fcard"><div class="fcard-label">Target msg/s</div><div class="fcard-val" id="f-rate">—</div></div>
   <div class="fcard"><div class="fcard-label">Published</div><div class="fcard-val" id="f-total">—</div></div>
   <div class="fcard"><div class="fcard-label">Charging</div><div class="fcard-val" id="f-charging" style="color:var(--green)">—</div></div>
@@ -408,14 +407,12 @@
 let ws = null;
 let lastStats = null;
 let selectedUnits = new Set(); // empty = ALL
-let mpsDisplay = 0;
 
 // ── connection ──────────────────────────────────────────────────────────────
 
 function toggleConnect() {
   if (ws) {
     ws.close(); ws = null;
-    mpsDisplay = 0;
     return;
   }
   const host = document.getElementById('ws-host').value.trim() || 'localhost';
@@ -464,15 +461,12 @@ function faultArray(faults) {
 
 function updateFleet(msg) {
   const units   = msg.units || [];
-  const mps     = msg.mps   || 0;
-  if (mps > 0) mpsDisplay = Math.round(mps / 10);
   const rate    = msg.rate  ?? null;
   const total   = msg.total_published || 0;
   const charging= units.filter(u => u.mode === 'charging' || u.mode === 'CHARGING').length;
   const faults  = units.reduce((n, u) => n + faultArray(u.faults).length, 0);
 
   setText('f-units',    units.length);
-  setText('f-mps',      mpsDisplay.toLocaleString());
   setText('f-rate',     rate !== null ? (rate === 0 ? 'unlimited' : rate.toLocaleString()) : '—');
   setText('f-total',    total >= 1e6 ? (total/1e6).toFixed(2)+'M' : total.toLocaleString());
   setText('f-charging', charging);
