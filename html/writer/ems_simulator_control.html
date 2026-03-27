@@ -174,7 +174,8 @@
 <!-- Fleet overview -->
 <div class="fleet-bar" id="fleet-bar">
   <div class="fcard"><div class="fcard-label">Units</div><div class="fcard-val" id="f-units">—</div></div>
-  <div class="fcard"><div class="fcard-label">Msg/s</div><div class="fcard-val" id="f-mps">—</div></div>
+  <div class="fcard"><div class="fcard-label">Actual msg/s</div><div class="fcard-val" id="f-mps">—</div></div>
+  <div class="fcard"><div class="fcard-label">Target msg/s</div><div class="fcard-val" id="f-rate">—</div></div>
   <div class="fcard"><div class="fcard-label">Published</div><div class="fcard-val" id="f-total">—</div></div>
   <div class="fcard"><div class="fcard-label">Charging</div><div class="fcard-val" id="f-charging" style="color:var(--green)">—</div></div>
   <div class="fcard"><div class="fcard-label">Faults</div><div class="fcard-val" id="f-faults" style="color:var(--red)">—</div></div>
@@ -191,7 +192,7 @@
     <span class="select-info" id="target-info"></span>
   </div>
   <div class="ctrl-row">
-    <span class="ctrl-label">Rate (msg/s):</span>
+    <span class="ctrl-label">Target rate:</span>
     <input type="number" id="rate-val" value="81420" min="0" max="2000000" step="1000">
     <button class="btn" onclick="sendSetRate()">Set Rate</button>
     <div class="ctrl-sep"></div>
@@ -461,15 +462,20 @@ function faultArray(faults) {
 function updateFleet(msg) {
   const units   = msg.units || [];
   const mps     = msg.mps   || 0;
+  const rate    = msg.rate  ?? null;
   const total   = msg.total_published || 0;
   const charging= units.filter(u => u.mode === 'charging' || u.mode === 'CHARGING').length;
   const faults  = units.reduce((n, u) => n + faultArray(u.faults).length, 0);
 
   setText('f-units',    units.length);
   setText('f-mps',      mps.toLocaleString());
+  setText('f-rate',     rate !== null ? (rate === 0 ? 'unlimited' : rate.toLocaleString()) : '—');
   setText('f-total',    total >= 1e6 ? (total/1e6).toFixed(2)+'M' : total.toLocaleString());
   setText('f-charging', charging);
   setText('f-faults',   faults);
+
+  // Sync rate input to generator's current target rate
+  if (rate !== null) document.getElementById('rate-val').value = rate;
 
   // Update target dropdown if unit list changed
   const sel   = document.getElementById('target-sel');
