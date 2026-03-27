@@ -124,6 +124,23 @@
   <div class="scard"><div class="scard-k">Last update</div><div class="scard-v" id="s-ts" style="font-size:.95rem;color:var(--muted)">—</div></div>
 </div>
 
+<!--
+  ARCHITECTURE (fractal-phil 192.168.86.51) — single broker, two filter paths
+  ============================================================================
+  ONE stress_real_pub  →  ONE FlashMQ :11888  ─┬─  Telegraf-base (no filter)      →  InfluxDB :8096  bucket=ems-baseline
+                                                └─  Telegraf-filt (Filter A+B +     →  InfluxDB :8097  bucket=ems-filtered
+                                                      float_dedup execd)
+
+  stress_real_pub : ws-port 8769, rate 175 msg/s, 1 unit (0215F562), site 0215D1D8
+  Telegraf-base   : /tmp/telegraf-native-base.conf   — all signals, no dedup
+  Telegraf-filt   : /tmp/tg-filt-floatdedup.conf     — Filter A (drop strings) +
+                                                        Filter B (dedup int/bool 60s) +
+                                                        float_dedup execd (deadband)
+  FlashMQ         : /tmp/fmq-base.conf  (fmq-filt.conf is retired — do NOT start it)
+  InfluxDB base   : /data/influx-base   :8096
+  InfluxDB filt   : /data/influx-filt   :8097
+  Scripts         : scripts/evelyn-compare-native-start.sh / -stop.sh
+-->
 <!-- Architecture diagram -->
 <h2>System Layout</h2>
 <div class="diagram-wrap">
