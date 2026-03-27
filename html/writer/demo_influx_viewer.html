@@ -259,7 +259,7 @@
             </label>
           </div>
           <div class="legend" style="margin-bottom:5px">
-            <span style="color:var(--muted);font-size:.68rem">float_dedup execd — every row here is a change event (ε or value change exceeded)</span>
+            <span style="color:var(--muted);font-size:.68rem">float_dedup execd — rows written when: float |Δ| ≥ ε · int/bool/string value changed · OR 60s heartbeat elapsed (repeats every 60s regardless)</span>
             &nbsp;
             <span class="legend-item"><span class="legend-swatch" style="background:#d2992288;border:1px solid var(--yellow)"></span><span style="color:var(--yellow)">float</span></span>
             <span class="legend-item"><span class="legend-swatch" style="background:#bc8cff88;border:1px solid var(--purple)"></span><span style="color:var(--purple)">int / bool</span></span>
