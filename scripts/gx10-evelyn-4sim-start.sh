@@ -17,8 +17,8 @@ LOGS="/data/logs/$(date +%Y/%m/%d)"
 mkdir -p "$LOGS"
 
 WRITER_BIN="$REPO/source/parquet_writer_cpp/real_writer"
-STRESS_BIN="$REPO/source/stress_runner/ems_site_simulator"
-STRESS_TPL="$REPO/source/stress_runner/ems_topic_template.json"
+STRESS_BIN="$REPO/source/ems_site_simulator/ems_site_simulator"
+STRESS_TPL="$REPO/source/ems_site_simulator/ems_topic_template.json"
 FLASHMQ_BIN="/tmp/FlashMQ/build/flashmq"
 
 # ── sanity checks ─────────────────────────────────────────────────────────

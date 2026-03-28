@@ -19,8 +19,8 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOGS="/data/logs/$(date +%Y/%m/%d)"
 mkdir -p "$LOGS" 2>/dev/null || { mkdir -p "$HOME/logs"; LOGS="$HOME/logs"; }
 
-STRESS_BIN="$REPO/source/stress_runner/ems_site_simulator"
-STRESS_TPL="$REPO/source/stress_runner/ems_topic_template.json"
+STRESS_BIN="$REPO/source/ems_site_simulator/ems_site_simulator"
+STRESS_TPL="$REPO/source/ems_site_simulator/ems_topic_template.json"
 DOCKER_HOST="localhost"
 
 # ── argument parsing ────────────────────────────────────────────────────────

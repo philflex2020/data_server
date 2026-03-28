@@ -15,8 +15,8 @@ mkdir -p "$LOGS"
 
 WRITER_BIN="$REPO/source/parquet_writer_cpp/real_writer"
 WRITER_CFG="$REPO/source/parquet_writer_cpp/config.gx10-evelyn.yaml"
-STRESS_BIN="$REPO/source/stress_runner/ems_site_simulator"
-STRESS_TPL="$REPO/source/stress_runner/ems_topic_template.json"
+STRESS_BIN="$REPO/source/ems_site_simulator/ems_site_simulator"
+STRESS_TPL="$REPO/source/ems_site_simulator/ems_topic_template.json"
 
 # ── sanity checks ─────────────────────────────────────────────────────────
 for f in "$WRITER_BIN" "$WRITER_CFG" "$STRESS_BIN" "$STRESS_TPL"; do

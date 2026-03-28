@@ -10,10 +10,10 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SIM_BIN="$REPO_ROOT/source/stress_runner/ems_site_simulator"
+SIM_BIN="$REPO_ROOT/source/ems_site_simulator/ems_site_simulator"
 # Fallback to stress_real_pub if ems_site_simulator not yet built
 [[ -x "$SIM_BIN" ]] || SIM_BIN="$REPO_ROOT/source/stress_runner/stress_real_pub"
-TEMPLATE="$REPO_ROOT/source/stress_runner/ems_topic_template.json"
+TEMPLATE="$REPO_ROOT/source/ems_site_simulator/ems_topic_template.json"
 LOG_DIR="/data/logs/$(date +%Y/%m/%d)"
 
 UNITS=1

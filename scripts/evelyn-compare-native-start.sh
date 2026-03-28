@@ -33,8 +33,8 @@ FLASHMQ_BIN="/tmp/FlashMQ/build/flashmq"
 TELEGRAF_BIN="/usr/local/bin/telegraf"
 INFLUXD_BIN="/usr/local/bin/influxd"
 INFLUX_BIN="/usr/local/bin/influx"
-STRESS_BIN="$REPO/source/stress_runner/ems_site_simulator"
-STRESS_TPL="$REPO/source/stress_runner/ems_topic_template.json"
+STRESS_BIN="$REPO/source/ems_site_simulator/ems_site_simulator"
+STRESS_TPL="$REPO/source/ems_site_simulator/ems_topic_template.json"
 
 RATE=175
 UNITS=1   # number of unit IDs to use (from UNIT_IDS array below)

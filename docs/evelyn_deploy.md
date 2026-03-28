@@ -123,7 +123,7 @@ mkdir -p evelyn-stack-native/{bin,lib,configs,systemd,html}
 
 # Binaries (x86-64 or rebuild for target arch)
 cp source/parquet_writer_cpp/real_writer   evelyn-stack-native/bin/parquet-writer
-cp source/stress_runner/ems_site_simulator    evelyn-stack-native/bin/   # optional
+cp source/ems_site_simulator/ems_site_simulator    evelyn-stack-native/bin/   # optional
 cp source/stress_runner/ems_topic_template.json evelyn-stack-native/
 
 # FlashMQ binary (extract from Docker image or build from source)

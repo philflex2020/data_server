@@ -22,8 +22,8 @@ mkdir -p "$LOGS"
 INFLUXD_BIN="/usr/bin/influxd"
 INFLUX_BIN="/usr/bin/influx"
 TELEGRAF_BIN="/usr/bin/telegraf"
-STRESS_BIN="$REPO/source/stress_runner/ems_site_simulator"
-STRESS_TPL="$REPO/source/stress_runner/ems_topic_template.json"
+STRESS_BIN="$REPO/source/ems_site_simulator/ems_site_simulator"
+STRESS_TPL="$REPO/source/ems_site_simulator/ems_topic_template.json"
 
 FILTERED=false
 START_GEN=true
