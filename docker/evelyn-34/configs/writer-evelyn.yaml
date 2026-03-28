@@ -23,6 +23,11 @@ mqtt:
     # 7 seg: ems/site/{site_id}/{comp}/{device_id}/{point_name}/{dtype}
     - match: "ems/site/+/+/+/+/+"
       segments: ["_", "_", "site_id", "_", "device", "point_name", "dtype_hint"]
+    # Catch-all fallback: unknown topic depth — extract point_name + dtype from end
+    # Logged once per unique depth+prefix so unrecognised formats are discoverable.
+    - match: "#"
+      reverse: true
+      segments: ["dtype_hint", "point_name"]
 output:
   base_path: /data/parquet
   site_id: "0"

@@ -198,6 +198,50 @@ def handle_query_snapshot(params):
         "signals": signals,
     }, None, 200
 
+def handle_query_topic_formats():
+    """Scan recent parquet files for unique topic structures (point_name, device, etc.)."""
+    if not _DUCKDB_OK:
+        return None, "duckdb not available", 503
+    path = current_path()
+    files = _get_file_list(path)
+    if not files:
+        return None, "no parquet files found", 404
+    # Sample up to 20 most-recent files (list is newest-first)
+    sample = [f["path"] for f in files[:20]]
+    # Build a quoted list for DuckDB
+    flist = ", ".join(f"'{p}'" for p in sample)
+    con = _duckdb.connect()
+    try:
+        # Detect schema: check which metadata columns exist
+        schema_row = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet([{flist}], union_by_name=true) LIMIT 0"
+        ).fetchall()
+        cols = {r[0] for r in schema_row}
+        # Build GROUP BY over whatever topic-structure columns are present
+        group_cols = [c for c in ["site_id", "unit_id", "device", "instance", "point_name"]
+                      if c in cols]
+        if not group_cols:
+            con.close()
+            return {"note": "no topic-structure columns found — old wide-sparse schema",
+                    "formats": []}, None, 200
+        sel = ", ".join(f'"{c}"' for c in group_cols)
+        rows = con.execute(
+            f"SELECT {sel}, COUNT(*) as cnt "
+            f"FROM read_parquet([{flist}], union_by_name=true) "
+            f"GROUP BY {sel} ORDER BY cnt DESC LIMIT 200"
+        ).fetchall()
+        formats = []
+        for r in rows:
+            entry = {group_cols[i]: r[i] for i in range(len(group_cols)) if r[i] is not None}
+            entry["count"] = r[-1]
+            formats.append(entry)
+        con.close()
+        return {"files_sampled": len(sample), "formats": formats}, None, 200
+    except Exception as e:
+        con.close()
+        return None, f"query error: {e}", 500
+
+
 PORT       = 8772
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONF_PATH  = os.path.join(SCRIPT_DIR, "configs", "flashmq.conf")
@@ -483,6 +527,9 @@ async def handle(reader, writer):
 
         elif method == "GET" and path == "/query/snapshot":
             result, err, status_code = handle_query_snapshot(params)
+
+        elif method == "GET" and path == "/query/topic_formats":
+            result, err, status_code = handle_query_topic_formats()
 
         else:
             respond(writer, "404 Not Found", {"error": "not found"})

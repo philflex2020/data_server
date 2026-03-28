@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # start-evelyn.sh — Evelyn demo stack on phil-256g (.34)
-# Starts broker + writer containers, then launches stress_real_pub natively.
+# Starts broker + writer containers, then launches ems_site_simulator natively.
 #
 # Usage:
 #   bash start-evelyn.sh [--units N] [--rate R]
@@ -10,7 +10,9 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SIM_BIN="$REPO_ROOT/source/stress_runner/stress_real_pub"
+SIM_BIN="$REPO_ROOT/source/stress_runner/ems_site_simulator"
+# Fallback to stress_real_pub if ems_site_simulator not yet built
+[[ -x "$SIM_BIN" ]] || SIM_BIN="$REPO_ROOT/source/stress_runner/stress_real_pub"
 TEMPLATE="$REPO_ROOT/source/stress_runner/ems_topic_template.json"
 LOG_DIR="/data/logs/$(date +%Y/%m/%d)"
 
@@ -51,15 +53,15 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ── stress_real_pub — native on host ─────────────────────────────────────────
+# ── ems_site_simulator — native on host ──────────────────────────────────────
 if [[ ! -x "$SIM_BIN" ]]; then
-  echo "Building stress_real_pub..."
-  make -C "$REPO_ROOT/source/stress_runner" stress_real_pub
+  echo "Building ems_site_simulator..."
+  make -C "$REPO_ROOT/source/stress_runner" ems_site_simulator
 fi
 
-LOG_FILE="$LOG_DIR/stress_real_pub_$(date +%H%M%S).log"
+LOG_FILE="$LOG_DIR/ems_site_simulator_$(date +%H%M%S).log"
 echo ""
-echo "Starting stress_real_pub → localhost:11883  ($UNITS unit(s), $RATE msg/s)"
+echo "Starting ems_site_simulator → localhost:11883  ($UNITS unit(s), $RATE msg/s)"
 echo "    log → $LOG_FILE"
 "$SIM_BIN" \
   --host localhost \

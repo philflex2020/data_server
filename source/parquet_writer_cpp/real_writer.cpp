@@ -101,6 +101,7 @@ struct Config {
     struct TopicPattern {
         std::vector<std::string> match;   // pre-split on '/'
         std::vector<std::string> segs;
+        bool reverse {false};  // if true, segs[0] = last topic segment (right-aligned)
     };
     std::vector<TopicPattern> topic_patterns {};
 
@@ -177,6 +178,8 @@ Config load_config(const std::string& path) {
                         for (const auto& s : segs)
                             pat.segs.push_back(s.as<std::string>());
                     }
+                    if (entry["reverse"] && entry["reverse"].as<bool>())
+                        pat.reverse = true;
                     cfg.topic_patterns.push_back(std::move(pat));
                 }
             }
@@ -338,11 +341,30 @@ std::optional<TopicInfo> parse_topic_positional(
     if (!patterns.empty()) {
         for (const auto& pat : patterns) {
             if (match_topic_pattern(parts, pat.match)) {
-                apply_segments(info, parts, pat.segs);
+                if (pat.reverse) {
+                    // Map segs right-to-left: segs[0] = last part, segs[1] = second-to-last…
+                    std::vector<std::string> rev_parts(parts.rbegin(), parts.rend());
+                    apply_segments(info, rev_parts, pat.segs);
+                } else {
+                    apply_segments(info, parts, pat.segs);
+                }
                 return info;
             }
         }
-        return info;  // no pattern matched — keep empty TopicInfo (row still written, no tags)
+        // No pattern matched — log once per unique depth+prefix for discovery
+        {
+            static std::mutex s_mtx;
+            static std::unordered_set<std::string> s_seen;
+            std::string key = std::to_string(parts.size()) + ":" +
+                              (parts.size() > 0 ? parts[0] : "") + "/" +
+                              (parts.size() > 1 ? parts[1] : "");
+            std::lock_guard<std::mutex> lk(s_mtx);
+            if (s_seen.insert(key).second)
+                std::cerr << "[topic] unmatched structure depth=" << parts.size()
+                          << " prefix=" << (parts.size()>1 ? parts[0]+"/"+parts[1] : topic)
+                          << " example: " << topic << "\n";
+        }
+        return info;  // row still written — value captured, tags empty
     }
 
     // Single segments_map fallback
