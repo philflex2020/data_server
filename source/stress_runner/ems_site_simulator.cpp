@@ -601,6 +601,18 @@ static void peripheral_thread_fn(const std::string& client_id, int qos) {
                 PT("ems/site/%s/unit/%s/pcs/pcs_1/EnabledStatus/boolean_integer",sid,uid);pub_i(mosq,qos,topic,s.ena?1:0,ts);
             }
 
+            // ── Unit root signals (8-seg: no instance level) ─────────────
+            // ems/site/{sid}/unit/{uid}/root/{point}/float
+            for (size_t ui = 0; ui < snaps.size(); ++ui) {
+                if (ui % n_sites != si) continue;
+                const auto& s = snaps[ui];
+                const char* uid = s.uid.c_str();
+                PT("ems/site/%s/unit/%s/root/AllowedMaxP/float", sid, uid); pub_f(mosq,qos,topic, 2100.0f, ts);
+                PT("ems/site/%s/unit/%s/root/AllowedMinP/float", sid, uid); pub_f(mosq,qos,topic,-2100.0f, ts);
+                PT("ems/site/%s/unit/%s/root/SOC/float",         sid, uid); pub_f(mosq,qos,topic, s.p_kw > 0 ? 58.0f : 74.0f, ts);
+                PT("ems/site/%s/unit/%s/root/SystemStatus/integer", sid, uid); pub_i(mosq,qos,topic, s.ena ? 1 : 0, ts);
+            }
+
             // ── RTAC ──────────────────────────────────────────────────────
             for (int f = 1; f <= 5; ++f) {
                 float f_p  = (float)apply_noise(total_kw * feeder_share[f-1], 20.0);

@@ -254,7 +254,7 @@
 </div>
 
 <h1>Evelyn Demo — phil-256g (.34)</h1>
-<p class="subtitle">1 unit · 175 msg/s · smooth mode · parquet-writer:latest · compactor enabled (10 min)</p>
+<p class="subtitle">1 unit · 175 msg/s · smooth mode · parquet_writer (Longbow topics) · WAL enabled · /mnt/tort-sdf/evelyn2</p>
 
 <!-- Parquet Writer health bar -->
 <div class="host-bar">
@@ -375,15 +375,15 @@
 <text x="381" y="198" class="lbl2 cm">parquet-writer:latest</text>
 <text x="381" y="213" class="mono cm">health :8771</text>
 <text x="381" y="228" class="lbl2 cm">sub: ems/#  qos 0</text>
-<text x="381" y="243" class="lbl2 cm">snappy · flush 10s</text>
-<text x="381" y="258" class="lbl2 cm">compact 600s · min_files 3</text>
+<text x="381" y="243" class="lbl2 cm">snappy · flush 30s</text>
+<text x="381" y="258" class="lbl2 cm">WAL enabled · compact off</text>
 
 <!-- ── volume mount — to the RIGHT of writer ─────────────────────── -->
 <rect x="591" y="168" width="281" height="162" rx="4" fill="#1c1c1c" stroke="#30363d" stroke-width="1" stroke-dasharray="4,2"/>
 <text x="601" y="184" class="lbl ct">parquet store</text>
 <text x="601" y="198" class="lbl2 cm">volume: /data/parquet</text>
 <text x="601" y="213" class="mono ct">= ${PARQUET_PATH}</text>
-<text x="601" y="228" class="mono cm">  /mnt/tort-sdf/evelyn/</text>
+<text x="601" y="228" class="mono cm">  /mnt/tort-sdf/evelyn2/</text>
 <text x="601" y="243" class="lbl2 cm">853 GB free · ext4</text>
 <text x="601" y="258" class="lbl2 cm">partitions + compacted</text>
 
@@ -424,6 +424,16 @@
     <span class="ctr-badge"><span class="dot" id="st-sim-dot"></span><span id="st-sim">sim —</span></span>
     <button class="btn-start" onclick="stackStart()">Start Stack</button>
     <button class="btn-stop"  onclick="stackStop()">Stop Stack</button>
+  </div>
+  <div class="stack-row" style="margin-top:8px;">
+    <label style="color:var(--muted);font-size:.78rem;">Units</label>
+    <input id="sim-units" type="number" value="1" min="1" max="100"
+           style="width:60px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:.82rem;">
+    <label style="color:var(--muted);font-size:.78rem;">Rate&nbsp;msg/s</label>
+    <input id="sim-rate"  type="number" value="175" min="1" max="200000"
+           style="width:80px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:.82rem;">
+    <button class="btn-start" onclick="simStart()">Start Sim</button>
+    <button class="btn-stop"  onclick="simStop()">Stop Sim</button>
     <span class="stack-msg" id="stack-msg"></span>
   </div>
 </div>
@@ -432,7 +442,7 @@
 <div class="storage-panel">
   <h3>Parquet Storage Path</h3>
   <div class="storage-row">
-    <input id="stor-path" type="text" placeholder="/mnt/tort-sdf/evelyn">
+    <input id="stor-path" type="text" placeholder="/mnt/tort-sdf/evelyn2">
     <button class="btn-apply" onclick="applyStorage()">Apply &amp; Restart Writer</button>
   </div>
   <div class="storage-hint" id="stor-hint"></div>
@@ -558,33 +568,27 @@
 
 <!-- Compactor -->
 <div class="compact-bar">
-  <h3>Compactor — 10-minute merge (min_files: 3)</h3>
+  <h3>Compactor — disabled (WAL mode)</h3>
   <div class="compact-info">
     <div class="ci-item">
-      <span class="ci-k">interval</span>
-      <span class="ci-v c-accent">600 s</span>
+      <span class="ci-k">status</span>
+      <span class="ci-v c-muted">off</span>
     </div>
     <div class="ci-item">
-      <span class="ci-k">min_files</span>
-      <span class="ci-v">3</span>
+      <span class="ci-k">WAL path</span>
+      <span class="ci-v">/data/parquet/.wal</span>
     </div>
     <div class="ci-item">
-      <span class="ci-k">next run in</span>
-      <span class="ci-v c-yellow" id="compact-eta">—</span>
-    </div>
-    <div class="ci-item" style="flex:1; min-width:160px;">
-      <span class="ci-k">cycle progress</span>
-      <div class="progress-track" style="margin-top:6px;">
-        <div class="progress-fill" id="compact-bar" style="width:0%"></div>
-      </div>
+      <span class="ci-k">flush interval</span>
+      <span class="ci-v c-accent">30 s</span>
     </div>
     <div class="ci-item">
-      <span class="ci-k">flush files / window</span>
-      <span class="ci-v" id="compact-files">~60 per 10 min</span>
+      <span class="ci-k">max rows/part</span>
+      <span class="ci-v">2 M</span>
     </div>
     <div class="ci-item">
-      <span class="ci-k">expected chunk rows</span>
-      <span class="ci-v">~156 k</span>
+      <span class="ci-k">partitions</span>
+      <span class="ci-v">site={site_id}/{year}/{month}/{day}</span>
     </div>
   </div>
 </div>
@@ -595,7 +599,7 @@
     <h3>WAL / Guard</h3>
     <div class="mcard-row">
       <span class="mcard-k">WAL enabled</span>
-      <span class="mcard-v c-muted">false</span>
+      <span class="mcard-v c-green">true</span>
     </div>
     <div class="mcard-row">
       <span class="mcard-k">WAL replay rows</span>
@@ -620,10 +624,12 @@
       <span class="cfg-k">generator</span>  <span class="cfg-v">ems_site_simulator (native)</span>
       <span class="cfg-k">units</span>      <span class="cfg-v">1 unit · 175 msg/s</span>
       <span class="cfg-k">mode</span>       <span class="cfg-v">smooth (g_slow_interval_ms=1000)</span>
-      <span class="cfg-k">flush</span>      <span class="cfg-v">10 s · 50k rows/part</span>
+      <span class="cfg-k">flush</span>      <span class="cfg-v">30 s · 2M rows/part</span>
       <span class="cfg-k">compression</span><span class="cfg-v">snappy</span>
-      <span class="cfg-k">compact</span>    <span class="cfg-v">600 s · min_files=3</span>
-      <span class="cfg-k">parquet</span>    <span class="cfg-v">/mnt/tort-sdf/evelyn/</span>
+      <span class="cfg-k">WAL</span>        <span class="cfg-v">enabled · /data/parquet/.wal</span>
+      <span class="cfg-k">compact</span>    <span class="cfg-v">disabled</span>
+      <span class="cfg-k">parquet</span>    <span class="cfg-v">/mnt/tort-sdf/evelyn2/</span>
+      <span class="cfg-k">binary</span>     <span class="cfg-v">parquet_writer (Longbow topics)</span>
     </div>
   </div>
 </div>
@@ -745,6 +751,35 @@ async function stackStop() {
     const r = await fetch(apiUrl('/stop'), { method:'POST', signal: AbortSignal.timeout(40000) });
     const j = await r.json();
     msg.textContent = j.ok ? 'stopped' : ('error: ' + j.output);
+    setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 2000);
+  } catch(e) { msg.textContent = 'error: ' + e.message; }
+}
+
+async function simStart() {
+  const msg    = document.getElementById('stack-msg');
+  const units  = parseInt(document.getElementById('sim-units').value) || 1;
+  const rate   = parseInt(document.getElementById('sim-rate').value)  || 175;
+  msg.textContent = 'starting sim…';
+  try {
+    const r = await fetch(apiUrl('/sim/start'), {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({units, rate}),
+      signal: AbortSignal.timeout(8000),
+    });
+    const j = await r.json();
+    msg.textContent = j.ok ? `sim started (pid ${j.pid}, ${j.units} unit(s), ${j.rate} msg/s)` : ('error: ' + j.output);
+    setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 3000);
+  } catch(e) { msg.textContent = 'error: ' + e.message; }
+}
+
+async function simStop() {
+  const msg = document.getElementById('stack-msg');
+  msg.textContent = 'stopping sim…';
+  try {
+    const r = await fetch(apiUrl('/sim/stop'), { method:'POST', signal: AbortSignal.timeout(8000) });
+    const j = await r.json();
+    msg.textContent = j.ok ? 'sim stopped' : ('error: ' + j.output);
     setTimeout(() => { msg.textContent = ''; fetchStatus(); }, 2000);
   } catch(e) { msg.textContent = 'error: ' + e.message; }
 }
@@ -880,9 +915,10 @@ function updateCompactETA() {
   const elapsed = (Date.now() - compactStart) / 1000;
   const remaining = COMPACT_INTERVAL - (elapsed % COMPACT_INTERVAL);
   const pct = ((elapsed % COMPACT_INTERVAL) / COMPACT_INTERVAL * 100).toFixed(0);
-  document.getElementById('compact-eta').textContent =
-    remaining.toFixed(0) + ' s';
-  document.getElementById('compact-bar').style.width = pct + '%';
+  const eta = document.getElementById('compact-eta');
+  const bar = document.getElementById('compact-bar');
+  if (eta) eta.textContent = remaining.toFixed(0) + ' s';
+  if (bar) bar.style.width = pct + '%';
 }
 
 function render(j) {

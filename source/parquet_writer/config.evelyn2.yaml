@@ -1,0 +1,69 @@
+# parquet_writer config — evelyn2 demo on phil-256g (.34)
+#
+# Consumes full Longbow-format topics from ems_site_simulator (no --topic-prefix):
+#
+#   9-seg  ems/site/{site_id}/unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}
+#   8-seg  ems/site/{site_id}/unit/{unit_id}/root/{point_name}/{dtype_hint}
+#   7-seg  ems/site/{site_id}/{device}/{instance}/{point_name}/{dtype_hint}
+#   6-seg  ems/site/{site_id}/root/{point_name}/{dtype_hint}
+#
+# Start simulator (separate terminal):
+#   ./ems_site_simulator --host localhost --units 4 --site-id 0215D1D8 --rate 7000 --ws-port 8769
+#
+# Start writer:
+#   ./parquet_writer --config config.evelyn2.yaml
+#
+# Health:
+#   curl http://localhost:8773/health
+
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer-evelyn2
+  topic: "ems/#"
+  qos: 0
+
+  topic_parser: positional
+  partition_field: site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+  topic_patterns:
+    - match: "ems/site/+/unit/+/+/+/+/+"
+      segments: ["_","_","site_id","_","unit_id","device","instance","point_name","dtype_hint"]
+
+    - match: "ems/site/+/unit/+/+/+/+"
+      segments: ["_","_","site_id","_","unit_id","device","point_name","dtype_hint"]
+
+    - match: "ems/site/+/+/+/+/+"
+      segments: ["_","_","site_id","device","instance","point_name","dtype_hint"]
+
+    - match: "ems/site/+/+/+/+"
+      segments: ["_","_","site_id","device","point_name","dtype_hint"]
+
+output:
+  base_path: /mnt/tort-sdf/evelyn2/parquet
+  site_id: ""          # extracted from topic segment 2
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 30
+  max_messages_per_part: 2000000
+  max_total_buffer_rows: 500000
+
+wal:
+  enabled: true
+  path: /mnt/tort-sdf/evelyn2/wal
+
+health:
+  enabled: true
+  port: 8773
+
+guard:
+  min_free_gb: 2.0
+
+compact:
+  enabled: false

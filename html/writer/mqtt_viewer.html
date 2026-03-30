@@ -80,7 +80,7 @@
   #feed { background: #0a0d11; border: 1px solid var(--border); border-radius: 6px;
           padding: 6px 10px; font-family: 'Consolas', monospace; font-size: 0.76rem;
           height: 260px; overflow-y: auto; }
-  .msg-row { display: grid; grid-template-columns: 260px 1fr auto; gap: 8px;
+  .msg-row { display: grid; grid-template-columns: 420px 1fr auto; gap: 8px;
              padding: 2px 0; border-bottom: 1px solid #1c2128; align-items: baseline; }
   .msg-row:last-child { border: none; }
   .msg-topic { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -231,9 +231,9 @@
   <h1>MQTT Live Viewer</h1>
   <span class="dot off" id="conn-dot"></span>
   <span id="conn-label">disconnected</span>
-  <input type="text" id="broker-host" value="192.168.86.46" style="width:130px" placeholder="host">
-  <input type="number" id="broker-port" value="8083" style="width:70px" placeholder="port">
-  <input type="text" id="sub-topic" value="ems/#" style="width:140px" placeholder="topic filter">
+  <input type="text" id="broker-host" value="192.168.86.46" style="width:130px" placeholder="host" onchange="saveMqttPrefs()">
+  <input type="number" id="broker-port" value="8083" style="width:70px" placeholder="port" onchange="saveMqttPrefs()">
+  <input type="text" id="sub-topic" value="ems/#" style="width:140px" placeholder="topic filter" onchange="saveMqttPrefs()">
   <button class="btn" id="conn-btn" onclick="toggleConnect()">Connect</button>
   <button class="btn danger" onclick="clearAll()">Clear</button>
   <label style="font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:4px">
@@ -283,6 +283,7 @@
     <div class="sig-section">
       <div class="feed-head">
         <input type="text" id="topic-filter" class="topic-filter" placeholder="filter topics…" oninput="applyFilter()">
+        <button class="btn" id="topic-fmt-btn" onclick="toggleTopicFmt()" title="Toggle full/brief topic">Brief</button>
         <div class="device-btns" id="dev-btns">
           <span class="dbtn on" data-dev="all" onclick="setDevFilter(this)">all</span>
           <span class="dbtn" data-dev="bms"  onclick="setDevFilter(this)">bms</span>
@@ -534,7 +535,7 @@ function onMessage(topic, payload) {
 
   // Feed
   if (!document.getElementById('pause-chk').checked) {
-    if (matchesFilter(uid, device, shortname, point)) addFeedRow(siteId, uid, device, instance, point, dtype, value, ts);
+    if (matchesFilter(uid, device, shortname, point)) addFeedRow(topic, siteId, uid, device, instance, point, dtype, value, ts);
   }
 
   // Update selected unit signals live
@@ -544,9 +545,9 @@ function onMessage(topic, payload) {
 // ── feed ─────────────────────────────────────────────────────────────────────
 
 let feedBuf = [];
-function addFeedRow(siteId, uid, device, instance, point, dtype, value, ts) {
+function addFeedRow(topic, siteId, uid, device, instance, point, dtype, value, ts) {
   const maxRows = parseInt(document.getElementById('max-rows').value) || 200;
-  feedBuf.push({ siteId, uid, device, instance, point, dtype, value, ts });
+  feedBuf.push({ topic, siteId, uid, device, instance, point, dtype, value, ts });
   if (feedBuf.length > FEED_MAX) { feedBuf.shift(); dropped++; }
   schedFeedFlush();
 }
@@ -556,6 +557,14 @@ function schedFeedFlush() {
   if (feedFlushPending) return;
   feedFlushPending = true;
   requestAnimationFrame(flushFeed);
+}
+
+let fullTopicFmt = false;
+function toggleTopicFmt() {
+  fullTopicFmt = !fullTopicFmt;
+  const btn = document.getElementById('topic-fmt-btn');
+  btn.textContent = fullTopicFmt ? 'Full' : 'Brief';
+  btn.classList.toggle('active', fullTopicFmt);
 }
 
 function flushFeed() {
@@ -573,8 +582,11 @@ function flushFeed() {
     const valStr  = typeof m.value === 'number' ? m.value.toFixed(
                       Number.isInteger(m.value) ? 0 : (m.dtype==='float'?3:1)) : String(m.value);
     const siteLabel = m.siteId ? m.siteId.slice(-4) : '';
+    const topicHtml = fullTopicFmt
+      ? `<span class="msg-topic"><span class="seg-site">${m.topic}</span></span>`
+      : `<span class="msg-topic">${siteLabel ? `<span class="seg-site">${siteLabel}</span>/` : ''}<span class="seg-unit">${m.uid.slice(-4)}</span>/<span class="seg-dev">${m.device}</span>/${m.instance}/<span class="seg-point">${m.point}</span></span>`;
     row.innerHTML =
-      `<span class="msg-topic">${siteLabel ? `<span class="seg-site">${siteLabel}</span>/` : ''}<span class="seg-unit">${m.uid.slice(-4)}</span>/<span class="seg-dev">${m.device}</span>/${m.instance}/<span class="seg-point">${m.point}</span></span>` +
+      topicHtml +
       `<span class="msg-val">${valStr}</span>` +
       `<span class="msg-ts">${shortTs}</span>`;
     frag.appendChild(row);
@@ -964,8 +976,21 @@ function clearAll() {
   document.getElementById('dev-breakdown').innerHTML = '<span style="color:var(--muted);font-size:.8rem">no data yet</span>';
 }
 
-// Auto-connect if ?host= in URL
+function saveMqttPrefs() {
+  localStorage.setItem('mqv_host',  document.getElementById('broker-host').value.trim());
+  localStorage.setItem('mqv_port',  document.getElementById('broker-port').value.trim());
+  localStorage.setItem('mqv_topic', document.getElementById('sub-topic').value.trim());
+}
+
+// Restore prefs then auto-connect if ?host= in URL
 window.addEventListener('DOMContentLoaded', () => {
+  const saved_host  = localStorage.getItem('mqv_host');
+  const saved_port  = localStorage.getItem('mqv_port');
+  const saved_topic = localStorage.getItem('mqv_topic');
+  if (saved_host)  document.getElementById('broker-host').value = saved_host;
+  if (saved_port)  document.getElementById('broker-port').value = saved_port;
+  if (saved_topic) document.getElementById('sub-topic').value   = saved_topic;
+
   const p = new URLSearchParams(window.location.search);
   if (p.get('host')) {
     document.getElementById('broker-host').value = p.get('host');

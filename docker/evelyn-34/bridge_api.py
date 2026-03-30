@@ -337,9 +337,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONF_PATH  = os.path.join(SCRIPT_DIR, "configs", "flashmq.conf")
 ENV_PATH   = os.path.join(SCRIPT_DIR, ".env")
 SIM_PID    = "/tmp/evelyn34_sim.pid"
+SIM_BIN    = os.path.join(SCRIPT_DIR, "../../source/stress_runner/ems_site_simulator")
 BROKER     = "evelyn34_broker"
 WRITER     = "evelyn34_writer"
-DEFAULT_PATH = "/mnt/tort-sdf/evelyn"
+DEFAULT_PATH = "/mnt/tort-sdf/evelyn2"
 
 CORS = (
     "Access-Control-Allow-Origin: *\r\n"
@@ -501,6 +502,42 @@ def handle_stop():
     ok, out = run(["docker", "compose", "down"])
     return {"ok": ok, "output": out[:500], "sim_killed": sim_up}
 
+def handle_sim_start(body):
+    sim_up, _ = sim_running()
+    if sim_up:
+        return {"ok": False, "output": "sim already running"}
+    units = int(body.get("units", 1))
+    rate  = int(body.get("rate",  175))
+    log_dir = f"/data/logs/{time.strftime('%Y/%m/%d')}"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = f"{log_dir}/ems_site_simulator_{time.strftime('%H%M%S')}.log"
+    bin_path = os.path.realpath(SIM_BIN)
+    if not os.path.isfile(bin_path):
+        return {"ok": False, "output": f"binary not found: {bin_path}"}
+    proc = subprocess.Popen(
+        [bin_path, "--host", "localhost", "--port", "11883",
+         "--units", str(units), "--rate", str(rate)],
+        stdout=open(log_file, "w"), stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    with open(SIM_PID, "w") as f:
+        f.write(str(proc.pid))
+    return {"ok": True, "pid": proc.pid, "units": units, "rate": rate, "log": log_file}
+
+def handle_sim_stop():
+    sim_up, pid = sim_running()
+    if not sim_up:
+        return {"ok": True, "output": "sim not running"}
+    try:
+        os.kill(pid, 15)
+    except OSError:
+        pass
+    try:
+        os.remove(SIM_PID)
+    except OSError:
+        pass
+    return {"ok": True, "pid": pid}
+
 def handle_get_storage():
     path = current_path()
     exists = os.path.isdir(path)
@@ -588,6 +625,13 @@ async def handle(reader, writer):
 
         elif method == "POST" and path == "/stop":
             result = handle_stop()
+
+        elif method == "POST" and path == "/sim/start":
+            body = parse_body(req)
+            result = handle_sim_start(body)
+
+        elif method == "POST" and path == "/sim/stop":
+            result = handle_sim_stop()
 
         elif method == "GET" and path == "/storage":
             result = handle_get_storage()

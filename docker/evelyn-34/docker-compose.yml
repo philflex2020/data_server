@@ -7,7 +7,7 @@ networks:
 
 # Evelyn demo stack — single unit, smooth mode
 #   broker: FlashMQ on host:11883
-#   writer: parquet-writer:latest — ems/#, compactor enabled, health :8771
+#   writer: parquet_writer binary (mounted) — ems/# topic_patterns, health :8771
 #   generator: ems_site_simulator runs NATIVELY on .34 host (see start-evelyn.sh)
 
 services:
@@ -18,6 +18,7 @@ services:
     networks: [evelyn]
     ports:
       - "11883:1883"
+      - "9001:9001"
     volumes:
       - ./configs/flashmq.conf:/etc/flashmq/flashmq.conf:ro
     restart: unless-stopped
@@ -36,10 +37,10 @@ services:
       broker:
         condition: service_healthy
     volumes:
-      - ${PARQUET_PATH:-/mnt/tort-sdf/evelyn}:/data/parquet
+      - ${PARQUET_PATH:-/mnt/tort-sdf/evelyn2}:/data/parquet
       - ./configs/writer-evelyn.yaml:/etc/writer/config.yaml:ro
-      - ../../source/parquet_writer_cpp/real_writer:/usr/local/bin/real_writer:ro
-    entrypoint: ["/usr/local/bin/real_writer", "--config", "/etc/writer/config.yaml"]
+      - ../../source/parquet_writer/parquet_writer:/usr/local/bin/parquet_writer:ro
+    entrypoint: ["/usr/local/bin/parquet_writer", "--config", "/etc/writer/config.yaml"]
     ports:
       - "8771:8771"
     restart: unless-stopped

@@ -82,6 +82,47 @@
 
 </div>
 
+<h2>Architecture &amp; Design Docs</h2>
+<div class="card-grid">
+
+  <a class="card" href="evelyn_container_design.html">
+    <div class="card-title">Container Design (Option C)</div>
+    <div class="card-desc">Single Docker container: FlashMQ + real_writer + bridge_api + nginx under supervisord. Full Dockerfile, supervisord.conf, build script, and port map.</div>
+    <span class="card-tag">design</span>
+    <span class="card-tag">docker</span>
+  </a>
+
+  <a class="card" href="evelyn_real_time_data.html">
+    <div class="card-title">Real-Time Web Interface</div>
+    <div class="card-desc">Three-layer real-time architecture: FlashMQ WebSocket + mqtt.js live stream, DuckDB current_state.parquet, DuckDB-WASM historical queries. Includes 4 working browser demos.</div>
+    <span class="card-tag tag-demo">demo</span>
+    <span class="card-tag">mqtt.js</span>
+    <span class="card-tag">duckdb-wasm</span>
+  </a>
+
+  <a class="card" href="evelyn_influx3_analysis.html">
+    <div class="card-title">InfluxDB 3 Analysis</div>
+    <div class="card-desc">Technical comparison of InfluxDB 3 vs direct Parquet + DuckDB. Covers storage format, schema lock-in, migration options, query capability, and recommendation.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">influxdb3</span>
+  </a>
+
+  <a class="card" href="evelyn_viz_comparison.html">
+    <div class="card-title">Visualization Platform Comparison</div>
+    <div class="card-desc">Grafana vs Superset vs Observable Framework vs Retool vs custom HTML+uPlot. Focus on customer-designed UI integration, embedding, and white-label options.</div>
+    <span class="card-tag">design</span>
+    <span class="card-tag">grafana</span>
+  </a>
+
+  <a class="card" href="evelyn_kafka_analysis.html">
+    <div class="card-title">Kafka Integration Analysis</div>
+    <div class="card-desc">Where Kafka adds value in the EMS stack: message durability, multi-site cloud aggregation, multi-consumer fan-out. Covers Redpanda, NATS, and placement options.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">kafka</span>
+  </a>
+
+</div>
+
 <h2>Analysis &amp; Reports</h2>
 <div class="card-grid">
 
@@ -112,6 +153,12 @@
   <a class="card" href="mqtt_topic_formats.html">
     <div class="card-title">MQTT Topic Formats</div>
     <div class="card-desc">Longbow vs Evelyn MQTT topic formats — Telegraf topic_parsing pipeline, parquet column mapping, and schema alignment gaps.</div>
+    <span class="card-tag">reference</span>
+  </a>
+
+  <a class="card" href="longbow_topic_parsing.html">
+    <div class="card-title">Longbow Topic Parsing</div>
+    <div class="card-desc">Real Longbow CSV data analysis — 9-segment topic structure, segment role decisions, parquet_writer config, multi-site partitioning, and Filter A/B strategy.</div>
     <span class="card-tag">reference</span>
   </a>
 

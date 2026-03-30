@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evelyn — Kafka Integration Analysis</title>
+<style>
+  :root {
+    --bg:#1a1a2e; --surface:#16213e; --surface2:#0d1117;
+    --border:#2a2a4a; --border2:#30363d;
+    --text:#e0e0e0; --muted:#abb2bf;
+    --h1:#61dafb; --h2:#e5c07b; --h3:#98c379; --h4:#56b6c2;
+    --kw:#56b6c2; --str:#98c379; --fn:#e5c07b; --cm:#5c6370; --num:#d19a66; --tag-c:#e06c75;
+    --green-bg:#1e3a1e; --yellow-bg:#3a3a1e; --red-bg:#3a1e1e;
+  }
+  body.light {
+    --bg:#f5f5f0; --surface:#ffffff; --surface2:#f0f0e8;
+    --border:#d0d0c0; --border2:#c0c0b0;
+    --text:#1a1a2e; --muted:#555566;
+    --h1:#0066aa; --h2:#8a6000; --h3:#2a6e2a; --h4:#006688;
+    --kw:#006688; --str:#2a6e2a; --fn:#8a6000; --cm:#888877; --num:#aa4400; --tag-c:#cc2222;
+    --green-bg:#d4f0d4; --yellow-bg:#f0f0d4; --red-bg:#f0d4d4;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.6; padding:0 0 60px 0; transition:background .2s,color .2s; }
+  h1 { font-size:2em; color:var(--h1); padding:40px 40px 10px; border-bottom:2px solid var(--border); margin-bottom:20px; }
+  h2 { font-size:1.4em; color:var(--h2); margin:40px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.1em; color:var(--h3); margin:24px 0 8px; }
+  h4 { font-size:1em; color:var(--h4); margin:16px 0 6px; }
+  p { margin:10px 0; max-width:860px; }
+  ul,ol { margin:10px 0 10px 24px; max-width:860px; }
+  li { margin:4px 0; }
+  .content { padding:0 40px; }
+  pre { background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:16px; overflow-x:auto; font-family:'Cascadia Code','Fira Code',monospace; font-size:13px; margin:12px 0; max-width:860px; }
+  code { background:var(--surface2); padding:2px 6px; border-radius:3px; font-family:monospace; font-size:13px; color:var(--fn); }
+  .kw{color:var(--kw)} .str{color:var(--str)} .fn{color:var(--fn)} .cm{color:var(--cm);font-style:italic} .num{color:var(--num)}
+  table { border-collapse:collapse; margin:16px 0; width:100%; }
+  th { background:var(--surface); color:var(--h1); padding:8px 14px; text-align:left; border:1px solid var(--border2); font-size:13px; }
+  td { padding:7px 14px; border:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tr:nth-child(even) td { background:var(--surface); }
+  .check{color:var(--str);font-weight:bold} .cross{color:var(--tag-c);font-weight:bold} .half{color:var(--num);font-weight:bold}
+  .toc { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 28px; margin:20px 40px 30px; display:inline-block; min-width:320px; }
+  .toc h2 { margin-top:0; border:none; font-size:1.05em; }
+  .toc ol { margin-left:18px; }
+  .toc li { margin:4px 0; }
+  .toc a { color:var(--h1); text-decoration:none; }
+  .toc a:hover { text-decoration:underline; }
+  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
+  .note  { background:var(--green-bg); border-left:3px solid var(--str); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .warn  { background:var(--yellow-bg); border-left:3px solid var(--fn); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .bad   { background:var(--red-bg); border-left:3px solid var(--tag-c); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .option-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 24px; margin:20px 0; max-width:860px; }
+  .option-card h3 { margin-top:0; color:var(--h1); }
+  .verdict { display:inline-block; padding:3px 12px; border-radius:4px; font-size:13px; font-weight:bold; margin:4px 4px 0 0; }
+  .verdict.good  { background:var(--green-bg); color:var(--str); border:1px solid var(--str); }
+  .verdict.ok    { background:var(--yellow-bg); color:var(--fn); border:1px solid var(--fn); }
+  .verdict.poor  { background:var(--red-bg); color:var(--tag-c); border:1px solid var(--tag-c); }
+  .theme-btn { position:fixed; top:14px; right:20px; background:var(--surface); border:1px solid var(--border2); color:var(--muted); border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  .theme-btn:hover { color:var(--text); }
+  .page-nav { padding:14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:var(--muted); text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .page-nav a:hover { color:var(--h1); border-color:var(--h1); }
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="page-nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="evelyn_real_time_data.html">Real-Time Data</a>
+  <a href="evelyn_influx3_analysis.html">InfluxDB 3</a>
+  <a href="evelyn_viz_comparison.html">Viz Comparison</a>
+  <a href="evelyn_container_design.html">Container Design</a>
+</div>
+
+<h1>Kafka Integration Analysis</h1>
+<p style="padding:0 40px;color:var(--muted);font-size:14px">What Kafka brings to the EMS stack, where it fits, and where it doesn't.</p>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#summary">Executive Summary</a></li>
+    <li><a href="#kafka101">What Kafka Actually Is</a></li>
+    <li><a href="#current">Current Stack Data Flow</a></li>
+    <li><a href="#placement">Four Placement Options</a></li>
+    <li><a href="#solves">What Kafka Genuinely Solves</a></li>
+    <li><a href="#doesnt">What Kafka Does NOT Solve</a></li>
+    <li><a href="#nats">Kafka vs NATS JetStream vs Redpanda</a></li>
+    <li><a href="#config">Config Examples</a></li>
+    <li><a href="#placement-rec">Recommended Placement</a></li>
+    <li><a href="#decision">Decision Matrix</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- 1 -->
+<h2 id="summary">1. Executive Summary</h2>
+<p>Kafka is a distributed streaming platform built for high-durability multi-consumer message replay, decoupled producers/consumers, and stream processing at scale. The current stack (MQTT → FlashMQ → real_writer → Parquet) is fast, simple, and edge-deployable.</p>
+<p>The question is not "replace MQTT with Kafka" — it is <strong>"where does Kafka add value in the overall EMS platform, if anywhere?"</strong></p>
+<p>Short answer: <strong>Kafka is compelling at the cloud aggregation tier</strong> (10+ sites feeding a central platform) and for message durability when writer restarts cannot lose data. It is <strong>not suitable at the edge ingest tier</strong> where the 1-binary deployment goal matters.</p>
+
+<hr>
+
+<!-- 2 -->
+<h2 id="kafka101">2. What Kafka Actually Is</h2>
+<ul>
+  <li><strong>Persistent log:</strong> every message written durably to disk, retained for configurable period (days/weeks). Any consumer replays from any offset. QoS-0 MQTT has no persistence — if subscriber is down, messages are lost.</li>
+  <li><strong>Multiple independent consumers:</strong> many services consume the same topic simultaneously, each with its own offset position, without affecting each other.</li>
+  <li><strong>Partitioned parallelism:</strong> topics partitioned across brokers. Consumer groups each own partitions — horizontal scaling built-in.</li>
+  <li><strong>Kafka Connect:</strong> ecosystem of connectors. Relevant: MQTT source connector, S3/GCS sink (writes Parquet to object storage), InfluxDB sink.</li>
+  <li><strong>Kafka Streams / ksqlDB:</strong> stream processing on Kafka topics — filtering, windowed aggregation, SQL-like syntax.</li>
+  <li><strong>Throughput:</strong> millions of msg/s on a single broker. Our 81,420 msg/s is trivial for Kafka.</li>
+  <li><strong>JVM required</strong> (plain Kafka). KRaft mode eliminates ZooKeeper. Docker image: ~800 MB.</li>
+</ul>
+
+<pre>
+Producer
+  │ messages (any rate, any size)
+  ▼
+Kafka Topic  [partition 0 | partition 1 | partition 2]
+  (durable log, replicated, retained N days)
+  │                │               │
+Consumer A    Consumer B      Consumer C
+(own offset)  (own offset)    (own offset)
+parquet-writer  alerting       ML pipeline
+</pre>
+
+<hr>
+
+<!-- 3 -->
+<h2 id="current">3. Current Stack Data Flow</h2>
+<pre>
+EMS hardware / ems_site_simulator
+        │ MQTT QoS-0  ~81,420 msg/s
+        ▼
+FlashMQ :1883
+        │
+        ├── real_writer  →  /data/parquet/   (PRIMARY)
+        │
+        └── [FlashMQ bridge]  →  fractal-phil FlashMQ :1884
+                                       │
+                                 subscriber_api (DuckDB)
+</pre>
+
+<p><strong>Single consumer model.</strong> real_writer is the only persistent consumer. If real_writer restarts, QoS-0 messages during that window are lost. The bridge to fractal-phil is a second consumer but also ephemeral — if it drops, messages are lost on that path too.</p>
+
+<hr>
+
+<!-- 4 -->
+<h2 id="placement">4. Four Placement Options</h2>
+
+<div class="option-card">
+  <h3>Option A — Kafka as the message bus (replace FlashMQ at edge)</h3>
+  <pre>
+EMS hardware → [MQTT broker] → Kafka topic: ems.raw
+                                      │
+                    ┌─────────────────┼──────────────┐
+                    │                 │              │
+               real_writer       alert_service   analytics
+               (Kafka consumer)
+  </pre>
+  <p>Replace FlashMQ with Kafka as the central broker. EMS devices still speak MQTT, but an MQTT-Kafka bridge converts to Kafka topics (e.g., Confluent MQTT proxy or EMQX with Kafka bridge).</p>
+  <p><strong>Gains:</strong> message durability, multiple independent consumers, built-in 7-day replay.</p>
+  <p><strong>Costs:</strong> Kafka is not an MQTT broker — EMS hardware speaks MQTT, always needs a bridge layer. ~800 MB Docker image. Incompatible with 1-binary edge deployment. Adds 5–50 ms latency vs FlashMQ sub-ms.</p>
+  <span class="verdict poor">Not suitable for edge deployment</span>
+</div>
+
+<div class="option-card">
+  <h3>Option B — Kafka at the cloud aggregation tier only</h3>
+  <pre>
+Edge Site A:  FlashMQ → real_writer → parquet → push_agent ──→ Cloud Kafka :9092
+Edge Site B:  FlashMQ → real_writer → parquet → push_agent ──→   (topic: site-{id}.raw)
+Edge Site C:  FlashMQ → real_writer → parquet → push_agent ──→
+
+                                    Cloud Kafka
+                                         │
+                          ┌──────────────┼──────────────┐
+                          │              │              │
+                   cloud-writer     alert_service   ML pipeline
+                   (parquet S3)
+  </pre>
+  <p>Edge stays unchanged (FlashMQ + real_writer). Cloud Kafka receives from multiple sites, fan-out to cloud consumers.</p>
+  <p><strong>Gains:</strong> site isolation (one slow site doesn't affect others), multi-consumer cloud fan-out, replay for re-processing.</p>
+  <p><strong>Costs:</strong> cloud Kafka cluster to operate (or Confluent/MSK/Redpanda Cloud); parquet files already provide durable storage so Kafka retention duplicates.</p>
+  <span class="verdict good">Best placement option for multi-site deployments</span>
+</div>
+
+<div class="option-card">
+  <h3>Option C — Kafka for stream processing (Filter A+B in ksqlDB)</h3>
+  <pre>
+Edge FlashMQ bridge → Cloud Kafka (raw stream: ems.raw)
+                              │
+                        ksqlDB / Kafka Streams
+                         ├── Filter A: DROP WHERE dtype='string'
+                         ├── Filter B: change-on-value int/bool
+                         └── Filter C: float deadband (future)
+                              │
+                        ems.filtered → InfluxDB3 / DuckDB sink
+  </pre>
+  <p>Filter logic (currently in Telegraf dedup + tagdrop) moves to a named, versioned, replayable ksqlDB job. New filter versions can be tested by replaying the raw Kafka topic.</p>
+  <p><strong>Costs:</strong> ksqlDB is another heavy service. Telegraf approach already works and is simpler. Only valuable if filter logic grows into complex state machines.</p>
+  <span class="verdict ok">Premature today — revisit when filter complexity grows</span>
+</div>
+
+<div class="option-card">
+  <h3>Option D — Redpanda as a Kafka-compatible drop-in</h3>
+  <p>Redpanda is a Kafka-compatible broker written in C++. No JVM. No ZooKeeper. Single binary. ~100 MB Docker image vs Kafka's ~800 MB. All Kafka clients work against it.</p>
+  <pre>
+EMS hardware → MQTT → Redpanda (supports MQTT + Kafka protocol)
+                          │
+           ┌──────────────┴──────────────┐
+           │                             │
+      real_writer                  cloud replication
+      (Kafka consumer)             (Redpanda MirrorMaker)
+  </pre>
+  <p><strong>Gains vs plain Kafka:</strong> single C++ binary, no JVM, much lower memory (~500 MB RAM vs 2+ GB), ZooKeeper-free.</p>
+  <p><strong>Gains vs FlashMQ:</strong> persistent log, multi-consumer, full Kafka ecosystem.</p>
+  <p><strong>Loses vs FlashMQ:</strong> FlashMQ is pure-MQTT optimized. Redpanda's MQTT is a secondary protocol — FlashMQ throughput and latency are better for pure MQTT workloads.</p>
+  <span class="verdict ok">Most interesting Kafka-family option if persistence is needed at edge</span>
+</div>
+
+<hr>
+
+<!-- 5 -->
+<h2 id="solves">5. What Kafka Genuinely Solves That the Current Stack Doesn't</h2>
+
+<h3>5a. Message Durability on Writer Restart</h3>
+<p>Current pain: real_writer restart = lost messages (QoS-0, no buffer between broker and writer). With Kafka as the transport, the writer is a Kafka consumer with a committed offset. Restart from exactly where it left off — zero message loss, regardless of downtime duration (within retention window).</p>
+<div class="note">This is the single biggest operational improvement Kafka would bring to this stack.</div>
+
+<h3>5b. Independent Multi-Consumer Fan-out</h3>
+<p>Current pain: to add a second consumer (e.g., real-time alerting service), you add another MQTT subscriber. At 81k msg/s, each additional MQTT subscriber puts load on FlashMQ. With Kafka, all consumers read from disk independently — broker load stays constant regardless of consumer count.</p>
+
+<h3>5c. Cloud Aggregation of Multiple Edge Sites</h3>
+<p>Current pain: each edge site rsyncs parquet files to fractal-phil via push_agent. Adding a 3rd, 4th, 10th site means more rsync cron jobs, more collision risk, more config management. Kafka at the cloud tier lets each site be a Kafka producer — unified fan-out to InfluxDB3, DuckDB, alerting, ML pipelines from a single cluster.</p>
+
+<h3>5d. Testable, Replayable Stream Processing</h3>
+<p>Current pain: filter logic (dedup, deadband) lives in Telegraf config. Hard to test in isolation. Hard to verify. With Kafka + ksqlDB, filter logic is a versioned job — replay the raw topic with a new filter version and compare outputs.</p>
+
+<hr>
+
+<!-- 6 -->
+<h2 id="doesnt">6. What Kafka Does NOT Solve Here</h2>
+
+<div class="bad"><strong>Live browser streaming:</strong> Kafka is not a WebSocket server. FlashMQ + mqtt.js is still required for live display regardless of Kafka adoption. Kafka does not help here at all.</div>
+<div class="bad"><strong>Parquet schema:</strong> Kafka's S3 sink connector writes Kafka's own file layout, not our custom schema (mqtt_topic column, custom partitions). real_writer's Parquet cannot be replicated with a generic Kafka connector.</div>
+<div class="bad"><strong>Edge simplicity:</strong> Kafka (even Redpanda) is heavier than FlashMQ. For the 1-binary edge deployment goal, any Kafka solution is a regression.</div>
+<div class="warn"><strong>Sub-ms ingest latency:</strong> Kafka batches writes (linger.ms, typically 5ms). FlashMQ delivers MQTT to real_writer in sub-ms. For edge EMS, 5ms is usually acceptable — but it's a measurable trade.</div>
+<div class="warn"><strong>MQTT protocol:</strong> Kafka is not natively MQTT. EMS hardware speaks MQTT. A bridge layer is always required between hardware and Kafka.</div>
+
+<hr>
+
+<!-- 7 -->
+<h2 id="nats">7. Kafka vs NATS JetStream vs Redpanda</h2>
+<p>NATS JetStream is a lighter alternative to Kafka with similar persistence + replay features. Worth considering as an intermediate option between "no persistence" (FlashMQ QoS-0) and "full Kafka".</p>
+<table>
+  <tr><th>Feature</th><th>FlashMQ</th><th>NATS JetStream</th><th>Redpanda</th><th>Apache Kafka</th></tr>
+  <tr><td>MQTT native</td><td><span class="check">✓</span></td><td><span class="cross">✗</span> bridge</td><td><span class="half">⚠</span> secondary</td><td><span class="cross">✗</span> bridge</td></tr>
+  <tr><td>Persistent log</td><td><span class="cross">✗</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+  <tr><td>Multi-consumer</td><td><span class="half">⚠</span> limited</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+  <tr><td>Single binary size</td><td>~5 MB</td><td>~20 MB</td><td>~100 MB</td><td>~800 MB + JVM</td></tr>
+  <tr><td>JVM required</td><td><span class="check">✓ no</span></td><td><span class="check">✓ no</span></td><td><span class="check">✓ no</span></td><td><span class="cross">✗ yes</span></td></tr>
+  <tr><td>Kafka-compatible API</td><td><span class="cross">✗</span></td><td><span class="cross">✗</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+  <tr><td>Edge-deployable</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="half">⚠</span></td><td><span class="cross">✗</span></td></tr>
+  <tr><td>81k msg/s throughput</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+  <tr><td>Memory footprint</td><td>~50 MB</td><td>~100 MB</td><td>~500 MB</td><td>~2 GB+</td></tr>
+  <tr><td>Cloud replication</td><td><span class="cross">✗</span></td><td><span class="check">✓</span> NATS Leaf</td><td><span class="check">✓</span> MirrorMaker</td><td><span class="check">✓</span> MirrorMaker 2</td></tr>
+</table>
+
+<div class="note"><strong>NATS JetStream</strong> is worth evaluating as an edge-tier durability upgrade. It solves the writer-restart message loss problem (the #1 Kafka benefit) at 20 MB binary size. No JVM, no ZooKeeper. The trade: no Kafka ecosystem compatibility.</div>
+
+<hr>
+
+<!-- 8 -->
+<h2 id="config">8. Config Examples</h2>
+
+<h3>Kafka producer (Python) — push_agent replacement</h3>
+<pre>
+<span class="kw">from</span> confluent_kafka <span class="kw">import</span> Producer
+<span class="kw">import</span> json
+
+producer = <span class="fn">Producer</span>({<span class="str">'bootstrap.servers'</span>: <span class="str">'kafka-cloud:9092'</span>})
+
+<span class="kw">def</span> <span class="fn">on_mqtt_message</span>(client, userdata, msg):
+    <span class="cm"># Forward MQTT message to Kafka, preserving topic as key</span>
+    producer.<span class="fn">produce</span>(
+        topic=<span class="str">'ems.raw'</span>,
+        key=msg.topic.<span class="fn">encode</span>(),
+        value=msg.payload,
+        headers={<span class="str">'site_id'</span>: SITE_ID, <span class="str">'mqtt_topic'</span>: msg.topic}
+    )
+    producer.<span class="fn">poll</span>(<span class="num">0</span>)  <span class="cm"># non-blocking flush</span>
+</pre>
+
+<h3>Kafka consumer (Python) — cloud-side parquet writer</h3>
+<pre>
+<span class="kw">from</span> confluent_kafka <span class="kw">import</span> Consumer
+
+consumer = <span class="fn">Consumer</span>({
+    <span class="str">'bootstrap.servers'</span>: <span class="str">'kafka-cloud:9092'</span>,
+    <span class="str">'group.id'</span>: <span class="str">'parquet-writer'</span>,
+    <span class="str">'auto.offset.reset'</span>: <span class="str">'earliest'</span>,   <span class="cm"># replay from beginning on new group</span>
+    <span class="str">'enable.auto.commit'</span>: <span class="kw">False</span>          <span class="cm"># manual commit after write</span>
+})
+consumer.<span class="fn">subscribe</span>([<span class="str">'ems.raw'</span>])
+
+<span class="kw">while True</span>:
+    msg = consumer.<span class="fn">poll</span>(<span class="num">0.1</span>)
+    <span class="kw">if</span> msg <span class="kw">is None</span>: <span class="kw">continue</span>
+    <span class="fn">write_to_parquet</span>(
+        mqtt_topic=msg.<span class="fn">key</span>().<span class="fn">decode</span>(),
+        payload=msg.<span class="fn">value</span>()
+    )
+    consumer.<span class="fn">commit</span>(msg)   <span class="cm"># commit offset only after successful write</span>
+</pre>
+
+<h3>Kafka Connect MQTT source connector config</h3>
+<pre>
+{
+  <span class="str">"name"</span>: <span class="str">"evelyn-mqtt-source"</span>,
+  <span class="str">"config"</span>: {
+    <span class="str">"connector.class"</span>: <span class="str">"io.confluent.connect.mqtt.MqttSourceConnector"</span>,
+    <span class="str">"mqtt.server.uri"</span>: <span class="str">"tcp://flashmq-edge:1883"</span>,
+    <span class="str">"mqtt.topics"</span>: <span class="str">"unit/#"</span>,
+    <span class="str">"kafka.topic"</span>: <span class="str">"ems.raw"</span>,
+    <span class="str">"tasks.max"</span>: <span class="str">"1"</span>,
+    <span class="str">"mqtt.qos"</span>: <span class="str">"1"</span>
+  }
+}
+</pre>
+
+<h3>ksqlDB filter stream (Filter A+B)</h3>
+<pre>
+<span class="cm">-- Create stream from raw Kafka topic</span>
+<span class="kw">CREATE STREAM</span> ems_raw (
+  mqtt_topic <span class="kw">VARCHAR KEY</span>,
+  payload    <span class="kw">VARCHAR</span>
+) <span class="kw">WITH</span> (kafka_topic=<span class="str">'ems.raw'</span>, value_format=<span class="str">'JSON'</span>);
+
+<span class="cm">-- Filter A: drop string dtype rows</span>
+<span class="kw">CREATE STREAM</span> ems_no_strings <span class="kw">AS</span>
+  <span class="kw">SELECT</span> * <span class="kw">FROM</span> ems_raw
+  <span class="kw">WHERE</span> <span class="fn">EXTRACTJSONFIELD</span>(payload, <span class="str">'$.dtype'</span>) != <span class="str">'string'</span>
+  <span class="kw">EMIT CHANGES</span>;
+
+<span class="cm">-- Filter B: change-on-value (ksqlDB suppress/dedup — simplified)</span>
+<span class="kw">CREATE TABLE</span> ems_latest <span class="kw">AS</span>
+  <span class="kw">SELECT</span> mqtt_topic,
+         <span class="fn">LATEST_BY_OFFSET</span>(<span class="fn">EXTRACTJSONFIELD</span>(payload, <span class="str">'$.value'</span>)) <span class="kw">AS</span> last_value
+  <span class="kw">FROM</span> ems_no_strings
+  <span class="kw">GROUP BY</span> mqtt_topic
+  <span class="kw">EMIT CHANGES</span>;
+</pre>
+
+<hr>
+
+<!-- 9 -->
+<h2 id="placement-rec">9. Recommended Placement in the Planned Scheme</h2>
+
+<h3>Short term — single-site edge box</h3>
+<p>Keep FlashMQ + real_writer. Add <strong>QoS-1 on the FlashMQ bridge connection to cloud</strong> (already supported in FlashMQ bridge config). QoS-1 ensures cloud receives all messages even if the bridge drops briefly, solving message durability without Kafka.</p>
+<pre>
+<span class="cm"># flashmq.conf bridge — change QoS from 0 to 1</span>
+bridge {
+    address fractal-phil.local
+    port <span class="num">1884</span>
+    topic unit/<span class="num">#</span>  <span class="str">in</span>  <span class="num">1</span>   <span class="cm"># QoS-1 ensures delivery</span>
+    clientid evelyn-bridge
+}
+</pre>
+
+<h3>Medium term — multi-site cloud aggregation (5+ sites)</h3>
+<pre>
+Site A FlashMQ bridge ─→ Cloud Kafka :9092
+Site B FlashMQ bridge ─→   topic: ems.{site_id}.raw
+Site C FlashMQ bridge ─→
+                                  │
+                   ┌──────────────┼──────────────────┐
+                   │              │                  │
+            cloud-writer     alert_service      ML pipeline
+            (Kafka consumer  (Kafka consumer)  (Kafka consumer)
+             → parquet S3)
+</pre>
+<p>Each site's FlashMQ bridges directly to cloud Kafka. Cloud real_writer is a Kafka consumer instead of MQTT subscriber. Independent consumer groups for alerting and analytics.</p>
+
+<h3>Long term — stream processing at scale</h3>
+<p>Add ksqlDB or Kafka Streams for the Filter A+B logic as site count grows. Replace Telegraf dedup config with a proper versioned stream processing job. This is only justified when the number of filter rules and edge cases exceeds what Telegraf config can cleanly express.</p>
+
+<hr>
+
+<!-- 10 -->
+<h2 id="decision">10. Decision Matrix</h2>
+<table>
+  <tr><th colspan="2">Add Kafka when…</th></tr>
+  <tr><td><span class="check">✓</span></td><td>You have 5+ edge sites feeding a central cloud analytics platform</td></tr>
+  <tr><td><span class="check">✓</span></td><td>Message replay is required — re-process historical MQTT stream with new filter logic</td></tr>
+  <tr><td><span class="check">✓</span></td><td>You have 3+ independent consumers of the same MQTT stream (alerting, ML, parquet, analytics)</td></tr>
+  <tr><td><span class="check">✓</span></td><td>Message loss on writer restart is unacceptable and QoS-1 MQTT bridge is insufficient</td></tr>
+  <tr><td><span class="check">✓</span></td><td>Stream processing complexity (filtering, windowed aggregation) is growing beyond Telegraf config</td></tr>
+</table>
+<table style="margin-top:16px">
+  <tr><th colspan="2">Do NOT add Kafka when…</th></tr>
+  <tr><td><span class="cross">✗</span></td><td>Single edge site deployment — QoS-1 FlashMQ bridge is sufficient and far simpler</td></tr>
+  <tr><td><span class="cross">✗</span></td><td>Edge box weight budget matters — Kafka is 800 MB+ JVM, incompatible with 1-binary goal</td></tr>
+  <tr><td><span class="cross">✗</span></td><td>Team has no Kafka operational experience — significant learning curve, complex failure modes</td></tr>
+  <tr><td><span class="cross">✗</span></td><td>Primary goal is live browser streaming — Kafka does not help here</td></tr>
+  <tr><td><span class="cross">✗</span></td><td>MQTT protocol at the broker is required — EMS hardware speaks MQTT natively, Kafka always needs a bridge</td></tr>
+</table>
+
+<div class="note" style="margin-top:20px"><strong>Bottom line:</strong> Kafka belongs at the cloud aggregation tier for multi-site deployments. The edge box stays as FlashMQ + real_writer. If durability at the edge is the only concern, try QoS-1 bridge first, then NATS JetStream, before reaching for Kafka.</div>
+
+</div>
+</body>
+</html>

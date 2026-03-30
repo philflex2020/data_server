@@ -1,0 +1,85 @@
+# parquet_writer config — real Longbow MQTT data
+#
+# Topic structure (4 depths, all handled by topic_patterns):
+#
+#   9-seg  ems/site/{site_id}/unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}
+#   8-seg  ems/site/{site_id}/unit/{unit_id}/root/{point_name}/{dtype_hint}
+#   7-seg  ems/site/{site_id}/{device}/{instance}/{point_name}/{dtype_hint}
+#   6-seg  ems/site/{site_id}/root/{point_name}/{dtype_hint}
+#
+# site_id is extracted from topic segment 2 — leave output.site_id empty so
+# the topic-extracted value drives partitioning.  Multi-site brokers split
+# automatically into separate site=... directory trees.
+#
+# String payloads (dtype_hint=string) are stored as value_str column.
+#
+# Start writer:
+#   cd source/parquet_writer
+#   ./parquet_writer --config config.longbow.yaml
+
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer-longbow
+  topic: "ems/#"
+  qos: 0
+
+  topic_parser: positional
+  partition_field: site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+  # First matching pattern wins.  More specific (longer) patterns listed first.
+  topic_patterns:
+
+    # 9-seg: unit signals with device + instance  (95% of traffic)
+    # ems/site/{site}/unit/{unit}/{device}/{instance}/{point}/{dtype}
+    - match: "ems/site/+/unit/+/+/+/+/+"
+      segments: ["_","_","site_id","_","unit_id","device","instance","point_name","dtype_hint"]
+
+    # 8-seg: unit root signals — no instance level
+    # ems/site/{site}/unit/{unit}/root/{point}/{dtype}
+    - match: "ems/site/+/unit/+/+/+/+"
+      segments: ["_","_","site_id","_","unit_id","device","point_name","dtype_hint"]
+
+    # 7-seg: meter/rtac/site-device signals — no unit
+    # ems/site/{site}/{device}/{instance}/{point}/{dtype}
+    - match: "ems/site/+/+/+/+/+"
+      segments: ["_","_","site_id","device","instance","point_name","dtype_hint"]
+
+    # 6-seg: site-level root signals — no unit or instance
+    # ems/site/{site}/root/{point}/{dtype}
+    - match: "ems/site/+/+/+/+"
+      segments: ["_","_","site_id","device","point_name","dtype_hint"]
+
+output:
+  base_path: /data/parquet-longbow
+  site_id: ""          # intentionally empty — site_id comes from topic segment 2
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000
+  flush_max_retries: 3
+  flush_retry_base_seconds: 1
+
+wal:
+  enabled: true
+  # path: ""   # default: /data/parquet-longbow/.wal/
+
+health:
+  enabled: true
+  port: 8771
+
+guard:
+  min_free_gb: 2.0
+
+compact:
+  enabled: false
+  interval_seconds: 600
+  min_files: 3
+  min_age_seconds: 0

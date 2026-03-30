@@ -30,20 +30,25 @@ mqtt:
       segments: ["dtype_hint", "point_name"]
 output:
   base_path: /data/parquet
-  site_id: "0"
+  site_id: ""          # extracted from topic segment 2 (multi-site safe)
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
   compression: snappy
-  flush_interval_seconds: 10
-  max_messages_per_part: 50000
+  flush_interval_seconds: 30
+  max_messages_per_part: 2000000
   max_total_buffer_rows: 500000
 health:
   enabled: true
   port: 8771
 wal:
-  enabled: false
-  path: /wal
+  enabled: true
+  path: /data/parquet/.wal
 guard:
   min_free_gb: 1.0
 compact:
-  enabled: true
+  enabled: false
   interval_seconds: 600
   min_files: 3

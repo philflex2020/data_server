@@ -10,10 +10,7 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SIM_BIN="$REPO_ROOT/source/ems_site_simulator/ems_site_simulator"
-# Fallback to stress_real_pub if ems_site_simulator not yet built
-[[ -x "$SIM_BIN" ]] || SIM_BIN="$REPO_ROOT/source/stress_runner/stress_real_pub"
-TEMPLATE="$REPO_ROOT/source/ems_site_simulator/ems_topic_template.json"
+SIM_BIN="$REPO_ROOT/source/stress_runner/ems_site_simulator"
 LOG_DIR="/data/logs/$(date +%Y/%m/%d)"
 
 UNITS=1
@@ -31,8 +28,8 @@ echo "=== Evelyn demo stack — .34 ==="
 echo "    units=$UNITS  rate=$RATE msg/s"
 
 # ── Parquet output dir ───────────────────────────────────────────────────────
-mkdir -p /mnt/tort-sdf/evelyn
-echo "    parquet → /mnt/tort-sdf/evelyn"
+mkdir -p /mnt/tort-sdf/evelyn2
+echo "    parquet → /mnt/tort-sdf/evelyn2"
 
 # ── Log dir ─────────────────────────────────────────────────────────────────
 mkdir -p "$LOG_DIR"
@@ -68,7 +65,6 @@ echo "    log → $LOG_FILE"
   --port 11883 \
   --units "$UNITS" \
   --rate "$RATE" \
-  --template "$TEMPLATE" \
   > "$LOG_FILE" 2>&1 &
 
 SIM_PID=$!
@@ -87,5 +83,5 @@ echo ""
 echo "Stack running."
 echo "  Writer health:  http://$(hostname -I | awk '{print $1}'):8771/health"
 echo "  Bridge API:     http://$(hostname -I | awk '{print $1}'):8772/bridge"
-echo "  Parquet data:   /mnt/tort-sdf/evelyn/"
+echo "  Parquet data:   /mnt/tort-sdf/evelyn2/"
 echo "  Stop with:      bash $SCRIPT_DIR/stop-evelyn.sh"
