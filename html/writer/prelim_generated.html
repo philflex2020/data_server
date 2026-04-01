@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Prelim Parquet — Generated Data Results</title>
+<style>
+  :root {
+    --bg:#f6f8fa; --surface:#fff; --border:#d0d7de;
+    --text:#1f2328; --muted:#656d76; --accent:#0969da;
+    --green:#1a7f37; --orange:#9a6700; --red:#cf222e;
+    --code-bg:#f0f2f4; --header-bg:#f6f8fa;
+    --bar-narrow:#0969da; --bar-wide:#cf222e; --bar-dev:#9a6700; --bar-orig:#1a7f37;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:16px; font-size:.88rem; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface); }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#ddf4ff; }
+
+  h1   { font-size:1.15rem; margin-bottom:2px; }
+  h2   { font-size:.95rem; color:var(--text); margin:20px 0 8px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+  .meta { color:var(--muted); font-size:.78rem; margin-bottom:16px; }
+
+  .verdict { background:#dafbe1; border:1px solid #a8d5b5; border-radius:6px;
+             padding:10px 14px; margin-bottom:16px; color:#1a5c2a; font-size:.85rem; line-height:1.5; }
+  .verdict strong { color:#1a7f37; }
+
+  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+          padding:10px 14px; min-width:120px; }
+  .card-label { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .card-value { font-size:1.4rem; font-weight:700; line-height:1.2; }
+  .card-sub   { font-size:.72rem; color:var(--muted); }
+  .c-blue  { color:var(--accent); }
+  .c-green { color:var(--green); }
+  .c-red   { color:var(--red); }
+  .c-orange{ color:var(--orange); }
+
+  /* Bar chart */
+  .chart-wrap { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+                padding:14px; margin-bottom:16px; }
+  .chart-title { font-size:.82rem; font-weight:600; color:var(--muted); margin-bottom:10px; }
+  .bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:.8rem; }
+  .bar-label { width:260px; flex-shrink:0; color:var(--text); white-space:nowrap;
+               overflow:hidden; text-overflow:ellipsis; }
+  .bar-track { flex:1; background:#eaecef; border-radius:3px; height:16px; position:relative; overflow:hidden; }
+  .bar-fill  { height:100%; border-radius:3px; transition:width .3s; }
+  .bar-val   { width:100px; flex-shrink:0; text-align:right; font-variant-numeric:tabular-nums;
+               font-family:monospace; font-size:.78rem; color:var(--muted); }
+  .bar-pct   { width:70px; flex-shrink:0; text-align:right; font-size:.75rem; }
+  .pct-good  { color:var(--green); font-weight:600; }
+  .pct-bad   { color:var(--red); font-weight:600; }
+
+  table { border-collapse:collapse; width:100%; background:var(--surface);
+          border:1px solid var(--border); border-radius:6px; overflow:hidden;
+          font-size:.82rem; margin-bottom:16px; }
+  thead tr { background:var(--header-bg); }
+  th { padding:7px 11px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:5px 11px; border-bottom:1px solid #eaecef; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#f0f6ff; }
+  .num  { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
+  .best { color:var(--green); font-weight:700; }
+  .worst{ color:var(--red); }
+
+  .insight { background:#fff8e1; border:1px solid #e8c84a; border-radius:6px;
+             padding:10px 14px; margin-bottom:16px; font-size:.82rem; line-height:1.6; color:#5a4a00; }
+  .insight strong { color:#7a5e00; }
+
+  .section-note { font-size:.78rem; color:var(--muted); margin-bottom:8px; line-height:1.5; }
+
+  .tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:.72rem;
+         background:var(--code-bg); color:var(--muted); border:1px solid var(--border); }
+  .tag-win  { background:#e6f4ea; border-color:#a8d5b5; color:#1a5c2a; }
+  .tag-lose { background:#ffebe9; border-color:#f0b0a0; color:#7a1a10; }
+
+  .group-hdr td { background:#f6f8fa; font-weight:700; color:var(--muted); font-size:.76rem;
+                  text-transform:uppercase; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Writer Projects</a>
+  <a href="prelim_parquet.html">Prelim Point Inventory</a>
+  <a href="prelim_pivot.html">Pivot Experiment</a>
+  <a href="prelim_generated.html" class="here">Generated Data</a>
+  <a href="prelim_gen_pivot.html">Generated Pivot</a>
+</div>
+
+<h1>Prelim Parquet — Generated Data Results</h1>
+<p class="meta">Generator run: <code>2026-03-31T20:36:25Z</code> &nbsp;·&nbsp;
+  Site: <code>0215D1EC</code> &nbsp;·&nbsp;
+  8 units · 451 points · 60 scan cycles · 10-minute window</p>
+
+<div class="verdict">
+  <strong>Generator produced 204,720 narrow rows across 33 files in 3 formats.</strong>
+  At 60 scan cycles, narrow stays the most space-efficient layout: <strong>6.9 B/row (snappy)</strong>,
+  growing linearly with data volume. Wide-point-name (453 columns) matches narrow in total byte cost
+  at this scale — column metadata overhead is finally amortized — but still loses on B/row
+  (2,899 B/row for 540 rows vs 6.9 B/row for 204,720 rows).
+  Wide-device sum is 1.08× narrow, effectively equal at 60 cycles.
+  <br><br>
+  The 17-cycle real file had no contest; at 60 cycles the formats are much closer. See
+  <a href="prelim_gen_pivot.html">Generated Pivot</a> for break-even analysis.
+</div>
+
+<!-- Summary cards -->
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Narrow rows</div>
+    <div class="card-value c-blue">204,720</div>
+    <div class="card-sub">6 cols · 6.9 B/row (snappy)</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Scan cycles</div>
+    <div class="card-value c-green">60</div>
+    <div class="card-sub">600 s / 10 s interval</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Unique points</div>
+    <div class="card-value c-blue">451</div>
+    <div class="card-sub">9 devices · 8 units</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Narrow (snappy)</div>
+    <div class="card-value c-green">1,414 KB</div>
+    <div class="card-sub">baseline</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Wide-device total</div>
+    <div class="card-value c-orange">1,534 KB</div>
+    <div class="card-sub">9 files · 1.08× narrow</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Wide-point-name</div>
+    <div class="card-value c-orange">1,565 KB</div>
+    <div class="card-sub">1 file · 453 cols · 1.11× narrow</div>
+  </div>
+</div>
+
+<!-- Bar chart: format comparison by total size -->
+<h2>Size by Format &amp; Codec</h2>
+<p class="section-note">Total bytes per format (wide-device = sum of all 9 device files). Lower is better. Baseline = narrow snappy (1,414,230 B).</p>
+
+<div class="chart-wrap">
+  <div class="chart-title">Total file size (bytes) — lower is better</div>
+  <script>
+  const NARROW_BASE = 1414230;
+  const FORMAT_BARS = [
+    { label:"Narrow · snappy",                    size:1414230, color:"#0969da" },
+    { label:"Narrow · zstd",                      size:1323580, color:"#0969da" },
+    { label:"Narrow · uncompressed",              size:1668131, color:"#656d76" },
+    { label:"Wide-device sum · snappy",           size:1534220, color:"#9a6700" },
+    { label:"Wide-device sum · zstd",             size:1435147, color:"#9a6700" },
+    { label:"Wide-device sum · uncompressed",     size:1532828, color:"#9a6700" },
+    { label:"Wide-point-name · snappy",           size:1565253, color:"#cf222e" },
+    { label:"Wide-point-name · zstd",             size:1466977, color:"#cf222e" },
+    { label:"Wide-point-name · uncompressed",     size:1589996, color:"#cf222e" },
+  ];
+  const MAX_F = Math.max(...FORMAT_BARS.map(b=>b.size));
+  document.addEventListener('DOMContentLoaded', () => {
+    const wrap = document.querySelector('.chart-wrap');
+    FORMAT_BARS.forEach(b => {
+      const pct = ((b.size - NARROW_BASE) / NARROW_BASE * 100).toFixed(1);
+      const sign = b.size <= NARROW_BASE
+        ? `<span class="pct-good">${pct}%</span>`
+        : `<span class="pct-bad">+${pct}%</span>`;
+      const w = Math.max(2, b.size / MAX_F * 100);
+      wrap.innerHTML += `
+        <div class="bar-row">
+          <div class="bar-label" title="${b.label}">${b.label}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${w}%;background:${b.color}"></div>
+          </div>
+          <div class="bar-val">${b.size.toLocaleString()} B</div>
+          <div class="bar-pct">${sign}</div>
+        </div>`;
+    });
+  });
+  </script>
+</div>
+
+<!-- Full file table -->
+<h2>All Generated Files</h2>
+<p class="section-note">33 files total. % column is vs narrow snappy baseline (1,414,230 B). Wide-device rows = per-file rows (one row per timestamp × unit for that device).</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Format</th>
+      <th>Codec</th>
+      <th class="num">Size (B)</th>
+      <th class="num">Rows</th>
+      <th class="num">Cols</th>
+      <th class="num">B / row</th>
+      <th class="num">vs narrow snappy</th>
+    </tr>
+  </thead>
+  <tbody id="file-tbody"></tbody>
+</table>
+
+<script>
+const BASELINE = 1414230;
+const FILES = [
+  // Narrow
+  { fn:"narrow_10min.parquet",                          fmt:"narrow",          codec:"snappy",        sz:1414230, rows:204720, cols:6,   bpr:6.9  },
+  { fn:"narrow_10min_zstd.parquet",                     fmt:"narrow",          codec:"zstd",          sz:1323580, rows:204720, cols:6,   bpr:6.5  },
+  { fn:"narrow_10min_uncompressed.parquet",             fmt:"narrow",          codec:"uncompressed",  sz:1668131, rows:204720, cols:6,   bpr:8.1  },
+  // Wide-device: NA
+  { fn:"wide_device_NA.parquet",                        fmt:"wide_device",     codec:"snappy",        sz:26754,   rows:60,     cols:30,  bpr:445.9 },
+  { fn:"wide_device_NA_zstd.parquet",                   fmt:"wide_device",     codec:"zstd",          sz:27074,   rows:60,     cols:30,  bpr:451.2 },
+  { fn:"wide_device_NA_uncompressed.parquet",           fmt:"wide_device",     codec:"uncompressed",  sz:26646,   rows:60,     cols:30,  bpr:444.1 },
+  // Wide-device: bms_1
+  { fn:"wide_device_bms_1.parquet",                     fmt:"wide_device",     codec:"snappy",        sz:201441,  rows:480,    cols:98,  bpr:419.7 },
+  { fn:"wide_device_bms_1_zstd.parquet",                fmt:"wide_device",     codec:"zstd",          sz:190813,  rows:480,    cols:98,  bpr:397.5 },
+  { fn:"wide_device_bms_1_uncompressed.parquet",        fmt:"wide_device",     codec:"uncompressed",  sz:201159,  rows:480,    cols:98,  bpr:419.1 },
+  // Wide-device: bms_1_rack_1
+  { fn:"wide_device_bms_1_rack_1.parquet",              fmt:"wide_device",     codec:"snappy",        sz:193628,  rows:480,    cols:51,  bpr:403.4 },
+  { fn:"wide_device_bms_1_rack_1_zstd.parquet",         fmt:"wide_device",     codec:"zstd",          sz:180500,  rows:480,    cols:51,  bpr:376.0 },
+  { fn:"wide_device_bms_1_rack_1_uncompressed.parquet", fmt:"wide_device",     codec:"uncompressed",  sz:193481,  rows:480,    cols:51,  bpr:403.1 },
+  // Wide-device: bms_1_rack_2
+  { fn:"wide_device_bms_1_rack_2.parquet",              fmt:"wide_device",     codec:"snappy",        sz:193661,  rows:480,    cols:51,  bpr:403.5 },
+  { fn:"wide_device_bms_1_rack_2_zstd.parquet",         fmt:"wide_device",     codec:"zstd",          sz:180380,  rows:480,    cols:51,  bpr:375.8 },
+  { fn:"wide_device_bms_1_rack_2_uncompressed.parquet", fmt:"wide_device",     codec:"uncompressed",  sz:193499,  rows:480,    cols:51,  bpr:403.1 },
+  // Wide-device: bms_1_rack_3
+  { fn:"wide_device_bms_1_rack_3.parquet",              fmt:"wide_device",     codec:"snappy",        sz:193656,  rows:480,    cols:51,  bpr:403.4 },
+  { fn:"wide_device_bms_1_rack_3_zstd.parquet",         fmt:"wide_device",     codec:"zstd",          sz:180701,  rows:480,    cols:51,  bpr:376.5 },
+  { fn:"wide_device_bms_1_rack_3_uncompressed.parquet", fmt:"wide_device",     codec:"uncompressed",  sz:193498,  rows:480,    cols:51,  bpr:403.1 },
+  // Wide-device: bms_1_rack_4
+  { fn:"wide_device_bms_1_rack_4.parquet",              fmt:"wide_device",     codec:"snappy",        sz:193706,  rows:480,    cols:51,  bpr:403.6 },
+  { fn:"wide_device_bms_1_rack_4_zstd.parquet",         fmt:"wide_device",     codec:"zstd",          sz:180607,  rows:480,    cols:51,  bpr:376.3 },
+  { fn:"wide_device_bms_1_rack_4_uncompressed.parquet", fmt:"wide_device",     codec:"uncompressed",  sz:193546,  rows:480,    cols:51,  bpr:403.2 },
+  // Wide-device: bms_1_rack_5
+  { fn:"wide_device_bms_1_rack_5.parquet",              fmt:"wide_device",     codec:"snappy",        sz:193700,  rows:480,    cols:51,  bpr:403.5 },
+  { fn:"wide_device_bms_1_rack_5_zstd.parquet",         fmt:"wide_device",     codec:"zstd",          sz:180653,  rows:480,    cols:51,  bpr:376.4 },
+  { fn:"wide_device_bms_1_rack_5_uncompressed.parquet", fmt:"wide_device",     codec:"uncompressed",  sz:193534,  rows:480,    cols:51,  bpr:403.2 },
+  // Wide-device: bms_1_rack_6
+  { fn:"wide_device_bms_1_rack_6.parquet",              fmt:"wide_device",     codec:"snappy",        sz:193633,  rows:480,    cols:51,  bpr:403.4 },
+  { fn:"wide_device_bms_1_rack_6_zstd.parquet",         fmt:"wide_device",     codec:"zstd",          sz:180756,  rows:480,    cols:51,  bpr:376.6 },
+  { fn:"wide_device_bms_1_rack_6_uncompressed.parquet", fmt:"wide_device",     codec:"uncompressed",  sz:193467,  rows:480,    cols:51,  bpr:403.1 },
+  // Wide-device: pcs_1
+  { fn:"wide_device_pcs_1.parquet",                     fmt:"wide_device",     codec:"snappy",        sz:144041,  rows:480,    cols:35,  bpr:300.1 },
+  { fn:"wide_device_pcs_1_zstd.parquet",                fmt:"wide_device",     codec:"zstd",          sz:133663,  rows:480,    cols:35,  bpr:278.5 },
+  { fn:"wide_device_pcs_1_uncompressed.parquet",        fmt:"wide_device",     codec:"uncompressed",  sz:143998,  rows:480,    cols:35,  bpr:300.0 },
+  // Wide-point-name
+  { fn:"wide_point_name_10min.parquet",                 fmt:"wide_point_name", codec:"snappy",        sz:1565253, rows:540,    cols:453, bpr:2898.6 },
+  { fn:"wide_point_name_10min_zstd.parquet",            fmt:"wide_point_name", codec:"zstd",          sz:1466977, rows:540,    cols:453, bpr:2716.6 },
+  { fn:"wide_point_name_10min_uncompressed.parquet",    fmt:"wide_point_name", codec:"uncompressed",  sz:1589996, rows:540,    cols:453, bpr:2944.4 },
+];
+
+const FMT_COLORS = { narrow:"#0969da", wide_device:"#9a6700", wide_point_name:"#cf222e" };
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tb = document.getElementById('file-tbody');
+  let lastFmt = null;
+  FILES.forEach(f => {
+    const pct = ((f.sz - BASELINE) / BASELINE * 100).toFixed(1);
+    const cls = f.sz <= BASELINE ? 'best' : 'worst';
+    const sign = f.sz <= BASELINE ? pct + '%' : '+' + pct + '%';
+    if (f.fmt !== lastFmt) {
+      const label = { narrow:'Narrow', wide_device:'Wide-Device (per device)', wide_point_name:'Wide-Point-Name' }[f.fmt] || f.fmt;
+      tb.innerHTML += `<tr class="group-hdr"><td colspan="8">${label}</td></tr>`;
+      lastFmt = f.fmt;
+    }
+    tb.innerHTML += `<tr>
+      <td><code style="font-size:.78rem">${f.fn}</code></td>
+      <td><span style="color:${FMT_COLORS[f.fmt]};font-weight:600">${f.fmt}</span></td>
+      <td>${f.codec}</td>
+      <td class="num">${f.sz.toLocaleString()}</td>
+      <td class="num">${f.rows.toLocaleString()}</td>
+      <td class="num">${f.cols}</td>
+      <td class="num">${f.bpr}</td>
+      <td class="num ${cls}">${sign}</td>
+    </tr>`;
+  });
+});
+</script>
+
+<div class="insight">
+  <strong>Why wide-point-name is now competitive at 60 cycles:</strong>
+  With 451 points × 8 bytes each, a single row of float data = ~3.6 KB uncompressed.
+  At 540 rows the data payload (~1.9 MB raw) finally dwarfs the fixed column-metadata cost
+  (~11 KB for 453 column name strings). But narrow still wins on total bytes because it compresses
+  <em>across</em> rows — repeated point_name strings compress to near zero with dictionary encoding,
+  giving 6.9 B/row vs wide's 2,899 B/row semantic overhead.
+  <br><br>
+  <strong>The crossover point</strong> where wide-point-name beats narrow snappy is estimated at
+  ~500+ scan cycles (≈ 1.4 hours at 10 s interval), where column data density exceeds
+  the dictionary compression advantage of the narrow layout's repeated strings.
+  See <a href="prelim_gen_pivot.html">Generated Pivot</a> for full analysis.
+</div>
+
+</body>
+</html>

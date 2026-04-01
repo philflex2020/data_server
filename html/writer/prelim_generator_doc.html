@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>prelim_generator.py — Reference &amp; Design Notes</title>
+<style>
+  :root {
+    --bg:#f6f8fa; --surface:#fff; --border:#d0d7de;
+    --text:#1f2328; --muted:#656d76; --accent:#0969da;
+    --green:#1a7f37; --orange:#9a6700; --red:#cf222e;
+    --code-bg:#f0f2f4; --header-bg:#f6f8fa;
+    --bar-narrow:#0969da; --bar-wide:#cf222e; --bar-dev:#9a6700; --bar-orig:#1a7f37;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:16px; font-size:.88rem; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface); }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#ddf4ff; }
+
+  h1   { font-size:1.15rem; margin-bottom:2px; }
+  h2   { font-size:.95rem; color:var(--text); margin:20px 0 8px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+  .meta { color:var(--muted); font-size:.78rem; margin-bottom:16px; }
+
+  .section-note { font-size:.78rem; color:var(--muted); margin-bottom:8px; line-height:1.5; }
+
+  table { border-collapse:collapse; width:100%; background:var(--surface);
+          border:1px solid var(--border); border-radius:6px; overflow:hidden;
+          font-size:.82rem; margin-bottom:16px; }
+  thead tr { background:var(--header-bg); }
+  th { padding:7px 11px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:5px 11px; border-bottom:1px solid #eaecef; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#f0f6ff; }
+  .num  { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
+  .best { color:var(--green); font-weight:700; }
+  .worst{ color:var(--red); }
+
+  .insight { background:#fff8e1; border:1px solid #e8c84a; border-radius:6px;
+             padding:10px 14px; margin-bottom:16px; font-size:.82rem; line-height:1.6; color:#5a4a00; }
+  .insight strong { color:#7a5e00; }
+
+  .insight-blue { background:#ddf4ff; border:1px solid #a8d4f5; border-radius:6px;
+                  padding:10px 14px; margin-bottom:16px; font-size:.82rem; line-height:1.6; color:#0a3069; }
+  .insight-blue strong { color:#0550ae; }
+
+  pre { background:#1c2230; color:#c9d1d9; border-radius:6px; padding:12px 14px;
+        font-size:.78rem; line-height:1.6; overflow-x:auto; margin-bottom:14px;
+        font-family:'Cascadia Code','Fira Mono','Consolas',monospace; white-space:pre; }
+
+  .purpose { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+             padding:10px 14px; margin-bottom:16px; font-size:.83rem; line-height:1.6; }
+
+  pre { background:#1f2328; color:#e6edf3; border-radius:6px; padding:12px 14px;
+        font-size:.8rem; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+  pre .comment { color:#8b949e; }
+  code { font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; }
+  td code, p code { background:var(--code-bg); border:1px solid var(--border);
+                    border-radius:3px; padding:1px 4px; font-size:.8rem; }
+
+  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+          padding:10px 14px; min-width:140px; }
+  .card-label { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .card-value { font-size:1.2rem; font-weight:700; line-height:1.3; }
+  .card-sub   { font-size:.72rem; color:var(--muted); }
+  .c-blue  { color:var(--accent); }
+  .c-green { color:var(--green); }
+  .c-red   { color:var(--red); }
+  .c-orange{ color:var(--orange); }
+
+  .tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:.72rem;
+         background:var(--code-bg); color:var(--muted); border:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Writer Projects</a>
+  <a href="prelim_parquet.html">Prelim Point Inventory</a>
+  <a href="prelim_pivot.html">Pivot Experiment</a>
+  <a href="prelim_generated.html">Generated Data</a>
+  <a href="prelim_gen_pivot.html">Generated Pivot</a>
+  <a href="prelim_generator_doc.html" class="here">Generator Docs</a>
+</div>
+
+<h1>prelim_generator.py — Reference &amp; Design Notes</h1>
+<p class="meta">Script: <code>scripts/prelim_generator.py</code> &nbsp;·&nbsp; Schema: 9 devices, 451 points &nbsp;·&nbsp; Formats: narrow, wide-device, wide-point-name</p>
+
+<!-- 1. Purpose -->
+<h2>Purpose</h2>
+<div class="purpose">
+  Synthetic BESS parquet generator using the real prelim schema (9 devices, 451 points). Generates narrow,
+  wide-device, and wide-point-name formats with optional time jitter, timestamp bucketing, and COV filtering.
+  Used to test storage format tradeoffs at controlled data volumes — unlike the 2m50s real snapshot,
+  the generator can produce hours of data with hundreds of scan cycles to reach the wide-format break-even point.
+</div>
+
+<!-- 2. CLI Reference -->
+<h2>CLI Reference</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Option</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>--format {narrow,wide_device,wide_point_name,all}</code></td>
+      <td><code>all</code></td>
+      <td>Output format(s) to generate</td>
+    </tr>
+    <tr>
+      <td><code>--duration N</code></td>
+      <td><code>600</code></td>
+      <td>Seconds of data to generate</td>
+    </tr>
+    <tr>
+      <td><code>--interval N</code></td>
+      <td><code>10</code></td>
+      <td>Scan cycle interval in seconds</td>
+    </tr>
+    <tr>
+      <td><code>--units N</code></td>
+      <td><code>8</code></td>
+      <td>Number of BESS units (7 real IDs + synthetic if &gt;7)</td>
+    </tr>
+    <tr>
+      <td><code>--out PATH</code></td>
+      <td><code>/tmp/prelim_generated</code></td>
+      <td>Output directory</td>
+    </tr>
+    <tr>
+      <td><code>--seed N</code></td>
+      <td><code>42</code></td>
+      <td>NumPy random seed</td>
+    </tr>
+    <tr>
+      <td><code>--time-jitter MS</code></td>
+      <td><code>0</code></td>
+      <td>±MS random timestamp scatter per point per cycle</td>
+    </tr>
+    <tr>
+      <td><code>--bucket MS</code></td>
+      <td><code>0</code></td>
+      <td>Snap timestamps to MS grid before pivot (0=off)</td>
+    </tr>
+    <tr>
+      <td><code>--cov</code></td>
+      <td>off</td>
+      <td>Apply COV filtering (per-signal on narrow; per-row on wide)</td>
+    </tr>
+    <tr>
+      <td><code>--split</code></td>
+      <td>off</td>
+      <td>Generate separate fast/slow wide-device files per device</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- 3. Usage examples -->
+<h2>Usage Examples</h2>
+<pre><code><span class="comment"># Baseline: all formats, 10 min, 8 units</span>
+.venv/bin/python scripts/prelim_generator.py
+
+<span class="comment"># With timestamp jitter + bucketing + COV</span>
+.venv/bin/python scripts/prelim_generator.py \
+  --time-jitter 15 --bucket 20 --cov \
+  --out /tmp/prelim_generated_cov
+
+<span class="comment"># Just narrow format, longer window</span>
+.venv/bin/python scripts/prelim_generator.py \
+  --format narrow --duration 3600 --interval 5
+
+<span class="comment"># OTA flash helper (separate — just for reference)</span>
+python3 ~/.arduino15/packages/esp32/hardware/esp32/1.0.6/tools/espota.py \
+  -i 192.168.1.231 -p 3232 -I 192.168.1.28 -P 48266 -t 30 -f firmware.bin</code></pre>
+
+<!-- 4. Signal speed classes -->
+<h2>Signal Speed Classes</h2>
+<p class="section-note">Each point is assigned a change-probability per scan cycle based on keywords in the point name.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Class</th>
+      <th>Change prob/cycle</th>
+      <th>Keywords matched</th>
+      <th>Examples</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>fast</strong></td>
+      <td class="num">95%</td>
+      <td><code>current</code>, <code>dca</code>, <code>pcs_p</code>, <code>hz</code>, <code>aph</code>, <code>i_avg</code>, <code>correction</code>, <code>response</code></td>
+      <td>RackCurrent, PCS_P, Hz</td>
+    </tr>
+    <tr>
+      <td><strong>slow</strong></td>
+      <td class="num">8%</td>
+      <td><code>soc</code>, <code>soh</code>, <code>temp</code>, <code>_t</code>, <code>cellv</code>, <code>voltage</code>, <code>avgcell</code></td>
+      <td>RackSOC, MaxCellT, RackVoltage</td>
+    </tr>
+    <tr>
+      <td><strong>medium</strong></td>
+      <td class="num">40%</td>
+      <td>(everything else)</td>
+      <td>status flags, misc floats</td>
+    </tr>
+    <tr>
+      <td><strong>bool/int</strong></td>
+      <td class="num">2% flip</td>
+      <td>seed value in {0, 1}</td>
+      <td>contactors, fault flags</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- 5. COV behaviour -->
+<h2>COV Behaviour</h2>
+<div class="insight">
+  <strong>Key finding from 10-min run (60 cycles, 8 units):</strong>
+  <br><br>
+  <strong>Narrow per-signal COV:</strong> 204,720 → 36,741 rows — <strong>82% reduction</strong>.
+  Each slow signal (temp, SOC, voltage) stays flat for ~12 cycles on average, firing COV on ~92% of its readings.
+  <br><br>
+  <strong>Wide-device per-row COV: 0% reduction confirmed by generator.</strong>
+  Wide-device per-row COV drops a row only when ALL columns are unchanged. Since every device has at least
+  one fast signal (RackCurrent, PCS_P, Hz) that changes on ~95% of cycles, no row is ever fully static —
+  COV never fires. This is a structural property of mixed fast/slow device tables, not a simulation artifact.
+  <br><br>
+  <strong>Conclusion:</strong> Per-signal COV belongs in narrow format. For wide format, the device must be
+  split into fast-only and slow-only sub-tables before per-row COV can deliver meaningful savings.
+</div>
+
+<h2>Why the Split Works</h2>
+<p class="section-note">
+  The <code>--split</code> flag separates each device's signals into a fast file (no COV needed — always
+  changing) and a slow file (COV fires frequently). For rack devices with ~49 points, ~8 are fast-class
+  and ~41 are slow/medium/bool. The probability that all 41 slow-file columns stay flat in a single cycle
+  is approximately 0.92<sup>41</sup> ≈ 3%, so roughly 3% of slow-file rows get dropped by per-row COV.
+  Combined with the fact that per-signal slow signals fire COV on ~92% of their readings, the slow file
+  achieves savings comparable to narrow per-signal COV on the slow signal subset.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>File</th>
+      <th>Signals</th>
+      <th class="num">Cols</th>
+      <th>COV type</th>
+      <th>Savings</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>rack_1_fast.parquet</code></td>
+      <td>RackCurrent, PCS_P, Hz…</td>
+      <td class="num">~8</td>
+      <td>none</td>
+      <td>— always changing, every row meaningful</td>
+    </tr>
+    <tr>
+      <td><code>rack_1_slow.parquet</code></td>
+      <td>RackSOC, temps, voltages…</td>
+      <td class="num">~41</td>
+      <td>per-row + per-signal</td>
+      <td>significant — slow signals stable for ~12 cycles</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- 6. Time jitter + bucketing -->
+<h2>Time Jitter + Bucketing</h2>
+<div class="insight-blue">
+  Without jitter, all 49 points in a rack scan arrive at exactly the same millisecond — unrealistic.
+  Real hardware scanners emit points over a 5–50 ms window per device.
+  <br><br>
+  <strong><code>--time-jitter 15</code></strong> adds ±15 ms uniform scatter per point. This breaks pivoting —
+  different timestamps produce a sparse wide table or multiple rows per cycle.
+  <br><br>
+  <strong><code>--bucket 20</code></strong> snaps all timestamps to a 20 ms grid
+  (<code>floor(ts_ms / 20) * 20</code>) before pivoting, collapsing the jitter back to one row per scan cycle.
+  This is equivalent to DuckDB's <code>time_bucket('20ms', timestamp)</code> at query time.
+  <br><br>
+  Without bucketing, jittered data produces ~49 rows per device per cycle instead of 1 — the wide tables explode.
+  With bucketing, dense wide rows are restored and COV can work correctly.
+</div>
+
+<!-- 7. Output files -->
+<h2>Output Files</h2>
+<p class="section-note">Files written with <code>--format all --cov</code>. Without <code>--cov</code>, filenames use <code>10min</code> instead of <code>10min_cov</code> and wide-device files drop the <code>_cov</code> suffix.</p>
+<table>
+  <thead>
+    <tr>
+      <th>File</th>
+      <th>Format</th>
+      <th>Codec</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>narrow_10min_cov.parquet</code></td>
+      <td>narrow+COV</td>
+      <td>snappy</td>
+      <td>per-signal COV applied</td>
+    </tr>
+    <tr>
+      <td><code>narrow_10min_cov_zstd.parquet</code></td>
+      <td>narrow+COV</td>
+      <td>zstd</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><code>narrow_10min_cov_uncompressed.parquet</code></td>
+      <td>narrow+COV</td>
+      <td>none</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><code>wide_device_{dev}_cov.parquet</code></td>
+      <td>wide-device+COV</td>
+      <td>snappy</td>
+      <td>9 files, one per device</td>
+    </tr>
+    <tr>
+      <td><code>wide_device_{dev}_cov_zstd.parquet</code></td>
+      <td>wide-device+COV</td>
+      <td>zstd</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><code>wide_device_{dev}_cov_uncompressed.parquet</code></td>
+      <td>wide-device+COV</td>
+      <td>none</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><code>wide_point_name_10min_cov.parquet</code></td>
+      <td>wide-point-name+COV</td>
+      <td>snappy</td>
+      <td>all 453 cols</td>
+    </tr>
+    <tr>
+      <td><code>wide_point_name_10min_cov_zstd.parquet</code></td>
+      <td>wide-point-name+COV</td>
+      <td>zstd</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><code>wide_point_name_10min_cov_uncompressed.parquet</code></td>
+      <td>wide-point-name+COV</td>
+      <td>none</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><code>summary.json</code></td>
+      <td>—</td>
+      <td>—</td>
+      <td>all file stats + COV results</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- 8. Schema -->
+<h2>Schema — 9 Devices, 451 Points</h2>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Total Points</div>
+    <div class="card-value c-blue">451</div>
+    <div class="card-sub">across 9 device types</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Real Unit IDs</div>
+    <div class="card-value c-green">7</div>
+    <div class="card-sub">01C4F65E … 01C6910A</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Rack Schema</div>
+    <div class="card-value c-orange">49 pts</div>
+    <div class="card-sub">identical across rack 1–6</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Wide-unit cols</div>
+    <div class="card-value c-red">453</div>
+    <div class="card-sub">unit + time + 451 points</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Device</th>
+      <th class="num">Points</th>
+      <th>Type</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>NA</code></td>
+      <td class="num">28</td>
+      <td>Site-level aggregates</td>
+    </tr>
+    <tr>
+      <td><code>bms_1</code></td>
+      <td class="num">96</td>
+      <td>BMS top-level</td>
+    </tr>
+    <tr>
+      <td><code>bms_1_rack_1</code> … <code>bms_1_rack_6</code></td>
+      <td class="num">49 each</td>
+      <td>Rack modules (identical schema)</td>
+    </tr>
+    <tr>
+      <td><code>pcs_1</code></td>
+      <td class="num">33</td>
+      <td>Power conversion system</td>
+    </tr>
+    <tr style="font-weight:700;background:var(--header-bg)">
+      <td>Total</td>
+      <td class="num">451</td>
+      <td>7 real unit IDs; synthetic IDs added if <code>--units &gt; 7</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- 9. DuckDB query patterns -->
+<h2>DuckDB Query Patterns — Fast/Slow Split Files</h2>
+<p class="section-note">DuckDB handles split parquet files natively. The COV-filtered slow file has gaps (missing rows = unchanged value) — the ASOF JOIN pattern is purpose-built for this.</p>
+
+<div class="insight-blue">
+  <strong>Key insight:</strong> Don't fill COV gaps in the slow file. Use <code>ASOF JOIN</code> to carry the last known value forward on demand at query time. This keeps the stored file small while giving queries a complete view.
+</div>
+
+<h3 style="font-size:.85rem;color:var(--muted);margin:12px 0 6px;font-weight:600;">1 — Query each file independently (common case)</h3>
+<pre>-- Real-time dashboard: fast file only, last 5 minutes
+SELECT timestamp, unit, RackCurrent, PCS_P, Hz
+FROM 'wide_device_bms_1_rack_1_fast.parquet'
+WHERE unit = '01C4F65E'
+  AND timestamp &gt; now() - INTERVAL '5 minutes';
+
+-- SOC / temperature trend: slow file only
+SELECT timestamp, unit, RackSOC, MaxCellT, RackVoltage
+FROM 'wide_device_bms_1_rack_1_slow.parquet'
+WHERE timestamp &gt; '2026-01-15 00:00:00';</pre>
+
+<h3 style="font-size:.85rem;color:var(--muted);margin:12px 0 6px;font-weight:600;">2 — ASOF JOIN: align slow (COV-gapped) to fast timestamps</h3>
+<pre>-- Carries last known slow value forward to every fast-file row.
+-- No need to fill gaps in the slow file — DuckDB does it on the fly.
+SELECT f.timestamp, f.unit,
+       f.RackCurrent, f.PCS_P,
+       s.RackSOC, s.MaxCellT, s.RackVoltage
+FROM 'wide_device_bms_1_rack_1_fast.parquet'  f
+ASOF JOIN 'wide_device_bms_1_rack_1_slow.parquet' s
+  ON f.unit = s.unit
+ AND f.timestamp &gt;= s.timestamp;</pre>
+
+<h3 style="font-size:.85rem;color:var(--muted);margin:12px 0 6px;font-weight:600;">3 — Glob across all racks</h3>
+<pre>-- All 6 rack slow files in one query — DuckDB globs natively
+-- and pushes the predicate into each file's column stats.
+SELECT rack_file, unit, timestamp, RackSOC, MaxCellT
+FROM read_parquet('wide_device_bms_1_rack_*_slow.parquet',
+                  filename = true) AS t(rack_file)
+WHERE RackSOC &lt; 20;   -- low-SOC alert across all racks</pre>
+
+<h3 style="font-size:.85rem;color:var(--muted);margin:12px 0 6px;font-weight:600;">4 — UNPIVOT back to narrow for mixed-signal analytics</h3>
+<pre>-- Bring wide back to narrow when you need all signals in one result set.
+SELECT timestamp, unit, signal, value FROM (
+  SELECT * FROM 'wide_device_bms_1_rack_1_fast.parquet'
+) UNPIVOT (value FOR signal IN (RackCurrent, PCS_P, Hz))
+UNION ALL
+SELECT timestamp, unit, signal, value FROM (
+  SELECT * FROM 'wide_device_bms_1_rack_1_slow.parquet'
+) UNPIVOT (value FOR signal IN (RackSOC, MaxCellT, RackVoltage))
+ORDER BY timestamp, unit, signal;</pre>
+
+<h3 style="font-size:.85rem;color:var(--muted);margin:12px 0 6px;font-weight:600;">5 — time_bucket() for query-time timestamp alignment (no --bucket needed)</h3>
+<pre>-- If files were written with jitter and no --bucket, align at query time.
+-- Equivalent to --bucket 20 applied at write time.
+SELECT time_bucket(INTERVAL '20ms', timestamp) AS ts_bucket,
+       unit, avg(RackCurrent) AS avg_current
+FROM 'wide_device_bms_1_rack_1_fast.parquet'
+GROUP BY ts_bucket, unit
+ORDER BY ts_bucket, unit;</pre>
+
+<h3 style="font-size:.85rem;color:var(--muted);margin:12px 0 6px;font-weight:600;">6 — Full cross-device join: rack + BMS + PCS in one query</h3>
+<pre>-- Join slow files across device types on (timestamp, unit).
+-- Works cleanly because bucketed timestamps are identical.
+SELECT r.timestamp, r.unit,
+       r.RackSOC, r.MaxCellT,
+       b.MaxCellT  AS bms_MaxCellT,
+       p.Hz
+FROM 'wide_device_bms_1_rack_1_slow.parquet'  r
+JOIN 'wide_device_bms_1_slow.parquet'         b USING (timestamp, unit)
+JOIN 'wide_device_pcs_1_fast.parquet'         p USING (timestamp, unit)
+WHERE r.unit = '01C4F65E'
+ORDER BY r.timestamp;</pre>
+
+</body>
+</html>
