@@ -147,7 +147,7 @@
 #define MAX_VOLTAGE   60.0f
 #define MAX_CURRENT   200.0f
 #define DISPLAY_UPDATE_MS 250
-#define MAX_PROFILE_STEPS 20
+#define MAX_PROFILE_STEPS 100
 
 #define WIFI_SSID     ""
 #define WIFI_PASS     ""
@@ -212,6 +212,7 @@ struct ProfileStep {
 ProfileStep profileV[MAX_PROFILE_STEPS];
 int   profileVCount       = 0;
 bool  profileVRunning     = false;
+bool  profileVLoop        = false;   // true = wrap at end; false = stop and hold
 int   profileVStep        = 0;
 unsigned long profileVStepStart  = 0;
 float profileVStepStartVal       = 0;
@@ -220,6 +221,7 @@ bool  profileVInRamp      = false;
 ProfileStep profileC[MAX_PROFILE_STEPS];
 int   profileCCount       = 0;
 bool  profileCRunning     = false;
+bool  profileCLoop        = false;   // true = wrap at end; false = stop and hold
 int   profileCStep        = 0;
 unsigned long profileCStepStart  = 0;
 float profileCStepStartVal       = 0;
@@ -326,7 +328,21 @@ static void dacTask(void* /*arg*/) {
                     // Holding at target
                     if (lv_elapsed_ms >= lv_hold_ms) {
                         lv_elapsed_ms = 0;
-                        lv_step = (lv_step + 1) % lv_count;
+                        int next = lv_step + 1;
+                        if (next >= lv_count) {
+                            if (profileVLoop) {
+                                next = 0;  // wrap — loop mode
+                            } else {
+                                // End of sequence — stop and hold last value
+                                portENTER_CRITICAL(&profileMux);
+                                profileVRunning = false;
+                                portEXIT_CRITICAL(&profileMux);
+                                lv_run = false;
+                                Serial.printf("Profile V complete (held at %.2f)\r\n", lv_now);
+                                goto lv_done;
+                            }
+                        }
+                        lv_step = next;
                         dacStepTransitions++;
                         const ProfileStep& ns = profileV[lv_step];
                         lv_start  = lv_now;
@@ -337,6 +353,7 @@ static void dacTask(void* /*arg*/) {
                         if (!lv_in_ramp) lv_now = lv_target;
                     }
                 }
+                lv_done:
                 // Push value back to shared state (every buffer, not every sample)
                 if (i == I2S_DMA_BUF_LEN - 1) {
                     voltageValue = lv_now;
@@ -357,7 +374,20 @@ static void dacTask(void* /*arg*/) {
                 } else {
                     if (lc_elapsed_ms >= lc_hold_ms) {
                         lc_elapsed_ms = 0;
-                        lc_step = (lc_step + 1) % lc_count;
+                        int next = lc_step + 1;
+                        if (next >= lc_count) {
+                            if (profileCLoop) {
+                                next = 0;  // wrap — loop mode
+                            } else {
+                                portENTER_CRITICAL(&profileMux);
+                                profileCRunning = false;
+                                portEXIT_CRITICAL(&profileMux);
+                                lc_run = false;
+                                Serial.printf("Profile C complete (held at %.2f)\r\n", lc_now);
+                                goto lc_done;
+                            }
+                        }
+                        lc_step = next;
                         dacStepTransitions++;
                         const ProfileStep& ns = profileC[lc_step];
                         lc_start  = lc_now;
@@ -368,6 +398,7 @@ static void dacTask(void* /*arg*/) {
                         if (!lc_in_ramp) lc_now = lc_target;
                     }
                 }
+                lc_done:
                 if (i == I2S_DMA_BUF_LEN - 1) {
                     currentValue = lc_now;
                     dac2Value    = (uint16_t)(constrain(lc_now, 0, MAX_CURRENT)
@@ -743,7 +774,15 @@ void broadcastStatus() {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    StaticJsonDocument<512> doc;
+    // Snapshot step state (approximate read — display only, mutex not required)
+    int   vStep  = profileVStep;
+    int   cStep  = profileCStep;
+    const char* vName = (profileVRunning && profileVCount > 0 && vStep < profileVCount)
+                        ? profileV[vStep].name.c_str() : "";
+    const char* cName = (profileCRunning && profileCCount > 0 && cStep < profileCCount)
+                        ? profileC[cStep].name.c_str() : "";
+
+    StaticJsonDocument<768> doc;
     doc["type"]        = "status";
     doc["voltage"]     = roundf(voltageValue * 10) / 10.0f;
     doc["current"]     = roundf(currentValue * 10) / 10.0f;
@@ -751,11 +790,17 @@ void broadcastStatus() {
     doc["dac2"]        = (int)dac2Value;
     doc["profileV"]    = profileVRunning;
     doc["profileC"]    = profileCRunning;
+    doc["vStep"]       = vStep;
+    doc["vStepCount"]  = profileVCount;
+    doc["vStepName"]   = vName;
+    doc["cStep"]       = cStep;
+    doc["cStepCount"]  = profileCCount;
+    doc["cStepName"]   = cName;
     doc["sampleRate"]  = SAMPLE_RATE;
-    doc["bufsPerSec"]  = bufsPerSec;   // expect ~78 (5000 Hz / 64 samples)
-    doc["stepsPerSec"] = stepsPerSec;  // profile step transitions/s
+    doc["bufsPerSec"]  = bufsPerSec;
+    doc["stepsPerSec"] = stepsPerSec;
     doc["location"]    = locationName;
-    char buf[512];
+    char buf[768];
     serializeJson(doc, buf, sizeof(buf));
     webSocket.broadcastTXT(buf);
     wsTxCount++;
@@ -777,12 +822,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
             break;
         case WStype_TEXT: {
             wsMessageCount++;
-            // load_profile with 20 steps × 2 channels needs ~5 KB in ArduinoJson.
-            // DynamicJsonDocument allocates on the heap, not the stack — avoids
-            // stack overflow (loopTask default stack is only 8 KB; 6 KB static
-            // leaves no headroom for the WS callback chain).
-            DynamicJsonDocument doc(6144);
-            if (deserializeJson(doc, payload, length)) return;
+            Serial.printf("WS rx: %u bytes\r\n", (unsigned)length);
+            // load_profile with 100 steps × 2 channels needs up to ~14 KB in ArduinoJson.
+            // DynamicJsonDocument allocates on the heap, not the stack.
+            DynamicJsonDocument doc(16384);
+            DeserializationError err = deserializeJson(doc, payload, length);
+            if (err) {
+                Serial.printf("JSON parse error: %s\r\n", err.c_str());
+                return;
+            }
             handleWsCommand(num, doc);
             break;
         }
@@ -828,9 +876,17 @@ void handleWsCommand(uint8_t num, JsonDocument& doc) {
 }
 
 void loadProfileFromJson(JsonDocument& doc) {
+    Serial.printf("loadProfile: hasV=%d hasC=%d docMem=%u\r\n",
+        doc.containsKey("voltage"), doc.containsKey("current"),
+        (unsigned)doc.memoryUsage());
+
+    bool doLoop = doc["loop"] | false;
+
     portENTER_CRITICAL(&profileMux);
     profileVRunning = false;
     profileCRunning = false;
+    profileVLoop = doLoop;
+    profileCLoop = doLoop;
 
     // Voltage steps
     JsonArray va = doc["voltage"];
@@ -861,7 +917,15 @@ void loadProfileFromJson(JsonDocument& doc) {
     }
     portEXIT_CRITICAL(&profileMux);
 
-    Serial.printf("Profile loaded: %d V steps, %d A steps\n", profileVCount, profileCCount);
+    Serial.printf("Profile loaded: %d V steps, %d A steps\r\n", profileVCount, profileCCount);
+    for (int i = 0; i < profileVCount; i++)
+        Serial.printf("  V[%d] name=%-16s val=%6.2f dur=%5lu ramp=%5lu\r\n",
+            i, profileV[i].name.c_str(), profileV[i].value,
+            profileV[i].durationMs, profileV[i].rampMs);
+    for (int i = 0; i < profileCCount; i++)
+        Serial.printf("  C[%d] name=%-16s val=%6.2f dur=%5lu ramp=%5lu\r\n",
+            i, profileC[i].name.c_str(), profileC[i].value,
+            profileC[i].durationMs, profileC[i].rampMs);
     broadcastStatus();
 }
 
@@ -974,27 +1038,47 @@ void updateDisplay() {
     tft.setCursor(4, 70); tft.setTextColor(TFT_CYAN, TFT_BLACK); tft.print(buf);
 #else
     display.clearBuffer();
+
+    // Row 1: V / I values
     display.setFont(u8g2_font_helvB08_tf);
     snprintf(buf, sizeof(buf), "V:%.1f I:%.1f", (float)voltageValue, (float)currentValue);
     display.drawStr(0, 12, buf);
-    if (wifiConnected) {
-        display.setFont(u8g2_font_6x10_tf);
-        display.drawStr(0, 28, WiFi.localIP().toString().c_str());
+
+    // Row 2: IP or step name when running
+    display.setFont(u8g2_font_6x10_tf);
+    if (profileVRunning || profileCRunning) {
+        // Show active step name — prefer voltage channel, fall back to current
+        int   activeStep  = profileVRunning ? profileVStep  : profileCStep;
+        int   activeCount = profileVRunning ? profileVCount : profileCCount;
+        const String& activeName = profileVRunning
+                                   ? profileV[activeStep].name
+                                   : profileC[activeStep].name;
+        // Truncate to 20 chars to fit 128px display at 6px wide font
+        char stepBuf[22];
+        snprintf(stepBuf, sizeof(stepBuf), "%d/%d %s",
+                 activeStep + 1, activeCount, activeName.c_str());
+        display.drawStr(0, 26, stepBuf);
+    } else if (wifiConnected) {
+        display.drawStr(0, 26, WiFi.localIP().toString().c_str());
     } else {
-        display.drawStr(0, 28, "No WiFi");
+        display.drawStr(0, 26, "No WiFi");
     }
-    // Load bar
+
+    // Row 3: Load bar
     float val = (displayChannel == CHANNEL_VOLTAGE)
               ? voltageValue / MAX_VOLTAGE
               : currentValue / MAX_CURRENT;
     int barW = (int)(val * 120);
-    display.drawFrame(0, 36, 122, 10);
-    if (barW > 0) display.drawBox(1, 37, barW, 8);
-    snprintf(buf, sizeof(buf), "%d Hz", SAMPLE_RATE);
+    display.drawFrame(0, 34, 122, 10);
+    if (barW > 0) display.drawBox(1, 35, barW, 8);
+
+    // Row 4: sample rate + running indicator
     display.setFont(u8g2_font_5x7_tf);
+    snprintf(buf, sizeof(buf), "%d Hz", SAMPLE_RATE);
     display.drawStr(0, 58, buf);
     if (profileVRunning || profileCRunning)
-        display.drawStr(60, 58, "PROF");
+        display.drawStr(90, 58, "RUNNING");
+
     display.sendBuffer();
 #endif
 }

@@ -213,7 +213,24 @@ select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
   <input id="conn-port" type="number" value="81">
   <button class="btn btn-accent btn-sm" id="btn-conn" onclick="wsToggle()">Connect</button>
   <button class="btn btn-ghost btn-sm" onclick="wsSend({cmd:'get_status'})">Status</button>
-  <button class="btn btn-ghost btn-sm" onclick="loadExample()">Load Example</button>
+  <select id="preset-sel" class="seq-name-sel" style="min-width:160px">
+    <option value="">— Load Preset —</option>
+  </select>
+  <button class="btn btn-ghost btn-sm" onclick="loadPreset()">Load</button>
+</div>
+
+<!-- System config bar -->
+<div class="conn-bar" style="margin-top:4px;gap:12px">
+  <span style="font-size:.78rem;color:var(--muted)">System Scale:</span>
+  <label style="font-size:.78rem;color:var(--muted)">Max V</label>
+  <input id="cfg-max-v" type="number" min="1" step="1" value="60"
+         style="width:70px" onchange="saveCfg()">
+  <label style="font-size:.78rem;color:var(--muted)">Max A</label>
+  <input id="cfg-max-i" type="number" min="1" step="1" value="200"
+         style="width:70px" onchange="saveCfg()">
+  <span id="cfg-hint" style="font-size:.72rem;color:var(--muted)">
+    Presets scale to these limits
+  </span>
 </div>
 
 <div class="main-grid">
@@ -230,7 +247,7 @@ select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
     </div>
     <div class="block-list" id="block-list">
       <div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px 0">
-        No blocks — click + New or Load Example
+        No blocks — click + New or load a preset above
       </div>
     </div>
 
@@ -243,6 +260,7 @@ select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
       <div class="step-sec">
         <div class="step-sec-hdr">
           Steps
+          <span id="be-step-count" style="font-size:.72rem;color:var(--muted);margin-right:auto"></span>
           <button class="btn btn-ghost btn-sm" onclick="addStep()">+ Step</button>
         </div>
         <div class="step-col-hdr">
@@ -288,12 +306,14 @@ select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
           <option value="">— select sequence —</option>
         </select>
         <button class="btn btn-save btn-sm" onclick="saveNamedSeq()" title="Save current sequence">Save</button>
+        <button class="btn btn-ghost btn-sm" onclick="renameNamedSeq()" title="Rename selected sequence">Rename</button>
         <button class="btn btn-accent btn-sm" onclick="newNamedSeq()" title="Save as new named sequence">+ New</button>
         <button class="btn btn-red btn-sm" onclick="deleteNamedSeq()" title="Delete selected sequence">Del</button>
       </div>
       <div class="seq-list" id="seq-list">
         <div class="seq-empty">No blocks in sequence — add from library</div>
       </div>
+      <div id="seq-step-badge" style="font-size:.72rem;padding:2px 6px;display:none"></div>
       <div class="btn-row">
         <select id="seq-sel" style="background:var(--code-bg);border:1px solid var(--border);
                 color:var(--text);border-radius:4px;padding:4px 8px;font-size:.79rem;">
@@ -332,6 +352,13 @@ select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
         </div>
       </div>
       <div class="phase-lbl" id="ps-phase">—</div>
+      <!-- Firmware-reported step — independent cross-check of what the device is actually running -->
+      <div style="display:flex;gap:6px;align-items:baseline;margin:4px 0;font-size:.72rem;color:var(--muted)">
+        <span>FW:</span>
+        <span id="fw-vstep" style="color:var(--text);font-weight:600">—</span>
+        <span style="color:var(--border)">|</span>
+        <span id="fw-cstep" style="color:var(--text);font-weight:600">—</span>
+      </div>
       <div class="prog-bg"><div class="prog-bar" id="ps-prog" style="width:0%"></div></div>
       <div class="timeline" id="tl-strip"></div>
     </div>
@@ -349,6 +376,20 @@ select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
 </div>
 
 <input type="file" id="wf-file-in" accept=".json" style="display:none">
+
+<!-- ── Running-sequence confirmation modal ── -->
+<div id="confirm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+     z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;
+              padding:24px 28px;max-width:360px;width:90%;">
+    <div style="font-weight:600;margin-bottom:8px;color:var(--orange)">&#9888; Sequence Running</div>
+    <div id="confirm-msg" style="font-size:.85rem;color:var(--muted);margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="confirmCancel()">Keep Running</button>
+      <button class="btn btn-red btn-sm"   onclick="confirmOk()">Stop &amp; Continue</button>
+    </div>
+  </div>
+</div>
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
 const COLORS = [
@@ -381,6 +422,25 @@ let pbStart   = null;
 let pbTimer   = null;
 let pbMeta    = [];
 let pbTotalMs = 0;
+
+// ─── Running-sequence confirm modal ──────────────────────────────────────────
+let _confirmOkFn = null;
+function confirmIfRunning(msg, fn) {
+  if (!pbActive) { fn(); return; }
+  document.getElementById('confirm-msg').textContent = msg;
+  const m = document.getElementById('confirm-modal');
+  m.style.display = 'flex';
+  _confirmOkFn = fn;
+}
+function confirmOk() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  stopSeq();
+  if (_confirmOkFn) { _confirmOkFn(); _confirmOkFn = null; }
+}
+function confirmCancel() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  _confirmOkFn = null;
+}
 
 // ─── File save / load ────────────────────────────────────────────────────────
 function saveToFile() {
@@ -529,7 +589,7 @@ function renderBlocks() {
   const el = document.getElementById('block-list');
   const ids = Object.keys(blocks);
   if (!ids.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px 0">No blocks — click + New or Load Example</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px 0">No blocks — click + New or load a preset above</div>';
     return;
   }
   el.innerHTML = '';
@@ -567,9 +627,17 @@ function syncStepInputs() {
   });
 }
 
+const FW_MAX_STEPS = 100;
+
 function renderStepRows() {
   const container = document.getElementById('be-steps');
   container.innerHTML = '';
+  const badge = document.getElementById('be-step-count');
+  if (badge) {
+    const n = editSteps.length;
+    badge.textContent = n + ' / ' + FW_MAX_STEPS + ' steps';
+    badge.style.color = n >= FW_MAX_STEPS ? 'var(--red)' : n > FW_MAX_STEPS * 0.75 ? 'var(--orange)' : 'var(--muted)';
+  }
   editSteps.forEach((s, i) => {
     const row = document.createElement('div');
     row.className = 'step-row';
@@ -590,6 +658,10 @@ function renderStepRows() {
 
 function addStep() {
   syncStepInputs();
+  if (editSteps.length >= FW_MAX_STEPS) {
+    tlog('Block already has ' + FW_MAX_STEPS + ' steps — firmware limit reached', 'err');
+    return;
+  }
   // Inherit last step's values as starting point
   const last = editSteps.length ? editSteps[editSteps.length - 1] : null;
   editSteps.push({
@@ -632,24 +704,31 @@ function refreshNamedSeqSel() {
     const opt = document.createElement('option');
     opt.value = sq.id;
     opt.textContent = sq.name;
-    if (sq.id === activeSeqId) opt.selected = true;
     sel.appendChild(opt);
   });
+  // Set value after building — does NOT fire onchange (only user interaction does)
+  sel.value = activeSeqId || '';
 }
 
 function loadNamedSeq(id) {
   if (!id) return;
   if (!sequences[id]) { activeSeqId = null; return; }
-  activeSeqId = id;
   const sq = sequences[id];
-  sequence = sq.entries.map(e => ({...e}));
-  loopSeq  = !!sq.loopSeq;
-  document.getElementById('loop-tog').className = 'tog' + (loopSeq ? ' on' : '');
-  document.getElementById('loop-lbl').textContent = loopSeq ? 'Loop On' : 'Loop Off';
-  save();
-  renderSeq();
-  redraw();
-  tlog('Loaded "' + sq.name + '" (' + sequence.length + ' entr' + (sequence.length===1?'y':'ies') + ')', 'inf');
+  const doLoad = () => {
+    activeSeqId = id;
+    sequence = sq.entries.map(e => ({...e}));
+    loopSeq  = !!sq.loopSeq;
+    document.getElementById('loop-tog').className = 'tog' + (loopSeq ? ' on' : '');
+    document.getElementById('loop-lbl').textContent = loopSeq ? 'Loop On' : 'Loop Off';
+    save();
+    renderSeq();
+    redraw();
+    tlog('Loaded "' + sq.name + '" (' + sequence.length + ' entr' + (sequence.length===1?'y':'ies') + ')', 'inf');
+  };
+  confirmIfRunning(
+    'Loading "' + sq.name + '" will replace the current sequence. Stop the running profile first?',
+    doLoad
+  );
 }
 
 function saveNamedSeq() {
@@ -674,6 +753,21 @@ function newNamedSeq() {
   save();
   refreshNamedSeqSel();
   tlog('Created "' + sequences[id].name + '"', 'inf');
+}
+
+function renameNamedSeq() {
+  if (!activeSeqId || !sequences[activeSeqId]) {
+    tlog('Select a sequence to rename', 'err'); return;
+  }
+  const sq = sequences[activeSeqId];
+  const name = prompt('Rename sequence:', sq.name);
+  if (name === null) return;           // cancelled
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  sq.name = trimmed;
+  save();
+  refreshNamedSeqSel();
+  tlog('Renamed to "' + trimmed + '"', 'inf');
 }
 
 function deleteNamedSeq() {
@@ -728,7 +822,10 @@ function seqRemove(idx) {
 
 function clearSeq() {
   if (!confirm('Clear sequence?')) return;
-  sequence = []; save(); renderSeq(); redraw();
+  confirmIfRunning(
+    'Clearing the sequence while a profile is running will stop the firmware output.',
+    () => { sequence = []; save(); renderSeq(); redraw(); }
+  );
 }
 
 function toggleLoop() {
@@ -738,10 +835,29 @@ function toggleLoop() {
   save(); redraw();
 }
 
+function updateSeqStepBadge() {
+  const badge = document.getElementById('seq-step-badge');
+  if (!badge) return;
+  const total = sequence.reduce((acc, e) => {
+    const b = blocks[e.blockId];
+    return acc + (b ? b.steps.length * e.repeatCount : 0);
+  }, 0);
+  if (!total) { badge.style.display = 'none'; return; }
+  badge.style.display = 'block';
+  if (total > FW_MAX_STEPS) {
+    badge.textContent = 'Compiled steps: ' + total + ' — exceeds firmware limit of ' + FW_MAX_STEPS + ' (will truncate)';
+    badge.style.color = 'var(--red)';
+  } else {
+    badge.textContent = 'Compiled steps: ' + total + ' / ' + FW_MAX_STEPS;
+    badge.style.color = total > FW_MAX_STEPS * 0.75 ? 'var(--orange)' : 'var(--muted)';
+  }
+}
+
 function renderSeq() {
   const el = document.getElementById('seq-list');
   if (!sequence.length) {
     el.innerHTML = '<div class="seq-empty">No blocks in sequence — add from library</div>';
+    updateSeqStepBadge();
     return;
   }
   el.innerHTML = '';
@@ -768,6 +884,7 @@ function renderSeq() {
       <button class="si-btn del" onclick="seqRemove(${i})" title="Remove">×</button>`;
     el.appendChild(d);
   });
+  updateSeqStepBadge();
 }
 
 // ─── Compile → flat ProfileStep arrays ───────────────────────────────────────
@@ -1022,13 +1139,29 @@ function wsToggle() {
     try {
       const d = JSON.parse(e.data);
       if (d && d.type === 'status') {
-        // Update playback stats from firmware status broadcast (every 250 ms)
-        document.getElementById('ps-block').textContent =
-          (d.profileV ? 'V' : '') + (d.profileC ? 'C' : '') || '—';
+        // Update phase line from firmware — voltage/current/buf rate.
+        // Do NOT drive pbActive from firmware status: firmware reports profileVRunning=false
+        // in the gap between load_profile and start_profile (120ms delay), which would
+        // kill the progress tracker before the sequence starts. tickPb() owns pbActive.
+        const fwRunning = !!(d.profileV || d.profileC);
+        if (!pbActive) {
+          document.getElementById('ps-block').textContent =
+            ((d.profileV ? 'V' : '') + (d.profileC ? 'C' : '')) || '—';
+        }
         document.getElementById('ps-phase').textContent =
-          (d.profileV || d.profileC ? 'running' : 'stopped') +
+          (fwRunning ? 'running' : pbActive ? 'starting…' : 'stopped') +
           '  ' + d.voltage + ' V  ' + d.current + ' A' +
           '  ' + (d.bufsPerSec || 0) + ' buf/s';
+
+        // Firmware step cross-check — shows what the device is actually executing
+        const vLabel = d.profileV
+          ? (d.vStep + 1) + '/' + d.vStepCount + ' ' + (d.vStepName || '?')
+          : 'V idle';
+        const cLabel = d.profileC
+          ? (d.cStep + 1) + '/' + d.cStepCount + ' ' + (d.cStepName || '?')
+          : 'C idle';
+        document.getElementById('fw-vstep').textContent = vLabel;
+        document.getElementById('fw-cstep').textContent = cLabel;
       }
     } catch (_) {}
   };
@@ -1064,17 +1197,27 @@ function sendProfile() {
   // compile() uses {targetVal, holdMs} — map them here.
   // Both channels must be in ONE message: a second load_profile call stops both
   // profiles before replacing them, which would wipe the first channel loaded.
-  const toFw = (steps) => steps.map((s, i) =>
-    ({ name: 'step'+(i+1), value: s.targetVal, durationMs: s.holdMs, rampMs: s.rampMs }));
+  // Use block name + step index as the step name so serial/OLED show meaningful labels.
+  // meta[i] has blockName and stepIdx for each compiled step.
+  const toFw = (steps) => steps.map((s, i) => {
+    const m = meta[i];
+    const name = m ? (m.blockName + ':' + (m.stepIdx + 1)) : ('step' + (i + 1));
+    return { name, value: s.targetVal, durationMs: s.holdMs, rampMs: s.rampMs };
+  });
 
-  const payload = { cmd: 'load_profile' };
+  const payload = { cmd: 'load_profile', loop: loopSeq };
   if (ch === 'voltage' || ch === 'both') payload.voltage = toFw(vSteps);
   if (ch === 'current' || ch === 'both') payload.current = toFw(iSteps);
+  tlog('Sending ' + (payload.voltage ? payload.voltage.length : 0) + ' V steps, ' +
+       (payload.current ? payload.current.length : 0) + ' C steps  [ch=' + ch + ']', 'inf');
 
-  const maxSteps = 20; // MAX_PROFILE_STEPS in firmware
-  if ((payload.voltage && payload.voltage.length > maxSteps) ||
-      (payload.current && payload.current.length > maxSteps))
-    tlog('Warning: compiled sequence exceeds ' + maxSteps + ' steps — firmware will truncate', 'err');
+  const maxSteps = FW_MAX_STEPS;
+  const tooLong = (payload.voltage && payload.voltage.length > maxSteps) ||
+                  (payload.current && payload.current.length > maxSteps);
+  if (tooLong) {
+    tlog('Sequence exceeds ' + maxSteps + ' firmware steps — reduce blocks, steps, or repeat counts before sending', 'err');
+    return false;
+  }
 
   wsSend(payload);
   pbMeta    = meta;
@@ -1139,54 +1282,212 @@ function tickPb() {
   redraw();
 }
 
-// ─── Example preset ───────────────────────────────────────────────────────────
-function loadExample() {
-  if (Object.keys(blocks).length > 0 && !confirm('Replace current blocks with example?')) return;
-  blocks = {}; sequence = []; colorIdx = 0;
-  const defs = [
-    { name: 'Standby',
-      steps: [
-        { vTarget:12, iTarget:0,  rampMs:300, holdMs:1000 }
-      ]},
-    { name: 'Soft Start',
-      steps: [
-        { vTarget:24,  iTarget:20,  rampMs:1500, holdMs:500 },
-        { vTarget:36,  iTarget:50,  rampMs:1000, holdMs:500 },
-        { vTarget:48,  iTarget:100, rampMs:1000, holdMs:2000 }
-      ]},
-    { name: 'Full Load',
-      steps: [
-        { vTarget:48, iTarget:150, rampMs:200,  holdMs:4000 }
-      ]},
-    { name: 'Pulse Burst',
-      steps: [
-        { vTarget:48, iTarget:200, rampMs:50,  holdMs:200 },
-        { vTarget:48, iTarget:20,  rampMs:50,  holdMs:300 },
-        { vTarget:48, iTarget:200, rampMs:50,  holdMs:200 },
-        { vTarget:48, iTarget:20,  rampMs:50,  holdMs:300 }
-      ]},
-    { name: 'Cool Down',
-      steps: [
-        { vTarget:24, iTarget:30, rampMs:2000, holdMs:1000 },
-        { vTarget:12, iTarget:5,  rampMs:2000, holdMs:500  }
-      ]},
-  ];
-  defs.forEach(d => {
-    const id = genId();
-    blocks[id] = { id, name: d.name, steps: d.steps,
-                   color: COLORS[colorIdx++ % COLORS.length] };
+// ─── System config (max V / max I) ───────────────────────────────────────────
+let cfgMaxV = 60;
+let cfgMaxI = 200;
+
+function saveCfg() {
+  cfgMaxV = parseFloat(document.getElementById('cfg-max-v').value) || 60;
+  cfgMaxI = parseFloat(document.getElementById('cfg-max-i').value) || 200;
+  localStorage.setItem('flc_cfg', JSON.stringify({ maxV: cfgMaxV, maxI: cfgMaxI }));
+}
+
+function loadCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem('flc_cfg') || '{}');
+    if (c.maxV) cfgMaxV = c.maxV;
+    if (c.maxI) cfgMaxI = c.maxI;
+  } catch(_) {}
+  document.getElementById('cfg-max-v').value = cfgMaxV;
+  document.getElementById('cfg-max-i').value = cfgMaxI;
+}
+
+// ─── Preset library ───────────────────────────────────────────────────────────
+// Steps are normalized: v/i are fractions 0.0–1.0 of cfgMaxV / cfgMaxI.
+// rampMs / holdMs are milliseconds.
+const PRESETS = [
+  {
+    id: 'generic',
+    name: 'Generic — Soft Start → Full Load → Pulse → Cool Down',
+    loop: true,
+    blocks: [
+      { name: 'Standby',
+        steps: [{ v:0.20, i:0.00, rampMs:300,  holdMs:2000 }]},
+      { name: 'Soft Start',
+        steps: [{ v:0.40, i:0.10, rampMs:1500, holdMs:500  },
+                { v:0.60, i:0.25, rampMs:1000, holdMs:500  },
+                { v:0.80, i:0.50, rampMs:1000, holdMs:2000 }]},
+      { name: 'Full Load',
+        steps: [{ v:0.80, i:0.75, rampMs:200,  holdMs:4000 }]},
+      { name: 'Pulse Burst',
+        steps: [{ v:0.80, i:1.00, rampMs:50,   holdMs:200  },
+                { v:0.80, i:0.10, rampMs:50,   holdMs:300  },
+                { v:0.80, i:1.00, rampMs:50,   holdMs:200  },
+                { v:0.80, i:0.10, rampMs:50,   holdMs:300  }]},
+      { name: 'Cool Down',
+        steps: [{ v:0.40, i:0.15, rampMs:2000, holdMs:1000 },
+                { v:0.20, i:0.02, rampMs:2000, holdMs:500  }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 2 },
+      { block: 3, repeat: 3 },
+      { block: 4, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_inference',
+    name: 'AI — Token Generation (steady inference load)',
+    loop: true,
+    blocks: [
+      { name: 'AI Idle',
+        steps: [{ v:1.00, i:0.05, rampMs:500,  holdMs:2000 }]},
+      { name: 'KV Cache Fill',
+        // Sharp spike as prompt fills KV cache, then drops to generation level
+        steps: [{ v:1.00, i:0.90, rampMs:100,  holdMs:300  },
+                { v:1.00, i:0.60, rampMs:200,  holdMs:500  }]},
+      { name: 'Token Gen',
+        // Sustained flat load during autoregressive decoding
+        steps: [{ v:1.00, i:0.65, rampMs:100,  holdMs:3000 }]},
+      { name: 'Decode Drain',
+        // Output finishes, cache cleared
+        steps: [{ v:1.00, i:0.30, rampMs:300,  holdMs:500  },
+                { v:1.00, i:0.05, rampMs:500,  holdMs:1000 }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 4 },
+      { block: 3, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_batch',
+    name: 'AI — Batch Inference (staircase memory bandwidth)',
+    loop: true,
+    blocks: [
+      { name: 'Idle',
+        steps: [{ v:1.00, i:0.05, rampMs:500,  holdMs:1000 }]},
+      { name: 'Batch Ramp',
+        // Power climbs as batch size grows and memory bandwidth saturates
+        steps: [{ v:1.00, i:0.30, rampMs:400,  holdMs:500  },
+                { v:1.00, i:0.55, rampMs:400,  holdMs:500  },
+                { v:1.00, i:0.75, rampMs:400,  holdMs:500  },
+                { v:1.00, i:0.90, rampMs:400,  holdMs:500  }]},
+      { name: 'Mem BW Wall',
+        // Saturated — flat ceiling
+        steps: [{ v:1.00, i:0.92, rampMs:200,  holdMs:4000 }]},
+      { name: 'Batch Flush',
+        steps: [{ v:1.00, i:0.50, rampMs:300,  holdMs:500  },
+                { v:1.00, i:0.05, rampMs:500,  holdMs:1000 }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 2 },
+      { block: 3, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_thermal',
+    name: 'AI — Thermal Throttle (power limit triggered mid-run)',
+    loop: false,
+    blocks: [
+      { name: 'Idle',
+        steps: [{ v:1.00, i:0.05, rampMs:300,  holdMs:1000 }]},
+      { name: 'Full Inference',
+        steps: [{ v:1.00, i:0.90, rampMs:300,  holdMs:5000 }]},
+      { name: 'Throttle Step',
+        // Power limit kicks in — current drops in steps as thermal headroom shrinks
+        steps: [{ v:1.00, i:0.75, rampMs:800,  holdMs:2000 },
+                { v:1.00, i:0.60, rampMs:800,  holdMs:2000 },
+                { v:1.00, i:0.45, rampMs:800,  holdMs:2000 }]},
+      { name: 'Recovery',
+        steps: [{ v:1.00, i:0.15, rampMs:1000, holdMs:3000 }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 1 },
+      { block: 3, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_multigpu',
+    name: 'AI — Multi-GPU Sync (allreduce pulse pattern)',
+    loop: true,
+    blocks: [
+      { name: 'Compute',
+        // GPUs running forward/backward pass
+        steps: [{ v:1.00, i:0.80, rampMs:100, holdMs:1500 }]},
+      { name: 'AllReduce',
+        // Gradient sync: NVLink/InfiniBand burst — all GPUs spike together
+        steps: [{ v:1.00, i:1.00, rampMs:30,  holdMs:150  },
+                { v:1.00, i:0.60, rampMs:30,  holdMs:100  },
+                { v:1.00, i:1.00, rampMs:30,  holdMs:150  },
+                { v:1.00, i:0.60, rampMs:30,  holdMs:100  }]},
+      { name: 'Optimizer',
+        // Weight update step — lower than compute
+        steps: [{ v:1.00, i:0.50, rampMs:100, holdMs:500  }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 1 },
+    ]
+  },
+];
+
+function initPresetSel() {
+  const sel = document.getElementById('preset-sel');
+  sel.innerHTML = '<option value="">— Load Preset —</option>';
+  PRESETS.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
   });
-  const ids = Object.keys(blocks);
-  sequence = [
-    { blockId: ids[0], repeatCount: 1 },
-    { blockId: ids[1], repeatCount: 1 },
-    { blockId: ids[2], repeatCount: 2 },
-    { blockId: ids[3], repeatCount: 3 },
-    { blockId: ids[4], repeatCount: 1 },
-  ];
-  loopSeq = true;
+}
+
+function loadPreset() {
+  const id = document.getElementById('preset-sel').value;
+  if (!id) return;
+  const preset = PRESETS.find(p => p.id === id);
+  if (!preset) return;
+
+  // Add preset blocks to the library and save as a new named sequence.
+  const V = cfgMaxV, I = cfgMaxI;
+  const ids = [];
+  preset.blocks.forEach(d => {
+    const bid = genId();
+    blocks[bid] = {
+      id: bid, name: d.name,
+      color: COLORS[colorIdx++ % COLORS.length],
+      steps: d.steps.map(s => ({
+        vTarget: +(s.v * V).toFixed(2),
+        iTarget: +(s.i * I).toFixed(2),
+        rampMs:  s.rampMs,
+        holdMs:  s.holdMs
+      }))
+    };
+    ids.push(bid);
+  });
+  const entries = preset.sequence.map(e => ({ blockId: ids[e.block], repeatCount: e.repeat }));
+
+  // Save as a new named sequence so it appears in the dropdown
+  const sqId = genSeqId();
+  sequences[sqId] = { id: sqId, name: preset.name, entries, loopSeq: !!preset.loop };
+
+  // Load it into the working state
+  activeSeqId = sqId;
+  sequence    = entries.map(e => ({...e}));
+  loopSeq     = !!preset.loop;
+
   save();
   renderAll();
+  tlog('Preset loaded as "' + preset.name + '" (MaxV=' + V + ' MaxA=' + I +
+       ') — rename in the dropdown then Save to keep changes', 'inf');
 }
 
 // ─── Full render ──────────────────────────────────────────────────────────────
@@ -1202,6 +1503,8 @@ function renderAll() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  loadCfg();
+  initPresetSel();
   loadSaved();
   renderAll();
   tlog('Ready — connect to controller at ws://host:81', 'inf');
