@@ -39,11 +39,12 @@
 <body>
 
 <h1>Parquet Schema Benchmark</h1>
-<div class="subtitle">Long+Compound vs Wide (pivot) — 2.45M messages, 12 units, 34 signals, 600 s simulated</div>
+<div class="subtitle">Long+Compound vs Wide (pivot) — 244.8 k messages, 12 units, 34 signals, 600 s simulated @ 1 Hz</div>
 
 <div class="topo">
   Topology: <span>12 units</span> × <span>34 signals</span> (24 float + 10 int) ·
-  <span>6,000 sweeps</span> @ 10 Hz · <span>2,448,000 messages</span> · MQTT QoS-0 · Snappy compression
+  <span>600 sweeps</span> @ 1 Hz · <span>244,800 messages</span> · MQTT QoS-0 · Snappy compression ·
+  Generator: <code><a href="#generator">compare_run.py</a></code>
 </div>
 
 <h2>Results</h2>
@@ -274,6 +275,33 @@ wal:
 guard:
   min_free_gb: 0.0</pre>
 
+<h2 id="generator">Benchmark Generator</h2>
+<div class="highlight">
+  Both schemas were benchmarked simultaneously using <strong><code>compare_run.py</code></strong> —
+  a Python script that launches both writers against the same MQTT stream and reports size, flush time,
+  and schema width side-by-side.
+</div>
+<pre style="font-size:0.78rem">#!/usr/bin/env python3
+# /tmp/bench2/compare_run.py
+# 12 units × 34 signals (24 float + 10 int)
+# 600 sweeps @ 1 Hz → 244,800 messages · both writers subscribe simultaneously
+
+SWEEPS       = 600          # 1 Hz × 600 s
+SIM_DURATION = 600          # simulated seconds
+RATE         = "1 Hz"
+
+for sweep in range(SWEEPS):
+    sweep_ts = base_ts + sweep * 1.0    # 1-second intervals
+    ts_str   = f"2026-04-01T10:..."
+    for unit in UNITS:
+        for (device, instance, signame, dtype) in ALL_SIGNALS:
+            topic = f"bench/{unit}/{device}/{instance}/{signame}/{dtype}"
+            client.publish(topic, json.dumps({"ts": ts_str, "value": val}), qos=0)</pre>
+<p style="font-size:0.8rem;color:#64748b;margin:8px 0 0">
+  Full script at <code>/tmp/bench2/compare_run.py</code> on phil-dev.
+  Results saved to <code>/tmp/bench2/results.json</code> after each run.
+</p>
+
 <h2>When to use each</h2>
 <table>
   <thead>
@@ -290,7 +318,7 @@ guard:
 </table>
 
 <p style="font-size:0.75rem;color:#94a3b8;margin-top:32px">
-  Benchmark: 2,448,000 messages · parquet_writer C++ · Snappy compression · FlashMQ localhost · phil-dev 2026-04-01
+  Benchmark: 244,800 messages · 1 Hz · parquet_writer C++ · Snappy compression · FlashMQ localhost · compare_run.py · phil-dev 2026-04-01
 </p>
 
 </body>

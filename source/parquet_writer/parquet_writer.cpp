@@ -152,6 +152,7 @@ struct Config {
     std::string current_state_path{""};
     std::string filename_prefix            {""};   // prepended to timestamp filename: {prefix}_{ts}.parquet
     bool        partition_as_filename_prefix{false}; // prepend partition value to filename: {unit_id}_{ts}.parquet
+    int         time_window_ms             {0};     // 0=disabled; >0: coalesce all msgs within this wall-clock window under one shared timestamp
 
     // WAL — write-ahead log for crash recovery
     bool        wal_enabled         {true};
@@ -255,6 +256,7 @@ Config load_config(const std::string& path) {
             if (o["current_state_path"])     cfg.current_state_path     = o["current_state_path"].as<std::string>();
             if (o["filename_prefix"])                 cfg.filename_prefix                 = o["filename_prefix"].as<std::string>();
             if (o["partition_as_filename_prefix"])    cfg.partition_as_filename_prefix    = o["partition_as_filename_prefix"].as<bool>();
+            if (o["time_window_ms"])                  cfg.time_window_ms                  = o["time_window_ms"].as<int>();
             if (o["site_id"])                cfg.site_id                = o["site_id"].as<std::string>();
             if (o["store_mqtt_topic"])   cfg.store_mqtt_topic   = o["store_mqtt_topic"].as<bool>();
             if (o["store_project_id"])   cfg.store_project_id   = o["store_project_id"].as<bool>();
@@ -1591,6 +1593,25 @@ static void process_message(const char* topic, const char* payload) {
     if (g_cfg->wide_point_name) {
         row.strings.erase("site_id");
         row.ints.erase("project_id");
+    }
+
+    // Time window coalescing: all messages arriving within time_window_ms of the
+    // first message in a window share its timestamp, smoothing sub-second jitter.
+    if (g_cfg->time_window_ms > 0) {
+        auto now_us = static_cast<int64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+        static int64_t s_window_open_us = 0;
+        static int64_t s_window_ts_us   = 0;
+        int64_t window_dur_us = int64_t(g_cfg->time_window_ms) * 1000;
+        auto ts_it = row.ints.find("ts");
+        if (ts_it != row.ints.end()) {
+            if (s_window_open_us == 0 || (now_us - s_window_open_us) >= window_dur_us) {
+                s_window_open_us = now_us;
+                s_window_ts_us   = ts_it->second;
+            }
+            ts_it->second = s_window_ts_us;
+        }
     }
 
     PartitionKey key{info_opt->source_type, pval};
