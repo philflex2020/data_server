@@ -125,10 +125,33 @@
 </div>
 
 <h2>Schemas</h2>
+
+<h3 style="color:#059669;margin-bottom:6px">Normalized Long <span style="font-weight:400;font-size:0.8rem;color:#64748b">(recommended for production)</span></h3>
+<div class="highlight" style="margin-top:0">
+  7 fixed columns — each topic dimension in its own column.
+  Topic <code>site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float</code> maps directly to rows.
+  Full path can be reconstructed; each column is independently filterable.
+</div>
+<div class="card" style="margin-bottom:20px">
+  <div class="schema-cols">
+    <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
+    <div><span class="col-name">unit_id</span><span class="col-type">string &nbsp;← e.g. 0215D1D8</span></div>
+    <div><span class="col-name">device_type</span><span class="col-type">string &nbsp;← bms / pcs / rack</span></div>
+    <div><span class="col-name">device</span><span class="col-type">string &nbsp;← bms_1 / pcs_2</span></div>
+    <div><span class="col-name">point_name</span><span class="col-type">string &nbsp;← Pack_SOC / ActivePower (last segment only)</span></div>
+    <div><span class="col-name">value</span><span class="col-type">double</span></div>
+    <div><span class="col-name">site</span><span class="col-type">dictionary&lt;string&gt; &nbsp;← partition key</span></div>
+  </div>
+  <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">Topic → row mapping:</p>
+  <pre style="font-size:0.75rem">Topic:  site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float
+Row:    ts=2026-04-01T10:00:01Z  unit_id=0215D1D8  device_type=bms
+        device=bms_1  point_name=Pack_SOC  value=87.3</pre>
+</div>
+
 <div class="grid2">
-  <div class="card">
-    <div class="card-title long-title">Long + Compound</div>
-    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px;color:#64748b">5 fixed columns — all signals in one table</p>
+  <div class="card" style="border-color:#d1fae5">
+    <div class="card-title" style="color:#065f46;font-size:0.9rem">Long + Compound <span style="font-weight:400;color:#94a3b8">(benchmark / analytics variant)</span></div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px">5 columns — full path joined into one string</p>
     <div class="schema-cols">
       <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
       <div><span class="col-name">value</span><span class="col-type">double</span></div>
@@ -164,9 +187,30 @@
 </div>
 
 <h2>DuckDB Queries</h2>
+<h3 style="color:#059669">Normalized Long</h3>
 <div class="grid2">
   <div class="card">
-    <div class="card-title long-title" style="font-size:0.85rem">Long+compound — all signals for one unit</div>
+    <div class="card-title long-title" style="font-size:0.85rem">All signals for one unit</div>
+    <pre>SELECT ts, device_type, device, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE unit_id = '0215D1D8'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">All BMS Pack_SOC across units</div>
+    <pre>SELECT ts, unit_id, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE device_type = 'bms'
+  AND point_name  = 'Pack_SOC'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY unit_id, ts;</pre>
+  </div>
+</div>
+<h3 style="color:#065f46">Long + Compound / Wide</h3>
+<div class="grid2">
+  <div class="card" style="border-color:#d1fae5">
+    <div class="card-title" style="color:#065f46;font-size:0.85rem">Long+compound — all signals for one unit</div>
     <pre>SELECT ts, point_name, value
 FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
 WHERE point_name LIKE '0215D1D8/%'
@@ -186,7 +230,54 @@ ORDER BY ts;</pre>
 </div>
 
 <h2>Config Files</h2>
-<h3>Long + Compound — <code>config_long_compound.yaml</code></h3>
+<h3>Normalized Long — <code>config_normalized_long.yaml</code> <span style="font-weight:400;color:#64748b">(production topic structure)</span></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-norm-long
+  topic: "site/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # "site" literal — skip
+    - site_id      # site name → partition key
+    - "_"          # "unit" literal — skip
+    - unit_id      # hex unit serial  e.g. 0215D1D8
+    - device_type  # bms / pcs / rack
+    - device       # bms_1 / pcs_1 etc.
+    - point_name   # signal name only  e.g. Pack_SOC
+    - dtype_hint   # float / integer — consumed by parser
+
+  # No compound_point_name — each segment becomes its own column
+  partition_field: site_id
+
+output:
+  base_path: /data/parquet
+  site_id: ""           # empty — extracted from topic
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 10000000
+  time_window_ms: 250          # coalesce msgs within 250 ms under one shared timestamp
+  wide_point_name: true
+  store_mqtt_topic: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: true
+  port: 8771
+wal:
+  enabled: true
+guard:
+  min_free_gb: 2.0</pre>
+
+<h3>Long + Compound — <code>config_long_compound.yaml</code> <span style="font-weight:400;color:#64748b">(benchmark / analytics variant)</span></h3>
 <pre>mqtt:
   host: localhost
   port: 1883
@@ -305,15 +396,17 @@ for sweep in range(SWEEPS):
 <h2>When to use each</h2>
 <table>
   <thead>
-    <tr><th>Consideration</th><th>Long + Compound</th><th>Wide (pivot)</th></tr>
+    <tr><th>Consideration</th><th>Normalized Long ✓</th><th>Long + Compound</th><th>Wide (pivot)</th></tr>
   </thead>
   <tbody>
-    <tr><td>Storage efficiency</td><td class="better">Better (20% smaller)</td><td class="worse">Larger (sparse nulls)</td></tr>
-    <tr><td>Flush throughput</td><td class="better">6× faster</td><td class="worse">Slow at high cardinality</td></tr>
-    <tr><td>Per-unit isolation</td><td>Filter point_name prefix</td><td class="better">Glob on filename prefix <code>unit_*.parquet</code></td></tr>
-    <tr><td>DuckDB column queries</td><td>Filter on point_name string</td><td class="better">Direct column access</td></tr>
-    <tr><td>Schema stability</td><td class="better">Fixed 5 columns</td><td>Grows with signal count</td></tr>
-    <tr><td>Best for</td><td>High-rate ingest, flexible analytics</td><td>Unit-scoped dashboards, small signal sets</td></tr>
+    <tr><td>Storage efficiency</td><td class="better">Best (7 typed cols)</td><td class="better">Good (5 cols)</td><td class="worse">Larger (sparse nulls)</td></tr>
+    <tr><td>Flush throughput</td><td class="better">Fast</td><td class="better">6× faster than wide</td><td class="worse">Slow at high cardinality</td></tr>
+    <tr><td>Schema columns</td><td>7 fixed</td><td>5 fixed</td><td>Grows with signal count</td></tr>
+    <tr><td>Filter by unit</td><td class="better"><code>WHERE unit_id = 'X'</code></td><td>LIKE on joined string</td><td class="better">Glob on filename prefix</td></tr>
+    <tr><td>Filter by device type</td><td class="better"><code>WHERE device_type = 'bms'</code></td><td class="worse">LIKE pattern match</td><td class="worse">Not possible</td></tr>
+    <tr><td>Filter by signal</td><td class="better"><code>WHERE point_name = 'Pack_SOC'</code></td><td class="worse">LIKE suffix match</td><td class="better">Direct column access</td></tr>
+    <tr><td>Topic reconstruction</td><td class="better">All segments preserved</td><td class="worse">Requires split()</td><td class="worse">Column name only</td></tr>
+    <tr><td>Best for</td><td><strong>Production ingest, all query patterns</strong></td><td>Analytics/benchmarks</td><td>Unit-scoped dashboards</td></tr>
   </tbody>
 </table>
 
