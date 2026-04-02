@@ -225,6 +225,39 @@ WHERE device_type = 'bms'
 ORDER BY unit_id, ts;</pre>
   </div>
 </div>
+<h3 style="color:#059669">Forward-fill (carry last known value across gaps)</h3>
+<div class="highlight" style="margin-top:0">
+  Signals that use COV (change-on-value) or that didn't fire in a given time window have no row
+  for that period — the writer stores only what the hardware actually sent.
+  Forward-fill is handled at query time with DuckDB window functions, keeping storage minimal.
+  <code>current_state_path</code> in the writer config provides a snapshot file of the latest value
+  per signal if a non-DuckDB consumer needs it.
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">Forward-fill Pack_SOC across gaps</div>
+    <pre>SELECT ts, unit_id,
+  LAST_VALUE(value IGNORE NULLS) OVER (
+    PARTITION BY unit_id
+    ORDER BY ts
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE device_type = 'bms'
+  AND point_name  = 'Pack_SOC'
+ORDER BY unit_id, ts;</pre>
+  </div>
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">Latest value per signal (current state)</div>
+    <pre>-- Most recent value for every signal on one unit
+SELECT DISTINCT ON (point_name)
+  ts, device_type, device, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE unit_id = '0215D1D8'
+ORDER BY point_name, ts DESC;</pre>
+  </div>
+</div>
+
 <h3 style="color:#065f46">Long + Compound / Wide</h3>
 <div class="grid2">
   <div class="card" style="border-color:#d1fae5">
