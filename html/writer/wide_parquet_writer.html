@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Schema Benchmark — Long+Compound vs Wide</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background:#f8fafc; color:#1e293b; margin:0; padding:24px; }
+  h1 { font-size:1.5rem; color:#0369a1; margin-bottom:4px; }
+  h2 { font-size:1.1rem; color:#0f4c81; margin:28px 0 10px; border-bottom:1px solid #bfdbfe; padding-bottom:6px; }
+  h3 { font-size:0.95rem; color:#6d28d9; margin:18px 0 8px; }
+  .subtitle { color:#64748b; font-size:0.85rem; margin-bottom:24px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .card { background:#ffffff; border:1px solid #bfdbfe; border-radius:8px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  .card.wide-card { border-color:#c4b5fd; }
+  .card-title { font-size:1rem; font-weight:700; margin-bottom:12px; }
+  .long-title { color:#059669; }
+  .wide-title { color:#7c3aed; }
+  table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  th { background:#e0f2fe; color:#0369a1; text-align:left; padding:7px 10px; font-weight:600; }
+  td { padding:6px 10px; border-bottom:1px solid #e2e8f0; color:#334155; }
+  tr:last-child td { border-bottom:none; }
+  .metric-val { font-weight:700; color:#0f172a; }
+  .better { color:#059669; }
+  .worse  { color:#dc2626; }
+  pre { background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:16px;
+        font-size:0.78rem; overflow-x:auto; color:#0c4a6e; line-height:1.5; margin:0; }
+  .schema-cols { font-size:0.78rem; }
+  .schema-cols .col-name { color:#0369a1; font-family:monospace; }
+  .schema-cols .col-type { color:#64748b; margin-left:12px; }
+  .highlight { background:#f0fdf4; border-left:3px solid #059669; padding:10px 14px; border-radius:4px; margin:12px 0; font-size:0.83rem; color:#1e293b; }
+  .highlight.warn { background:#faf5ff; border-color:#7c3aed; }
+  .topo { background:#f0f9ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 18px; font-size:0.82rem; color:#475569; margin-bottom:20px; }
+  .topo span { color:#0f172a; font-weight:600; }
+  .flush-bar { display:inline-block; height:12px; background:#059669; border-radius:2px; vertical-align:middle; margin-right:6px; }
+  .flush-bar.wide { background:#7c3aed; }
+</style>
+</head>
+<body>
+
+<h1>Parquet Schema Benchmark</h1>
+<div class="subtitle">Long+Compound vs Wide (pivot) — 2.45M messages, 12 units, 34 signals, 600 s simulated</div>
+
+<div class="topo">
+  Topology: <span>12 units</span> × <span>34 signals</span> (24 float + 10 int) ·
+  <span>6,000 sweeps</span> @ 10 Hz · <span>2,448,000 messages</span> · MQTT QoS-0 · Snappy compression
+</div>
+
+<h2>Results</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Long + Compound</th>
+      <th>Wide (pivot)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Parquet files</td>
+      <td class="metric-val better">3</td>
+      <td class="metric-val">24 <small style="color:#94a3b8">(2 flushes × 12 units)</small></td>
+    </tr>
+    <tr>
+      <td>Rows written</td>
+      <td class="metric-val">2,447,998</td>
+      <td class="metric-val">2,447,998</td>
+    </tr>
+    <tr>
+      <td>Total size (bytes)</td>
+      <td class="metric-val better">12,941,129</td>
+      <td class="metric-val worse">15,663,125</td>
+    </tr>
+    <tr>
+      <td>Total size (KB)</td>
+      <td class="metric-val better">12,637 KB</td>
+      <td class="metric-val worse">15,296 KB <small style="color:#dc2626">(+21%)</small></td>
+    </tr>
+    <tr>
+      <td>Schema width (columns)</td>
+      <td class="metric-val better">5</td>
+      <td class="metric-val">38 <small style="color:#94a3b8">(1 ts + 37 signal cols)</small></td>
+    </tr>
+    <tr>
+      <td>Bytes per row</td>
+      <td class="metric-val">5</td>
+      <td class="metric-val">6</td>
+    </tr>
+    <tr>
+      <td>Flush time — max</td>
+      <td class="metric-val better">
+        <span class="flush-bar" style="width:50px"></span>1,205 ms
+      </td>
+      <td class="metric-val worse">
+        <span class="flush-bar wide" style="width:180px"></span>5,489 ms
+      </td>
+    </tr>
+    <tr>
+      <td>Flush time — avg</td>
+      <td class="metric-val better">523 ms</td>
+      <td class="metric-val worse">3,156 ms <small style="color:#dc2626">(6× slower)</small></td>
+    </tr>
+    <tr>
+      <td>Partition strategy</td>
+      <td>site / year / month / day</td>
+      <td>site / year / month / day</td>
+    </tr>
+    <tr>
+      <td>Unit isolation</td>
+      <td>point_name prefix filter</td>
+      <td><strong style="color:#7c3aed">unit_id filename prefix</strong> — <code>0215D1D8_*.parquet</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="highlight">
+  Long+compound is <strong>21% smaller</strong> and <strong>6× faster to flush</strong> at 34 signals/unit.
+  Wide pivot gives per-unit file isolation via filename prefix — same directory tree, no performance cost from the naming change.
+</div>
+<div class="highlight warn">
+  Wide flush slowdown is caused by Arrow allocating one array builder per signal column (38 here, scales with cardinality).
+  Switching from a <code>unit=</code> subdirectory to a <code>unit_id_</code> filename prefix made no measurable difference —
+  the bottleneck is Parquet encoding, not filesystem path construction.
+</div>
+
+<h2>Schemas</h2>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title long-title">Long + Compound</div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px;color:#64748b">5 fixed columns — all signals in one table</p>
+    <div class="schema-cols">
+      <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
+      <div><span class="col-name">value</span><span class="col-type">double</span></div>
+      <div><span class="col-name">dtype_hint</span><span class="col-type">string</span></div>
+      <div><span class="col-name">point_name</span><span class="col-type">string &nbsp;← joined path</span></div>
+      <div><span class="col-name">site</span><span class="col-type">dictionary&lt;string&gt; &nbsp;← partition key</span></div>
+    </div>
+    <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">Example point_name values:</p>
+    <pre style="font-size:0.75rem">0215D1D8/bms/bms_1/Pack_SOC
+0215D1D8/pcs/pcs_1/ActivePower
+0215D1D9/bms/bms_1/BMS_FaultCode</pre>
+  </div>
+  <div class="card wide-card">
+    <div class="card-title wide-title">Wide (pivot)</div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px">39 columns — one per signal path, partitioned by unit</p>
+    <div class="schema-cols">
+      <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
+      <div><span class="col-name">bms/bms_1/BMS_FaultCode</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/BMS_WarningCode</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/Batt1_Cell1_Voltage</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/Pack_Current</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/Pack_SOC</span><span class="col-type">double</span></div>
+      <div><span class="col-name">pcs/pcs_1/ActivePower</span><span class="col-type">double</span></div>
+      <div><span class="col-name">pcs/pcs_1/GridFrequency</span><span class="col-type">double</span></div>
+      <div><span class="col-name">rack/rack_1/Rack_DoorOpen</span><span class="col-type">double</span></div>
+      <div style="color:#94a3b8;font-size:0.76rem;margin-top:4px">… 29 more signal columns</div>
+    </div>
+    <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">File path example:</p>
+    <pre style="font-size:0.72rem">site=SITE_A/2026/04/01/
+  0215D1D8_20260401T215540Z.parquet
+  0215D1D9_20260401T215540Z.parquet</pre>
+  </div>
+</div>
+
+<h2>DuckDB Queries</h2>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">Long+compound — all signals for one unit</div>
+    <pre>SELECT ts, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE point_name LIKE '0215D1D8/%'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+  <div class="card wide-card">
+    <div class="card-title wide-title" style="font-size:0.85rem">Wide — glob on unit_id filename prefix</div>
+    <pre>SELECT ts,
+  "bms/bms_1/Pack_SOC",
+  "pcs/pcs_1/ActivePower"
+FROM read_parquet(
+  '/data/parquet/site=SITE_A/**/0215D1D8_*.parquet')
+WHERE ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+</div>
+
+<h2>Config Files</h2>
+<h3>Long + Compound — <code>config_long_compound.yaml</code></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-bench-long-cmp
+  topic: "bench/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # topic prefix — skip
+    - unit_id      # hex unit serial
+    - device       # bms / pcs / rack
+    - instance     # bms_1 / pcs_1 etc.
+    - point_name   # signal name
+    - dtype_hint   # float / integer — consumed by parser
+
+  # Join unit_id/device/instance/point_name into a single point_name string
+  compound_point_name: [unit_id, device, instance, point_name]
+  partition_field: site_id
+
+output:
+  base_path: /tmp/bench2-long-cmp
+  site_id: "SITE_A"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 10000000
+  wide_point_name: true        # suppress site_id / project_id columns after partitioning
+  store_mqtt_topic: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: false
+wal:
+  enabled: false
+guard:
+  min_free_gb: 0.0</pre>
+
+<h3>Wide (pivot) — <code>config_wide_pivot.yaml</code></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-bench-wide
+  topic: "bench/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # topic prefix — skip
+    - unit_id      # hex unit serial  ← becomes partition directory
+    - device       # bms / pcs / rack
+    - instance     # bms_1 / pcs_1 etc.
+    - point_name   # signal name
+    - dtype_hint   # consumed
+
+  # Column name = device/instance/point_name  (unit_id omitted — it's the partition)
+  compound_field_name: [device, instance, point_name]
+  partition_field: unit_id
+
+output:
+  base_path: /tmp/bench2-wide
+  site_id: "SITE_A"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 10000000
+  partition_as_filename_prefix: true   # files: 0215D1D8_20260401T....parquet
+  wide_point_name: true
+  store_mqtt_topic: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: false
+wal:
+  enabled: false
+guard:
+  min_free_gb: 0.0</pre>
+
+<h2>When to use each</h2>
+<table>
+  <thead>
+    <tr><th>Consideration</th><th>Long + Compound</th><th>Wide (pivot)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Storage efficiency</td><td class="better">Better (20% smaller)</td><td class="worse">Larger (sparse nulls)</td></tr>
+    <tr><td>Flush throughput</td><td class="better">6× faster</td><td class="worse">Slow at high cardinality</td></tr>
+    <tr><td>Per-unit isolation</td><td>Filter point_name prefix</td><td class="better">Glob on filename prefix <code>unit_*.parquet</code></td></tr>
+    <tr><td>DuckDB column queries</td><td>Filter on point_name string</td><td class="better">Direct column access</td></tr>
+    <tr><td>Schema stability</td><td class="better">Fixed 5 columns</td><td>Grows with signal count</td></tr>
+    <tr><td>Best for</td><td>High-rate ingest, flexible analytics</td><td>Unit-scoped dashboards, small signal sets</td></tr>
+  </tbody>
+</table>
+
+<p style="font-size:0.75rem;color:#94a3b8;margin-top:32px">
+  Benchmark: 2,448,000 messages · parquet_writer C++ · Snappy compression · FlashMQ localhost · phil-dev 2026-04-01
+</p>
+
+</body>
+</html>

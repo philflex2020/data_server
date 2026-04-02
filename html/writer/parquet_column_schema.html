@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parquet Writer — Column Schema Reference</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --pre-bg: #0d1117; --th-bg: #21262d; --tr-alt: #0d1117;
+  }
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+  }
+  @media print {
+    body { --bg:#fff; --surface:#f6f8fa; --border:#c8d1d9; --text:#1f2328; --muted:#57606a;
+           --accent:#0550ae; --green:#1a7f37; --yellow:#9a6700; --code-bg:#eaeef2;
+           --code-text:#1f2328; --pre-bg:#f6f8fa; --th-bg:#eaeef2; --tr-alt:#f6f8fa; }
+    .theme-toggle, .nav { display: none; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 32px; line-height: 1.7; max-width: 1100px; margin: 0 auto; }
+  h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.88rem; margin-bottom: 36px; }
+  h2 { color: var(--accent); font-size: 1.15rem; margin: 36px 0 12px;
+       padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 20px 0 8px; }
+  p  { margin-bottom: 10px; font-size: 0.88rem; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { font-size: 0.88rem; margin-bottom: 4px; }
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 22px 24px; margin-bottom: 20px; }
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 1px 5px;
+         border-radius: 4px; font-size: 0.82rem; color: var(--code-text); }
+  pre  { background: var(--pre-bg); border: 1px solid var(--border); border-radius: 6px;
+         padding: 14px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto;
+         color: var(--code-text); margin: 10px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin: 10px 0; }
+  th    { background: var(--th-bg); color: var(--accent); text-align: left;
+          padding: 7px 12px; border: 1px solid var(--border); }
+  td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--tr-alt); }
+  .ok   { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .dim  { color: var(--muted); }
+  .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 0.84rem; }
+  .alert-info { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
+  .alert-warn { background: #2d200022; border: 1px solid #5a4000; color: var(--yellow); }
+  body.light .alert-info { background: #dbeafe; border-color: #93c5fd; }
+  body.light .alert-warn { background: #fef9c3; border-color: #fde047; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem;
+         font-weight: 700; margin-left: 6px; }
+  .tag-green  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .tag-blue   { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .tag-yellow { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .tag-purple { background: #1a0a2e; color: var(--purple); border: 1px solid #4a2d7a; }
+  body.light .tag-green  { background: #dcfce7; border-color: #86efac; }
+  body.light .tag-blue   { background: #dbeafe; border-color: #93c5fd; }
+  body.light .tag-yellow { background: #fef9c3; border-color: #fde047; }
+  body.light .tag-purple { background: #f3e8ff; border-color: #c084fc; }
+  .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.8rem;
+           padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle { position: fixed; top: 16px; right: 16px; cursor: pointer;
+                  background: var(--surface); border: 1px solid var(--border);
+                  color: var(--muted); padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; }
+  .flow { display: flex; align-items: flex-start; gap: 0; margin: 14px 0; flex-wrap: wrap; }
+  .flow-box { background: var(--pre-bg); border: 1px solid var(--border); border-radius: 6px;
+              padding: 10px 14px; font-size: 0.82rem; font-family: monospace; min-width: 140px; }
+  .flow-arrow { align-self: center; color: var(--muted); font-size: 1.2rem; padding: 0 8px; }
+  .col-fixed  { color: var(--accent); }
+  .col-topic  { color: var(--green); }
+  .col-payload{ color: var(--orange); }
+  .col-meta   { color: var(--muted); }
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="document.body.classList.toggle('light')">Toggle light</button>
+
+<div class="nav">
+  <a href="writer_design.html">Writer Design</a>
+  <a href="longbow_topic_parsing.html">Topic Parsing</a>
+  <a href="writer_code_review.html">Code Review</a>
+</div>
+
+<h1>Parquet Writer — Column Schema Reference</h1>
+<p class="subtitle">How MQTT topic segments and payload fields become parquet columns — and how config options reshape the schema.</p>
+
+<!-- ───────────────────────────── Overview ───────────────────────────── -->
+<h2>Overview</h2>
+<div class="section">
+  <p>Every incoming MQTT message produces one parquet row. Columns come from three sources:</p>
+  <div class="flow">
+    <div class="flow-box"><span class="col-topic">MQTT topic</span><br>→ string/int columns<br>(segment mapping)</div>
+    <div class="flow-arrow">+</div>
+    <div class="flow-box"><span class="col-payload">JSON payload</span><br>→ <code>ts</code>, <code>value</code>/<code>value_int</code></div>
+    <div class="flow-arrow">+</div>
+    <div class="flow-box"><span class="col-fixed">Config injection</span><br>→ <code>site_id</code>, <code>project_id</code>,<br><code>mqtt_topic</code>, <code>sample_count</code></div>
+  </div>
+  <p>The writer supports three storage layouts:</p>
+  <ul>
+    <li><strong>Long</strong> — one row per message; <code>point_name</code> is a string value column; ID columns stored separately. Standard time-series format.</li>
+    <li><strong>Long + compound point_name</strong> — same one-row-per-message, but ID columns collapsed into a single path string in <code>point_name</code>.</li>
+    <li><strong>Wide</strong> — each unique signal path becomes its own parquet column; one sparse row per message. Pivot/spreadsheet style. Configured via <code>compound_field_name</code>.</li>
+  </ul>
+  <p>Additional options: <code>drop_columns</code> removes unwanted columns; <code>wide_point_name</code> suppresses <code>site_id</code> and <code>project_id</code> after the partition key is captured.</p>
+</div>
+
+<!-- ───────────────────────────── Fixed Columns ───────────────────────────── -->
+<h2>Fixed Columns</h2>
+<div class="section">
+  <p><code>ts</code> and <code>value</code> are always present. The four metadata columns are present by default but can be suppressed individually via <code>output:</code> flags.</p>
+  <table>
+    <tr><th>Column</th><th>Type</th><th>Source</th><th>Suppress with</th></tr>
+    <tr><td><code class="col-fixed">ts</code></td><td>FLOAT64 (epoch s)</td><td>Payload <code>ts</code> field</td><td>—</td></tr>
+    <tr><td><code class="col-fixed">value</code></td><td>FLOAT64</td><td>Payload <code>value</code> field</td><td>— (float signals)</td></tr>
+    <tr><td><code class="col-fixed">value_int</code></td><td>INT64</td><td>Payload <code>value</code> field</td><td>— (integer/boolean dtype only; replaces <code>value</code>)</td></tr>
+    <tr><td><code class="col-fixed">value_str</code></td><td>STRING</td><td>Payload <code>value</code> field</td><td>— (string dtype only; replaces <code>value</code>)</td></tr>
+    <tr><td><code class="col-fixed">site_id</code></td><td>STRING</td><td>Config <code>output.site_id</code></td><td><code>wide_point_name: true</code> (after partition key captured)</td></tr>
+    <tr><td><code class="col-fixed">project_id</code></td><td>INT64</td><td>Config <code>output.project_id</code></td><td><code>store_project_id: false</code> or <code>wide_point_name: true</code></td></tr>
+    <tr><td><code class="col-fixed">mqtt_topic</code></td><td>STRING</td><td>MQTT topic</td><td><code>store_mqtt_topic: false</code></td></tr>
+    <tr><td><code class="col-fixed">sample_count</code></td><td>INT64</td><td>Writer</td><td><code>store_sample_count: false</code></td></tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────── Topic Columns ───────────────────────────── -->
+<h2>Topic-Derived Columns (Long Schema)</h2>
+<div class="section">
+  <p>The writer supports two topic parsers selected by <code>mqtt.topic_parser</code>. Both produce the <strong>long</strong> layout by default: one row per message, signal name as a string value in <code>point_name</code>.</p>
+
+  <h3>Option A — Positional parser <span class="tag tag-green">default for Evelyn/Longbow</span></h3>
+  <p>Topic segments are mapped to column names by position using <code>topic_segments</code>.</p>
+  <p><strong>Topic:</strong> <code>A/unit/0215D1D8/bms/bms_1/Batt1_SBMU1_Current/float</code></p>
+  <pre>mqtt:
+  topic_parser: positional
+  topic_segments:
+    - "_"          # 0: slice prefix — skip
+    - "_"          # 1: literal "unit" — skip
+    - unit_id      # 2: → row.strings["unit_id"]   = "0215D1D8"
+    - device       # 3: → row.strings["device"]     = "bms"
+    - instance     # 4: → row.strings["instance"]   = "bms_1"
+    - point_name   # 5: → row.strings["point_name"] = "Batt1_SBMU1_Current"
+    - dtype_hint   # 6: consumed (selects float/int column type) — not stored</pre>
+  <p>Reserved segment names: <code>dtype_hint</code> (consumed, not stored), <code>field_name</code> (renames the <code>value</code> column to the segment value — wide-sparse schema), <code>_</code> (skip this position).</p>
+
+  <table>
+    <tr><th>Column</th><th>Type</th><th>Value (example)</th></tr>
+    <tr><td><code class="col-topic">unit_id</code></td><td>STRING</td><td><code>0215D1D8</code></td></tr>
+    <tr><td><code class="col-topic">device</code></td><td>STRING</td><td><code>bms</code></td></tr>
+    <tr><td><code class="col-topic">instance</code></td><td>STRING</td><td><code>bms_1</code></td></tr>
+    <tr><td><code class="col-topic">point_name</code></td><td>STRING</td><td><code>Batt1_SBMU1_Current</code></td></tr>
+  </table>
+
+  <h3>Option B — KV parser <span class="tag tag-blue">default for stress_runner / BMS</span></h3>
+  <p>Topic segments are <code>key=value</code> pairs. <code>topic_kv_map</code> maps key names to column names (all stored as INT64). Also produces the long layout.</p>
+  <p><strong>Topic:</strong> <code>batteries/site=2/rack=1/module=3/cell=4/voltage</code></p>
+  <pre>mqtt:
+  topic_parser: kv          # (or omit — kv is the default)
+  topic_kv_map:
+    site:   site_id         # → row.ints["site_id"]   = 2
+    rack:   rack_id         # → row.ints["rack_id"]   = 1
+    module: module_id       # → row.ints["module_id"] = 3
+    cell:   cell_id         # → row.ints["cell_id"]   = 4
+    # last bare segment ("voltage") → row.strings["point_name"] = "voltage"</pre>
+
+  <table>
+    <tr><th>Column</th><th>Type</th><th>Value (example)</th></tr>
+    <tr><td><code class="col-topic">site_id</code></td><td>INT64</td><td><code>2</code></td></tr>
+    <tr><td><code class="col-topic">rack_id</code></td><td>INT64</td><td><code>1</code></td></tr>
+    <tr><td><code class="col-topic">module_id</code></td><td>INT64</td><td><code>3</code></td></tr>
+    <tr><td><code class="col-topic">cell_id</code></td><td>INT64</td><td><code>4</code></td></tr>
+    <tr><td><code class="col-topic">point_name</code></td><td>STRING</td><td><code>voltage</code></td></tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────── compound_point_name ───────────────────────────── -->
+<h2>compound_point_name <span class="tag tag-yellow">optional</span></h2>
+<div class="section">
+  <p>Collapses several segment columns into a single <code>point_name</code> string using <code>/</code> as separator.
+  The named columns are <strong>removed</strong> from the row as they are consumed — they do not appear as separate columns in parquet.</p>
+  <div class="alert alert-info">Works with both parsers. Columns are looked up in <code>row.strings</code> first, then <code>row.ints</code>, so it handles both string and int segment types.</div>
+
+  <h3>Evelyn / Longbow example</h3>
+  <pre>mqtt:
+  topic_parser: positional
+  topic_segments:
+    - "_"          # slice prefix — skip
+    - "_"          # "unit" — skip
+    - unit_id      # "0215D1D8"
+    - device       # "bms"
+    - instance     # "bms_1"
+    - point_name   # "Batt1_SBMU1_Current"
+    - dtype_hint   # consumed
+
+  compound_point_name: [unit_id, device, instance, point_name]</pre>
+
+  <p><strong>Result:</strong></p>
+  <table>
+    <tr><th>Column</th><th>Type</th><th>Value</th><th>Note</th></tr>
+    <tr><td><code class="col-topic">point_name</code></td><td>STRING</td><td><code>0215D1D8/bms/bms_1/Batt1_SBMU1_Current</code></td><td>All four segments joined</td></tr>
+    <tr><td><code class="dim">unit_id</code></td><td>—</td><td>—</td><td>Removed (consumed by compound)</td></tr>
+    <tr><td><code class="dim">device</code></td><td>—</td><td>—</td><td>Removed</td></tr>
+    <tr><td><code class="dim">instance</code></td><td>—</td><td>—</td><td>Removed</td></tr>
+  </table>
+
+  <h3>BMS / KV example</h3>
+  <pre>mqtt:
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+
+  compound_point_name: [site_id, rack_id, module_id, cell_id, point_name]</pre>
+
+  <p><strong>Result:</strong> <code>point_name = "2/1/3/4/voltage"</code> — all individual ID columns removed.</p>
+
+  <div class="alert alert-warn">Do not include <code>site_id</code> in <code>compound_point_name</code> if it is your <code>partition_field</code> — it must remain in the row for the partition key lookup. Use <code>wide_point_name: true</code> instead to suppress it from parquet output after the key is captured.</div>
+</div>
+
+<!-- ───────────────────────────── drop_columns ───────────────────────────── -->
+<h2>drop_columns <span class="tag tag-yellow">optional</span></h2>
+<div class="section">
+  <p>Removes named columns from every row after all other processing (including <code>compound_point_name</code>).
+  Checks <code>row.strings</code>, <code>row.ints</code>, and <code>row.floats</code>.</p>
+  <p>Use when segment columns are redundant — for example, already encoded in the compound point name,
+  or already captured in the partition directory path.</p>
+
+  <pre>mqtt:
+  topic_parser: positional
+  topic_segments:
+    - "_"
+    - "_"
+    - unit_id
+    - device
+    - instance
+    - point_name
+    - dtype_hint
+
+  # Keep point_name as a standalone column; drop the others
+  drop_columns: [unit_id, device, instance]</pre>
+
+  <p><code>drop_columns</code> is applied <em>after</em> <code>compound_point_name</code>, so listing a column in both is harmless — <code>compound_point_name</code> already removes it.</p>
+  <div class="alert alert-warn">Do not drop the column named in <code>partition_field</code> — the writer uses it to route rows to the correct partition buffer.</div>
+</div>
+
+<!-- ───────────────────────────── Wide Schema ───────────────────────────── -->
+<h2>Wide Schema — compound_field_name <span class="tag tag-purple">pivot layout</span></h2>
+<div class="section">
+  <p>In the wide layout every unique signal path becomes its own parquet <strong>column</strong> rather than a string value in <code>point_name</code>.
+  Each message still produces one row, but that row has only one non-null value column — the column named after its signal path.
+  Arrow/Parquet stores the nulls efficiently so the file is not bloated.</p>
+
+  <p><code>compound_field_name</code> lists the segment columns to join (same join logic as <code>compound_point_name</code>),
+  but the result becomes the <em>column name</em> for the value, not a string cell.
+  Both float and integer signals are stored as <strong>FLOAT64</strong> for schema uniformity across the pivot table —
+  <code>dtype_hint</code> is still consumed (to avoid being written as a column) but type promotion is suppressed.</p>
+
+  <div class="alert alert-warn"><code>compound_field_name</code> and <code>compound_point_name</code> are mutually exclusive — do not set both.</div>
+
+  <h3>Config — Evelyn wide schema</h3>
+  <pre>mqtt:
+  topic_parser: positional
+  topic_segments:
+    - "_"          # "A" slice prefix — skip
+    - "_"          # "unit" literal — skip
+    - unit_id      # "0215D1D8"
+    - device       # "bms"
+    - instance     # "bms_1"
+    - point_name   # "Pack_Voltage"
+    - dtype_hint   # consumed — not stored
+
+  # Wide: join these into the value column name.
+  # site_id is NOT included — it comes from config, not the topic.
+  compound_field_name: [unit_id, device, instance, point_name]
+
+output:
+  site_id: "0215D1D8"
+  wide_point_name: true      # suppresses site_id / project_id columns
+  store_mqtt_topic: false
+  store_sample_count: false</pre>
+
+  <h3>Resulting row for topic <code>A/unit/0215D1D8/bms/bms_1/Pack_Voltage/float</code></h3>
+  <table>
+    <tr><th>Column</th><th>Value</th><th>All other signal columns</th></tr>
+    <tr>
+      <td><code>ts</code></td>
+      <td>1743494400.0</td>
+      <td rowspan="2" style="vertical-align:middle;color:var(--muted)">NULL (sparse)</td>
+    </tr>
+    <tr>
+      <td><code>0215D1D8/bms/bms_1/Pack_Voltage</code></td>
+      <td>48.2</td>
+    </tr>
+  </table>
+
+  <h3>After a full sweep — DuckDB pivot view</h3>
+  <p>Because each row carries one signal, a full sweep of 34 signals × 12 units produces 408 sparse rows.
+  DuckDB can pivot them into a dense view at query time:</p>
+  <pre>-- All signals for one unit at a given second (wide pivot)
+SELECT ts,
+       "0215D1D8/bms/bms_1/Pack_Voltage"          AS voltage,
+       "0215D1D8/bms/bms_1/Pack_Current"           AS current,
+       "0215D1D8/bms/bms_1/Pack_SOC"               AS soc
+FROM read_parquet('/data/parquet-evelyn/a/**/*.parquet')
+WHERE ts BETWEEN 1743494400 AND 1743494460
+  AND ("0215D1D8/bms/bms_1/Pack_Voltage" IS NOT NULL
+    OR "0215D1D8/bms/bms_1/Pack_Current" IS NOT NULL)
+ORDER BY ts;</pre>
+
+  <div class="alert alert-info">
+    Column names containing <code>/</code> must be double-quoted in DuckDB SQL.
+    If you prefer unquoted names, use <code>_</code> as the separator by post-processing,
+    or restrict <code>compound_field_name</code> to just <code>[point_name]</code> and partition by unit.
+  </div>
+</div>
+
+<!-- ───────────────────────────── Optional metadata columns ───────────────────────────── -->
+<h2>Optional Metadata Columns <span class="tag tag-yellow">optional</span></h2>
+<div class="section">
+  <p>Three metadata columns are written by default but can be individually suppressed under <code>output:</code>:</p>
+  <pre>output:
+  store_mqtt_topic: false    # omit mqtt_topic string column
+  store_project_id: false    # omit project_id int column
+  store_sample_count: false  # omit sample_count int column</pre>
+  <p>All three default to <code>true</code> so existing configs are unaffected.</p>
+
+  <h3>wide_point_name <span class="tag tag-purple">convenience flag</span></h3>
+  <p>When using <code>compound_point_name</code>, <code>site_id</code> and <code>project_id</code> are already encoded in the point path and are redundant as standalone columns. <code>wide_point_name: true</code> removes both in one step:</p>
+  <pre>output:
+  wide_point_name: true   # drops site_id and project_id from parquet output</pre>
+  <div class="alert alert-info">The partition key is captured <em>before</em> <code>wide_point_name</code> erases <code>site_id</code>, so directory partitioning by site still works correctly. You do not need to change <code>partition_field</code>.</div>
+
+  <h3>Recommended config for full wide schema (Evelyn)</h3>
+  <pre>mqtt:
+  topic_parser: positional
+  topic_segments:
+    - "_"          # slice prefix
+    - "_"          # "unit"
+    - unit_id
+    - device
+    - instance
+    - point_name
+    - dtype_hint
+  compound_point_name: [unit_id, device, instance, point_name]
+
+output:
+  site_id: "0215D1D8"
+  partition_field: site_id   # still works — key captured before wide_point_name drops it
+  wide_point_name: true
+  store_mqtt_topic: false
+  store_sample_count: false</pre>
+  <p><strong>Resulting columns:</strong> <code>ts</code> · <code>value</code> or <code>value_int</code> · <code>point_name</code> (compound path)</p>
+</div>
+
+<!-- ───────────────────────────── Full Schema Summary ───────────────────────────── -->
+<h2>Full Schema Summary by Mode</h2>
+<div class="section">
+  <table>
+    <tr>
+      <th>Layout</th>
+      <th>Mode</th>
+      <th>Parquet columns</th>
+    </tr>
+    <tr>
+      <td rowspan="3"><strong>Long</strong><br><span class="dim">one row<br>per message</span></td>
+      <td>Positional, no options<br><span class="dim">Evelyn default</span></td>
+      <td>
+        <code>ts</code> · <code>value</code> / <code>value_int</code> / <code>value_str</code> ·
+        <code>unit_id</code> · <code>device</code> · <code>instance</code> · <code>point_name</code> ·
+        <code>mqtt_topic</code> · <code>site_id</code> · <code>project_id</code> · <code>sample_count</code>
+      </td>
+    </tr>
+    <tr>
+      <td>Positional + compound_point_name<br><span class="dim">long, collapsed IDs</span></td>
+      <td>
+        <code>ts</code> · <code>value</code> / <code>value_int</code> / <code>value_str</code> ·
+        <code>point_name</code> (compound path) ·
+        <code>mqtt_topic</code> · <code>site_id</code> · <code>project_id</code> · <code>sample_count</code>
+      </td>
+    </tr>
+    <tr>
+      <td>Positional + compound_point_name<br>+ wide_point_name + store_* false<br><span class="dim">minimal long</span></td>
+      <td>
+        <code>ts</code> · <code>value</code> / <code>value_int</code> / <code>value_str</code> ·
+        <code>point_name</code> (compound path)
+      </td>
+    </tr>
+    <tr>
+      <td rowspan="2"><strong>Wide</strong><br><span class="dim">one sparse row<br>per message,<br>signal = column</span></td>
+      <td>Positional + compound_field_name<br><span class="dim">full signal path as column</span></td>
+      <td>
+        <code>ts</code> · <code>{unit_id}/{device}/{instance}/{signal}</code> (FLOAT64) ·
+        <code>mqtt_topic</code> · <code>site_id</code> · <code>project_id</code> · <code>sample_count</code>
+        <br><span class="dim">all other signal columns NULL in each row</span>
+      </td>
+    </tr>
+    <tr>
+      <td>Positional + compound_field_name<br>+ wide_point_name + store_* false<br><span class="dim">minimal wide</span></td>
+      <td>
+        <code>ts</code> · <code>{unit_id}/{device}/{instance}/{signal}</code> (FLOAT64)
+        <br><span class="dim">site_id · project_id · mqtt_topic · sample_count suppressed</span>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>KV long</strong></td>
+      <td>KV, no options<br><span class="dim">stress_runner / BMS default</span></td>
+      <td>
+        <code>ts</code> · <code>value</code> / <code>value_int</code> ·
+        <code>site_id</code> · <code>rack_id</code> · <code>module_id</code> · <code>cell_id</code> · <code>point_name</code> ·
+        <code>mqtt_topic</code> · <code>project_id</code> · <code>sample_count</code>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- ───────────────────────────── DuckDB Queries ───────────────────────────── -->
+<h2>DuckDB Query Examples</h2>
+<div class="section">
+  <h3>Long schema (individual columns)</h3>
+  <pre>-- All voltage readings for unit 0215D1D8, rack 1
+SELECT ts, value
+FROM read_parquet('/data/parquet-evelyn/a/**/*.parquet')
+WHERE unit_id = '0215D1D8'
+  AND point_name = 'Batt1_SBMU1_Current'
+ORDER BY ts;</pre>
+
+  <h3>Long+compound schema (point_name path)</h3>
+  <pre>-- Same query with compound_point_name: [unit_id, device, instance, point_name]
+SELECT ts, value
+FROM read_parquet('/data/parquet-evelyn/a/**/*.parquet')
+WHERE point_name = '0215D1D8/bms/bms_1/Batt1_SBMU1_Current'
+ORDER BY ts;
+
+-- Wildcard: all signals for one unit (use LIKE)
+WHERE point_name LIKE '0215D1D8/%'
+
+-- Wildcard: a specific signal across all units
+WHERE point_name LIKE '%/Batt1_SBMU1_Current'</pre>
+
+  <div class="alert alert-info">Parquet dictionary encoding compresses repeated <code>point_name</code> strings efficiently — the compound path costs no more storage than separate columns.</div>
+</div>
+
+<!-- ───────────────────────────── Benchmark Results ───────────────────────────── -->
+<h2>Benchmark: Long vs Long+compound vs Wide (pivot)</h2>
+<div class="section">
+  <p>All three writers subscribed to the same MQTT stream simultaneously on <strong>phil-dev</strong> (localhost FlashMQ).
+  Topology mirrors a single Evelyn slice: 12 units × 34 signals (24 float + 10 int), swept at 10 Hz for 600 simulated seconds.</p>
+
+  <table>
+    <tr><th>Parameter</th><th>Value</th></tr>
+    <tr><td>Units</td><td>12</td></tr>
+    <tr><td>Signals per unit</td><td>34 (24 float · 10 int)</td></tr>
+    <tr><td>Unique signal paths</td><td>408</td></tr>
+    <tr><td>Sweep rate</td><td>10 Hz</td></tr>
+    <tr><td>Simulated duration</td><td>600 s (10 min)</td></tr>
+    <tr><td>Total messages</td><td>2,448,000</td></tr>
+    <tr><td>Actual publish rate</td><td>~48–56k msg/s (Python paho, QoS 0)</td></tr>
+  </table>
+
+  <h3>Storage comparison</h3>
+  <table>
+    <tr><th>Metric</th><th>Long</th><th>Long+compound</th><th>Wide (pivot)</th></tr>
+    <tr><td>Parquet files</td><td>3</td><td>3</td><td>5</td></tr>
+    <tr><td>Rows written</td><td>2,410,067</td><td>2,448,000</td><td>3,208,520</td></tr>
+    <tr><td>Total size</td><td>13.1 MB</td><td>13.0 MB</td><td class="warn">26.1 MB</td></tr>
+    <tr><td>Schema width (columns)</td><td>12</td><td>5</td><td class="warn">411</td></tr>
+    <tr><td>Bytes per row</td><td>5</td><td>5</td><td>8</td></tr>
+    <tr><td>vs Long</td><td>—</td><td class="ok">0.9% smaller</td><td class="warn">2× larger</td></tr>
+  </table>
+
+  <h3>Flush performance</h3>
+  <table>
+    <tr><th>Metric</th><th>Long</th><th>Long+compound</th><th>Wide (pivot)</th></tr>
+    <tr><td>Flush #1 (~750k rows)</td><td class="warn">2,412 ms</td><td class="ok">542 ms</td><td class="warn">11,878 ms</td></tr>
+    <tr><td>Flush #2 (~1.6M rows)</td><td class="warn">5,926 ms</td><td class="ok">1,488 ms</td><td class="warn">19,623 ms</td></tr>
+    <tr><td>Avg flush time</td><td>2,838 ms</td><td class="ok"><strong>705 ms — 4× faster than Long</strong></td><td class="warn">11,310 ms — 4× slower than Long</td></tr>
+  </table>
+
+  <h3>Long schema — 12 columns</h3>
+  <pre>project_id    int64
+sample_count  int64
+ts            timestamp[us, tz=UTC]
+value         double          ← all signals as float64 (int and bool exact in float64)
+device        string
+dtype_hint    string
+instance      string
+mqtt_topic    string
+point_name    string
+site_id       string
+unit_id       string
+site          dictionary      ← partition key read from directory path by Arrow</pre>
+
+  <h3>Long+compound schema — 5 columns</h3>
+  <pre>ts            timestamp[us, tz=UTC]
+value         double
+dtype_hint    string
+point_name    string          ← "0215D1D8/bms/bms_1/Pack_Voltage"
+site          dictionary      ← partition key</pre>
+
+  <h3>Wide (pivot) schema — 411 columns</h3>
+  <pre>ts                                        timestamp[us, tz=UTC]
+0215D1D8/bms/bms_1/BMS_FaultCode         double
+0215D1D8/bms/bms_1/Batt1_Cell1_Voltage   double
+0215D1D8/bms/bms_1/Pack_Current          double
+... 408 signal columns (one per unique path across all 12 units)
+← each row has ts + exactly one non-null signal column</pre>
+
+  <h3>Analysis</h3>
+  <p><strong>Long vs Long+compound (0.9% size difference):</strong> Parquet dictionary encoding eliminates
+  repeated strings for low-cardinality columns (<code>unit_id</code>, <code>device</code>, <code>mqtt_topic</code>)
+  almost completely — each dictionary is tiny and rows reference it by a small index.
+  The actual measurement bytes (<code>ts</code>, <code>value</code>) dominate and are identical in both schemas.
+  The real gain from compound is flush speed: <strong>4× faster</strong> (542 ms vs 2,412 ms per flush)
+  because Arrow builds and encodes only 5 array builders instead of 12.</p>
+
+  <p><strong>Wide (pivot) — twice the storage, 4× slower flush:</strong> With 408 signal paths across 12 units,
+  every flush must build 411 Arrow array builders, most of them nearly all-null. Null encoding overhead drives
+  storage to 26 MB vs 13 MB (long), and flush times to 19 s for 1.6M rows. The MQTT reconnection storm visible
+  in the logs is a symptom of the writer falling behind — the buffer fills during slow flushes, causing backpressure.
+  Wide layout works well when signal cardinality per partition is small (&lt;50 columns) or data is pre-aggregated.</p>
+
+  <div class="alert alert-info">
+    <strong>Recommendation: Long+compound for high-rate EMS ingest.</strong>
+    5 columns, 4× faster flush than Long, storage equivalent, DuckDB queries straightforward with LIKE patterns on point_name.
+  </div>
+  <div class="alert alert-warn">
+    <strong>Wide (pivot) is practical only at low column counts.</strong>
+    Consider partitioning by unit_id and using only the signal name (not full path) as the column,
+    reducing from 408 columns to 34 per partition file.
+  </div>
+</div>
+
+<p class="dim" style="margin-top:36px;font-size:0.8rem;">parquet_writer.cpp · source/parquet_writer/ · layouts: long · long+compound · wide (compound_field_name) · options: drop_columns, wide_point_name, store_* · benchmark: 2026-04-01</p>
+
+<script>
+  // persist theme
+  if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+  document.querySelector('.theme-toggle').addEventListener('click', () => {
+    localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  });
+</script>
+</body>
+</html>

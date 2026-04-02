@@ -1,7 +1,7 @@
 /*
  * fast_load_control.ino
  * Fast DAC Load Controller for Heltec LoRa32 V2/V3
- * Version: 1.0.0
+ * Version: 1.3.3
  *
  * Based on load_controller_lora32.ino v1.5.5
  *
@@ -75,7 +75,7 @@
 
 // ─── Program identity ─────────────────────────────────────────────────────────
 #define PROG_NAME     "FastLoad"
-#define PROG_VERSION  "1.0.0"
+#define PROG_VERSION  "1.3.3"
 
 // ─── FAST: DAC output rate ────────────────────────────────────────────────────
 #define SAMPLE_RATE        5000   // Hz — DAC update rate (I2S DMA on V2)
@@ -149,8 +149,11 @@
 #define DISPLAY_UPDATE_MS 250
 #define MAX_PROFILE_STEPS 100
 
-#define WIFI_SSID     ""
-#define WIFI_PASS     ""
+// Default credentials compiled in — overridden by NVS list if saved
+#define WIFI_SSID_0   "2009google"
+#define WIFI_PASS_0   "Butt3r12"
+#define WIFI_SSID_1   ""          // ATT network — fill in or add via serial/WS
+#define WIFI_PASS_1   ""
 #define OTA_HOSTNAME  "fastload"
 #define OTA_PORT      3232
 #define OTA_PASSWORD  "bms2026"
@@ -169,9 +172,15 @@
 Preferences       preferences;
 WebSocketsServer  webSocket(WS_PORT);
 
-String   wifiSSID     = WIFI_SSID;
-String   wifiPass     = WIFI_PASS;
-bool     wifiConnected  = false;
+// ─── WiFi credential list (up to 4 entries, tried in order on connect) ───────
+#define WIFI_MAX_CREDS 4
+struct WifiCred { String ssid; String pass; };
+WifiCred wifiCreds[WIFI_MAX_CREDS];
+int      wifiCredCount   = 0;
+int      wifiCredActive  = -1;  // index of currently connected entry, -1 = none
+String   wifiSSID        = "";  // active SSID (mirrors wifiCreds[wifiCredActive])
+String   wifiPass        = "";  // active pass
+bool     wifiConnected   = false;
 String   locationName   = "";
 bool     wsServerStarted = false;
 bool     otaInProgress   = false;
@@ -253,6 +262,108 @@ volatile uint8_t canRxHead = 0;
 volatile uint8_t canRxTail = 0;
 
 unsigned long lastDisplayUpdate = 0;
+
+void startProfile(bool voltage, bool current);  // forward declaration for loadProfileFromPrefs
+
+void saveWifiCreds() {
+    preferences.begin(PREF_NAMESPACE, false);
+    preferences.putInt("wifiCount", wifiCredCount);
+    for (int i = 0; i < wifiCredCount; i++) {
+        preferences.putString(("wssid" + String(i)).c_str(), wifiCreds[i].ssid);
+        preferences.putString(("wpass" + String(i)).c_str(), wifiCreds[i].pass);
+    }
+    preferences.end();
+}
+
+// ─── Profile persistence helpers ─────────────────────────────────────────────
+// Fixed-width binary layout for NVS — avoids the String member in ProfileStep.
+struct StoredStep {
+    char     name[17];   // null-terminated, max 16 chars
+    float    value;
+    uint32_t durationMs;
+    uint32_t rampMs;
+};  // 29 bytes; 100 steps × 2 channels = 5800 bytes, well within NVS limits
+
+void saveProfileToPrefs() {
+    StoredStep buf[MAX_PROFILE_STEPS];
+    preferences.begin(PREF_NAMESPACE, false);
+
+    // Voltage channel
+    for (int i = 0; i < profileVCount; i++) {
+        strncpy(buf[i].name, profileV[i].name.c_str(), 16); buf[i].name[16] = '\0';
+        buf[i].value      = profileV[i].value;
+        buf[i].durationMs = profileV[i].durationMs;
+        buf[i].rampMs     = profileV[i].rampMs;
+    }
+    preferences.putInt("pVCount",   profileVCount);
+    preferences.putBool("pVLoop",   profileVLoop);
+    preferences.putBool("pVRun",    profileVRunning);
+    if (profileVCount > 0)
+        preferences.putBytes("pVSteps", buf, profileVCount * sizeof(StoredStep));
+
+    // Current channel
+    for (int i = 0; i < profileCCount; i++) {
+        strncpy(buf[i].name, profileC[i].name.c_str(), 16); buf[i].name[16] = '\0';
+        buf[i].value      = profileC[i].value;
+        buf[i].durationMs = profileC[i].durationMs;
+        buf[i].rampMs     = profileC[i].rampMs;
+    }
+    preferences.putInt("pCCount",   profileCCount);
+    preferences.putBool("pCLoop",   profileCLoop);
+    preferences.putBool("pCRun",    profileCRunning);
+    if (profileCCount > 0)
+        preferences.putBytes("pCSteps", buf, profileCCount * sizeof(StoredStep));
+
+    preferences.end();
+    Serial.printf("[prefs] profile saved: %d V steps, %d A steps\r\n",
+                  profileVCount, profileCCount);
+}
+
+void loadProfileFromPrefs() {
+    preferences.begin(PREF_NAMESPACE, true);   // read-only
+    int  vc  = preferences.getInt("pVCount",  0);
+    int  cc  = preferences.getInt("pCCount",  0);
+    bool vl  = preferences.getBool("pVLoop",  false);
+    bool cl  = preferences.getBool("pCLoop",  false);
+    bool vRun = preferences.getBool("pVRun",  false);
+    bool cRun = preferences.getBool("pCRun",  false);
+
+    if (vc > 0 && vc <= MAX_PROFILE_STEPS) {
+        StoredStep buf[MAX_PROFILE_STEPS];
+        size_t got = preferences.getBytes("pVSteps", buf, vc * sizeof(StoredStep));
+        if (got == (size_t)(vc * sizeof(StoredStep))) {
+            profileVCount = vc;  profileVLoop = vl;
+            for (int i = 0; i < vc; i++) {
+                profileV[i].name       = buf[i].name;
+                profileV[i].value      = buf[i].value;
+                profileV[i].durationMs = buf[i].durationMs;
+                profileV[i].rampMs     = buf[i].rampMs;
+            }
+            Serial.printf("[prefs] restored %d V steps\r\n", vc);
+        }
+    }
+    if (cc > 0 && cc <= MAX_PROFILE_STEPS) {
+        StoredStep buf[MAX_PROFILE_STEPS];
+        size_t got = preferences.getBytes("pCSteps", buf, cc * sizeof(StoredStep));
+        if (got == (size_t)(cc * sizeof(StoredStep))) {
+            profileCCount = cc;  profileCLoop = cl;
+            for (int i = 0; i < cc; i++) {
+                profileC[i].name       = buf[i].name;
+                profileC[i].value      = buf[i].value;
+                profileC[i].durationMs = buf[i].durationMs;
+                profileC[i].rampMs     = buf[i].rampMs;
+            }
+            Serial.printf("[prefs] restored %d A steps\r\n", cc);
+        }
+    }
+    preferences.end();
+
+    // Re-start whichever channels were running before the reset
+    if ((vRun && profileVCount > 0) || (cRun && profileCCount > 0)) {
+        startProfile(vRun, cRun);
+        Serial.printf("[prefs] auto-started: V=%d C=%d\r\n", vRun, cRun);
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FAST: I2S DMA DAC initialisation (V2 / T-Display only)
@@ -421,13 +532,16 @@ static void dacTask(void* /*arg*/) {
         i2s_write(I2S_NUM_0, buf, sizeof(buf), &written, portMAX_DELAY);
         dacBufCount++;
 
-        // Re-sync run flags each buffer period (12.8 ms at 5 kHz / 64 samples)
+        // Re-sync run flags and write step indices back every buffer (~12.8 ms)
         portENTER_CRITICAL(&profileMux);
         bool new_lv = profileVRunning, new_lc = profileCRunning;
+        profileVStep = lv_step;   // publish current step so display can read it
+        profileCStep = lc_step;
         portEXIT_CRITICAL(&profileMux);
 
         // Reset local interpolation state if profile just started
         if (new_lv && !lv_run) {
+            lv_count = profileVCount;  // refresh before using as guard
             lv_step = 0; lv_elapsed_ms = 0; lv_in_ramp = false;
             lv_now = voltageValue;
             if (lv_count > 0) {
@@ -439,6 +553,7 @@ static void dacTask(void* /*arg*/) {
             }
         }
         if (new_lc && !lc_run) {
+            lc_count = profileCCount;  // refresh before using as guard
             lc_step = 0; lc_elapsed_ms = 0; lc_in_ramp = false;
             lc_now = currentValue;
             if (lc_count > 0) {
@@ -556,34 +671,58 @@ void setup() {
 #endif
     displaySplash();
 
-    // Load preferences
+    // Load preferences — credential list + location
     preferences.begin(PREF_NAMESPACE, false);
-    String savedSSID = preferences.getString("ssid", "");
-    String savedPass = preferences.getString("pass", "");
-    locationName     = preferences.getString("location", "");
-    if (savedSSID.length() > 0) { wifiSSID = savedSSID; wifiPass = savedPass; }
-    preferences.end();
-
-    // WiFi
-    if (wifiSSID.length() > 0) {
-        Serial.printf("Connecting to %s...\n", wifiSSID.c_str());
-        WiFi.begin(wifiSSID.c_str(), wifiPass.c_str());
-        unsigned long t0 = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) {
-            delay(500); Serial.print(".");
-        }
-        if (WiFi.status() == WL_CONNECTED) {
-            wifiConnected = true;
-            Serial.printf("\nWiFi: %s\n", WiFi.localIP().toString().c_str());
-            setupOTA();
-            webSocket.begin();
-            webSocket.onEvent(webSocketEvent);
-            wsServerStarted = true;
+    locationName = preferences.getString("location", "");
+    wifiCredCount = preferences.getInt("wifiCount", 0);
+    for (int i = 0; i < wifiCredCount && i < WIFI_MAX_CREDS; i++) {
+        wifiCreds[i].ssid = preferences.getString(("wssid" + String(i)).c_str(), "");
+        wifiCreds[i].pass = preferences.getString(("wpass" + String(i)).c_str(), "");
+    }
+    // Seed defaults if nothing saved yet (also migrates old single-cred key)
+    if (wifiCredCount == 0) {
+        String s = preferences.getString("ssid", "");
+        String p = preferences.getString("pass", "");
+        if (s.length() > 0) {
+            wifiCreds[wifiCredCount++] = {s, p};           // migrated old entry
         } else {
-            Serial.println("\nWiFi failed — running offline");
+            if (strlen(WIFI_SSID_0) > 0) wifiCreds[wifiCredCount++] = {WIFI_SSID_0, WIFI_PASS_0};
+            if (strlen(WIFI_SSID_1) > 0) wifiCreds[wifiCredCount++] = {WIFI_SSID_1, WIFI_PASS_1};
         }
+    }
+    preferences.end();
+    loadProfileFromPrefs();   // restore last loaded sequence
+
+    // WiFi — try each credential in order, stop at first success
+    if (wifiCredCount > 0) {
+        for (int i = 0; i < wifiCredCount && !wifiConnected; i++) {
+            if (wifiCreds[i].ssid.length() == 0) continue;
+            Serial.printf("Trying WiFi %d/%d: %s\n", i+1, wifiCredCount, wifiCreds[i].ssid.c_str());
+            WiFi.begin(wifiCreds[i].ssid.c_str(), wifiCreds[i].pass.c_str());
+            unsigned long t0 = millis();
+            while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) {
+                delay(500); Serial.print(".");
+            }
+            if (WiFi.status() == WL_CONNECTED) {
+                wifiConnected   = true;
+                wifiCredActive  = i;
+                wifiSSID        = wifiCreds[i].ssid;
+                wifiPass        = wifiCreds[i].pass;
+                Serial.printf("\nWiFi: %s  IP: %s\n", wifiSSID.c_str(),
+                              WiFi.localIP().toString().c_str());
+                setupOTA();
+                webSocket.begin();
+                webSocket.onEvent(webSocketEvent);
+                wsServerStarted = true;
+            } else {
+                Serial.printf("\n  %s failed\n", wifiCreds[i].ssid.c_str());
+                WiFi.disconnect(true);
+                delay(200);
+            }
+        }
+        if (!wifiConnected) Serial.println("All WiFi credentials failed — running offline");
     } else {
-        Serial.println("No WiFi credentials. Use: wifi ssid <name>");
+        Serial.println("No WiFi credentials. Use: wifi add <ssid> <pass>");
     }
 
     updateDisplay();
@@ -602,7 +741,7 @@ void loop() {
     handleSerial();
 
     // ── WiFi watchdog / auto-reconnect ────────────────────────────────────────
-    if (wifiSSID.length() > 0) {
+    if (wifiCredCount > 0) {
         bool wifiUp = (WiFi.status() == WL_CONNECTED);
         if (wifiConnected && !wifiUp) {
             wifiConnected  = false;
@@ -610,10 +749,14 @@ void loop() {
             Serial.println("WiFi lost — retry in 10 s");
         }
         static unsigned long lastReconnectMs = 0;
+        static int reconnectIdx = 0;
         if (!wifiConnected && !wifiUp && millis() - lastReconnectMs > 10000) {
             lastReconnectMs = millis();
-            Serial.printf("Reconnecting to %s...\n", wifiSSID.c_str());
-            WiFi.begin(wifiSSID.c_str(), wifiPass.c_str());
+            // Rotate through credential list on each reconnect attempt
+            reconnectIdx = reconnectIdx % wifiCredCount;
+            Serial.printf("Reconnecting to %s...\n", wifiCreds[reconnectIdx].ssid.c_str());
+            WiFi.begin(wifiCreds[reconnectIdx].ssid.c_str(), wifiCreds[reconnectIdx].pass.c_str());
+            reconnectIdx++;
         }
         if (!wifiConnected && wifiUp) {
             wifiConnected = true;
@@ -859,12 +1002,60 @@ void handleWsCommand(uint8_t num, JsonDocument& doc) {
     else if (strcmp(cmd, "start_profile") == 0) {
         const char* ch = doc["channel"] | "both";
         startProfile(strcmp(ch,"current")!=0, strcmp(ch,"voltage")!=0);
+        saveProfileToPrefs();   // persist running state for auto-restart after reset
         broadcastStatus();
     }
     else if (strcmp(cmd, "stop_profile") == 0) {
         const char* ch = doc["channel"] | "both";
         stopProfile(strcmp(ch,"current")!=0, strcmp(ch,"voltage")!=0);
+        saveProfileToPrefs();   // persist stopped state
         broadcastStatus();
+    }
+    else if (strcmp(cmd, "get_version") == 0) {
+        StaticJsonDocument<128> r;
+        r["type"]    = "version";
+        r["version"] = PROG_VERSION;
+        r["name"]    = PROG_NAME;
+        char buf[128]; serializeJson(r, buf, sizeof(buf));
+        webSocket.sendTXT(num, buf);
+    }
+    else if (strcmp(cmd, "wifi_list") == 0) {
+        StaticJsonDocument<512> r;
+        r["type"]   = "wifi_list";
+        r["active"] = wifiCredActive;
+        JsonArray arr = r.createNestedArray("creds");
+        for (int i = 0; i < wifiCredCount; i++) {
+            JsonObject o = arr.createNestedObject();
+            o["idx"]  = i;
+            o["ssid"] = wifiCreds[i].ssid;
+            // password intentionally omitted from response
+        }
+        char buf[512]; serializeJson(r, buf, sizeof(buf));
+        webSocket.sendTXT(num, buf);
+    }
+    else if (strcmp(cmd, "wifi_add") == 0) {
+        if (wifiCredCount < WIFI_MAX_CREDS) {
+            wifiCreds[wifiCredCount].ssid = doc["ssid"] | "";
+            wifiCreds[wifiCredCount].pass = doc["pass"] | "";
+            if (wifiCreds[wifiCredCount].ssid.length() > 0) {
+                wifiCredCount++;
+                saveWifiCreds();
+                webSocket.sendTXT(num, "{\"type\":\"ok\",\"msg\":\"wifi added\"}");
+            }
+        } else {
+            webSocket.sendTXT(num, "{\"type\":\"error\",\"msg\":\"list full (max 4)\"}");
+        }
+    }
+    else if (strcmp(cmd, "wifi_remove") == 0) {
+        int idx = doc["idx"] | -1;
+        if (idx >= 0 && idx < wifiCredCount) {
+            for (int i = idx; i < wifiCredCount - 1; i++) wifiCreds[i] = wifiCreds[i+1];
+            wifiCredCount--;
+            if (wifiCredActive == idx) wifiCredActive = -1;
+            else if (wifiCredActive > idx) wifiCredActive--;
+            saveWifiCreds();
+            webSocket.sendTXT(num, "{\"type\":\"ok\",\"msg\":\"wifi removed\"}");
+        }
     }
     else if (strcmp(cmd, "set_location") == 0) {
         locationName = doc["value"] | "";
@@ -917,6 +1108,7 @@ void loadProfileFromJson(JsonDocument& doc) {
     }
     portEXIT_CRITICAL(&profileMux);
 
+    saveProfileToPrefs();   // persist so sequence survives restart
     Serial.printf("Profile loaded: %d V steps, %d A steps\r\n", profileVCount, profileCCount);
     for (int i = 0; i < profileVCount; i++)
         Serial.printf("  V[%d] name=%-16s val=%6.2f dur=%5lu ramp=%5lu\r\n",
@@ -940,29 +1132,47 @@ void handleSerial() {
 
     if (line.startsWith("wifi ")) {
         String args = line.substring(5);
-        if (args.startsWith("ssid ")) {
-            wifiSSID = args.substring(5);
-            preferences.begin(PREF_NAMESPACE, false);
-            preferences.putString("ssid", wifiSSID);
-            preferences.end();
-            Serial.printf("SSID saved: %s\n", wifiSSID.c_str());
-        } else if (args.startsWith("pass ")) {
-            wifiPass = args.substring(5);
-            preferences.begin(PREF_NAMESPACE, false);
-            preferences.putString("pass", wifiPass);
-            preferences.end();
-            Serial.println("Password saved");
-        } else if (args == "connect") {
-            Serial.println("Reboot to connect with saved credentials.");
+        if (args.startsWith("add ")) {
+            // wifi add <ssid> <pass>
+            String rest = args.substring(4);
+            int sp = rest.indexOf(' ');
+            if (sp > 0 && wifiCredCount < WIFI_MAX_CREDS) {
+                wifiCreds[wifiCredCount].ssid = rest.substring(0, sp);
+                wifiCreds[wifiCredCount].pass = rest.substring(sp + 1);
+                wifiCredCount++;
+                saveWifiCreds();
+                Serial.printf("Added [%d] %s\n", wifiCredCount-1, wifiCreds[wifiCredCount-1].ssid.c_str());
+            } else if (wifiCredCount >= WIFI_MAX_CREDS) {
+                Serial.println("List full (max 4). Use wifi remove <idx> first.");
+            } else {
+                Serial.println("Usage: wifi add <ssid> <pass>");
+            }
+        } else if (args.startsWith("remove ")) {
+            int idx = args.substring(7).toInt();
+            if (idx >= 0 && idx < wifiCredCount) {
+                Serial.printf("Removed [%d] %s\n", idx, wifiCreds[idx].ssid.c_str());
+                for (int i = idx; i < wifiCredCount - 1; i++) wifiCreds[i] = wifiCreds[i+1];
+                wifiCredCount--;
+                if (wifiCredActive == idx) wifiCredActive = -1;
+                else if (wifiCredActive > idx) wifiCredActive--;
+                saveWifiCreds();
+            } else { Serial.println("Invalid index"); }
+        } else if (args == "list") {
+            Serial.printf("WiFi credentials (%d/%d):\n", wifiCredCount, WIFI_MAX_CREDS);
+            for (int i = 0; i < wifiCredCount; i++)
+                Serial.printf("  [%d] %s%s\n", i, wifiCreds[i].ssid.c_str(),
+                              i == wifiCredActive ? " <active>" : "");
         } else if (args == "status") {
-            Serial.printf("WiFi: %s  IP: %s\n",
+            Serial.printf("WiFi: %s  SSID: %s  IP: %s\n",
                 wifiConnected ? "CONNECTED" : "OFFLINE",
+                wifiConnected ? wifiSSID.c_str() : "-",
                 wifiConnected ? WiFi.localIP().toString().c_str() : "N/A");
         } else if (args == "clear") {
-            preferences.begin(PREF_NAMESPACE, false);
-            preferences.remove("ssid"); preferences.remove("pass");
-            preferences.end();
-            Serial.println("Credentials cleared.");
+            wifiCredCount = 0; wifiCredActive = -1;
+            saveWifiCreds();
+            Serial.println("All WiFi credentials cleared.");
+        } else {
+            Serial.println("wifi add <ssid> <pass> | wifi remove <idx> | wifi list | wifi status | wifi clear");
         }
     }
     else if (line.startsWith("set ")) {
@@ -978,8 +1188,11 @@ void handleSerial() {
     }
     else if (line.startsWith("profile ")) {
         String args = line.substring(8);
-        if (args == "start") startProfile(true, true);
-        else if (args == "stop") stopProfile(true, true);
+        if (args == "start") { startProfile(true, true); saveProfileToPrefs(); }
+        else if (args == "stop") { stopProfile(true, true); saveProfileToPrefs(); }
+    }
+    else if (line == "version") {
+        Serial.printf("%s v%s\n", PROG_NAME, PROG_VERSION);
     }
     else if (line == "status") {
         Serial.printf("V: %.2f V  I: %.2f A  dac1: %d  dac2: %d\n",
@@ -988,17 +1201,21 @@ void handleSerial() {
         Serial.printf("ProfileV: %s  ProfileC: %s\n",
                       profileVRunning ? "running" : "stopped",
                       profileCRunning ? "running" : "stopped");
-        Serial.printf("WiFi: %s  WS clients: %d  Sample rate: %d Hz\n",
+        Serial.printf("WiFi: %s  SSID: %s  IP: %s  WS clients: %d\n",
                       wifiConnected ? "UP" : "DOWN",
-                      wsClientCount, SAMPLE_RATE);
+                      wifiConnected ? wifiSSID.c_str() : "-",
+                      wifiConnected ? WiFi.localIP().toString().c_str() : "N/A",
+                      wsClientCount);
+        Serial.printf("Sample rate: %d Hz\n", SAMPLE_RATE);
     }
     else if (line == "help") {
         Serial.println("Commands:");
-        Serial.println("  wifi ssid <n>  wifi pass <p>  wifi connect  wifi status  wifi clear");
-        Serial.println("  set voltage <0-60>   set current <0-200>");
-        Serial.println("  set dac1 <0-4095>    set dac2 <0-4095>    set led <on|off|blink>");
-        Serial.println("  profile start        profile stop");
-        Serial.println("  status");
+        Serial.println("  wifi add <ssid> <pass>   wifi remove <idx>   wifi list");
+        Serial.println("  wifi status              wifi clear");
+        Serial.println("  set voltage <0-60>       set current <0-200>");
+        Serial.println("  set dac1 <0-4095>        set dac2 <0-4095>   set led <on|off|blink>");
+        Serial.println("  profile start            profile stop");
+        Serial.println("  version                  status");
     }
 }
 
@@ -1025,6 +1242,15 @@ void displaySplash() {
 }
 
 void updateDisplay() {
+    // Snapshot profile state under mutex — dacTask updates step indices on Core 0
+    int  snapVStep, snapCStep, snapVCount, snapCCount;
+    bool snapVRun,  snapCRun;
+    portENTER_CRITICAL(&profileMux);
+    snapVStep  = profileVStep;   snapCStep  = profileCStep;
+    snapVCount = profileVCount;  snapCCount = profileCCount;
+    snapVRun   = profileVRunning; snapCRun  = profileCRunning;
+    portEXIT_CRITICAL(&profileMux);
+
     char buf[32];
 #ifdef LILYGO_TDISPLAY
     tft.fillScreen(TFT_BLACK);
@@ -1034,6 +1260,12 @@ void updateDisplay() {
     snprintf(buf, sizeof(buf), "I: %.1f A", (float)currentValue);
     tft.setCursor(4, 30); tft.print(buf);
     if (wifiConnected) { tft.setCursor(4, 50); tft.print(WiFi.localIP().toString()); }
+    if (snapVRun || snapCRun) {
+        int step  = snapVRun ? snapVStep  : snapCStep;
+        int count = snapVRun ? snapVCount : snapCCount;
+        snprintf(buf, sizeof(buf), "step %d/%d", step + 1, count);
+        tft.setCursor(4, 50); tft.setTextColor(TFT_GREEN, TFT_BLACK); tft.print(buf);
+    }
     snprintf(buf, sizeof(buf), "%d Hz", SAMPLE_RATE);
     tft.setCursor(4, 70); tft.setTextColor(TFT_CYAN, TFT_BLACK); tft.print(buf);
 #else
@@ -1044,16 +1276,17 @@ void updateDisplay() {
     snprintf(buf, sizeof(buf), "V:%.1f I:%.1f", (float)voltageValue, (float)currentValue);
     display.drawStr(0, 12, buf);
 
-    // Row 2: IP or step name when running
+    // Row 2: IP or step name — step index from mutex snapshot, not direct read
     display.setFont(u8g2_font_6x10_tf);
-    if (profileVRunning || profileCRunning) {
-        // Show active step name — prefer voltage channel, fall back to current
-        int   activeStep  = profileVRunning ? profileVStep  : profileCStep;
-        int   activeCount = profileVRunning ? profileVCount : profileCCount;
-        const String& activeName = profileVRunning
-                                   ? profileV[activeStep].name
-                                   : profileC[activeStep].name;
-        // Truncate to 20 chars to fit 128px display at 6px wide font
+    if (snapVRun || snapCRun) {
+        int   activeStep  = snapVRun ? snapVStep  : snapCStep;
+        int   activeCount = snapVRun ? snapVCount : snapCCount;
+        // Name is read-only after load_profile so no lock needed, but bounds-check
+        String activeName = "";
+        if (snapVRun && activeStep < profileVCount)
+            activeName = profileV[activeStep].name;
+        else if (snapCRun && activeStep < profileCCount)
+            activeName = profileC[activeStep].name;
         char stepBuf[22];
         snprintf(stepBuf, sizeof(stepBuf), "%d/%d %s",
                  activeStep + 1, activeCount, activeName.c_str());
@@ -1076,7 +1309,7 @@ void updateDisplay() {
     display.setFont(u8g2_font_5x7_tf);
     snprintf(buf, sizeof(buf), "%d Hz", SAMPLE_RATE);
     display.drawStr(0, 58, buf);
-    if (profileVRunning || profileCRunning)
+    if (snapVRun || snapCRun)
         display.drawStr(90, 58, "RUNNING");
 
     display.sendBuffer();

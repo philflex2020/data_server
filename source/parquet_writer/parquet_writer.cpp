@@ -98,8 +98,21 @@ struct Config {
     std::map<std::string, std::string> topic_kv_map {};
     // "dtype_hint" is reserved: consumed for type casting, not stored as a column.
     // "field_name" renames the "value" float to the signal name (wide-sparse schema).
-    // Any other name stores the segment as a string column (long/narrow schema).
+    // Any other name stores the segment as a string column (long schema).
     std::vector<std::string> topic_segments {};
+
+    // compound_point_name: join these segment columns with '/' → stored as row.strings["point_name"].
+    // Named columns are consumed (removed) from the row.
+    std::vector<std::string> compound_point_name {};
+
+    // compound_field_name: wide (pivot) schema.
+    // Join these segment columns with '/' and use the result as the value column name.
+    // Each unique signal path becomes its own parquet column; all others are null per row.
+    std::vector<std::string> compound_field_name {};
+
+    // drop_columns: erase these columns from every row before writing.
+    // Applied after compound_point_name / compound_field_name.
+    std::vector<std::string> drop_columns {};
 
     // Multi-depth topic patterns (like Telegraf topic_parsing).
     // Each pattern: {match, segments}  where match uses + (any segment) and # (remainder).
@@ -119,6 +132,14 @@ struct Config {
     std::string timestamp_field {"ts"};
     std::string timestamp_format{"iso8601"};
 
+    // Optional column flags — all true by default; set false to suppress from parquet output.
+    bool        store_mqtt_topic  {true};
+    bool        store_project_id  {true};
+    bool        store_sample_count{true};
+    // wide_point_name: after partition key is captured, drop site_id and project_id.
+    // Use with compound_point_name or compound_field_name — they're already in the path.
+    bool        wide_point_name   {false};
+
     // Output
     std::string base_path      {"/srv/data/parquet-ems"};
     int         project_id     {0};
@@ -129,7 +150,8 @@ struct Config {
     int max_total_buffer_rows  {2000000};
     std::string hot_file_path     {""};
     std::string current_state_path{""};
-    std::string filename_prefix   {""};  // prepended to timestamp filename: {prefix}_{ts}.parquet
+    std::string filename_prefix            {""};   // prepended to timestamp filename: {prefix}_{ts}.parquet
+    bool        partition_as_filename_prefix{false}; // prepend partition value to filename: {unit_id}_{ts}.parquet
 
     // WAL — write-ahead log for crash recovery
     bool        wal_enabled         {true};
@@ -183,6 +205,18 @@ Config load_config(const std::string& path) {
                 for (const auto& s : ts)
                     cfg.topic_segments.push_back(s.as<std::string>());
             }
+            if (auto cp = m["compound_point_name"]) {
+                cfg.compound_point_name.clear();
+                for (const auto& s : cp) cfg.compound_point_name.push_back(s.as<std::string>());
+            }
+            if (auto cf = m["compound_field_name"]) {
+                cfg.compound_field_name.clear();
+                for (const auto& s : cf) cfg.compound_field_name.push_back(s.as<std::string>());
+            }
+            if (auto dc = m["drop_columns"]) {
+                cfg.drop_columns.clear();
+                for (const auto& s : dc) cfg.drop_columns.push_back(s.as<std::string>());
+            }
             if (auto tp = m["topic_patterns"]) {
                 cfg.topic_patterns.clear();
                 for (const auto& entry : tp) {
@@ -219,8 +253,13 @@ Config load_config(const std::string& path) {
             if (o["flush_retry_base_seconds"]) cfg.flush_retry_base_seconds = o["flush_retry_base_seconds"].as<int>();
             if (o["hot_file_path"])          cfg.hot_file_path          = o["hot_file_path"].as<std::string>();
             if (o["current_state_path"])     cfg.current_state_path     = o["current_state_path"].as<std::string>();
-            if (o["filename_prefix"])        cfg.filename_prefix        = o["filename_prefix"].as<std::string>();
+            if (o["filename_prefix"])                 cfg.filename_prefix                 = o["filename_prefix"].as<std::string>();
+            if (o["partition_as_filename_prefix"])    cfg.partition_as_filename_prefix    = o["partition_as_filename_prefix"].as<bool>();
             if (o["site_id"])                cfg.site_id                = o["site_id"].as<std::string>();
+            if (o["store_mqtt_topic"])   cfg.store_mqtt_topic   = o["store_mqtt_topic"].as<bool>();
+            if (o["store_project_id"])   cfg.store_project_id   = o["store_project_id"].as<bool>();
+            if (o["store_sample_count"]) cfg.store_sample_count = o["store_sample_count"].as<bool>();
+            if (o["wide_point_name"])    cfg.wide_point_name    = o["wide_point_name"].as<bool>();
             if (o["partitions"]) {
                 cfg.partitions.clear();
                 for (const auto& p : o["partitions"])
@@ -546,9 +585,13 @@ std::string make_output_path(const Config& cfg,
     fs::create_directories(dir, ec);
     if (ec) std::cerr << "[path] create_directories: " << ec.message() << "\n" << std::flush;
 
-    std::string fname = cfg.filename_prefix.empty()
-        ? std::string(ts)
-        : cfg.filename_prefix + "_" + ts;
+    std::string fname;
+    if (cfg.partition_as_filename_prefix && !partition_str.empty())
+        fname = partition_str + "_" + ts;
+    else if (!cfg.filename_prefix.empty())
+        fname = cfg.filename_prefix + "_" + ts;
+    else
+        fname = ts;
     return (dir / (fname + ".parquet")).string();
 }
 
@@ -1463,12 +1506,52 @@ static void process_message(const char* topic, const char* payload) {
 
     Row row = parse_payload(payload_str, *info_opt, *g_cfg);
 
+    if (g_cfg->store_mqtt_topic)   row.strings["mqtt_topic"]  = topic_str;
+    if (g_cfg->store_sample_count) row.ints["sample_count"]   = 1;
+    if (g_cfg->store_project_id)   row.ints["project_id"]     = g_cfg->project_id;
+
     if (!info_opt->dtype_hint.empty())
         row.strings["dtype_hint"] = info_opt->dtype_hint;
 
+    // compound_field_name: build wide-schema column name early (consuming segments),
+    // then apply to the value column below after string-value rename.
+    std::string compound_field;
+    if (!g_cfg->compound_field_name.empty()) {
+        compound_field.reserve(80);
+        for (const auto& col : g_cfg->compound_field_name) {
+            if (!compound_field.empty()) compound_field += '/';
+            auto it = row.strings.find(col);
+            if (it != row.strings.end()) { compound_field += it->second; row.strings.erase(it); }
+            else {
+                auto ii = row.ints.find(col);
+                if (ii != row.ints.end()) { compound_field += std::to_string(ii->second); row.ints.erase(ii); }
+            }
+        }
+    }
+
+    // compound_point_name: join segment columns into row.strings["point_name"].
+    if (!g_cfg->compound_point_name.empty()) {
+        std::string compound;
+        compound.reserve(64);
+        for (const auto& col : g_cfg->compound_point_name) {
+            if (!compound.empty()) compound += '/';
+            auto it = row.strings.find(col);
+            if (it != row.strings.end()) { compound += it->second; row.strings.erase(it); }
+            else {
+                auto ii = row.ints.find(col);
+                if (ii != row.ints.end()) { compound += std::to_string(ii->second); row.ints.erase(ii); }
+            }
+        }
+        row.strings["point_name"] = std::move(compound);
+    }
+
+    for (const auto& col : g_cfg->drop_columns) {
+        row.strings.erase(col);
+        row.ints.erase(col);
+        row.floats.erase(col);
+    }
+
     // Apply config site_id only if topic parsing did not already provide one.
-    // For Longbow-format topics (site_id in segment 2) the topic value takes precedence;
-    // for Evelyn/gx10 topics that have no site_id segment the config value is the fallback.
     if (!g_cfg->site_id.empty() && row.strings.find("site_id") == row.strings.end())
         row.strings["site_id"] = g_cfg->site_id;
 
@@ -1476,13 +1559,21 @@ static void process_message(const char* topic, const char* payload) {
     // (status bits, 0/1 booleans, small counts) are exact in float64, and a single
     // "value" column avoids COALESCE(value_f, value_i) in every query.
 
-    // String payloads (dtype_hint="string"): rename "value" → "value_str" so it
-    // never collides with the numeric "value" FLOAT64/INT64 column in the same partition.
+    // String payloads (dtype_hint="string"): rename "value" → "value_str".
     {
         auto it = row.strings.find("value");
         if (it != row.strings.end()) {
             row.strings["value_str"] = std::move(it->second);
             row.strings.erase(it);
+        }
+    }
+
+    // Apply compound_field_name: move "value" float into the signal-named column.
+    if (!compound_field.empty()) {
+        auto fi = row.floats.find("value");
+        if (fi != row.floats.end()) {
+            row.floats[compound_field] = fi->second;
+            row.floats.erase(fi);
         }
     }
 
@@ -1494,6 +1585,12 @@ static void process_message(const char* topic, const char* payload) {
             auto iit = row.ints.find(g_cfg->partition_field);
             if (iit != row.ints.end()) pval = std::to_string(iit->second);
         }
+    }
+
+    // wide_point_name: drop site_id and project_id after partition key captured.
+    if (g_cfg->wide_point_name) {
+        row.strings.erase("site_id");
+        row.ints.erase("project_id");
     }
 
     PartitionKey key{info_opt->source_type, pval};

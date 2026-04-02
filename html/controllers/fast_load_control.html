@@ -114,6 +114,11 @@
     <td class="old">None (V2) / RC filter (V3 PWM)</td>
     <td class="new">None (V2 I2S) / RC filter still needed (V3 PWM)</td>
   </tr>
+  <tr>
+    <td>Sequence persistence</td>
+    <td class="old">Lost on restart</td>
+    <td class="new">Saved to NVS — restored automatically on boot</td>
+  </tr>
 </table>
 
 <h2>Hardware (V2 / T-Display)</h2>
@@ -166,6 +171,28 @@ Scale: dac_8bit → (uint16_t)(dac_8bit) << 8   (upper 8 bits used)</pre>
  "bufsPerSec": 78,   // DMA buffer writes/sec (5000/64 ≈ 78.1)
  "stepsPerSec": 0    // profile step transitions/sec
 }</pre>
+
+<h2>Sequence Persistence (NVS)</h2>
+<p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">
+  Every <code>load_profile</code> command immediately saves both channels to ESP32 NVS
+  (non-volatile storage) using <code>Preferences</code>. On the next boot the sequence
+  is restored before WiFi connects — the device comes up ready with the last profile,
+  not in an empty state.
+</p>
+<table>
+  <tr><th>NVS key</th><th>Type</th><th>Contents</th></tr>
+  <tr><td><code>pVCount</code></td><td>int</td><td>Number of voltage steps saved</td></tr>
+  <tr><td><code>pVLoop</code></td><td>bool</td><td>Loop flag for voltage channel</td></tr>
+  <tr><td><code>pVSteps</code></td><td>bytes</td><td>Voltage step array (29 B × N steps)</td></tr>
+  <tr><td><code>pCCount</code></td><td>int</td><td>Number of current steps saved</td></tr>
+  <tr><td><code>pCLoop</code></td><td>bool</td><td>Loop flag for current channel</td></tr>
+  <tr><td><code>pCSteps</code></td><td>bytes</td><td>Current step array (29 B × N steps)</td></tr>
+</table>
+<p style="font-size:.8rem;color:var(--muted);margin-top:8px">
+  Max 100 steps per channel — 5.8 KB total, well within NVS limits.
+  Step names are stored as 16-char null-terminated strings. The sequence is <em>not</em>
+  auto-started on boot; send <code>start_profile</code> to begin execution.
+</p>
 
 <h2>Sequence JSON File Format</h2>
 <p style="font-size:.82rem;color:var(--muted);margin-bottom:6px">
