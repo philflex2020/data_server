@@ -51,12 +51,14 @@
 <h2>Results</h2>
 <p style="font-size:0.78rem;color:#64748b;margin:0 0 12px">
   Run: 244,800 msgs · 600 sweeps @ 1 Hz · monotonic burst jitter 50–200 ms/sweep ·
-  <code>time_window_ms: 250</code> on long+cmp · <code>max_messages_per_part: 6000</code> · phil-dev 2026-04-02
+  <code>time_window_ms: 250</code> on norm-long + long+cmp · <code>max_messages_per_part: 6000</code> ·
+  COV=off (all signals publish every sweep) · phil-dev 2026-04-02
 </p>
 <table>
   <thead>
     <tr>
       <th>Metric</th>
+      <th>Normalized Long ✓</th>
       <th>Long + Compound</th>
       <th>Wide (pivot)</th>
     </tr>
@@ -65,81 +67,97 @@
     <tr>
       <td>Parquet files</td>
       <td class="metric-val better">41 <small style="color:#94a3b8">(~6,000 rows each)</small></td>
-      <td class="metric-val">132 <small style="color:#94a3b8">(11 flushes × 12 units)</small></td>
+      <td class="metric-val">41</td>
+      <td class="metric-val">132 <small style="color:#94a3b8">(11 × 12 units)</small></td>
     </tr>
     <tr>
       <td>Rows written</td>
       <td class="metric-val">244,800</td>
       <td class="metric-val">244,800</td>
+      <td class="metric-val">244,800</td>
     </tr>
     <tr>
       <td>Total size (bytes)</td>
-      <td class="metric-val better">1,640,574</td>
-      <td class="metric-val worse">3,657,104</td>
+      <td class="metric-val better">1,569,140</td>
+      <td class="metric-val">1,650,249 <small style="color:#94a3b8">(+5%)</small></td>
+      <td class="metric-val worse">3,656,805 <small style="color:#dc2626">(+133%)</small></td>
     </tr>
     <tr>
       <td>Total size (KB)</td>
-      <td class="metric-val better">1,602 KB</td>
-      <td class="metric-val worse">3,571 KB <small style="color:#dc2626">(+123%)</small></td>
+      <td class="metric-val better">1,532 KB</td>
+      <td class="metric-val">1,611 KB</td>
+      <td class="metric-val worse">3,571 KB</td>
     </tr>
     <tr>
-      <td>Schema width (columns)</td>
-      <td class="metric-val better">5</td>
-      <td class="metric-val">38 <small style="color:#94a3b8">(1 ts + 37 signal cols)</small></td>
+      <td>Schema columns</td>
+      <td class="metric-val">8 <small style="color:#94a3b8">(ts + unit_id + device_type + device + point_name + value + dtype_hint + site)</small></td>
+      <td class="metric-val">5 <small style="color:#94a3b8">(ts + value + dtype_hint + point_name + site)</small></td>
+      <td class="metric-val">38 <small style="color:#94a3b8">(ts + 37 signal cols)</small></td>
     </tr>
     <tr>
       <td>Bytes per row</td>
       <td class="metric-val better">6</td>
+      <td class="metric-val">6</td>
       <td class="metric-val worse">14</td>
     </tr>
     <tr>
       <td>Distinct timestamps</td>
-      <td class="metric-val better">600 <small style="color:#059669">(time_window_ms: 250 — 1 per sweep)</small></td>
-      <td class="metric-val worse">70,017 <small style="color:#94a3b8">(one per message)</small></td>
+      <td class="metric-val better">600 <small style="color:#059669">(time_window_ms: 250)</small></td>
+      <td class="metric-val better">600 <small style="color:#059669">(time_window_ms: 250)</small></td>
+      <td class="metric-val worse">70,017 <small style="color:#94a3b8">(no window)</small></td>
     </tr>
     <tr>
       <td>Duplicate same-point same-window</td>
-      <td class="metric-val better">Last-write-wins — overwritten in-place, no extra row</td>
+      <td class="metric-val better">Last-write-wins — overwrite in-place</td>
+      <td class="metric-val better">Last-write-wins — overwrite in-place</td>
       <td class="metric-val">N/A — no time window</td>
     </tr>
     <tr>
       <td>Flush time — max</td>
+      <td class="metric-val">
+        <span class="flush-bar" style="width:6px"></span>10 ms
+      </td>
       <td class="metric-val better">
         <span class="flush-bar" style="width:4px"></span>6 ms
       </td>
       <td class="metric-val worse">
-        <span class="flush-bar wide" style="width:44px"></span>73 ms
+        <span class="flush-bar wide" style="width:52px"></span>87 ms
       </td>
     </tr>
     <tr>
       <td>Flush time — avg</td>
+      <td class="metric-val">7 ms</td>
       <td class="metric-val better">4 ms</td>
-      <td class="metric-val worse">52 ms <small style="color:#dc2626">(13× slower)</small></td>
+      <td class="metric-val worse">64 ms <small style="color:#dc2626">(16× slower than norm-long)</small></td>
     </tr>
     <tr>
-      <td>Partition strategy</td>
-      <td>site / year / month / day</td>
-      <td>site / year / month / day</td>
+      <td>Gaps (COV signals)</td>
+      <td colspan="3" style="color:#64748b;font-size:0.82rem">
+        Not exercised — all signals published every sweep (COV=off).
+        Run with <code>--cov</code> for realistic gap distribution.
+        Forward-fill at query time via <code>LAST_VALUE IGNORE NULLS</code> — see DuckDB Queries below.
+      </td>
     </tr>
     <tr>
       <td>Unit isolation</td>
-      <td>point_name prefix filter</td>
-      <td><strong style="color:#7c3aed">unit_id filename prefix</strong> — <code>0215D1D8_*.parquet</code></td>
+      <td><code>WHERE unit_id = 'X'</code></td>
+      <td>LIKE on joined point_name</td>
+      <td><strong style="color:#7c3aed">filename prefix</strong> <code>0215D1D8_*.parquet</code></td>
     </tr>
   </tbody>
 </table>
 
 <div class="highlight">
-  Long+compound is <strong>55% smaller</strong> and <strong>13× faster to flush</strong> at 34 signals/unit with 6,000 rows/file.
-  <code>time_window_ms: 250</code> coalesced 408 per-sweep messages into <strong>600 distinct timestamps</strong>
-  (116× reduction) — one per 1 Hz tick — confirming correct burst coalescing.
-  If two measurements of the same point arrive within the window, <strong>last-write-wins</strong>:
-  the earlier row is overwritten in-place — no duplicate rows, no extra storage cost.
+  Normalized Long is the <strong>smallest schema</strong> (1,532 KB) — 5% under long+compound, 133% under wide —
+  while preserving all topic dimensions as individual queryable columns.
+  Both long schemas flush in single-digit ms; wide is 16× slower due to Arrow building one array per signal column.
+  <code>time_window_ms: 250</code> coalesces 408-message bursts to 600 distinct timestamps (116× reduction).
+  Duplicate points within a window are handled by <strong>last-write-wins</strong> — overwrite in-place, no extra rows.
 </div>
 <div class="highlight warn">
-  Wide flush slowdown is caused by Arrow allocating one array builder per signal column (38 here, scales with cardinality).
-  Each 60-second flush writes 12 files in sequence (one per unit partition); all 12 share the same flush timestamp.
-  Wide files are 2.2× larger per row than long+compound due to sparse column layout with many nulls.
+  Wide flush slowdown scales with signal count (38 columns here). Each flush writes 12 files sequentially (one per unit).
+  Wide rows are 2.3× larger than long schemas due to sparse nulls across signal columns.
+  Gaps from COV hardware or missed windows are filled at query time — writer stores only what hardware sent.
 </div>
 
 <h2>Schemas</h2>
