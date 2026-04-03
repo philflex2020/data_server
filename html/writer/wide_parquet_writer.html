@@ -38,6 +38,19 @@
 </head>
 <body>
 
+<div style="background:#0f172a;color:#e2e8f0;border-radius:8px;padding:18px 24px;margin-bottom:24px;font-size:0.85rem;line-height:1.7">
+  <div style="font-size:1rem;font-weight:700;color:#38bdf8;margin-bottom:10px">TL;DR — Benchmark Findings (2026-04-03)</div>
+  <ul style="margin:0;padding-left:18px;color:#cbd5e1">
+    <li><strong style="color:#4ade80">Normalized Long is the recommended schema</strong> — 8 columns (ts, unit_id, device_type, device, point_name, value, dtype_hint, site_id), smallest storage, best query ergonomics.</li>
+    <li><strong style="color:#4ade80">Wide (pivot) is 2–2.5× larger</strong> than long schemas and produces 116× more distinct timestamps — avoid for high-cardinality telemetry.</li>
+    <li><strong style="color:#4ade80">time_window_ms: 250</strong> coalesces all signals in a 50–200 ms burst into a single timestamp per sweep — long schemas: 600 distinct ts for 600 sweeps; wide: 70,017.</li>
+    <li><strong style="color:#4ade80">Different topics in the same window are always separate rows</strong> — last-write-wins dedup only fires when the exact same topic publishes twice within the window.</li>
+    <li><strong style="color:#4ade80">COV (change-on-value) cuts message volume ~8%</strong> with random-walk data; real hardware with stable signals will see larger reductions.</li>
+    <li><strong style="color:#4ade80">Forward-fill gaps at query time</strong> via DuckDB <code style="color:#7dd3fc">LAST_VALUE(value IGNORE NULLS) OVER (...)</code> — no writer changes needed; DuckDB is always in the query path.</li>
+    <li>Flush latency: norm-long avg 7 ms / max 10 ms · long+cmp avg 4 ms / max 6 ms · wide avg 64 ms / max 87 ms.</li>
+  </ul>
+</div>
+
 <h1>Parquet Schema Benchmark</h1>
 <div class="subtitle">Long+Compound vs Wide (pivot) — 244.8 k messages, 12 units, 34 signals, 600 s simulated @ 1 Hz</div>
 
