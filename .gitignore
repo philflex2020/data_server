@@ -23,6 +23,9 @@ source/telegraf_plugins/float_dedup/float_dedup
 manager/nats-data/
 aws/data_store/minio-data/
 
+# temp output dirs
+dist/
+
 # Temp / OS
 *.swp
 *.swo
