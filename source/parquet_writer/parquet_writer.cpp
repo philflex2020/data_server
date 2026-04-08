@@ -694,14 +694,47 @@ build_table(const std::vector<Row>& rows) {
 }
 
 // ---------------------------------------------------------------------------
+// Wide pivot merge — coalesce rows sharing the same ts into one dense row.
+// Called before build_table when compound_field_name is active so that all
+// signals arriving within a time window produce one row per timestamp instead
+// of one sparse row per signal.
+// ---------------------------------------------------------------------------
+static std::vector<Row> merge_wide_rows(const std::vector<Row>& rows) {
+    std::vector<int64_t> order;
+    std::unordered_map<int64_t, Row> by_ts;
+    for (const auto& r : rows) {
+        auto ts_it = r.ints.find("ts");
+        if (ts_it == r.ints.end()) continue;
+        int64_t ts = ts_it->second;
+        auto it = by_ts.find(ts);
+        if (it == by_ts.end()) {
+            by_ts[ts] = r;
+            order.push_back(ts);
+        } else {
+            for (const auto& [k, v] : r.floats)  it->second.floats[k]  = v;
+            for (const auto& [k, v] : r.ints)    it->second.ints[k]    = v;
+            for (const auto& [k, v] : r.strings) it->second.strings[k] = v;
+        }
+    }
+    std::vector<Row> merged;
+    merged.reserve(order.size());
+    for (auto ts : order) merged.push_back(std::move(by_ts[ts]));
+    return merged;
+}
+
+// ---------------------------------------------------------------------------
 // Parquet flush  (production path only)
 // ---------------------------------------------------------------------------
 
 arrow::Status flush_partition(const std::string& path,
                                const std::vector<Row>& rows,
-                               const std::string& compression) {
+                               const std::string& compression,
+                               bool merge_wide = false) {
     if (rows.empty()) return arrow::Status::OK();
-    ARROW_ASSIGN_OR_RAISE(auto table, build_table(rows));
+    std::vector<Row> merged;
+    const std::vector<Row>* rp = &rows;
+    if (merge_wide) { merged = merge_wide_rows(rows); rp = &merged; }
+    ARROW_ASSIGN_OR_RAISE(auto table, build_table(*rp));
     auto props = parquet::WriterProperties::Builder()
         .compression(to_parquet_compression(compression))
         ->build();
@@ -710,7 +743,7 @@ arrow::Status flush_partition(const std::string& path,
     ARROW_ASSIGN_OR_RAISE(auto out, arrow::io::FileOutputStream::Open(tmp));
     ARROW_RETURN_NOT_OK(parquet::arrow::WriteTable(
         *table, arrow::default_memory_pool(), out,
-        static_cast<int64_t>(rows.size()), props));
+        static_cast<int64_t>(rp->size()), props));
     ARROW_RETURN_NOT_OK(out->Close());
     std::error_code ec;
     fs::rename(tmp, path, ec);
@@ -1085,7 +1118,8 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
                 std::this_thread::sleep_for(
                     std::chrono::seconds(g_cfg->flush_retry_base_seconds << (attempt - 1)));
             }
-            status = flush_partition(path, part.rows, g_cfg->compression);
+            status = flush_partition(path, part.rows, g_cfg->compression,
+                                         !g_cfg->compound_field_name.empty());
             if (status.ok()) break;
             std::cerr << "[flush] attempt " << attempt + 1 << " failed: "
                       << status.ToString() << "\n" << std::flush;
@@ -1258,7 +1292,8 @@ static void replay_wal_files() {
             // instead log the suffix so operators can see which date the data belongs to.
             if (!collection_suffix.empty())
                 std::cout << "[wal] data timestamp: " << collection_suffix << "\n";
-            auto status = flush_partition(path, part_rows, g_cfg->compression);
+            auto status = flush_partition(path, part_rows, g_cfg->compression,
+                                              !g_cfg->compound_field_name.empty());
             if (status.ok()) {
                 std::cout << "[wal] flushed " << part_rows.size() << " replayed rows → " << path << "\n" << std::flush;
             } else {

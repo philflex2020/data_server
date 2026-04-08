@@ -39,15 +39,16 @@
 <body>
 
 <div style="background:#0f172a;color:#e2e8f0;border-radius:8px;padding:18px 24px;margin-bottom:24px;font-size:0.85rem;line-height:1.7">
-  <div style="font-size:1rem;font-weight:700;color:#38bdf8;margin-bottom:10px">TL;DR — Benchmark Findings (2026-04-03)</div>
+  <div style="font-size:1rem;font-weight:700;color:#38bdf8;margin-bottom:10px">TL;DR — Benchmark Findings (2026-04-07, updated)</div>
   <ul style="margin:0;padding-left:18px;color:#cbd5e1">
     <li><strong style="color:#4ade80">Normalized Long is the recommended schema</strong> — 8 columns (ts, unit_id, device_type, device, point_name, value, dtype_hint, site_id), smallest storage, best query ergonomics.</li>
-    <li><strong style="color:#4ade80">Wide (pivot) is 2–2.5× larger</strong> than long schemas and produces 116× more distinct timestamps — avoid for high-cardinality telemetry.</li>
-    <li><strong style="color:#4ade80">time_window_ms: 250</strong> coalesces all signals in a 50–200 ms burst into a single timestamp per sweep — long schemas: 600 distinct ts for 600 sweeps; wide: 70,017.</li>
-    <li><strong style="color:#4ade80">Different topics in the same window are always separate rows</strong> — last-write-wins dedup only fires when the exact same topic publishes twice within the window.</li>
+    <li><strong style="color:#4ade80">Wide (pivot) fixed: merge_wide_rows() added to writer</strong> — with <code style="color:#7dd3fc">time_window_ms: 250</code> + <code style="color:#7dd3fc">compound_field_name</code>, the writer now merges all signals from the same burst into <strong>one dense row per timestamp</strong> (100% fill, 0 nulls). Previously produced one sparse row per signal per burst.</li>
+    <li><strong style="color:#4ade80">Wide now produces 600 rows per unit for 600 sweeps</strong> (was 70,017 distinct timestamps before fix). Each row has all 37 signal columns filled.</li>
+    <li><strong style="color:#4ade80">Wide is still 2–3× larger than norm-long</strong> due to parquet column metadata overhead for 38 columns; bytes/row on disk is higher but all values are present.</li>
+    <li><strong style="color:#4ade80">time_window_ms: 250 required in wide config</strong> — coalesces all signals in a 50–200 ms burst to a single shared ts so merge_wide_rows() can group them. Without it, every signal keeps its unique per-message ts and merge produces no benefit.</li>
     <li><strong style="color:#4ade80">COV (change-on-value) cuts message volume ~8%</strong> with random-walk data; real hardware with stable signals will see larger reductions.</li>
     <li><strong style="color:#4ade80">Forward-fill gaps at query time</strong> via DuckDB <code style="color:#7dd3fc">LAST_VALUE(value IGNORE NULLS) OVER (...)</code> — no writer changes needed; DuckDB is always in the query path.</li>
-    <li>Flush latency: norm-long avg 7 ms / max 10 ms · long+cmp avg 4 ms / max 6 ms · wide avg 64 ms / max 87 ms.</li>
+    <li>Flush latency (20-sweep test): norm-long avg 6 ms · long+cmp avg 3 ms · wide avg 26 ms (was 64–87 ms before fix). Full 600-sweep results pending.</li>
   </ul>
 </div>
 
@@ -121,9 +122,15 @@ ORDER BY unit_id, ts;</pre>
 </div>
 
 <h2>Results</h2>
+<div style="background:#fef9c3;border:1px solid #ca8a04;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.82rem;color:#713f12">
+  <strong>Note (2026-04-07):</strong> Tables below are from the <strong>pre-fix</strong> run (2026-04-03) where wide pivot produced one sparse row per signal.
+  After adding <code>merge_wide_rows()</code> to the writer and <code>time_window_ms: 250</code> to the wide config,
+  wide now produces <strong>600 dense rows per unit</strong> (100% fill) for 600 sweeps.
+  Updated 600-sweep numbers will replace these tables when the benchmark completes.
+</div>
 <p style="font-size:0.78rem;color:#64748b;margin:0 0 12px">
   600 sweeps @ 1 Hz · monotonic burst jitter 50–200 ms/sweep ·
-  <code>time_window_ms: 250</code> on norm-long + long+cmp · <code>max_messages_per_part: 6000</code> · phil-dev 2026-04-03
+  <code>time_window_ms: 250</code> on norm-long + long+cmp · <code>max_messages_per_part: 6000</code> · phil-dev 2026-04-03 (pre-fix)
 </p>
 
 <h3 style="color:#0369a1;margin:0 0 8px">COV=off — all signals publish every sweep (244,800 msgs)</h3>
@@ -240,16 +247,17 @@ ORDER BY unit_id, ts;</pre>
 </table>
 
 <div class="highlight">
-  Normalized Long is the <strong>smallest schema</strong> in both runs — 5–9% under long+compound, 133–144% under wide —
+  Normalized Long is the <strong>smallest schema</strong> in both runs — 5–9% under long+compound, 133–144% under wide (pre-fix) —
   while preserving all topic dimensions as individual queryable columns.
-  Both long schemas flush in single-digit ms; wide is 9–16× slower (Arrow allocates one builder per signal column).
-  <code>time_window_ms: 250</code> coalesces 408-message bursts to 600 distinct timestamps (116× reduction).
+  Both long schemas flush in single-digit ms; wide is slower (Arrow allocates one builder per signal column).
+  <code>time_window_ms: 250</code> coalesces 408-message bursts to 600 distinct timestamps for long schemas.
   Duplicate points within a window: <strong>last-write-wins</strong> — overwrite in-place, no extra rows.
   Different topics in the same window are always stored as separate rows — only identical topics are deduplicated.
 </div>
 <div class="highlight warn">
+  <strong>Wide pivot fix (2026-04-07):</strong> <code>merge_wide_rows()</code> added to <code>parquet_writer.cpp</code> — at flush time, rows sharing the same coalesced <code>ts</code> are merged into one dense row (all signal columns filled).
+  Requires <code>time_window_ms: 250</code> in the wide config so signals in the same burst share a common <code>ts</code>.
   Wide flush slowdown scales with signal count (38 columns here). Each flush writes 12 files sequentially (one per unit).
-  Wide rows are 2.3× larger than long schemas due to sparse nulls across signal columns.
   COV gaps are filled at query time — writer stores only what hardware sent.
 </div>
 

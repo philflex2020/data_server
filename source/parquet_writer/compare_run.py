@@ -17,6 +17,8 @@ import pyarrow as pa
 parser = argparse.ArgumentParser()
 parser.add_argument("--cov", action="store_true",
                     help="Change-on-value: skip publishing unchanged signals")
+parser.add_argument("--sweeps", type=int, default=600,
+                    help="Number of sweeps to run (default 600)")
 args = parser.parse_args()
 
 WRITER         = "/home/phil/work/gen-ai/data_server/source/parquet_writer/parquet_writer"
@@ -54,10 +56,10 @@ INT_SIGNALS = [
     ("rack","rack_1","Rack_DoorOpen",        "integer"),
 ]
 ALL_SIGNALS  = FLOAT_SIGNALS + INT_SIGNALS
-SWEEPS       = 600
+SWEEPS       = args.sweeps
 SIGNALS_PS   = len(UNITS) * len(ALL_SIGNALS)
 TOTAL_MSGS   = SWEEPS * SIGNALS_PS
-SIM_DURATION = 600
+SIM_DURATION = SWEEPS
 
 # COV thresholds: floats publish only when value drifts >1% from last sent;
 # integers only when the value changes.
