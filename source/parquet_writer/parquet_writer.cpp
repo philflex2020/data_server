@@ -110,6 +110,10 @@ struct Config {
     // Each unique signal path becomes its own parquet column; all others are null per row.
     std::vector<std::string> compound_field_name {};
 
+    // drop_point_names: discard any message whose parsed point_name matches.
+    // Applied before compound field assembly — cheapest possible filter.
+    std::unordered_set<std::string> drop_point_names {};
+
     // drop_columns: erase these columns from every row before writing.
     // Applied after compound_point_name / compound_field_name.
     std::vector<std::string> drop_columns {};
@@ -213,6 +217,10 @@ Config load_config(const std::string& path) {
             if (auto cf = m["compound_field_name"]) {
                 cfg.compound_field_name.clear();
                 for (const auto& s : cf) cfg.compound_field_name.push_back(s.as<std::string>());
+            }
+            if (auto dp = m["drop_point_names"]) {
+                cfg.drop_point_names.clear();
+                for (const auto& s : dp) cfg.drop_point_names.insert(s.as<std::string>());
             }
             if (auto dc = m["drop_columns"]) {
                 cfg.drop_columns.clear();
@@ -1551,6 +1559,13 @@ static void process_message(const char* topic, const char* payload) {
     // in wide-pivot it is meaningless (each row has mixed-dtype signals).
     if (!info_opt->dtype_hint.empty() && g_cfg->compound_field_name.empty())
         row.strings["dtype_hint"] = info_opt->dtype_hint;
+
+    // drop_point_names: discard message before any further processing.
+    if (!g_cfg->drop_point_names.empty()) {
+        auto it = row.strings.find("point_name");
+        if (it != row.strings.end() && g_cfg->drop_point_names.count(it->second))
+            return;
+    }
 
     // compound_field_name: build wide-schema column name early (consuming segments),
     // then apply to the value column below after string-value rename.
