@@ -9,7 +9,7 @@ Options:
                 drifts >1% from last published; integers/booleans only on change.
                 Produces realistic gaps to exercise forward-fill queries.
 """
-import subprocess, time, os, sys, json, shutil, signal, random, argparse
+import subprocess, time, os, sys, json, shutil, signal, random, argparse, math
 import paho.mqtt.client as mqtt
 import pyarrow.parquet as pq
 import pyarrow as pa
@@ -203,6 +203,170 @@ def fmt_ts(unix_s):
     dt = datetime.datetime.utcfromtimestamp(unix_s)
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
+# ── Physics-based signal generator (calibrated from SBESS3 real site data) ───
+# SBESS3: utility-scale US BESS, 342S cells, 60 Hz grid
+# Cell V: 3.328–3.393 V, Temps: 20–29°C, SOC: 78–92% over 3 hr
+
+# Li-NMC OCV lookup: (soc_fraction, ocv_V_per_cell)
+_OCV_TABLE = [
+    (0.00, 3.000), (0.05, 3.100), (0.10, 3.200), (0.20, 3.280),
+    (0.30, 3.320), (0.40, 3.340), (0.50, 3.360), (0.60, 3.380),
+    (0.70, 3.400), (0.80, 3.420), (0.90, 3.440), (1.00, 3.500),
+]
+
+def _ocv(soc_frac):
+    """Interpolate OCV per cell from SOC fraction."""
+    for i in range(len(_OCV_TABLE) - 1):
+        s0, v0 = _OCV_TABLE[i]
+        s1, v1 = _OCV_TABLE[i + 1]
+        if s0 <= soc_frac <= s1:
+            t = (soc_frac - s0) / (s1 - s0)
+            return v0 + t * (v1 - v0)
+    return _OCV_TABLE[-1][1]
+
+class UnitPhysics:
+    """Per-unit physics state machine, 1s time steps.
+    Calibrated to SBESS3: 342S cells, 60 Hz US grid, SOC 78–92%."""
+
+    N_CELLS = 10   # cells modelled per unit (Batt1_Cell1..10)
+    N_TEMPS = 5    # temp sensors modelled (Batt1_Cell1..5_Temperature)
+    CAPACITY_AH = 200.0   # nominal pack capacity
+
+    def __init__(self, seed=None):
+        rng = random.Random(seed)
+        # SOC: start somewhere in 78–92% range, drift slowly
+        self.soc     = rng.uniform(0.78, 0.92)
+        # Charge/discharge: positive = discharging, sign flips on cycle
+        self._current_A   = rng.uniform(80.0, 120.0) * rng.choice([-1, 1])
+        self._cycle_timer = rng.uniform(0, 1800)   # seconds into current cycle
+        self._cycle_half  = rng.uniform(1200, 2400) # half-cycle length (s)
+
+        # Cell voltage spreads: each cell has a fixed small offset ±20mV
+        self._cell_dv = [rng.uniform(-0.020, 0.020) for _ in range(self.N_CELLS)]
+
+        # RC thermal model: τ=600s, ambient 20–25°C, initial temp 20–29°C
+        self._ambient  = rng.uniform(20.0, 25.0)
+        self._temps    = [rng.uniform(20.0, 29.0) for _ in range(self.N_TEMPS)]
+        self._tau      = 600.0
+
+        # Grid frequency: 60 Hz US, small random walk
+        self._freq     = rng.gauss(60.0, 0.01)
+
+        # Integer states: normal operation
+        self._contactor = 2    # closed
+        self._pcs_state = 3    # running
+        self._grid_conn = 1
+        self._fan_state = 1
+        self._balancing = 0
+
+        # Fault state (Poisson: λ≈0.1 events/day → p≈1.16e-6/s)
+        self._bms_fault = 0
+        self._bms_warn  = 0
+        self._pcs_fault = 0
+        self._alarm     = 0
+        self._door_open = 0
+        self._fault_timer = 0  # clears fault after ~30s
+
+        self._rng = rng
+
+    def step(self, dt=1.0):
+        rng = self._rng
+        # ── Charge/discharge cycle ───────────────────────────────────────────
+        self._cycle_timer += dt
+        if self._cycle_timer >= self._cycle_half:
+            self._cycle_timer = 0.0
+            self._cycle_half  = rng.uniform(1200, 2400)
+            self._current_A   = rng.uniform(80.0, 120.0) * (-1 if self._current_A > 0 else 1)
+
+        # SOC integrator: ΔQ = I × dt / 3600 / C
+        dsoc = -(self._current_A * dt) / (3600.0 * self.CAPACITY_AH)
+        self.soc = max(0.15, min(0.98, self.soc + dsoc + rng.gauss(0, 1e-5)))
+
+        # ── Cell voltages via OCV + cell spread + noise ──────────────────────
+        ocv = _ocv(self.soc)
+        ri  = 0.001   # internal resistance Ω per cell
+        v_drop = self._current_A * ri
+        self._cell_v = [
+            round(ocv - v_drop + self._cell_dv[i] + rng.gauss(0, 0.0005), 4)
+            for i in range(self.N_CELLS)
+        ]
+
+        # ── RC thermal: τ=600s, heat from I²R ───────────────────────────────
+        heat_rise = (self._current_A ** 2) * 0.0002   # °C/s per sensor
+        for i in range(self.N_TEMPS):
+            delta = (self._ambient + heat_rise - self._temps[i]) * dt / self._tau
+            self._temps[i] = round(self._temps[i] + delta + rng.gauss(0, 0.05), 3)
+
+        # ── Grid frequency: random walk ──────────────────────────────────────
+        self._freq = round(
+            max(59.80, min(60.20, self._freq + rng.gauss(0, 0.005))), 4)
+
+        # ── Rare fault events (Poisson ~0.1/day) ────────────────────────────
+        if self._fault_timer > 0:
+            self._fault_timer -= dt
+            if self._fault_timer <= 0:
+                self._bms_fault = self._bms_warn = self._pcs_fault = self._alarm = 0
+        elif rng.random() < 1.16e-4:   # ≈0.1/day at 1 Hz
+            self._bms_fault = rng.randint(1, 15)
+            self._bms_warn  = rng.randint(1, 7)
+            self._alarm     = 1
+            self._fault_timer = rng.uniform(20, 60)
+
+        # ── Rare door open event ─────────────────────────────────────────────
+        if self._door_open:
+            if rng.random() < 0.02:
+                self._door_open = 0
+        elif rng.random() < 5e-5:
+            self._door_open = 1
+
+    def get(self, device, instance, signame, dtype):
+        """Return physics-based value for the given signal."""
+        if dtype == "float":
+            # Cell voltages
+            if signame.startswith("Batt1_Cell") and signame.endswith("_Voltage"):
+                idx = int(signame.split("Cell")[1].split("_")[0]) - 1
+                return self._cell_v[idx % self.N_CELLS]
+            # Cell temperatures
+            if signame.startswith("Batt1_Cell") and signame.endswith("_Temperature"):
+                idx = int(signame.split("Cell")[1].split("_")[0]) - 1
+                return self._temps[idx % self.N_TEMPS]
+            if signame == "Pack_SOC":
+                return round(self.soc * 100.0, 3)
+            if signame == "Pack_SOH":
+                return round(self._rng.gauss(96.0, 0.05), 3)
+            if signame == "Pack_Current":
+                return round(self._current_A + self._rng.gauss(0, 0.5), 3)
+            if signame == "Pack_Voltage":
+                # 342 series cells
+                return round(sum(self._cell_v) * 34.2, 2)
+            if signame == "DCBusVoltage":
+                return round(sum(self._cell_v) * 34.2 + self._rng.gauss(0, 1.0), 2)
+            if signame == "GridFrequency":
+                return self._freq
+            if signame == "ActivePower":
+                return round(self._current_A * sum(self._cell_v) * 34.2 / 1000.0, 2)
+            if signame == "ReactivePower":
+                return round(self._rng.gauss(5.0, 2.0), 2)
+            if signame == "OutputCurrent":
+                return round(self._current_A + self._rng.gauss(0, 0.3), 3)
+            # fallback
+            return round(self._rng.uniform(0.0, 100.0), 4)
+        else:  # integer
+            if signame == "Pack_ContactorState":  return self._contactor
+            if signame == "Batt1_CellBalancing":  return self._balancing
+            if signame == "BMS_FaultCode":        return self._bms_fault
+            if signame == "BMS_WarningCode":      return self._bms_warn
+            if signame == "PCS_State":            return self._pcs_state
+            if signame == "PCS_FaultCode":        return self._pcs_fault
+            if signame == "GridConnected":        return self._grid_conn
+            if signame == "AlarmActive":          return self._alarm
+            if signame == "Rack_FanState":        return self._fan_state
+            if signame == "Rack_DoorOpen":        return self._door_open
+            return 0
+
+# One physics instance per unit — seeded by unit index for repeatability
+_physics = {unit: UnitPhysics(seed=i) for i, unit in enumerate(UNITS)}
+
 for sweep in range(SWEEPS):
     sweep_wall_start = time.time()
     sweep_base_ts = base_ts + sweep * 1.0   # simulated 1 Hz tick (monotonic)
@@ -212,10 +376,14 @@ for sweep in range(SWEEPS):
     burst_s = random.uniform(BURST_MIN_MS, BURST_MAX_MS) * 1e-3
     delays  = sorted(random.uniform(0, burst_s) for _ in range(N_MSGS))
 
+    # Advance physics state for each unit this sweep
+    for unit in UNITS:
+        _physics[unit].step(dt=1.0)
+
     msg_idx = 0
     for unit in UNITS:
         for (device, instance, signame, dtype) in ALL_SIGNALS:
-            val = round(random.uniform(0.0, 100.0), 4) if dtype == "float" else random.randint(0, 3)
+            val = _physics[unit].get(device, instance, signame, dtype)
 
             # Simulated ts = sweep base + intra-burst offset → monotonic, unique per msg
             msg_ts = sweep_base_ts + delays[msg_idx]
