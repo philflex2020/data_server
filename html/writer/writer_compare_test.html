@@ -1046,7 +1046,7 @@ async function loadParquet(path, size) {
       &nbsp;·&nbsp; ${sz} &nbsp;·&nbsp; ${total.toLocaleString()} rows total
       ${shown < total ? `<span style="color:var(--orange)"> (showing first ${shown})</span>` : ''}
       &nbsp;·&nbsp; ${schema.length} cols
-    </div><div style="overflow:auto"><table><thead><tr>`;
+    </div><div style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:4px"><table><thead><tr>`;
 
     schema.forEach(col => {
       html += `<th title="${col.type}">${col.name}<br><span style="font-size:.6rem;font-weight:400">${col.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></th>`;
