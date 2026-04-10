@@ -317,10 +317,21 @@ or paste <code>results.json</code> content directly.</p>
   <h3>Flush times (ms per flush)</h3>
   <div id="flush-charts" style="display:flex;gap:24px;flex-wrap:wrap;margin:10px 0"></div>
 
-  <h3>Wide schema columns</h3>
-  <div id="wide-schema" style="font-size:.75rem;font-family:monospace;color:var(--muted);
+  <h3>Wide schema columns <span id="wide-col-count" style="color:var(--muted);font-size:.75rem;font-weight:400"></span></h3>
+  <p style="font-size:.75rem;color:var(--muted);margin:0 0 6px">Click a column to see sample values from the parquet files.</p>
+  <div id="wide-schema" style="font-size:.75rem;font-family:monospace;
        background:var(--code-bg);border:1px solid var(--border);border-radius:4px;
-       padding:10px;line-height:1.7;max-height:200px;overflow-y:auto"></div>
+       padding:10px;line-height:1.9;max-height:260px;overflow-y:auto"></div>
+  <div id="col-preview" style="display:none;margin-top:8px;background:var(--code-bg);
+       border:1px solid var(--border);border-radius:4px;padding:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span id="col-preview-name" style="font-size:.8rem;color:var(--teal);font-family:monospace"></span>
+      <span id="col-preview-type" style="font-size:.7rem;color:var(--muted)"></span>
+    </div>
+    <div id="col-preview-stats" style="font-size:.75rem;color:var(--muted);margin-bottom:6px"></div>
+    <div id="col-preview-values" style="font-size:.73rem;font-family:monospace;
+         display:flex;flex-wrap:wrap;gap:4px"></div>
+  </div>
 
 </div>
 
@@ -509,13 +520,120 @@ function renderResults(d) {
     fc.appendChild(div);
   });
 
-  // wide schema
-  const ws = document.getElementById('wide-schema');
-  const wcols = (wp.schema||[]).filter(c=>!['ts','dtype_hint','unit_id','site'].includes(c.name));
-  ws.innerHTML = wcols.length
-    ? wcols.map(c=>`<span style="color:var(--teal)">${c.name}</span>  `+
-        `<span style="color:var(--muted);font-size:.7rem">${c.type}</span>`).join('<br>')
-    : '<span style="color:var(--muted)">no results loaded</span>';
+  // wide schema — clickable columns
+  const ws     = document.getElementById('wide-schema');
+  const allcols = wp.schema || [];
+  const meta   = ['ts','unit_id','site'];
+  const wcols  = allcols.filter(c => !meta.includes(c.name));
+  document.getElementById('wide-col-count').textContent =
+    `— ${wcols.length} signal columns, ${meta.length} meta columns`;
+
+  if (!wcols.length) {
+    ws.innerHTML = '<span style="color:var(--muted)">no results loaded</span>';
+  } else {
+    // group: meta first, then signals
+    const metaCols = allcols.filter(c => meta.includes(c.name));
+    ws.innerHTML =
+      metaCols.map(c =>
+        `<span style="color:var(--muted);cursor:default" title="${c.type}">${c.name}</span>`+
+        `<span style="color:var(--border);font-size:.65rem"> ${c.type}</span>  `
+      ).join('') + '<br>' +
+      wcols.map(c =>
+        `<span class="col-chip" onclick="previewCol('${c.name}','${c.type}')"
+          title="${c.type}" style="cursor:pointer;color:var(--teal);
+          border-bottom:1px dashed var(--teal);margin-right:6px">${c.name}</span>`
+      ).join('');
+  }
+}
+
+// store last loaded results for column preview
+let _lastResults = null;
+const _origRender = renderResults;
+// patch renderResults to cache data
+function renderResults(d) {
+  _lastResults = d;
+  _origRender(d);
+}
+
+function previewCol(name, type) {
+  const pv  = document.getElementById('col-preview');
+  const pvn = document.getElementById('col-preview-name');
+  const pvt = document.getElementById('col-preview-type');
+  const pvs = document.getElementById('col-preview-stats');
+  const pvv = document.getElementById('col-preview-values');
+
+  // toggle closed if same col clicked again
+  if (pvn.textContent === name && pv.style.display !== 'none') {
+    pv.style.display = 'none'; return;
+  }
+
+  pvn.textContent = name;
+  pvt.textContent = type;
+  pvv.innerHTML   = '<span style="color:var(--muted)">loading…</span>';
+  pvs.textContent = '';
+  pv.style.display = 'block';
+
+  // fetch the sample data file for this column
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  const base = `http://${host}:${port}`;
+
+  // Try to load column sample from results.json samples section
+  const d  = _lastResults;
+  const wp = d?.wide_pivot || {};
+
+  // Look for per-column samples embedded in results
+  if (wp.samples && wp.samples[name] !== undefined) {
+    showColPreview(name, type, wp.samples[name]);
+    return;
+  }
+
+  // Fall back: fetch column_samples.json if present
+  fetch(`${base}/column_samples.json`)
+    .then(r => r.ok ? r.json() : null)
+    .then(s => {
+      if (s && s[name]) {
+        showColPreview(name, type, s[name]);
+      } else {
+        // show schema info only
+        pvs.textContent = 'Sample data not available — re-run with compare_run.py to generate column_samples.json';
+        pvv.innerHTML = '';
+      }
+    })
+    .catch(() => {
+      pvs.textContent = 'column_samples.json not found on server';
+      pvv.innerHTML = '';
+    });
+}
+
+function showColPreview(name, type, vals) {
+  const pvs = document.getElementById('col-preview-stats');
+  const pvv = document.getElementById('col-preview-values');
+  if (!vals || !vals.length) { pvs.textContent = 'no data'; return; }
+
+  const nums = vals.filter(v => v !== null && v !== undefined && !isNaN(+v)).map(Number);
+  if (nums.length) {
+    const mn  = Math.min(...nums), mx = Math.max(...nums);
+    const avg = nums.reduce((a,b)=>a+b,0)/nums.length;
+    pvs.innerHTML =
+      `<span style="color:var(--muted)">n=${vals.length} &nbsp;`+
+      `min=<span style="color:var(--green)">${mn.toFixed(3)}</span> &nbsp;`+
+      `max=<span style="color:var(--orange)">${mx.toFixed(3)}</span> &nbsp;`+
+      `avg=<span style="color:var(--teal)">${avg.toFixed(3)}</span></span>`;
+    // mini bar chart
+    pvv.innerHTML = nums.slice(0,60).map(v => {
+      const h = Math.max(2, Math.round((v-mn)/(mx-mn||1)*28));
+      return `<div title="${v.toFixed(4)}" style="display:inline-block;width:6px;height:${h}px;
+              background:var(--teal);border-radius:1px;vertical-align:bottom"></div>`;
+    }).join('');
+  } else {
+    // string column
+    const uniq = [...new Set(vals.map(String))].slice(0,20);
+    pvs.textContent = `${vals.length} values, ${uniq.length} unique shown`;
+    pvv.innerHTML = uniq.map(v =>
+      `<span style="background:var(--border);border-radius:3px;padding:1px 5px;color:var(--text)">${v}</span>`
+    ).join('');
+  }
 }
 
 function kb(v)  { return v ? Math.round(v/1024).toLocaleString()+' KB' : '—'; }

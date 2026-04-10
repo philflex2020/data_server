@@ -362,3 +362,29 @@ os.makedirs(os.path.dirname(RESULTS_FILE), exist_ok=True)
 with open(RESULTS_FILE, "w") as fh:
     _json.dump(result, fh, indent=2)
 print(f"\n  Results saved to {RESULTS_FILE}")
+
+# ── column_samples.json — sample values for each wide column ─────────────────
+try:
+    import glob as _glob
+    wide_dir = os.path.join(OUTDIR, "bench-wide")
+    pq_files = _glob.glob(os.path.join(wide_dir, "**", "*.parquet"), recursive=True)
+    if pq_files:
+        import pyarrow.parquet as _pq
+        # read first file only for samples
+        tbl = _pq.read_table(pq_files[0])
+        meta_cols = {"ts", "unit_id", "site", "dtype_hint"}
+        samples = {}
+        for col in tbl.schema:
+            if col.name in meta_cols:
+                continue
+            arr = tbl.column(col.name).drop_null()
+            vals = arr[:80].to_pylist()
+            samples[col.name] = [round(v, 6) if isinstance(v, float) else v for v in vals]
+        samples_file = os.path.join(OUTDIR, "column_samples.json")
+        with open(samples_file, "w") as fh:
+            _json.dump(samples, fh)
+        print(f"  Column samples saved to {samples_file} ({len(samples)} columns)")
+    else:
+        print("  No wide parquet files found for column samples")
+except Exception as e:
+    print(f"  WARNING: could not generate column_samples.json: {e}")
