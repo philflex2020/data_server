@@ -123,6 +123,17 @@ code { padding:1px 5px; font-size:.82rem; }
 <h1>Writer Schema Comparison Test</h1>
 <p class="subtitle">Benchmarks three parquet layout strategies against the same MQTT stream — norm-long, long+compound, wide-pivot (coalesced)</p>
 
+<!-- ── COALESCING NOTE ── -->
+<div style="background:var(--code-bg);border-left:3px solid var(--teal);border-radius:4px;
+     padding:12px 16px;margin-bottom:20px;font-size:.82rem;line-height:1.6">
+  <strong style="color:var(--teal)">Time coalescing</strong> — an optional wide-pivot feature
+  controlled by <code>time_window_ms</code> in the writer config. When enabled, all MQTT messages
+  arriving within the same time window (e.g. 250 ms) are assigned an identical normalised timestamp
+  and then merged into a single row, one column per signal. The result is one dense row per sweep
+  rather than one sparse row per message. Without coalescing each message produces its own row with
+  all other signal columns null. Set <code>time_window_ms: 0</code> to disable.
+</div>
+
 <!-- ── TOPOLOGY ── -->
 <h2>Test Topology</h2>
 <div class="card-row">
@@ -200,9 +211,13 @@ coalesces each burst into one row — target ~1 row/sweep/unit.</p>
 </div>
 
 <!-- ── SETUP ── -->
-<h2>Setup on Target Machine (.34)</h2>
-
-<div class="steps">
+<details style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+  <summary style="padding:10px 14px;cursor:pointer;font-size:1rem;font-weight:600;
+    background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+    <span class="det-arrow" style="font-size:.8rem">▸</span> Setup on Target Machine (.34)
+  </summary>
+  <div style="padding:14px 16px">
+  <div class="steps">
   <div class="step">
     <div class="step-num">1</div>
     <div class="step-body">
@@ -252,12 +267,19 @@ journalctl -u writer-compare-test -f</pre>
 ls  /mnt/tort-sdi/bench/wide/</pre>
     </div>
   </div>
-</div>
+  </div>
+  </div>
+</details>
 
 <!-- ── MANUAL RUN ── -->
-<h2>Run Without systemctl</h2>
-<p>For a quick ad-hoc run with custom options:</p>
-<pre>
+<details style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+  <summary style="padding:10px 14px;cursor:pointer;font-size:1rem;font-weight:600;
+    background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+    <span class="det-arrow" style="font-size:.8rem">▸</span> Run Without systemctl
+  </summary>
+  <div style="padding:14px 16px">
+  <p>For a quick ad-hoc run with custom options:</p>
+  <pre>
 <span class="cm"># standard 600-sweep run</span>
 bash scripts/writer_compare_test.sh
 
@@ -270,11 +292,12 @@ bash scripts/writer_compare_test.sh --sweeps 60
 <span class="cm"># explicit output dir (e.g. secondary tort drive)</span>
 bash scripts/writer_compare_test.sh --outdir /mnt/tort-sdf/bench
 </pre>
-
-<p>Script auto-detects the repo root, resolves the writer binary, installs Python deps into
-<code>.venv</code>, starts FlashMQ if needed, generates all three YAML configs, runs
-<code>compare_run.py</code>, and writes <code>results.json</code> + <code>status.json</code>
-to the output dir.</p>
+  <p>Script auto-detects the repo root, resolves the writer binary, installs Python deps into
+  <code>.venv</code>, starts FlashMQ if needed, generates all three YAML configs, runs
+  <code>compare_run.py</code>, and writes <code>results.json</code> + <code>status.json</code>
+  to the output dir.</p>
+  </div>
+</details>
 
 <!-- ── RESULTS VIEWER ── -->
 <h2>Results Viewer</h2>
@@ -307,46 +330,6 @@ or paste <code>results.json</code> content directly.</p>
          margin:6px 0;resize:vertical"
   oninput="tryLoadPasted()"></textarea>
 
-<!-- ── FILE BROWSER ── -->
-<h2>File Browser</h2>
-<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-  <button class="btn primary" onclick="loadDir('')" style="font-size:.75rem">⟳ Refresh</button>
-  <span id="fb-path" style="font-size:.75rem;color:var(--teal);font-family:monospace">/</span>
-</div>
-<div style="display:flex;gap:12px;min-height:320px">
-
-  <!-- tree panel -->
-  <div id="fb-tree" style="width:280px;flex-shrink:0;background:var(--code-bg);
-       border:1px solid var(--border);border-radius:4px;overflow-y:auto;
-       font-size:.75rem;font-family:monospace"></div>
-
-  <!-- data panel -->
-  <div id="fb-data" style="flex:1;background:var(--code-bg);border:1px solid var(--border);
-       border-radius:4px;overflow:auto;font-size:.72rem;font-family:monospace;padding:10px;
-       color:var(--muted)">Click a .parquet file to view its contents.</div>
-</div>
-
-<style>
-.fb-row { display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;
-          border-bottom:1px solid transparent; }
-.fb-row:hover { background:rgba(255,255,255,.05); }
-.fb-row.selected { background:rgba(100,180,255,.1);border-left:2px solid var(--teal); }
-.fb-dir  { color:var(--muted); }
-.fb-file { color:var(--text); }
-.fb-file.parquet { color:var(--teal); }
-.fb-size { margin-left:auto;color:var(--muted);font-size:.65rem; }
-.fb-indent { display:inline-block; }
-
-/* parquet data table */
-#fb-data table { border-collapse:collapse;width:100%; }
-#fb-data th { position:sticky;top:0;background:var(--code-bg);color:var(--muted);
-              font-size:.68rem;text-align:left;padding:3px 8px;
-              border-bottom:1px solid var(--border);white-space:nowrap; }
-#fb-data td { padding:2px 8px;border-bottom:1px solid rgba(255,255,255,.04);
-              white-space:nowrap;color:var(--text); }
-#fb-data tr:hover td { background:rgba(255,255,255,.03); }
-</style>
-
 <div id="results-section" style="display:none">
 
   <h3>Summary</h3>
@@ -376,15 +359,43 @@ or paste <code>results.json</code> content directly.</p>
   <h3>Flush times (ms per flush)</h3>
   <div id="flush-charts" style="display:flex;gap:24px;flex-wrap:wrap;margin:10px 0"></div>
 
-  <h3>Wide schema columns <span id="wide-col-count" style="color:var(--muted);font-size:.75rem;font-weight:400"></span></h3>
-  <p style="font-size:.75rem;color:var(--muted);margin:0 0 4px">Hover a column to see sample values.</p>
-  <p id="wide-ts-range" style="font-size:.72rem;font-family:monospace;color:var(--teal);margin:0 0 8px;display:none">
-    <span style="color:var(--muted)">first:</span> <span id="wide-first-ts">—</span>
-    &nbsp;&nbsp;<span style="color:var(--muted)">last:</span> <span id="wide-last-ts">—</span>
-  </p>
-  <div id="wide-schema" style="background:var(--code-bg);border:1px solid var(--border);
-       border-radius:4px;padding:10px 14px;columns:2;column-gap:24px;
-       font-size:.75rem;font-family:monospace"></div>
+  <details style="margin-top:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:.85rem;font-weight:600;
+      background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+      <span class="det-arrow" style="font-size:.8rem">▸</span>
+      norm-long schema <span id="nl-col-count" style="font-size:.72rem;font-weight:400;color:var(--muted)"></span>
+    </summary>
+    <div style="padding:10px 14px;background:var(--code-bg)">
+      <div id="nl-schema" style="font-size:.75rem;font-family:monospace;columns:2;column-gap:24px"></div>
+    </div>
+  </details>
+
+  <details style="margin-top:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:.85rem;font-weight:600;
+      background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+      <span class="det-arrow" style="font-size:.8rem">▸</span>
+      long+cmp schema <span id="lc-col-count" style="font-size:.72rem;font-weight:400;color:var(--muted)"></span>
+    </summary>
+    <div style="padding:10px 14px;background:var(--code-bg)">
+      <div id="lc-schema" style="font-size:.75rem;font-family:monospace;columns:2;column-gap:24px"></div>
+    </div>
+  </details>
+
+  <details style="margin-top:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:.85rem;font-weight:600;
+      background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+      <span class="det-arrow" style="font-size:.8rem">▸</span>
+      wide-pivot schema <span id="wide-col-count" style="font-size:.72rem;font-weight:400;color:var(--muted)"></span>
+    </summary>
+    <div style="padding:10px 14px;background:var(--code-bg)">
+      <p style="font-size:.75rem;color:var(--muted);margin:0 0 4px">Hover a column to see sample values.</p>
+      <p id="wide-ts-range" style="font-size:.72rem;font-family:monospace;color:var(--teal);margin:0 0 8px;display:none">
+        <span style="color:var(--muted)">first row ts:</span> <span id="wide-first-ts">—</span>
+        &nbsp;&nbsp;<span style="color:var(--muted)">last row ts:</span> <span id="wide-last-ts">—</span>
+      </p>
+      <div id="wide-schema" style="font-size:.75rem;font-family:monospace;columns:2;column-gap:24px"></div>
+    </div>
+  </details>
 
   <style>
   .col-row { display:flex; align-items:baseline; gap:6px; padding:2px 0;
@@ -429,32 +440,22 @@ or paste <code>results.json</code> content directly.</p>
   <tbody id="est-body"></tbody>
 </table>
 
-<h3 style="margin-top:20px">AWS S3 Storage Cost
-  <span style="font-size:.72rem;font-weight:400;color:var(--muted)">— us-east-1 pricing</span>
-</h3>
-<div id="s3-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px"></div>
-<p style="font-size:.7rem;color:var(--muted)">
-  S3 Standard $0.023/GB·mo &nbsp;·&nbsp; S3-IA $0.0125/GB·mo &nbsp;·&nbsp;
-  Glacier Instant $0.004/GB·mo &nbsp;·&nbsp; Prices excl. PUT/GET requests
-</p>
-
-<h3 style="margin-top:16px">CPU Usage &amp; EC2 Cost Estimate
+<h3 style="margin-top:16px">CPU Usage
   <span style="font-size:.72rem;font-weight:400;color:var(--muted)">— per writer process</span>
 </h3>
 <div id="cpu-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px"></div>
-<table class="cmp-table" id="cpu-table">
-  <thead><tr><th>Instance</th><th>vCPU</th><th>RAM</th><th>$/hr</th><th>$/mo</th><th>Fits writers</th></tr></thead>
-  <tbody id="cpu-body"></tbody>
-</table>
-<p style="font-size:.7rem;color:var(--muted);margin-top:4px">
-  On-demand Linux us-east-1. CPU% shown is per-core (100% = 1 full core).
-  Writers are single-threaded — one core each.
-</p>
 </div><!-- end estimates-section -->
 
-<!-- ── RUN THE TEST ── -->
-<h2>Run the Test</h2>
-<div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin-bottom:16px">
+<hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+
+<!-- ── HOW TO RUN THE TEST ── -->
+<details style="margin-bottom:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+  <summary style="padding:10px 14px;cursor:pointer;font-size:1rem;font-weight:600;
+    background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;
+    user-select:none">
+    <span class="det-arrow" style="font-size:.8rem">▸</span> How to Run the Test
+  </summary>
+  <div style="padding:14px 16px;background:var(--code-bg)">
   <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
     <label style="font-size:.8rem;color:var(--muted)">Host
       <input id="run-host" type="text" value="192.168.86.34"
@@ -481,7 +482,8 @@ or paste <code>results.json</code> content directly.</p>
     To follow live: <code style="color:var(--text)">journalctl -u writer-compare-test -f</code>
     &nbsp;·&nbsp; Results auto-update each run — just hit Fetch again above.
   </div>
-</div>
+  </div>
+</details>
 
 <!-- ── WHAT TO LOOK FOR ── -->
 <h2>What to Look For</h2>
@@ -507,6 +509,46 @@ or paste <code>results.json</code> content directly.</p>
   status.json                                        <span class="cm"># pass/fail + timestamps</span>
 /data/logs/YYYY/MM/DD/writer_compare_test.log       <span class="cm"># full run log</span>
 </pre>
+
+<!-- ── FILE BROWSER ── -->
+<h2>File Browser</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+  <button class="btn primary" onclick="loadDir('')" style="font-size:.75rem">⟳ Refresh</button>
+  <span id="fb-path" style="font-size:.75rem;color:var(--teal);font-family:monospace">/</span>
+</div>
+<div style="display:flex;gap:12px;min-height:320px">
+
+  <!-- tree panel -->
+  <div id="fb-tree" style="width:280px;flex-shrink:0;background:var(--code-bg);
+       border:1px solid var(--border);border-radius:4px;overflow-y:auto;
+       font-size:.75rem;font-family:monospace"></div>
+
+  <!-- data panel -->
+  <div id="fb-data" style="flex:1;background:var(--code-bg);border:1px solid var(--border);
+       border-radius:4px;overflow:auto;font-size:.72rem;font-family:monospace;padding:10px;
+       color:var(--muted)">Click a .parquet file to view its contents.</div>
+</div>
+
+<style>
+.fb-row { display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;
+          border-bottom:1px solid transparent; }
+.fb-row:hover { background:rgba(255,255,255,.05); }
+.fb-row.selected { background:rgba(100,180,255,.1);border-left:2px solid var(--teal); }
+.fb-dir  { color:var(--muted); }
+.fb-file { color:var(--text); }
+.fb-file.parquet { color:var(--teal); }
+.fb-size { margin-left:auto;color:var(--muted);font-size:.65rem; }
+.fb-indent { display:inline-block; }
+
+/* parquet data table */
+#fb-data table { border-collapse:collapse;width:100%; }
+#fb-data th { position:sticky;top:0;background:var(--code-bg);color:var(--muted);
+              font-size:.68rem;text-align:left;padding:3px 8px;
+              border-bottom:1px solid var(--border);white-space:nowrap; }
+#fb-data td { padding:2px 8px;border-bottom:1px solid rgba(255,255,255,.04);
+              white-space:nowrap;color:var(--text); }
+#fb-data tr:hover td { background:rgba(255,255,255,.03); }
+</style>
 
 <script>
 async function fetchResults() {
@@ -589,8 +631,10 @@ function tryLoadPasted() {
 function renderResults(d) {
   _lastResults = d;
   document.getElementById('results-section').style.display = 'block';
-  document.getElementById('estimates-section').style.display = 'block';
-  setTimeout(updateEstimates, 0);
+  if (new URLSearchParams(location.search).get('show') === 'estimates') {
+    document.getElementById('estimates-section').style.display = 'block';
+    setTimeout(updateEstimates, 0);
+  }
 
   const topo = d.topology || {};
   document.getElementById('summary-cards').innerHTML = `
@@ -635,11 +679,28 @@ function renderResults(d) {
     fc.appendChild(div);
   });
 
-  // wide schema — hover tooltip list
+  // norm-long schema
+  const nlcols = (d.norm_long?.schema || []);
+  document.getElementById('nl-col-count').textContent = nlcols.length ? `— ${nlcols.length} cols` : '';
+  document.getElementById('nl-schema').innerHTML = nlcols.length
+    ? nlcols.map(c => `<div class="col-row"><span class="col-name" title="${c.name}">${c.name}</span>
+        <span class="col-type">${c.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></div>`).join('')
+    : '<span style="color:var(--muted)">no data</span>';
+
+  // long+cmp schema
+  const lccols = (d.long_cmp?.schema || []);
+  document.getElementById('lc-col-count').textContent = lccols.length ? `— ${lccols.length} cols` : '';
+  document.getElementById('lc-schema').innerHTML = lccols.length
+    ? lccols.map(c => `<div class="col-row"><span class="col-name" title="${c.name}">${c.name}</span>
+        <span class="col-type">${c.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></div>`).join('')
+    : '<span style="color:var(--muted)">no data</span>';
+
+  // wide-pivot schema — hover tooltip list
   const ws      = document.getElementById('wide-schema');
   const allcols = wp.schema || [];
   const META    = new Set(['ts','unit_id','site']);
-  const sigcols = allcols.filter(c => !META.has(c.name));
+  const SUPPRESS = new Set(['dtype_hint']);
+  const sigcols = allcols.filter(c => !META.has(c.name) && !SUPPRESS.has(c.name));
   const metacols= allcols.filter(c =>  META.has(c.name));
   document.getElementById('wide-col-count').textContent =
     `— ${sigcols.length} signal cols + ${metacols.length} meta`;
@@ -838,37 +899,10 @@ function updateEstimates() {
   addE('Data / year',  gb24.map(g=>g*365), v => gbFmt(v));
   addE('Rows / 24 hr', rows24, v => v.toLocaleString());
 
-  // S3 pricing  ($/GB/month)
-  const S3 = {Standard:0.023, 'S3-IA':0.0125, 'Glacier':0.004};
-  const sc = document.getElementById('s3-cards'); sc.innerHTML = '';
-  Object.entries(S3).forEach(([tier, pricePerGBmo]) => {
-    const costs = gb24.map(g => g * 30 * pricePerGBmo);   // monthly cost
-    const best  = costs.indexOf(Math.min(...costs));
-    sc.innerHTML += `<div style="background:var(--code-bg);border:1px solid var(--border);
-      border-radius:6px;padding:10px 14px;min-width:200px">
-      <div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">${tier} · $${pricePerGBmo}/GB·mo</div>
-      ${KEYS.map((k,i) =>
-        `<div style="display:flex;justify-content:space-between;font-size:.8rem;
-          ${i===best?'color:var(--green)':'color:var(--text)'}">
-          <span>${LABELS[i]}</span>
-          <span>$${(costs[i]).toFixed(4)}/mo · $${(costs[i]*12).toFixed(2)}/yr</span>
-        </div>`).join('')}
-    </div>`;
-  });
-
   // CPU
   renderCPU(d, unitScale, srcUnits);
 }
 
-const EC2 = [
-  {name:'t3.micro',  vcpu:2,  ram:'1 GB',  usd:0.0104},
-  {name:'t3.small',  vcpu:2,  ram:'2 GB',  usd:0.0208},
-  {name:'t3.medium', vcpu:2,  ram:'4 GB',  usd:0.0416},
-  {name:'t3.large',  vcpu:2,  ram:'8 GB',  usd:0.0832},
-  {name:'c5.large',  vcpu:2,  ram:'4 GB',  usd:0.085},
-  {name:'c5.xlarge', vcpu:4,  ram:'8 GB',  usd:0.170},
-  {name:'c5.2xlarge',vcpu:8,  ram:'16 GB', usd:0.340},
-];
 
 function renderCPU(d, unitScale, srcUnits) {
   const KEYS   = ['norm_long','long_cmp','wide_pivot'];
@@ -900,28 +934,6 @@ function renderCPU(d, unitScale, srcUnits) {
     </div>`;
   }).join('');
 
-  // for each writer, how many fit on each instance?
-  const writerCores = cpus.map(c => (c.avg_pct ?? 0) / 100);  // fraction of 1 core
-  // scale to unitScale writers (one writer per N src-units worth)
-  const writerCount = Math.ceil(unitScale / srcUnits);
-
-  const tb = document.getElementById('cpu-body'); tb.innerHTML = '';
-  EC2.forEach(inst => {
-    const totalCores = inst.vcpu;
-    // max writers that fit (CPU-bound): floor(totalCores / max_writer_core_fraction)
-    const fits = writerCores.map(wc => wc > 0 ? Math.floor(totalCores / wc) : '∞');
-    const needed = writerCores.map(wc => wc > 0 ? Math.ceil(writerCount * wc / totalCores) : 1);
-    const instNeeded = Math.max(...needed.filter(n=>isFinite(n)));
-    const moCost = inst.usd * 24 * 30 * instNeeded;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="metric">${inst.name}</td>
-      <td>${inst.vcpu}</td><td>${inst.ram}</td>
-      <td>$${inst.usd}</td><td>$${(inst.usd*24*30).toFixed(0)}</td>
-      <td style="font-size:.72rem">${LABELS.map((l,i)=>
-        `<span style="color:${writerCount<=fits[i]?'var(--green)':'var(--muted)'}">${l}: ${fits[i]} writers</span>`
-      ).join(' · ')}</td>`;
-    tb.appendChild(tr);
-  });
 }
 
 // ── file browser ─────────────────────────────────────────────────────────────
@@ -966,10 +978,10 @@ function renderDir(path, entries, depth) {
     row.dataset.parent = path;
     row.dataset.type   = e.type;
 
-    const indent = '  '.repeat(depth);
-    const icon   = e.type==='dir' ? (_fbExpanded.has(e.path) ? '▾ ' : '▸ ') : '  ';
-    const size   = e.size != null ? fmtSize(e.size) : '';
-    row.innerHTML = `<span class="fb-indent">${indent}${icon}</span>
+    const icon = e.type==='dir' ? (_fbExpanded.has(e.path) ? '▾' : '▸') : '·';
+    const size = e.size != null ? fmtSize(e.size) : '';
+    row.style.paddingLeft = (depth * 14 + 6) + 'px';
+    row.innerHTML = `<span class="fb-indent" style="margin-right:5px">${icon}</span>
       <span>${e.name}</span>
       <span class="fb-size">${size}</span>`;
 
@@ -981,6 +993,14 @@ function renderDir(path, entries, depth) {
     if (after) after.insertAdjacentElement('afterend', row);
     else tree.appendChild(row);
   });
+
+  // auto-expand if there is exactly one subdirectory
+  const dirs = entries.filter(e => e.type === 'dir');
+  if (dirs.length === 1) {
+    const onlyDir = dirs[0];
+    const rowEl = document.querySelector(`[data-path="${CSS.escape(onlyDir.path)}"]`);
+    if (rowEl) toggleDir(onlyDir.path, depth + 1, rowEl);
+  }
 }
 
 async function toggleDir(path, depth, rowEl) {
@@ -990,10 +1010,10 @@ async function toggleDir(path, depth, rowEl) {
     document.querySelectorAll(`[data-parent]`).forEach(el => {
       if (isDescendant(el.dataset.parent, path)) el.remove();
     });
-    rowEl.querySelector('.fb-indent').textContent = '  '.repeat(depth-1) + '▸ ';
+    rowEl.querySelector('.fb-indent').textContent = '▸';
   } else {
     _fbExpanded.add(path);
-    rowEl.querySelector('.fb-indent').textContent = '  '.repeat(depth-1) + '▾ ';
+    rowEl.querySelector('.fb-indent').textContent = '▾';
     await loadDir(path, depth);
   }
 }
@@ -1018,21 +1038,23 @@ async function loadParquet(path, size) {
     const d = await r.json();
     if (d.error) { panel.innerHTML = `<span style="color:var(--orange)">${d.error}</span>`; return; }
 
+    const HIDE_COLS = new Set(['dtype_hint']);
+    const schema = d.schema.filter(c => !HIDE_COLS.has(c.name));
     const shown = d.shown, total = d.total_rows, sz = fmtSize(d.size_bytes);
     let html = `<div style="margin-bottom:6px;color:var(--muted)">
       <span style="color:var(--teal)">${path.split('/').pop()}</span>
       &nbsp;·&nbsp; ${sz} &nbsp;·&nbsp; ${total.toLocaleString()} rows total
       ${shown < total ? `<span style="color:var(--orange)"> (showing first ${shown})</span>` : ''}
-      &nbsp;·&nbsp; ${d.schema.length} cols
+      &nbsp;·&nbsp; ${schema.length} cols
     </div><div style="overflow:auto"><table><thead><tr>`;
 
-    d.schema.forEach(col => {
+    schema.forEach(col => {
       html += `<th title="${col.type}">${col.name}<br><span style="font-size:.6rem;font-weight:400">${col.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></th>`;
     });
     html += '</tr></thead><tbody>';
     d.rows.forEach(row => {
       html += '<tr>';
-      d.schema.forEach(col => {
+      schema.forEach(col => {
         const v = row[col.name];
         const disp = v == null ? '<span style="color:var(--border)">null</span>'
                    : String(v).length > 28 ? String(v).slice(0,26)+'…' : String(v);
@@ -1185,7 +1207,19 @@ function updateRunCmd() {
   document.getElementById(id)?.addEventListener('change', updateRunCmd);
 });
 // initialise on load
-document.addEventListener('DOMContentLoaded', updateRunCmd);
+document.addEventListener('DOMContentLoaded', () => {
+  updateRunCmd();
+  document.querySelectorAll('details').forEach(det => {
+    det.addEventListener('toggle', () => {
+      const arrow = det.querySelector('.det-arrow, #run-arrow');
+      if (arrow) arrow.textContent = det.open ? '▾' : '▸';
+    });
+  });
+  // show estimates section immediately if ?show=estimates
+  if (new URLSearchParams(location.search).get('show') === 'estimates') {
+    document.getElementById('estimates-section').style.display = 'block';
+  }
+});
 </script>
 </body>
 </html>

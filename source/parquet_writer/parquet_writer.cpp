@@ -1547,7 +1547,9 @@ static void process_message(const char* topic, const char* payload) {
     if (g_cfg->store_sample_count) row.ints["sample_count"]   = 1;
     if (g_cfg->store_project_id)   row.ints["project_id"]     = g_cfg->project_id;
 
-    if (!info_opt->dtype_hint.empty())
+    // dtype_hint: only store in long-format (no compound_field_name);
+    // in wide-pivot it is meaningless (each row has mixed-dtype signals).
+    if (!info_opt->dtype_hint.empty() && g_cfg->compound_field_name.empty())
         row.strings["dtype_hint"] = info_opt->dtype_hint;
 
     // compound_field_name: build wide-schema column name early (consuming segments),
