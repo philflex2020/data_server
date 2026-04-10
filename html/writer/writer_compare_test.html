@@ -307,6 +307,46 @@ or paste <code>results.json</code> content directly.</p>
          margin:6px 0;resize:vertical"
   oninput="tryLoadPasted()"></textarea>
 
+<!-- ── FILE BROWSER ── -->
+<h2>File Browser</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+  <button class="btn primary" onclick="loadDir('')" style="font-size:.75rem">⟳ Refresh</button>
+  <span id="fb-path" style="font-size:.75rem;color:var(--teal);font-family:monospace">/</span>
+</div>
+<div style="display:flex;gap:12px;min-height:320px">
+
+  <!-- tree panel -->
+  <div id="fb-tree" style="width:280px;flex-shrink:0;background:var(--code-bg);
+       border:1px solid var(--border);border-radius:4px;overflow-y:auto;
+       font-size:.75rem;font-family:monospace"></div>
+
+  <!-- data panel -->
+  <div id="fb-data" style="flex:1;background:var(--code-bg);border:1px solid var(--border);
+       border-radius:4px;overflow:auto;font-size:.72rem;font-family:monospace;padding:10px;
+       color:var(--muted)">Click a .parquet file to view its contents.</div>
+</div>
+
+<style>
+.fb-row { display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;
+          border-bottom:1px solid transparent; }
+.fb-row:hover { background:rgba(255,255,255,.05); }
+.fb-row.selected { background:rgba(100,180,255,.1);border-left:2px solid var(--teal); }
+.fb-dir  { color:var(--muted); }
+.fb-file { color:var(--text); }
+.fb-file.parquet { color:var(--teal); }
+.fb-size { margin-left:auto;color:var(--muted);font-size:.65rem; }
+.fb-indent { display:inline-block; }
+
+/* parquet data table */
+#fb-data table { border-collapse:collapse;width:100%; }
+#fb-data th { position:sticky;top:0;background:var(--code-bg);color:var(--muted);
+              font-size:.68rem;text-align:left;padding:3px 8px;
+              border-bottom:1px solid var(--border);white-space:nowrap; }
+#fb-data td { padding:2px 8px;border-bottom:1px solid rgba(255,255,255,.04);
+              white-space:nowrap;color:var(--text); }
+#fb-data tr:hover td { background:rgba(255,255,255,.03); }
+</style>
+
 <div id="results-section" style="display:none">
 
   <h3>Summary</h3>
@@ -883,6 +923,139 @@ function renderCPU(d, unitScale, srcUnits) {
     tb.appendChild(tr);
   });
 }
+
+// ── file browser ─────────────────────────────────────────────────────────────
+let _fbExpanded = new Set();
+
+function apiBase() {
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  return `http://${host}:${port}`;
+}
+
+async function loadDir(path, depth=0) {
+  const base = apiBase();
+  try {
+    const r = await fetch(`${base}/api/ls?path=${encodeURIComponent(path)}`, {cache:'no-cache'});
+    if (!r.ok) return;
+    const entries = await r.json();
+    if (depth === 0) {
+      // full rebuild
+      document.getElementById('fb-tree').innerHTML = '';
+      document.getElementById('fb-path').textContent = '/';
+    }
+    renderDir(path, entries, depth);
+  } catch(e) {
+    document.getElementById('fb-tree').innerHTML =
+      `<div style="padding:10px;color:var(--muted)">Cannot reach server — is bench_server.py running?</div>`;
+  }
+}
+
+function renderDir(path, entries, depth) {
+  const tree = document.getElementById('fb-tree');
+  // remove old children of this path
+  const old = tree.querySelectorAll(`[data-parent="${path}"]`);
+  old.forEach(el => el.remove());
+
+  const after = path ? tree.querySelector(`[data-path="${path}"]`) : null;
+
+  entries.forEach(e => {
+    const row = document.createElement('div');
+    row.className = `fb-row ${e.type==='dir' ? 'fb-dir' : 'fb-file' + (e.name.endsWith('.parquet') ? ' parquet' : '')}`;
+    row.dataset.path   = e.path;
+    row.dataset.parent = path;
+    row.dataset.type   = e.type;
+
+    const indent = '  '.repeat(depth);
+    const icon   = e.type==='dir' ? (_fbExpanded.has(e.path) ? '▾ ' : '▸ ') : '  ';
+    const size   = e.size != null ? fmtSize(e.size) : '';
+    row.innerHTML = `<span class="fb-indent">${indent}${icon}</span>
+      <span>${e.name}</span>
+      <span class="fb-size">${size}</span>`;
+
+    row.onclick = () => {
+      if (e.type === 'dir') toggleDir(e.path, depth+1, row);
+      else if (e.name.endsWith('.parquet')) loadParquet(e.path, e.size);
+    };
+
+    if (after) after.insertAdjacentElement('afterend', row);
+    else tree.appendChild(row);
+  });
+}
+
+async function toggleDir(path, depth, rowEl) {
+  if (_fbExpanded.has(path)) {
+    // collapse — remove all descendants
+    _fbExpanded.delete(path);
+    document.querySelectorAll(`[data-parent]`).forEach(el => {
+      if (isDescendant(el.dataset.parent, path)) el.remove();
+    });
+    rowEl.querySelector('.fb-indent').textContent = '  '.repeat(depth-1) + '▸ ';
+  } else {
+    _fbExpanded.add(path);
+    rowEl.querySelector('.fb-indent').textContent = '  '.repeat(depth-1) + '▾ ';
+    await loadDir(path, depth);
+  }
+}
+
+function isDescendant(parent, ancestor) {
+  return parent === ancestor || parent.startsWith(ancestor + '/');
+}
+
+async function loadParquet(path, size) {
+  // highlight selected
+  document.querySelectorAll('.fb-row').forEach(r => r.classList.remove('selected'));
+  const sel = document.querySelector(`[data-path="${path}"]`);
+  if (sel) sel.classList.add('selected');
+  document.getElementById('fb-path').textContent = '/' + path;
+
+  const panel = document.getElementById('fb-data');
+  panel.innerHTML = '<span style="color:var(--muted)">loading…</span>';
+
+  const base = apiBase();
+  try {
+    const r = await fetch(`${base}/api/parquet?path=${encodeURIComponent(path)}&rows=200`, {cache:'no-cache'});
+    const d = await r.json();
+    if (d.error) { panel.innerHTML = `<span style="color:var(--orange)">${d.error}</span>`; return; }
+
+    const shown = d.shown, total = d.total_rows, sz = fmtSize(d.size_bytes);
+    let html = `<div style="margin-bottom:6px;color:var(--muted)">
+      <span style="color:var(--teal)">${path.split('/').pop()}</span>
+      &nbsp;·&nbsp; ${sz} &nbsp;·&nbsp; ${total.toLocaleString()} rows total
+      ${shown < total ? `<span style="color:var(--orange)"> (showing first ${shown})</span>` : ''}
+      &nbsp;·&nbsp; ${d.schema.length} cols
+    </div><div style="overflow:auto"><table><thead><tr>`;
+
+    d.schema.forEach(col => {
+      html += `<th title="${col.type}">${col.name}<br><span style="font-size:.6rem;font-weight:400">${col.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></th>`;
+    });
+    html += '</tr></thead><tbody>';
+    d.rows.forEach(row => {
+      html += '<tr>';
+      d.schema.forEach(col => {
+        const v = row[col.name];
+        const disp = v == null ? '<span style="color:var(--border)">null</span>'
+                   : String(v).length > 28 ? String(v).slice(0,26)+'…' : String(v);
+        html += `<td title="${v ?? ''}">${disp}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    panel.innerHTML = html;
+  } catch(e) {
+    panel.innerHTML = `<span style="color:var(--orange)">Error: ${e.message}</span>`;
+  }
+}
+
+function fmtSize(b) {
+  if (b == null) return '';
+  if (b < 1024) return b+'B';
+  if (b < 1048576) return (b/1024).toFixed(0)+'KB';
+  return (b/1048576).toFixed(1)+'MB';
+}
+
+// load file tree on page load (after host field is set)
+document.addEventListener('DOMContentLoaded', () => setTimeout(()=>loadDir(''), 200));
 
 // ── restart & live status ─────────────────────────────────────────────────────
 let _pollTimer   = null;
