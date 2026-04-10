@@ -32,11 +32,10 @@ ExecStart=/bin/bash -c '\
   REPO=$(find /home/phil -maxdepth 4 -name "writer_compare_test.sh" \
          -path "*/scripts/*" 2>/dev/null | head -1 | xargs dirname | xargs dirname); \
   echo "repo=$REPO"; \
-  exec bash "$REPO/scripts/writer_compare_test.sh" \
-    --sweeps ${SWEEPS:-600} \
-    --outdir ${OUTDIR:-} \
-    --site   ${SITE:-SITE_A} \
-    ${COV:-}'
+  ARGS="--sweeps ${SWEEPS:-600} --site ${SITE:-SITE_A}"; \
+  [ -n "${OUTDIR:-}" ] && ARGS="$ARGS --outdir $OUTDIR"; \
+  [ -n "${COV:-}" ]   && ARGS="$ARGS $COV"; \
+  exec bash "$REPO/scripts/writer_compare_test.sh" $ARGS'
 
 Environment=SWEEPS=600
 Environment=SITE=SITE_A
