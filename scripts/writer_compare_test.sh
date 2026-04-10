@@ -20,6 +20,7 @@ LOGDIR=""
 LOOP=0
 INTERVAL=30   # seconds between loop iterations
 CSV_FLAG=""
+COMPACT_INTERVAL=600   # compactor firing interval (seconds)
 
 # ── arg parse ─────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -31,7 +32,8 @@ while [[ $# -gt 0 ]]; do
     --logdir)    LOGDIR="$2";    shift 2 ;;
     --loop)      LOOP=1;         shift ;;
     --interval)  INTERVAL="$2";  shift 2 ;;
-    --csv)       CSV_FLAG="--csv $2"; shift 2 ;;
+    --csv)              CSV_FLAG="--csv $2"; shift 2 ;;
+    --compact-interval) COMPACT_INTERVAL="$2"; shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -74,7 +76,7 @@ echo "  outdir  : $OUTDIR"
 echo "  cfgdir  : $CFGDIR"
 echo "  results : $RESULTS_FILE"
 echo "  log     : $LOG_FILE"
-echo "  sweeps  : $SWEEPS  cov: ${COV_FLAG:-off}"
+echo "  sweeps  : $SWEEPS  cov: ${COV_FLAG:-off}  compact: ${COMPACT_INTERVAL}s"
 echo "=================================================="
 
 # ── 1. git pull ───────────────────────────────────────────────────────────────
@@ -222,7 +224,7 @@ output:
   store_sample_count: false
 compact:
   enabled: true
-  interval_seconds: 600
+  interval_seconds: ${COMPACT_INTERVAL}
   min_files: 3
 health:
   enabled: false
@@ -297,7 +299,7 @@ output:
   store_sample_count: false
 compact:
   enabled: true
-  interval_seconds: 600
+  interval_seconds: ${COMPACT_INTERVAL}
   min_files: 3
 health:
   enabled: false
@@ -374,7 +376,7 @@ output:
   store_sample_count: false
 compact:
   enabled: true
-  interval_seconds: 600
+  interval_seconds: ${COMPACT_INTERVAL}
   min_files: 3
 health:
   enabled: false
