@@ -269,6 +269,10 @@ YAML
 echo "  configs written"
 
 # ── 6. run benchmark ──────────────────────────────────────────────────────────
+cat > "$OUTDIR/status.json" << JSON
+{"status":"running","sweeps":$SWEEPS,"ts":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+JSON
+
 echo ""
 echo "[6] Running benchmark (sweeps=$SWEEPS)..."
 echo "    Output will also be logged to $LOG_FILE"

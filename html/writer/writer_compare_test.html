@@ -358,20 +358,57 @@ async function fetchResults() {
   const stat = document.getElementById('fetch-status');
   dot.className = 'status-dot';
   stat.textContent = 'fetching…';
+
+  const base  = `http://${host}:${port}`;
+  const fname = path.split('/').pop();
+
+  // ── try results.json first ────────────────────────────────────────────────
   try {
-    // Serve results via: python3 -m http.server 8780 --directory /mnt/tort-sdi/bench
-    const fname = path.split('/').pop();
-    const url   = `http://${host}:${port}/${fname}`;
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    dot.className = 'status-dot ok';
-    stat.textContent = `loaded from ${url}`;
-    renderResults(data);
-  } catch(e) {
-    dot.className = 'status-dot error';
-    stat.textContent = `error: ${e.message}  (start: python3 -m http.server 8780 --directory /mnt/tort-sdi/bench)`;
+    const r = await fetch(`${base}/${fname}`);
+    if (r.ok) {
+      const data = await r.json();
+      dot.className = 'status-dot ok';
+      stat.textContent = `loaded from ${base}/${fname}`;
+      renderResults(data);
+      return;
+    }
+    // HTTP error — fall through to status check
+  } catch(_) {
+    // network error — fall through to status check
   }
+
+  // ── try status.json to distinguish running vs not-started ─────────────────
+  try {
+    const rs = await fetch(`${base}/status.json`);
+    if (rs.ok) {
+      const s = await rs.json();
+      if (s.status === 'running' || s.status === 'started') {
+        dot.className = 'status-dot warn';
+        stat.textContent = `test still running — started ${s.ts || ''}. Try again in a moment.`;
+      } else if (s.status === 'failed') {
+        dot.className = 'status-dot error';
+        stat.textContent = `test failed (exit ${s.exit ?? '?'}) — check log on host`;
+      } else {
+        dot.className = 'status-dot warn';
+        stat.textContent = `status: ${s.status} — results.json not yet available`;
+      }
+      return;
+    }
+  } catch(_) {}
+
+  // ── check if the bench dir is at least reachable (any file present) ───────
+  try {
+    const rp = await fetch(`${base}/`);
+    if (rp.ok) {
+      dot.className = 'status-dot warn';
+      stat.textContent = `server reachable but test still running — results.json not written yet. Try again shortly.`;
+      return;
+    }
+  } catch(_) {}
+
+  // ── nothing reachable — server not started ────────────────────────────────
+  dot.className = 'status-dot error';
+  stat.textContent = `cannot reach ${base} — on .34 run: python3 -m http.server ${port} --directory /mnt/tort-sdi/bench`;
 }
 
 function tryLoadPasted() {
