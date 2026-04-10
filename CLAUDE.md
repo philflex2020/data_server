@@ -5,7 +5,7 @@
 | Name | WiFi IP | Wired IP | Role |
 |---|---|---|---|
 | phil-dev | 192.168.86.46 | — | Dev machine — stress runner, parquet writer, push agent, FlashMQ :1883 |
-| lp3 (LattePanda) | 192.168.86.20 | 192.168.0.20 | Edge host — stress runner, writer.cpp, push agent, FlashMQ :1883 |
+| lp3 (LattePanda) | 192.168.86.24 | 192.168.0.20 | Edge host — stress runner, writer.cpp, push agent, FlashMQ :1883 |
 | fractal-phil | 192.168.86.51 | 192.168.0.51 | AWS-sim — FlashMQ :1884, Telegraf, InfluxDB2, subscriber_api (systemd), manager |
 | phil-256g (Supermicro) | 192.168.86.34 | — | Torture test server — 2× Xeon E5-2690 v4 (56T), 256 GB RAM, 1.8 TB, Docker 26 |
 | gx10-d94c | 192.168.86.48 | — | EMS real-data test — 20 cores, 119 GB RAM; 4× ems_site_simulator + 4× parquet_writer |
@@ -42,6 +42,9 @@ FlashMQ aws-sim :1884  (fractal-phil)
 ```bash
 # HTML server (serves html/ dir)
 cd html && python3 -m http.server 8080 --bind 0.0.0.0 &
+
+# ptac HTML server (serves /home/phil/work/gen-ai/ptac/html/ — systemd, auto-start)
+# sudo systemctl start ptac-html   (already enabled, starts on boot)
 
 # Stress runner
 .venv/bin/python source/stress_runner/stress_runner.py --config source/stress_runner/config.yaml > ~/logs/stress_runner.log 2>&1 &
@@ -149,7 +152,8 @@ python manager/manager.py --config manager/config.fractal.yaml
 |---|---|---|
 | 1883 | FlashMQ host (MQTT) | phil-dev / lp3 |
 | 1884 | FlashMQ aws-sim (MQTT) | fractal-phil |
-| 8080 | HTML server | phil-dev |
+| 8080 | HTML server (data_server) | phil-dev |
+| 8090 | HTML server (ptac) | phil-dev |
 | 8086 | InfluxDB2 | fractal-phil |
 | 8761 | Manager WebSocket | fractal-phil |
 | 8765 | Generator WebSocket | phil-dev |

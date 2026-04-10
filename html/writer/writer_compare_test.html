@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Writer Schema Comparison Test</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d;
+  --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+  --green:#3fb950; --yellow:#d29922; --red:#f85149;
+  --orange:#e3b341; --purple:#bc8cff; --teal:#39d353; --pink:#ff7b72;
+  --code-bg:#21262d;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text);
+       font-family:'Segoe UI',system-ui,sans-serif;
+       padding:20px; max-width:1100px; margin:0 auto; }
+.nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+         padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+.nav a:hover { color:var(--accent); border-color:var(--accent); }
+h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+.subtitle { color:var(--muted); font-size:.85rem; margin-bottom:28px; }
+h2 { color:var(--orange); font-size:1rem; margin:32px 0 12px;
+     padding-bottom:5px; border-bottom:1px solid var(--border); }
+h3 { color:var(--accent); font-size:.9rem; margin:18px 0 8px; }
+p  { font-size:.85rem; line-height:1.65; margin-bottom:10px; color:var(--text); }
+pre, code { background:var(--code-bg); border-radius:4px; font-family:'Cascadia Code','Fira Code',monospace; }
+pre { border:1px solid var(--border); padding:12px 14px; font-size:.78rem;
+      line-height:1.6; overflow-x:auto; margin:8px 0; }
+code { padding:1px 5px; font-size:.82rem; }
+.kw  { color:var(--pink); }
+.cm  { color:var(--muted); }
+.st  { color:var(--green); }
+.val { color:var(--teal); }
+.nm  { color:var(--orange); }
+
+/* cards */
+.card-row { display:flex; gap:12px; margin:12px 0; flex-wrap:wrap; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+        padding:14px 16px; flex:1; min-width:200px; }
+.card-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+              color:var(--muted); margin-bottom:4px; }
+.card-val   { font-size:1.4rem; font-weight:700; font-family:monospace; }
+.card-sub   { font-size:.72rem; color:var(--muted); margin-top:2px; }
+.c-blue  .card-val { color:var(--accent); }
+.c-green .card-val { color:var(--green); }
+.c-orange.card-val, .c-orange .card-val { color:var(--orange); }
+.c-purple .card-val { color:var(--purple); }
+
+/* comparison table */
+.cmp-table { width:100%; border-collapse:collapse; font-size:.82rem; margin:12px 0; }
+.cmp-table th { background:var(--surface2); color:var(--muted); font-size:.72rem;
+                text-transform:uppercase; letter-spacing:.06em; padding:7px 12px;
+                border-bottom:1px solid var(--border); text-align:left; }
+.cmp-table td { padding:7px 12px; border-bottom:1px solid var(--border); }
+.cmp-table tr:last-child td { border-bottom:none; }
+.cmp-table .metric { color:var(--muted); font-size:.78rem; }
+.cmp-table .best { color:var(--green); font-weight:600; }
+.cmp-table .worst { color:var(--red); }
+.cmp-table .mid { color:var(--yellow); }
+.bar-cell { padding:4px 12px; }
+.bar-wrap { background:var(--border); border-radius:2px; height:8px; }
+.bar-fill { height:100%; border-radius:2px; }
+.bar-norm { background:var(--accent); }
+.bar-cmp  { background:var(--green); }
+.bar-wide { background:var(--orange); }
+
+/* step blocks */
+.steps { display:flex; flex-direction:column; gap:0; margin:12px 0; }
+.step  { display:flex; gap:14px; align-items:flex-start; padding:10px 0;
+         border-bottom:1px solid var(--border); }
+.step:last-child { border-bottom:none; }
+.step-num { width:26px; height:26px; border-radius:50%; background:var(--surface2);
+            border:1px solid var(--accent); color:var(--accent); font-size:.78rem;
+            font-weight:700; display:flex; align-items:center; justify-content:center;
+            flex-shrink:0; }
+.step-body { flex:1; }
+.step-title { font-size:.85rem; font-weight:600; color:var(--text); margin-bottom:3px; }
+.step-desc  { font-size:.78rem; color:var(--muted); line-height:1.5; }
+
+/* result panels */
+.result-panel { background:var(--surface2); border:1px solid var(--border);
+                border-radius:6px; padding:16px; margin:12px 0; }
+.result-panel.success { border-color:var(--green); }
+.result-panel.pending { border-color:var(--yellow); }
+.result-panel.error   { border-color:var(--red); }
+
+/* connect row */
+.conn-row { display:flex; gap:8px; align-items:center; margin:10px 0; }
+.conn-row input { background:var(--bg); border:1px solid var(--border); color:var(--text);
+                  border-radius:4px; padding:5px 10px; font-size:.82rem; width:220px; }
+.conn-row input:focus { outline:none; border-color:var(--accent); }
+.btn { background:var(--surface); border:1px solid var(--border); color:var(--text);
+       border-radius:4px; padding:5px 14px; font-size:.82rem; cursor:pointer; }
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.btn.primary { border-color:var(--accent); color:var(--accent); }
+.btn.go { border-color:var(--green); color:var(--green); }
+.status-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.status-dot.ok    { background:var(--green); box-shadow:0 0 5px var(--green); }
+.status-dot.error { background:var(--red); }
+.tag { display:inline-block; padding:1px 7px; border-radius:3px; font-size:.7rem;
+       border:1px solid var(--border); color:var(--muted); }
+.tag-wide  { border-color:var(--orange); color:var(--orange); }
+.tag-long  { border-color:var(--accent); color:var(--accent); }
+.tag-cmp   { border-color:var(--green);  color:var(--green); }
+#log-out { background:var(--bg); border:1px solid var(--border); border-radius:4px;
+           padding:10px; font-size:.72rem; font-family:monospace; line-height:1.6;
+           max-height:320px; overflow-y:auto; white-space:pre-wrap; color:var(--muted); }
+.sparkline { display:flex; gap:2px; align-items:flex-end; height:24px; }
+.spark-bar { width:6px; background:var(--accent); border-radius:1px; min-height:2px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← projects</a>
+  <a href="wide_parquet_writer.html">wide writer</a>
+  <a href="writer_design.html">writer design</a>
+  <a href="parquet_writer_options.html">writer options</a>
+</div>
+
+<h1>Writer Schema Comparison Test</h1>
+<p class="subtitle">Benchmarks three parquet layout strategies against the same MQTT stream — norm-long, long+compound, wide-pivot (coalesced)</p>
+
+<!-- ── TOPOLOGY ── -->
+<h2>Test Topology</h2>
+<div class="card-row">
+  <div class="card c-blue">
+    <div class="card-label">Units</div>
+    <div class="card-val">12</div>
+    <div class="card-sub">hex IDs 0215D1D8 … 0215D1E3</div>
+  </div>
+  <div class="card c-orange">
+    <div class="card-label">Signals / unit</div>
+    <div class="card-val">34</div>
+    <div class="card-sub">24 float + 10 integer</div>
+  </div>
+  <div class="card c-green">
+    <div class="card-label">Sweep rate</div>
+    <div class="card-val">1 Hz</div>
+    <div class="card-sub">600 sweeps = 10 min</div>
+  </div>
+  <div class="card c-purple">
+    <div class="card-label">Total messages</div>
+    <div class="card-val">244,800</div>
+    <div class="card-sub">12 × 34 × 600</div>
+  </div>
+</div>
+
+<h3>Signal set</h3>
+<pre>
+bms/bms_1:  Batt1_Cell[1-10]_Voltage  Batt1_Cell[1-5]_Temperature
+            Pack_Current  Pack_Voltage  Pack_SOC  Pack_SOH
+            Pack_ContactorState  Batt1_CellBalancing  BMS_FaultCode  BMS_WarningCode
+pcs/pcs_1:  GridFrequency  ActivePower  ReactivePower  DCBusVoltage  OutputCurrent
+            PCS_State  PCS_FaultCode  GridConnected  AlarmActive
+rack/rack_1: Rack_FanState  Rack_DoorOpen
+</pre>
+
+<h3>Burst model</h3>
+<p>Each sweep publishes all 34 signals per unit in a randomised burst of <code>50–200 ms</code>
+(well inside the <code>time_window_ms: 250</code> coalesce window). The wide writer
+coalesces each burst into one row — target ~1 row/sweep/unit.</p>
+
+<!-- ── SCHEMAS ── -->
+<h2>Three Writer Schemas</h2>
+
+<div class="card-row">
+  <div class="card">
+    <span class="tag tag-long">norm-long</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      One row per signal per sweep.<br>
+      <span style="color:var(--muted)">8 columns: ts, value, device, device_type, dtype_hint, point_name, unit_id, site</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      ~248k rows · 1.6 MB · 3–10 ms flush
+    </div>
+  </div>
+  <div class="card">
+    <span class="tag tag-cmp">long+cmp</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      One row per signal. Point name compounded: <code>unit/device/instance/signal</code>.<br>
+      <span style="color:var(--muted)">5 columns: ts, value, dtype_hint, point_name, site</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      ~248k rows · 1.7 MB · 2–5 ms flush
+    </div>
+  </div>
+  <div class="card">
+    <span class="tag tag-wide">wide-pivot</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      One row per sweep per unit. Each signal is a column. Burst-coalesced.<br>
+      <span style="color:var(--muted)">38 columns: ts + 34 signals + dtype_hint + unit_id + site</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      ~7.2k rows · 4.1 MB · 19–36 ms flush
+    </div>
+  </div>
+</div>
+
+<!-- ── SETUP ── -->
+<h2>Setup on Target Machine (.34)</h2>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Install systemd service</div>
+      <div class="step-desc">Copy service file and reload systemd</div>
+      <pre>cd ~/data_server
+git pull
+sudo cp scripts/writer-compare-test.service /etc/systemd/system/
+sudo systemctl daemon-reload</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Verify output drive is mounted</div>
+      <div class="step-desc">The script auto-detects <code>/mnt/tort-sdi</code> on .34</div>
+      <pre>df -h /mnt/tort-sdi
+<span class="cm"># should show ~870 GB free</span>
+ls /mnt/tort-sdi/</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Start FlashMQ broker</div>
+      <pre>sudo systemctl start flashmq
+sudo systemctl status flashmq</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Run the test</div>
+      <div class="step-desc">Via systemctl (recommended — captured in journal)</div>
+      <pre>sudo systemctl start writer-compare-test
+journalctl -u writer-compare-test -f</pre>
+      <div class="step-desc" style="margin-top:6px">Or directly (useful for debugging)</div>
+      <pre>bash scripts/writer_compare_test.sh --sweeps 600 --outdir /mnt/tort-sdi/bench</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">View results</div>
+      <div class="step-desc">Results JSON written to the output dir. Fetch it here using the panel below.</div>
+      <pre>cat /mnt/tort-sdi/bench/results.json
+ls  /mnt/tort-sdi/bench/wide/</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ── MANUAL RUN ── -->
+<h2>Run Without systemctl</h2>
+<p>For a quick ad-hoc run with custom options:</p>
+<pre>
+<span class="cm"># standard 600-sweep run</span>
+bash scripts/writer_compare_test.sh
+
+<span class="cm"># change-on-value mode (realistic publish gaps)</span>
+bash scripts/writer_compare_test.sh --cov
+
+<span class="cm"># short smoke test</span>
+bash scripts/writer_compare_test.sh --sweeps 60
+
+<span class="cm"># explicit output dir (e.g. secondary tort drive)</span>
+bash scripts/writer_compare_test.sh --outdir /mnt/tort-sdf/bench
+</pre>
+
+<p>Script auto-detects the repo root, resolves the writer binary, installs Python deps into
+<code>.venv</code>, starts FlashMQ if needed, generates all three YAML configs, runs
+<code>compare_run.py</code>, and writes <code>results.json</code> + <code>status.json</code>
+to the output dir.</p>
+
+<!-- ── RESULTS VIEWER ── -->
+<h2>Results Viewer</h2>
+<p>Load results from a completed run. Enter the host where the test ran and click Fetch,
+or paste <code>results.json</code> content directly.</p>
+
+<div class="conn-row">
+  <input id="host-in" type="text" value="192.168.86.34" placeholder="host">
+  <input id="port-in" type="text" value="8780" placeholder="port" style="width:70px">
+  <input id="path-in" type="text" value="/mnt/tort-sdi/bench/results.json" placeholder="results path" style="width:300px">
+  <button class="btn primary" onclick="fetchResults()">Fetch</button>
+  <button class="btn" onclick="document.getElementById('paste-in').style.display='block'">Paste JSON</button>
+  <div class="status-dot" id="fetch-dot"></div>
+  <span id="fetch-status" style="font-size:.75rem;color:var(--muted)">—</span>
+</div>
+<textarea id="paste-in" placeholder="Paste results.json here and click Load"
+  style="display:none;width:100%;height:100px;background:var(--bg);border:1px solid var(--border);
+         color:var(--text);border-radius:4px;padding:8px;font-family:monospace;font-size:.75rem;
+         margin:6px 0;resize:vertical"
+  oninput="tryLoadPasted()"></textarea>
+
+<div id="results-section" style="display:none">
+
+  <h3>Summary</h3>
+  <div class="card-row" id="summary-cards"></div>
+
+  <h3>Comparison</h3>
+  <table class="cmp-table" id="cmp-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th><span class="tag tag-long">norm-long</span></th>
+        <th><span class="tag tag-cmp">long+cmp</span></th>
+        <th><span class="tag tag-wide">wide-pivot</span></th>
+      </tr>
+    </thead>
+    <tbody id="cmp-body"></tbody>
+  </table>
+
+  <h3>Flush times (ms per flush)</h3>
+  <div id="flush-charts" style="display:flex;gap:24px;flex-wrap:wrap;margin:10px 0"></div>
+
+  <h3>Wide schema columns</h3>
+  <div id="wide-schema" style="font-size:.75rem;font-family:monospace;color:var(--muted);
+       background:var(--code-bg);border:1px solid var(--border);border-radius:4px;
+       padding:10px;line-height:1.7;max-height:200px;overflow-y:auto"></div>
+
+</div>
+
+<!-- ── WHAT TO LOOK FOR ── -->
+<h2>What to Look For</h2>
+<table class="cmp-table">
+  <thead><tr><th>Aspect</th><th>Favours</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Storage size</td><td class="best">long+cmp</td><td>Column compression works better on high-cardinality repeated strings in one column</td></tr>
+    <tr><td>Flush latency</td><td class="best">long+cmp</td><td>No pivot/coalesce work; writer just appends rows</td></tr>
+    <tr><td>Single-unit range query</td><td class="best">wide-pivot</td><td>All signals in one row — no UNPIVOT or GROUP BY needed</td></tr>
+    <tr><td>Coalesce quality</td><td class="best">wide-pivot</td><td>1 row/sweep/unit = perfect if bursts stay inside time_window_ms</td></tr>
+    <tr><td>File count</td><td class="best">norm/long</td><td>Wide partitions per unit_id → 12× more files</td></tr>
+    <tr><td>Schema flexibility</td><td class="best">norm-long</td><td>Adding new signals = new rows only; wide needs new column (schema evolution)</td></tr>
+  </tbody>
+</table>
+
+<h2>Output Paths on .34</h2>
+<pre>
+/mnt/tort-sdi/bench/
+  norm-long/bench/site=SITE_A/2026/04/DD/          <span class="cm"># normalised long</span>
+  long-cmp/bench/site=SITE_A/2026/04/DD/            <span class="cm"># compact long</span>
+  wide/bench/site=SITE_A/2026/04/DD/                <span class="cm"># wide pivot (per-unit files)</span>
+  results.json                                       <span class="cm"># benchmark results</span>
+  status.json                                        <span class="cm"># pass/fail + timestamps</span>
+/data/logs/YYYY/MM/DD/writer_compare_test.log       <span class="cm"># full run log</span>
+</pre>
+
+<script>
+async function fetchResults() {
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  const path = document.getElementById('path-in').value.trim();
+  const dot  = document.getElementById('fetch-dot');
+  const stat = document.getElementById('fetch-status');
+  dot.className = 'status-dot';
+  stat.textContent = 'fetching…';
+  try {
+    // Serve results via: python3 -m http.server 8780 --directory /mnt/tort-sdi/bench
+    const fname = path.split('/').pop();
+    const url   = `http://${host}:${port}/${fname}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    dot.className = 'status-dot ok';
+    stat.textContent = `loaded from ${url}`;
+    renderResults(data);
+  } catch(e) {
+    dot.className = 'status-dot error';
+    stat.textContent = `error: ${e.message}  (start: python3 -m http.server 8780 --directory /mnt/tort-sdi/bench)`;
+  }
+}
+
+function tryLoadPasted() {
+  const txt = document.getElementById('paste-in').value.trim();
+  if (!txt) return;
+  try {
+    const data = JSON.parse(txt);
+    document.getElementById('fetch-dot').className = 'status-dot ok';
+    document.getElementById('fetch-status').textContent = 'loaded from paste';
+    renderResults(data);
+  } catch(_) {}
+}
+
+function renderResults(d) {
+  document.getElementById('results-section').style.display = 'block';
+
+  const topo = d.topology || {};
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="card c-blue"><div class="card-label">Units</div>
+      <div class="card-val">${topo.units||'—'}</div>
+      <div class="card-sub">${topo.signals||'—'} signals each</div></div>
+    <div class="card c-orange"><div class="card-label">Messages</div>
+      <div class="card-val">${(topo.total_msgs||0).toLocaleString()}</div>
+      <div class="card-sub">${topo.sweeps||'—'} sweeps × 1 Hz</div></div>
+    <div class="card c-green"><div class="card-label">Norm-long size</div>
+      <div class="card-val">${kb(d.norm_long?.size_bytes)}</div>
+      <div class="card-sub">${(d.norm_long?.rows||0).toLocaleString()} rows</div></div>
+    <div class="card c-purple"><div class="card-label">Wide size</div>
+      <div class="card-val">${kb(d.wide_pivot?.size_bytes)}</div>
+      <div class="card-sub">${(d.wide_pivot?.rows||0).toLocaleString()} rows · ${d.wide_pivot?.cols||0} cols</div></div>`;
+
+  // comparison table
+  const nl = d.norm_long  || {};
+  const lc = d.long_cmp   || {};
+  const wp = d.wide_pivot || {};
+  const sizes = [nl.size_bytes||0, lc.size_bytes||0, wp.size_bytes||0];
+  const rows  = [nl.rows||0,       lc.rows||0,       wp.rows||0];
+  const files = [nl.files||0,      lc.files||0,      wp.files||0];
+  const cols  = [nl.cols||0,       lc.cols||0,       wp.cols||0];
+  const bpr   = sizes.map((s,i)=>rows[i]?Math.round(s/rows[i]):0);
+  const fmax  = [nl,lc,wp].map(x=>(x.flush_ms||[]).length ? Math.max(...x.flush_ms) : 0);
+  const favg  = [nl,lc,wp].map(x=>(x.flush_ms||[]).length ? Math.round(x.flush_ms.reduce((a,b)=>a+b,0)/x.flush_ms.length) : 0);
+
+  const tbody = document.getElementById('cmp-body');
+  tbody.innerHTML = '';
+  const addRow = (label, vals, fmtFn, lowerBetter=true) => {
+    const nums = vals.map(v => typeof v === 'string' ? parseFloat(v)||0 : v);
+    const best = lowerBetter ? Math.min(...nums) : Math.max(...nums);
+    const worst= lowerBetter ? Math.max(...nums) : Math.min(...nums);
+    const cls  = v => v===best?'best':v===worst?'worst':'mid';
+    const tr   = document.createElement('tr');
+    tr.innerHTML = `<td class="metric">${label}</td>`+
+      vals.map((v,i)=>`<td class="${cls(nums[i])}">${fmtFn(v)}</td>`).join('');
+    tbody.appendChild(tr);
+  };
+  const addBarRow = (label, vals, max) => {
+    const tr = document.createElement('tr');
+    const bars = ['bar-norm','bar-cmp','bar-wide'];
+    tr.innerHTML = `<td class="metric">${label}</td>` +
+      vals.map((v,i)=>`<td class="bar-cell">
+        <div class="bar-wrap"><div class="bar-fill ${bars[i]}" style="width:${max?v/max*100:0}%"></div></div>
+        <span style="font-size:.7rem;color:var(--muted)">${v.toLocaleString()}</span></td>`).join('');
+    tbody.appendChild(tr);
+  };
+
+  addRow('Parquet files',        files, v=>v.toLocaleString());
+  addRow('Rows written',         rows,  v=>v.toLocaleString());
+  addBarRow('Size (bytes)',       sizes, Math.max(...sizes));
+  addRow('Size (KB)',             sizes.map(s=>Math.round(s/1024)), v=>v.toLocaleString()+'  KB');
+  addRow('Columns',              cols,  v=>String(v), false);
+  addRow('Bytes / row',          bpr,   v=>v+' B');
+  addRow('Flush max (ms)',       fmax,  v=>v+'ms');
+  addRow('Flush avg (ms)',       favg,  v=>v+'ms');
+
+  // size delta vs norm-long
+  if (sizes[0]) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="metric">vs norm-long</td>
+      <td class="best">baseline</td>
+      <td class="${sizes[1]>sizes[0]?'worst':'best'}">${pct(sizes[1],sizes[0])}</td>
+      <td class="${sizes[2]>sizes[0]?'worst':'best'}">${pct(sizes[2],sizes[0])}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  // flush sparklines
+  const fc = document.getElementById('flush-charts');
+  fc.innerHTML = '';
+  [['norm-long', nl, 'var(--accent)'],
+   ['long+cmp',  lc, 'var(--green)'],
+   ['wide-pivot',wp, 'var(--orange)']].forEach(([name, src, color]) => {
+    const times = src.flush_ms || [];
+    if (!times.length) return;
+    const mx = Math.max(...times);
+    const div = document.createElement('div');
+    div.innerHTML = `<div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">${name}
+      <span style="color:${color}">max ${mx}ms avg ${Math.round(times.reduce((a,b)=>a+b,0)/times.length)}ms</span></div>
+      <div class="sparkline">${times.map(v=>`<div class="spark-bar" style="height:${Math.max(2,Math.round(v/mx*24))}px;background:${color}"></div>`).join('')}</div>`;
+    fc.appendChild(div);
+  });
+
+  // wide schema
+  const ws = document.getElementById('wide-schema');
+  const wcols = (wp.schema||[]).filter(c=>!['ts','dtype_hint','unit_id','site'].includes(c.name));
+  ws.innerHTML = wcols.length
+    ? wcols.map(c=>`<span style="color:var(--teal)">${c.name}</span>  `+
+        `<span style="color:var(--muted);font-size:.7rem">${c.type}</span>`).join('<br>')
+    : '<span style="color:var(--muted)">no results loaded</span>';
+}
+
+function kb(v)  { return v ? Math.round(v/1024).toLocaleString()+' KB' : '—'; }
+function pct(v,base) { const p=100*(v-base)/base; return (p>=0?'+':'')+p.toFixed(1)+'%'; }
+</script>
+</body>
+</html>

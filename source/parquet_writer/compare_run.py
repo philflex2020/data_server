@@ -19,15 +19,72 @@ parser.add_argument("--cov", action="store_true",
                     help="Change-on-value: skip publishing unchanged signals")
 parser.add_argument("--sweeps", type=int, default=600,
                     help="Number of sweeps to run (default 600)")
+parser.add_argument("--writer", default=None,
+                    help="Path to parquet_writer binary")
+parser.add_argument("--cfgdir", default="/tmp/bench2",
+                    help="Directory containing config YAML files (default /tmp/bench2)")
+parser.add_argument("--outdir", default=None,
+                    help="Base output directory (default: parent of cfgdir)")
+parser.add_argument("--results", default=None,
+                    help="Path to write results.json")
+parser.add_argument("--site", default="SITE_A",
+                    help="Site ID embedded in parquet partitioning (default SITE_A)")
+parser.add_argument("--mqtt-host", default="localhost",
+                    help="MQTT broker host (default localhost)")
+parser.add_argument("--mqtt-port", type=int, default=1883,
+                    help="MQTT broker port (default 1883)")
 args = parser.parse_args()
 
-WRITER         = "/home/phil/work/gen-ai/data_server/source/parquet_writer/parquet_writer"
-CFG_NORM_LONG  = "/tmp/bench2/config_normalized_long_bench.yaml"
-CFG_LONG_CMP   = "/tmp/bench2/config_long_compound.yaml"
-CFG_WIDE_PIVOT = "/tmp/bench2/config_wide_pivot.yaml"
-OUT_NORM_LONG  = "/tmp/bench2-norm-long"
-OUT_LONG_CMP   = "/tmp/bench2-long-cmp"
-OUT_WIDE_PIVOT = "/tmp/bench2-wide"
+# Resolve paths — support both /home/phil/work/gen-ai/data_server (dev)
+# and /home/phil/data_server (.34 / lp3 style) automatically
+_self_dir  = os.path.dirname(os.path.abspath(__file__))
+_repo_root = os.path.abspath(os.path.join(_self_dir, '..', '..'))
+
+def _default_writer():
+    candidate = os.path.join(_self_dir, 'parquet_writer')
+    if os.path.isfile(candidate):
+        return candidate
+    raise FileNotFoundError(f"parquet_writer binary not found at {candidate}. "
+                             "Build with: cd source/parquet_writer && make")
+
+WRITER     = args.writer or _default_writer()
+_cfgdir    = args.cfgdir
+_outbase   = args.outdir or os.path.dirname(_cfgdir)
+
+CFG_NORM_LONG  = os.path.join(_cfgdir, "config_normalized_long_bench.yaml")
+CFG_LONG_CMP   = os.path.join(_cfgdir, "config_long_compound.yaml")
+CFG_WIDE_PIVOT = os.path.join(_cfgdir, "config_wide_pivot.yaml")
+OUT_NORM_LONG  = os.path.join(_outbase, "bench-norm-long")
+OUT_LONG_CMP   = os.path.join(_outbase, "bench-long-cmp")
+OUT_WIDE_PIVOT = os.path.join(_outbase, "bench-wide")
+RESULTS_FILE   = args.results or os.path.join(_cfgdir, "results.json")
+SITE_ID        = args.site
+MQTT_HOST      = args.mqtt_host
+MQTT_PORT      = args.mqtt_port
+
+# Rewrite configs with correct output paths and site_id at runtime
+import yaml as _yaml
+
+def _write_cfg(src_path, out_path, overrides):
+    """Load a YAML config, apply overrides dict to output section, write back."""
+    with open(src_path) as f:
+        cfg = _yaml.safe_load(f)
+    for k, v in overrides.items():
+        cfg['output'][k] = v
+    cfg['mqtt']['host'] = MQTT_HOST
+    cfg['mqtt']['port'] = MQTT_PORT
+    with open(src_path, 'w') as f:
+        _yaml.dump(cfg, f, default_flow_style=False)
+
+if os.path.isfile(CFG_NORM_LONG):
+    _write_cfg(CFG_NORM_LONG, CFG_NORM_LONG,
+               {'base_path': OUT_NORM_LONG, 'site_id': SITE_ID})
+if os.path.isfile(CFG_LONG_CMP):
+    _write_cfg(CFG_LONG_CMP,  CFG_LONG_CMP,
+               {'base_path': OUT_LONG_CMP,  'site_id': SITE_ID})
+if os.path.isfile(CFG_WIDE_PIVOT):
+    _write_cfg(CFG_WIDE_PIVOT, CFG_WIDE_PIVOT,
+               {'base_path': OUT_WIDE_PIVOT, 'site_id': SITE_ID})
 
 UNITS = [f"{0x0215D1D8 + i:08X}" for i in range(12)]
 FLOAT_SIGNALS = (
@@ -107,7 +164,7 @@ time.sleep(1.2)
 
 print(f"[2] Publishing {TOTAL_MSGS:,} messages...")
 client = mqtt.Client(client_id="bench2-publisher")
-client.connect("localhost", 1883)
+client.connect(MQTT_HOST, MQTT_PORT)
 client.loop_start()
 time.sleep(0.3)
 
@@ -301,6 +358,7 @@ result = {
         "schema": [{"name": f.name, "type": str(f.type)} for f in list(stats["wide-pivot"][3])[:40]] if stats["wide-pivot"][3] else []
     },
 }
-with open("/tmp/bench2/results.json", "w") as fh:
+os.makedirs(os.path.dirname(RESULTS_FILE), exist_ok=True)
+with open(RESULTS_FILE, "w") as fh:
     _json.dump(result, fh, indent=2)
-print(f"\n  Results saved to /tmp/bench2/results.json")
+print(f"\n  Results saved to {RESULTS_FILE}")
