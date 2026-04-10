@@ -146,7 +146,6 @@ def load_csv_replay(zip_path):
                     instance = row[11]   # source_device_id: bms_1, pcs_1, ...
                     val_str  = row[6]    # _value
                     if point.startswith('log-'): continue
-                    if point in CSV_EXCLUDE: continue
                     if instance not in TARGET_DEVICES: continue
                     try:
                         val = float(val_str)
