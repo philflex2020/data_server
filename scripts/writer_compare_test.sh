@@ -222,7 +222,7 @@ output:
   store_sample_count: false
 compact:
   enabled: true
-  interval_seconds: 120
+  interval_seconds: 600
   min_files: 3
 health:
   enabled: false
@@ -297,7 +297,7 @@ output:
   store_sample_count: false
 compact:
   enabled: true
-  interval_seconds: 120
+  interval_seconds: 600
   min_files: 3
 health:
   enabled: false
@@ -374,7 +374,7 @@ output:
   store_sample_count: false
 compact:
   enabled: true
-  interval_seconds: 120
+  interval_seconds: 600
   min_files: 3
 health:
   enabled: false
