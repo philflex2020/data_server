@@ -138,34 +138,42 @@ code { padding:1px 5px; font-size:.82rem; }
 <details style="margin-bottom:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
 <summary style="padding:10px 14px;cursor:pointer;background:var(--surface);font-size:.85rem;
                 color:var(--orange);font-weight:600;list-style:none">
-  ▶ Signal Filtering — 36 signals dropped before publish (constants &amp; monotonics)
+  ▶ Signal Filtering — 5 signals dropped (true monotonics only); 30 constants retained via null_fill
 </summary>
 <div style="padding:14px 16px;font-size:.8rem;line-height:1.6">
   <p style="color:var(--muted);margin-bottom:10px">
     When running with <code>--csv</code>, signals are pre-filtered before being published to MQTT.
-    Constants compress well individually but waste column space; monotonics (heartbeats, counters)
-    have maximum entropy and actively harm compression ratios. Identified from 200-sample analysis
-    of SBESS3 UC 61B5 real data.
+    Only true monotonics (unbounded counters, heartbeats, internal timestamps) are dropped at the
+    writer level — they have maximum entropy and actively harm compression. Constants are now
+    <em>retained</em> and compressed by <code>null_fill_unchanged</code>, which writes null for any
+    column whose value hasn't changed since the last flush. An hourly reset (<code>null_fill_reset_interval_seconds: 3600</code>)
+    ensures each compact window is self-contained. Identified from 200-sample analysis of SBESS3 UC 61B5 real data.
   </p>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     <div>
-      <div style="color:var(--red);font-weight:600;margin-bottom:6px">Dropped — Monotonic (6)</div>
+      <div style="color:var(--red);font-weight:600;margin-bottom:6px">Dropped — True Monotonics (5 point names)</div>
       <table style="border-collapse:collapse;width:100%;font-size:.75rem">
         <thead><tr>
           <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Signal</th>
           <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Reason</th>
         </tr></thead>
         <tbody>
-          <tr><td style="padding:2px 8px;color:var(--text)">BMS_SysHB, SysHB</td><td style="padding:2px 8px;color:var(--muted)">heartbeat counter +1/s</td></tr>
-          <tr><td style="padding:2px 8px;color:var(--text)">Counter (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">sweep counter +1/s</td></tr>
-          <tr><td style="padding:2px 8px;color:var(--text)">ItemDeletionTime (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">internal Unix timestamp</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_SysHB, SysHB</td><td style="padding:2px 8px;color:var(--muted)">heartbeat counter +1/s — max entropy</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">Counter (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">sweep counter +1/s — max entropy</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">ItemDeletionTime (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">internal Unix timestamp — max entropy</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">TS (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">monotonic source timestamp — redundant</td></tr>
         </tbody>
       </table>
-      <div style="color:var(--yellow);font-weight:600;margin:10px 0 6px">Dropped — Constants (30)</div>
+      <div style="color:var(--yellow);font-weight:600;margin:10px 0 6px">Retained via null_fill_unchanged — Constants (30)</div>
+      <p style="color:var(--muted);font-size:.75rem;margin-bottom:6px">
+        Written on first occurrence and on hourly reset; null-filled otherwise. 97–99% null in
+        compacted files — compresses to near zero. Preserved for schema completeness and
+        change detection.
+      </p>
       <table style="border-collapse:collapse;width:100%;font-size:.75rem">
         <thead><tr>
           <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Signal</th>
-          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Value</th>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Typical value</th>
         </tr></thead>
         <tbody>
           <tr><td style="padding:2px 8px;color:var(--text)">AvgCellT, BMS_AvgCellT</td><td style="padding:2px 8px;color:var(--muted)">0.0 (sensor offline)</td></tr>
@@ -176,14 +184,14 @@ code { padding:1px 5px; font-size:.82rem; }
           <tr><td style="padding:2px 8px;color:var(--text)">BMS_RackCount, RackCount</td><td style="padding:2px 8px;color:var(--muted)">8 / 48 fixed</td></tr>
           <tr><td style="padding:2px 8px;color:var(--text)">BMS_SysSOH, SysSOH</td><td style="padding:2px 8px;color:var(--muted)">100% fixed</td></tr>
           <tr><td style="padding:2px 8px;color:var(--text)">ConnectingStatus</td><td style="padding:2px 8px;color:var(--muted)">3030 fixed</td></tr>
-          <tr><td style="padding:2px 8px;color:var(--text)">SN (bms + pcs), TS (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">200 / 2026 fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">SN (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">200 fixed</td></tr>
           <tr><td style="padding:2px 8px;color:var(--text)">ACBreaker, Bank1/2/3Enable</td><td style="padding:2px 8px;color:var(--muted)">1 (always closed/enabled)</td></tr>
           <tr><td style="padding:2px 8px;color:var(--text)">DisableEvenBMS, DisableOddBMS</td><td style="padding:2px 8px;color:var(--muted)">0 (never disabled)</td></tr>
         </tbody>
       </table>
     </div>
     <div>
-      <div style="color:var(--green);font-weight:600;margin-bottom:6px">Kept — Analytical signals (33)</div>
+      <div style="color:var(--green);font-weight:600;margin-bottom:6px">Kept — Analytical signals (63)</div>
       <table style="border-collapse:collapse;width:100%;font-size:.75rem">
         <thead><tr>
           <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Signal</th>
@@ -247,7 +255,7 @@ rack/rack_1: Rack_FanState  Rack_DoorOpen
 </pre>
 
 <h3>Burst model</h3>
-<p>Each sweep publishes all 34 signals per unit in a randomised burst of <code>50–200 ms</code>
+<p>Each sweep publishes all 63 analytical signals per unit in a randomised burst of <code>50–200 ms</code>
 (well inside the <code>time_window_ms: 250</code> coalesce window). The wide writer
 coalesces each burst into one row — target ~1 row/sweep/unit.</p>
 
@@ -279,7 +287,7 @@ coalesces each burst into one row — target ~1 row/sweep/unit.</p>
     <span class="tag tag-wide">wide-pivot</span>
     <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
       One row per sweep per unit. Each signal is a column. Burst-coalesced.<br>
-      <span style="color:var(--muted)">38 columns: ts + 34 signals + dtype_hint + unit_id + site</span>
+      <span style="color:var(--muted)">~68 columns: ts + 63 signals + dtype_hint + unit_id + site; constants null_fill_unchanged</span>
     </div>
     <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
       ~7.2k rows · 4.1 MB · 19–36 ms flush

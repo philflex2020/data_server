@@ -1044,12 +1044,34 @@ static int compact_directory(const fs::path& dir,
         struct stat st3{}; if (::stat(f.string().c_str(), &st3) == 0) source_bytes += st3.st_size;
     }
 
+    // Verify compacted file by reading it back and checking row count.
+    bool verified = false;
+    {
+        auto vr = read_parquet_table(out_path);
+        if (vr.ok()) {
+            int64_t expected = merged->num_rows();
+            int64_t actual   = (*vr)->num_rows();
+            if (actual == expected) {
+                verified = true;
+            } else {
+                std::cerr << "[compact] VERIFY FAILED in " << out_path
+                          << " — expected " << expected << " rows, got " << actual
+                          << " — keeping source files\n" << std::flush;
+            }
+        } else {
+            std::cerr << "[compact] VERIFY read-back failed: " << vr.status().ToString()
+                      << " — keeping source files\n" << std::flush;
+        }
+    }
+
     int deleted = 0;
-    for (const auto& f : files) {
-        fs::remove(f, ec);
-        if (!ec) ++deleted;
-        else std::cerr << "[compact] remove " << f.filename().string()
-                       << " failed: " << ec.message() << "\n" << std::flush;
+    if (verified) {
+        for (const auto& f : files) {
+            fs::remove(f, ec);
+            if (!ec) ++deleted;
+            else std::cerr << "[compact] remove " << f.filename().string()
+                           << " failed: " << ec.message() << "\n" << std::flush;
+        }
     }
 
     std::cout << "[compact] " << deleted << " → " << out_path
