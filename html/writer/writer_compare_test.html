@@ -1247,7 +1247,8 @@ async function loadCompactLog() {
       </tr></thead><tbody>`;
 
     entries.forEach(e => {
-      const t = e.ts ? e.ts.replace('T',' ').replace('Z','') : '';
+      const raw = (e.ts||'').replace(/ZZ?$/,'');
+      const t = raw.length===15 ? raw.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,'$1-$2-$3 $4:$5:$6') : raw.replace('T',' ');
       const srcSz  = e.source_bytes ? fmtSize(e.source_bytes) : '?';
       const sz     = e.size_bytes   ? fmtSize(e.size_bytes)   : '?';
       const ratio  = e.source_bytes && e.size_bytes

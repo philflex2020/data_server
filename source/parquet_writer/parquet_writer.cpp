@@ -1055,7 +1055,7 @@ static int compact_directory(const fs::path& dir,
             long out_sz = 0;
             struct stat st2{}; if (::stat(out_path.c_str(), &st2) == 0) out_sz = st2.st_size;
 
-            lf << "{\"ts\":\"" << ts << "Z\""
+            lf << "{\"ts\":\"" << ts << "\""
                << ",\"schema\":\"" << cfg.mqtt_client_id << "\""
                << ",\"dir\":\"" << rel_dir << "\""
                << ",\"sources\":" << deleted
