@@ -667,20 +667,21 @@ or paste <code>results.json</code> content directly.</p>
 // ── host presets ──────────────────────────────────────────────────────────────
 // File browser (api/ls, api/parquet) requires bench_server.py on port 8780.
 // Health-only endpoints (8771-8774) serve /health but not the file API.
-// On .48 run:  python3 scripts/bench_server.py --port 8780 --directory /data/parquet-evelyn
+// On .34: python3 scripts/bench_server.py --port 8780 --directory /mnt/tort-sdi/bench
+// On .48: python3 scripts/bench_server.py --port 8780 --directory /data
 const PRESETS = {
   '34-bench': { host:'192.168.86.34', port:'8780', path:'/mnt/tort-sdi/bench/results.json',
                 rootDir:'/mnt/tort-sdi/bench', healthPort: null, label:'.34 bench compare' },
-  '48-bench': { host:'192.168.86.48', port:'8780', path:'/data/bench/results.json',
-                rootDir:'/data/bench',          healthPort: null, label:'.48 bench compare' },
-  '48-a':     { host:'192.168.86.48', port:'8780', path:'a',
-                rootDir:'a', healthPort:8771, label:'.48 slice A (units 0-11)'  },
-  '48-b':     { host:'192.168.86.48', port:'8780', path:'b',
-                rootDir:'b', healthPort:8772, label:'.48 slice B (units 12-23)' },
-  '48-c':     { host:'192.168.86.48', port:'8780', path:'c',
-                rootDir:'c', healthPort:8773, label:'.48 slice C (units 24-34)' },
-  '48-d':     { host:'192.168.86.48', port:'8780', path:'d',
-                rootDir:'d', healthPort:8774, label:'.48 slice D (units 35-45)' },
+  '48-bench': { host:'192.168.86.48', port:'8780', path:'bench/results.json',
+                rootDir:'bench',               healthPort: null, label:'.48 bench compare' },
+  '48-a':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/a',
+                rootDir:'parquet-evelyn/a', healthPort:8771, label:'.48 slice A (units 0-11)'  },
+  '48-b':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/b',
+                rootDir:'parquet-evelyn/b', healthPort:8772, label:'.48 slice B (units 12-23)' },
+  '48-c':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/c',
+                rootDir:'parquet-evelyn/c', healthPort:8773, label:'.48 slice C (units 24-34)' },
+  '48-d':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/d',
+                rootDir:'parquet-evelyn/d', healthPort:8774, label:'.48 slice D (units 35-45)' },
 };
 
 let _activePreset = null;
