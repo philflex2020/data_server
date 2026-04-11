@@ -182,34 +182,7 @@ mqtt:
     - SysHB
     - Counter
     - ItemDeletionTime
-    - AvgCellT
-    - BMS_AvgCellT
-    - BMS_ChaCurrLimit
-    - BMS_DischCurrLimit
-    - BMS_MaxCellT
-    - BMS_MaxP_Bus1
-    - BMS_MaxP_Bus2
-    - BMS_MaxP_Bus3
-    - BMS_MinP_Bus1
-    - BMS_MinP_Bus2
-    - BMS_MinP_Bus3
-    - BMS_RackCount
-    - BMS_SysSOH
-    - ChaCurrLimit
-    - ConnectingStatus
-    - DischCurrLimit
-    - MaxCellT
-    - MinCellT
-    - RackCount
-    - SN
-    - SysSOH
     - TS
-    - ACBreaker
-    - Bank1Enable
-    - Bank2Enable
-    - Bank3Enable
-    - DisableEvenBMS
-    - DisableOddBMS
 output:
   base_path: $OUTDIR/norm-long
   site_id: "$SITE"
@@ -258,34 +231,7 @@ mqtt:
     - SysHB
     - Counter
     - ItemDeletionTime
-    - AvgCellT
-    - BMS_AvgCellT
-    - BMS_ChaCurrLimit
-    - BMS_DischCurrLimit
-    - BMS_MaxCellT
-    - BMS_MaxP_Bus1
-    - BMS_MaxP_Bus2
-    - BMS_MaxP_Bus3
-    - BMS_MinP_Bus1
-    - BMS_MinP_Bus2
-    - BMS_MinP_Bus3
-    - BMS_RackCount
-    - BMS_SysSOH
-    - ChaCurrLimit
-    - ConnectingStatus
-    - DischCurrLimit
-    - MaxCellT
-    - MinCellT
-    - RackCount
-    - SN
-    - SysSOH
     - TS
-    - ACBreaker
-    - Bank1Enable
-    - Bank2Enable
-    - Bank3Enable
-    - DisableEvenBMS
-    - DisableOddBMS
 output:
   base_path: $OUTDIR/long-cmp
   site_id: "$SITE"
@@ -334,34 +280,7 @@ mqtt:
     - SysHB
     - Counter
     - ItemDeletionTime
-    - AvgCellT
-    - BMS_AvgCellT
-    - BMS_ChaCurrLimit
-    - BMS_DischCurrLimit
-    - BMS_MaxCellT
-    - BMS_MaxP_Bus1
-    - BMS_MaxP_Bus2
-    - BMS_MaxP_Bus3
-    - BMS_MinP_Bus1
-    - BMS_MinP_Bus2
-    - BMS_MinP_Bus3
-    - BMS_RackCount
-    - BMS_SysSOH
-    - ChaCurrLimit
-    - ConnectingStatus
-    - DischCurrLimit
-    - MaxCellT
-    - MinCellT
-    - RackCount
-    - SN
-    - SysSOH
     - TS
-    - ACBreaker
-    - Bank1Enable
-    - Bank2Enable
-    - Bank3Enable
-    - DisableEvenBMS
-    - DisableOddBMS
 output:
   base_path: $OUTDIR/wide
   site_id: "$SITE"
