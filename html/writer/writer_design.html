@@ -155,6 +155,9 @@
 
 <div class="nav">
   <a href="#overview">Overview</a>
+  <a href="#wide-pivot">Wide-Pivot Schema</a>
+  <a href="#source-data">Source Data</a>
+  <a href="#schemas">Schema Formats</a>
   <a href="#architecture">Architecture</a>
   <a href="#threads">Threads</a>
   <a href="#data-flow">Data Flow</a>
@@ -165,10 +168,6 @@
   <a href="#deployment">Deployment</a>
   <a href="#internals">Internals</a>
   <a href="#compactor">Compactor</a>
-  <a href="#ext-ws">Ext: WS/JSON</a>
-  <a href="#ext-shm-output">Ext: SHM Buffer</a>
-  <a href="#shm-takeover">SHM Takeover</a>
-  <a href="#next">Roadmap</a>
   <a href="#wal-detail">WAL Detail</a>
   <a href="#flush-dedup">flush_dedup TODO</a>
   <a href="mqtt_topic_formats.html">MQTT Topic Formats ↗</a>
@@ -220,6 +219,233 @@
       <div class="kpi-val">~10 MB</div>
       <div class="kpi-lbl">binary size (statically linked)</div>
     </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="wide-pivot">1a · Wide-Pivot Schema <span class="tag tag-green">Primary Format</span></h2>
+
+<div class="section">
+  <p>
+    The <strong>wide-pivot</strong> schema is the primary output format for BMS/PCS telemetry.
+    Instead of storing one row per MQTT message (long schema), it groups all signals for a
+    given unit × timestamp into a single row with one column per signal path. This is the
+    most query-efficient layout for time-series analytics where you want all channels for a
+    unit in one scan.
+  </p>
+
+  <h3>How it works</h3>
+  <p>
+    Configured via <code>compound_field_name</code>. The writer joins the listed topic segments
+    (e.g. <code>[device, instance, point_name]</code>) with <code>/</code> to produce the column
+    name for that message's value. Each row writes exactly one value column; all other signal
+    columns are null for that row. At flush time these sparse rows are combined into a wide table.
+  </p>
+
+  <h3>Example — 12-unit BESS fleet (bench topology)</h3>
+  <p>
+    Topic format: <code>bench/{unit_id}/{device}/{instance}/{signal}/{dtype}</code><br>
+    Config: <code>compound_field_name: [device, instance, point_name]</code>
+  </p>
+  <pre>Topic: bench/0215D1D8/bms/bms_1/Pack_Voltage/float
+→ column = "bms/bms_1/Pack_Voltage",  value = 1143.6
+
+Topic: bench/0215D1D8/pcs/pcs_1/GridFrequency/float
+→ column = "pcs/pcs_1/GridFrequency", value = 60.003</pre>
+
+  <p>Resulting wide row (one row per unique timestamp for this unit):</p>
+  <table>
+    <thead><tr>
+      <th>ts</th><th>unit_id</th>
+      <th>bms/bms_1/<br>Pack_Voltage</th>
+      <th>bms/bms_1/<br>Pack_SOC</th>
+      <th>pcs/pcs_1/<br>GridFrequency</th>
+      <th>… (31 more)</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>2026-04-11T14:06:58Z</td><td>0215D1D8</td>
+        <td>1143.6</td><td>84.2</td><td>60.003</td><td class="dim">null / value</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Output files (current continuous run)</h3>
+  <pre>/mnt/tort-sdi/bench/bench-wide/bench/2026/04/11/
+  0215D1D8_20260411T140658Z.parquet    ← one file per unit per 60s flush
+  0215D1D9_20260411T140658Z.parquet
+  …  (12 units × N flushes/day)
+compact_20260411T140658Z.parquet       ← compactor merges flush files every 5 min</pre>
+
+  <h3>COV — Change-on-Value at the publisher</h3>
+  <p>
+    The benchmark publisher supports a <code>--cov</code> flag that simulates realistic
+    COV filtering before publishing:
+  </p>
+  <table>
+    <thead><tr><th>Signal type</th><th>COV rule</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Float signals</td><td>Publish only when value drifts &gt;1% from last sent (<code>COV_FLOAT_PCT = 0.01</code>)</td><td>Slow-moving signals (resting cell voltage) may publish only every few minutes; fast-changing signals (current during charge/discharge) publish every sweep</td></tr>
+      <tr><td>Integer / boolean signals</td><td>Publish only on change</td><td>Fault codes and relay states publish rarely in normal operation, frequently during fault events</td></tr>
+    </tbody>
+  </table>
+  <p>Without <code>--cov</code> all 34 signals × 12 units publish every 1-Hz sweep (408 msg/s).</p>
+
+  <h3>null_fill_unchanged — COV at the writer level</h3>
+  <p>
+    The writer's <code>null_fill_unchanged: true</code> config implements COV suppression
+    <em>after</em> ingest — at flush time, not at the publisher. For each partition, any
+    signal column whose value has not changed since the last flush is set to null for all
+    rows in that flush interval. This gives columnar COV compression without requiring
+    publisher-side filtering.
+  </p>
+  <table>
+    <thead><tr><th>Setting</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>null_fill_unchanged: false</code> (default)</td>
+        <td>Every row carries the full value for every signal column it originated from. No nulls introduced. Most useful when downstream tools can't handle nulls or you need all-values-present guarantees.</td>
+      </tr>
+      <tr>
+        <td><code>null_fill_unchanged: true</code></td>
+        <td>After the first flush for a partition, columns whose value is identical to the prior flush's last value are replaced with null. On a typical resting BMS (SOC steady, cells not balancing), &gt;70% of float columns may become null — Parquet compresses null runs to near-zero bytes.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>null_fill_reset_interval_seconds — the null override</h3>
+  <p>
+    Pure null suppression would create data gaps: a signal that doesn't change for 2 hours
+    would write no value for that entire window. <code>null_fill_reset_interval_seconds</code>
+    (default: 3600) is the null override — it forces a full non-null write for all columns
+    every N seconds, regardless of whether values have changed.
+  </p>
+  <table>
+    <thead><tr><th>Value</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>3600</code> (default)</td><td>Guarantees at least one full-value row per signal per hour. A DuckDB <code>last_value(signal) IGNORE NULLS</code> query will find a value within the last hour for any stable signal.</td></tr>
+      <tr><td><code>0</code></td><td>Null override disabled — a signal that never changes will only appear in the very first flush after startup. Use only when signals are guaranteed to change regularly or when downstream tools always forward-fill nulls.</td></tr>
+      <tr><td><code>300</code></td><td>5-minute reset — matches a compactor cycle; each compacted file is guaranteed to contain at least one full row for every signal. Good for near-real-time dashboards.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Wide-pivot + COV interaction:</strong> when both <code>null_fill_unchanged</code>
+    and publisher-side <code>--cov</code> are active, the writer only sees changed values from
+    the publisher — so <code>null_fill_unchanged</code> adds a second layer of suppression on
+    top. This is fine and compounds the compression benefit. The
+    <code>null_fill_reset_interval_seconds</code> reset still fires at the configured interval
+    to prevent indefinite gaps.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="source-data">1b · Source Data — SBESS3 Real-Site Recordings</h2>
+
+<div class="section">
+  <p>
+    The benchmark generator and continuous publisher can replay real BESS telemetry from
+    the <strong>SBESS3</strong> (Utility-Scale Battery Energy Storage System) field recording:
+    a 3-hour operational window from a production US site.
+  </p>
+
+  <h3>Dataset characteristics</h3>
+  <table>
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Site</td><td>SBESS3 — utility-scale US BESS, 60 Hz grid</td></tr>
+      <tr><td>Battery chemistry</td><td>Li-NMC, 342 series cells per unit (approx. 1,200V nominal pack)</td></tr>
+      <tr><td>Recording duration</td><td>~3 hours operational data (UC 61B5)</td></tr>
+      <tr><td>Devices loaded</td><td><code>bms_1</code> (BMS telemetry), <code>pcs_1</code> (PCS/inverter telemetry)</td></tr>
+      <tr><td>Signals per device</td><td>~24 float + 10 integer after exclusions</td></tr>
+      <tr><td>Source files</td><td><code>SBESS3 bms data - UC 61B5.csv</code>, <code>SBESS3 pcs data - UC 61B5.csv</code> (InfluxDB Flux CSV format, ZIP packaged)</td></tr>
+      <tr><td>Excluded signals</td><td>Monotonic counters (<code>BMS_SysHB</code>, <code>Counter</code>, …) and constants (<code>RackCount</code>, <code>SysSOH</code>, …) stripped at load time</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Observed signal ranges (calibration basis for physics model)</h3>
+  <table>
+    <thead><tr><th>Signal</th><th>Observed range</th><th>Typical noise</th></tr></thead>
+    <tbody>
+      <tr><td><code>Batt1_Cell*_Voltage</code></td><td>3.328 – 3.393 V</td><td>±0.5 mV</td></tr>
+      <tr><td><code>Batt1_Cell*_Temperature</code></td><td>20 – 29 °C</td><td>±0.05 °C</td></tr>
+      <tr><td><code>Pack_SOC</code></td><td>78 – 92 %</td><td>±0.01 %</td></tr>
+      <tr><td><code>Pack_Current</code></td><td>−480 to +480 A</td><td>±0.5 A</td></tr>
+      <tr><td><code>GridFrequency</code></td><td>59.95 – 60.05 Hz</td><td>±0.005 Hz</td></tr>
+      <tr><td><code>ActivePower</code></td><td>−580 to +580 kW</td><td>±1 kW</td></tr>
+    </tbody>
+  </table>
+
+  <h3>How to use real data in a benchmark run</h3>
+  <pre># Pass the SBESS3 zip to compare_run.py:
+python3 source/parquet_writer/compare_run.py     --csv /path/to/SBESS3_UC61B5.zip     --sweeps 600
+
+# The loader:
+#  1. Reads both CSV files from the ZIP
+#  2. Strips log- prefixed signals and the exclusion list
+#  3. Assigns each of the 12 bench units a different time-offset into the recording
+#     so units are not all synchronised (stagger = N_steps / N_units)
+#  4. Loops the recording — when end of data is reached, wraps to start</pre>
+
+  <h3>Physics model (synthetic, used in continuous mode)</h3>
+  <p>
+    When no CSV is provided, the <code>UnitPhysics</code> class generates synthetic data
+    calibrated to the SBESS3 ranges above. Each unit has independent state:
+  </p>
+  <ul>
+    <li>SOC integrator: charge/discharge cycles of 20–40 min half-period</li>
+    <li>Cell voltages: OCV lookup table + per-cell ±20 mV spread + noise</li>
+    <li>RC thermal model: τ=600 s, ambient 20–25°C, I²R heating</li>
+    <li>Grid frequency: Gaussian random walk bounded 59.8–60.2 Hz</li>
+    <li>Rare fault events: Poisson λ≈0.1/day, clearing after 20–60 s</li>
+  </ul>
+  <p>
+    The physics model is the source for the <strong>current continuous run</strong> on
+    192.168.86.34 — publisher: <code>scripts/continuous_publisher.py</code>,
+    writer config: <code>/mnt/tort-sdi/bench/continuous_wide.yaml</code>.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="schemas">1c · Schema Format Comparison</h2>
+
+<div class="section">
+  <p>Three schema layouts are benchmarked by <code>compare_run.py</code>, all writing the same
+     12-unit × 34-signal stream simultaneously:</p>
+  <table>
+    <thead><tr><th>Format</th><th>Rows/flush</th><th>Cols</th><th>Size (600 sweeps)</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Wide-Pivot</strong> <span class="tag tag-green">primary</span></td>
+        <td>1 row per unit per timestamp (7,200 rows)</td>
+        <td>36 (34 signal + ts + unit_id)</td>
+        <td>~1 MB raw / ~0 after compact+COV</td>
+        <td>Time-series analytics — "all channels for unit X over time"</td>
+      </tr>
+      <tr>
+        <td>Normalized Long</td>
+        <td>1 row per message (244,800 rows)</td>
+        <td>8 (ts, value, device, device_type, dtype, point_name, unit_id, site)</td>
+        <td>~705 KB raw / ~571 KB compacted</td>
+        <td>Cross-unit signal queries, simple ingest, maximum compatibility</td>
+      </tr>
+      <tr>
+        <td>Long + Compound</td>
+        <td>1 row per message (244,800 rows)</td>
+        <td>5 (ts, value, dtype, point_name, site)</td>
+        <td>~727 KB raw / ~578 KB compacted</td>
+        <td>Compact long format with compound point_name path</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Wide-Pivot compression note:</strong> the benchmark reports 1 MB for wide-pivot
+    vs 705 KB for normalized long. However, wide-pivot with <code>null_fill_unchanged: true</code>
+    and realistic COV compresses dramatically more — a resting BMS with stable cell voltages
+    can achieve &gt;10× better compression than the flat-rate benchmark numbers suggest, because
+    null columns compress to near-zero. The benchmark does not enable <code>null_fill_unchanged</code>
+    so both formats are compared on equal footing for raw ingest rate.
   </div>
 </div>
 
@@ -1835,7 +2061,7 @@ if (def_mode == "absolute") cfg.dedup_default.mode = DeadbandMode::Absolute;</pr
 </div>
 
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid var(--border);font-size:0.78rem;color:var(--muted)">
-  Document updated 2026-04-11 &nbsp;·&nbsp; Branch: <code>03202026_run_with_real_data</code>
+  Document updated 2026-04-11 (wide-pivot focus) &nbsp;·&nbsp; Branch: <code>03202026_run_with_real_data</code>
   &nbsp;·&nbsp; Source: <code>source/parquet_writer/parquet_writer.cpp</code>,
   <code>mqtt_ring.h</code>, <code>writer_config.yaml</code>
 </div>
