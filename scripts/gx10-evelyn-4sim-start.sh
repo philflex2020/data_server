@@ -16,7 +16,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOGS="/data/logs/$(date +%Y/%m/%d)"
 mkdir -p "$LOGS"
 
-WRITER_BIN="$REPO/source/parquet_writer_cpp/real_writer"
+WRITER_BIN="$REPO/source/parquet_writer/parquet_writer"
 STRESS_BIN="$REPO/source/ems_site_simulator/ems_site_simulator"
 STRESS_TPL="$REPO/source/ems_site_simulator/ems_topic_template.json"
 FLASHMQ_BIN="/tmp/FlashMQ/build/flashmq"
@@ -32,6 +32,7 @@ done
 [[ -x "$FLASHMQ_BIN" ]] || { echo "ERROR: FlashMQ binary not found at $FLASHMQ_BIN"; exit 1; }
 
 # ── stop any existing instances ────────────────────────────────────────────
+pkill -f "parquet_writer.*config.gx10-evelyn" 2>/dev/null && echo "stopped old parquet_writer(s)" || true
 pkill -f "real_writer.*config.gx10-evelyn"   2>/dev/null && echo "stopped old real_writer(s)"   || true
 pkill -f "ems_site_simulator.*topic-prefix"     2>/dev/null && echo "stopped old ems_site_simulator(s)" || true
 pkill -f "ems_site_simulator.*8769\|ems_site_simulator.*8779\|ems_site_simulator.*8789\|ems_site_simulator.*8799" 2>/dev/null || true
@@ -77,8 +78,8 @@ for SIM in a b c d; do
 
     # writer
     nohup "$WRITER_BIN" --config "$CFG" \
-        > "$LOGS/real_writer_${SIM}.log" 2>&1 &
-    echo "real_writer-${SIM}  pid=$!  log=$LOGS/real_writer_${SIM}.log"
+        > "$LOGS/parquet_writer_${SIM}.log" 2>&1 &
+    echo "parquet_writer-${SIM}  pid=$!  log=$LOGS/parquet_writer_${SIM}.log"
 
     # simulator
     # shellcheck disable=SC2046
