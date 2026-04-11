@@ -1185,9 +1185,54 @@ async function loadCompactLog() {
                          .filter(Boolean)
                          .reverse();  // newest first
 
+    // ── summary ──────────────────────────────────────────────────────────────
+    const totalSrc  = entries.reduce((s,e) => s + (e.source_bytes||0), 0);
+    const totalCmp  = entries.reduce((s,e) => s + (e.size_bytes||0),   0);
+    const totalRows = entries.reduce((s,e) => s + (e.rows||0),         0);
+    const totalSrc2 = entries.reduce((s,e) => s + (e.sources||0),      0);
+    const avgNull   = entries.length ? entries.reduce((s,e) => s + (e.null_pct||0), 0) / entries.length : 0;
+    const overallRatio = totalCmp ? (totalSrc / totalCmp).toFixed(1) : '?';
+    const saved = totalSrc - totalCmp;
+
+    // per-schema breakdown
+    const bySchema = {};
+    entries.forEach(e => {
+      const s = (e.schema||'unknown').replace('pw-bench-','');
+      if (!bySchema[s]) bySchema[s] = {count:0, src:0, cmp:0, rows:0};
+      bySchema[s].count++; bySchema[s].src += e.source_bytes||0;
+      bySchema[s].cmp += e.size_bytes||0; bySchema[s].rows += e.rows||0;
+    });
+
+    let summary = `<div style="display:flex;gap:24px;flex-wrap:wrap;padding:10px 4px;margin-bottom:12px;border-bottom:1px solid var(--border)">`;
+    const stat = (label, val, color='var(--text)') =>
+      `<div><div style="font-size:.65rem;color:var(--muted);margin-bottom:2px">${label}</div>
+       <div style="font-size:.95rem;font-weight:600;color:${color}">${val}</div></div>`;
+    summary += stat('Compactions', entries.length);
+    summary += stat('Files merged', totalSrc2);
+    summary += stat('Total rows', totalRows.toLocaleString());
+    summary += stat('Uncompacted', fmtSize(totalSrc), 'var(--muted)');
+    summary += stat('Compacted', fmtSize(totalCmp), 'var(--accent)');
+    summary += stat('Overall ratio', overallRatio+'×', 'var(--green)');
+    summary += stat('Space saved', fmtSize(saved), 'var(--green)');
+    summary += stat('Avg null%', avgNull.toFixed(1)+'%', avgNull>50?'var(--green)':'var(--yellow)');
+    summary += `</div>`;
+
+    // per-schema mini table
+    summary += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">`;
+    Object.entries(bySchema).forEach(([schema, d]) => {
+      const r = d.cmp ? (d.src/d.cmp).toFixed(1) : '?';
+      summary += `<div style="background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:.75rem">
+        <div style="color:var(--teal);font-weight:600;margin-bottom:4px">${schema}</div>
+        <div style="color:var(--muted)">${d.count} compactions · ${d.rows.toLocaleString()} rows</div>
+        <div>${fmtSize(d.src)} → <span style="color:var(--accent)">${fmtSize(d.cmp)}</span>
+          <span style="color:var(--green);margin-left:6px">${r}×</span></div>
+      </div>`;
+    });
+    summary += `</div>`;
+
     status.textContent = `${entries.length} compaction${entries.length===1?'':'s'}`;
 
-    let html = `<table style="border-collapse:collapse;width:100%">
+    let html = summary + `<table style="border-collapse:collapse;width:100%">
       <thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="text-align:left;padding:4px 8px">Time</th>
         <th style="text-align:left;padding:4px 8px">Schema</th>
