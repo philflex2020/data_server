@@ -551,7 +551,7 @@ def dir_stats(path):
                 total += sz
                 files.append(fp)
     if files:
-        t = pa.concat_tables([pq.read_table(f) for f in files])
+        t = pa.concat_tables([pq.read_table(f) for f in files], promote_options="default")
         rows   = t.num_rows
         schema = t.schema
     else:
