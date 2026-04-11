@@ -11,15 +11,24 @@ manager/nats-server
 aws/data_store/minio
 
 # C++ build outputs — compile per-arch, never commit
+source/parquet_writer/parquet_writer
+source/parquet_writer/tests/test_parquet_writer
 source/parquet_writer_cpp/parquet_writer
 source/parquet_writer_cpp/real_writer
 source/parquet_writer_cpp/kpi_writer
-source/parquet_writer/parquet_writer
-html/controllers/arduino/fast_load_control/build/
 source/parquet_writer_cpp/kpi_real_writer
+source/parquet_writer_cpp/tests/test_writer
+source/parquet_writer_cpp/tests/test_real_writer
+source/parquet_writer_cpp/tests/test_parquet_writer
+source/parquet_writer_cpp/tests/kpi_writer
+source/parquet_writer_cpp/tests/kpi_real_writer
+source/parquet_writer_cpp/tests/kpi_parquet_writer
+source/stress_runner/ems_site_simulator
 source/stress_runner/stress_pub
 source/stress_runner/stress_real_pub
 source/telegraf_plugins/float_dedup/float_dedup
+source/telegraf_plugins/float_dedup/float_dedup_arm64
+html/controllers/arduino/fast_load_control/build/
 
 # Data directories
 manager/nats-data/
