@@ -139,8 +139,53 @@ s = pq.read_schema(files[-1]); print(len(s.names), 'cols:', files[-1].split('/')
 
 ---
 
-## Design doc
+## Design docs (phil-dev: html/writer/)
 
-`writer_design.html` on phil-dev — committed 2026-04-11 (commit 4a4a182)
-Sections: Wide-Pivot Schema (primary), Source Data SBESS3, Schema Format Comparison, full config reference
-Links to: `evelyn_data_analysis.html` (noise analysis), `ems_physics_proposal.html` (signal calibration)
+| File | Contents | Last commit |
+|------|----------|-------------|
+| `writer_design.html` | Wide-pivot schema, SBESS3 source data, full config reference, COV/null_fill, writer-side COV + MON_IGN (planned) | f82aae2 |
+| `writer_query_design.html` | Query API design, Option D (subscriber_api + /current), DuckDB httpfs URI approach, HTTP Range handler, since= dedup, multi-writer fan-out | 4562422 |
+| `writer_commercial_options.html` | Commercial comparison (PI, InfluxDB, Timestream), cost analysis ($70k→$300/month), protocol bridge guide (Modbus/CAN/DNP3/WebSocket/REST) | c1af130 |
+
+HTML server: `http://192.168.86.46:8080/writer/`
+
+---
+
+## Query stack — subscriber_api + /current
+
+DuckDB `httpfs` reads writer live buffer directly as a URI — no temp file:
+
+```python
+# sources list mixes local globs + writer HTTP URIs
+sources = _build_globs(cfg, site, instance, from_ts, to_ts) + [
+    f"{url}/current?since={_newest_row_ts(globs):.3f}"
+    for url in cfg.get("writer_urls", [])
+]
+# DuckDB fetches all in parallel — local files + HTTP
+conn.execute(f"SELECT * FROM read_parquet([{src_str}], union_by_name=true) ...")
+```
+
+**Writer `/current` endpoint** (planned):
+- Returns in-memory buffer as parquet bytes
+- Must support HTTP `Range:` header — DuckDB httpfs does two-pass: footer first, then column pages
+- `?since=<unix_ts>` parameter trims to post-flush rows only — eliminates overlap with flush files
+- `Accept-Ranges: bytes` in response header enables efficient column-level fetching
+
+**config.yaml addition:**
+```yaml
+writer_urls:
+  - http://192.168.86.34:8771
+```
+
+---
+
+## Planned writer features
+
+| Feature | Config | Status |
+|---------|--------|--------|
+| Writer-side COV per signal | `output.cov.float_pct`, `output.cov.integer` | Planned |
+| MON_IGN mode | `output.cov.exceptions.<signal>.mode: mon_ign` | Planned |
+| `/current` HTTP endpoint | health thread + Range support | Planned |
+
+**MON_IGN**: suppresses monotonic increments, records backward jumps + stalls only.
+Replaces `CSV_EXCLUDE` for heartbeat signals — zero rows during normal run, one row on reset/fault.
