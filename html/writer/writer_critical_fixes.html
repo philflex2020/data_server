@@ -632,6 +632,16 @@ if (tid == arrow::Type::INT64)
     const Config& cfg)  // ← required, compiler catches omissions</pre>
         </div>
       </div>
+      <div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid #f9a825;border-radius:3px;font-size:0.88em;">
+        <strong>&#9888; Subsequent change (Apr 2026):</strong> <code>project_id</code> was later
+        removed from the signature entirely. The current signature is:
+        <pre style="margin:6px 0 0;background:transparent;border:none;padding:0;">static Row parse_payload(
+    const std::string&amp; payload,
+    const TopicInfo&amp;   info,
+    const Config&amp;      cfg)</pre>
+        All call sites updated accordingly. <code>project_id</code> is now read
+        directly from <code>cfg.project_id</code> inside <code>parse_payload()</code>.
+      </div>
     </div>
   </div>
 
