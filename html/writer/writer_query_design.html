@@ -642,6 +642,49 @@ serve Parquet bytes with Range support
   switch to the in-memory deque (§4) without changing the rest of the stack.
 </div>
 
+<h3>Config-driven strategy selection</h3>
+
+<p>A single <code>storage_type</code> config key selects the live-buffer strategy at startup,
+so the same binary runs correctly on local SSD or NFS/EFS without recompilation:</p>
+
+<pre><span class="cm"># parquet_writer.yaml</span>
+storage_type: local    <span class="cm"># "local" → §4c WAL-as-buffer | "nfs" → §4 in-memory deque</span>
+output_dir: /mnt/tort-sdi/bench/bench-wide</pre>
+
+<table>
+  <tr><th><code>storage_type</code></th><th>Live buffer strategy</th><th>When to use</th></tr>
+  <tr><td><code>local</code></td>
+      <td>§4c WAL-as-buffer — <code>write_live_wal()</code> rewrites <code>live.arrow</code> on every message,
+          <code>GET /current</code> reads file</td>
+      <td>Local SSD (<code>/mnt/tort-sdi/</code>, EBS gp3). Simplest path, unified WAL.</td></tr>
+  <tr><td><code>nfs</code></td>
+      <td>§4 in-memory deque — <code>g_recent_rows</code> rolling window,
+          <code>GET /current</code> snapshots memory</td>
+      <td>NFS / EFS / any network mount. No disk writes on the hot path, no rename atomicity concerns.</td></tr>
+</table>
+
+<h3>Runtime selection — startup check</h3>
+<pre><span class="cm">// In main(), after config load — auto-detect can supplement explicit config:</span>
+<span class="kw">if</span> (cfg.storage_type == <span class="str">"auto"</span>) {
+    <span class="cm">// stat() the output_dir filesystem type</span>
+    <span class="kw">struct</span> statfs fs;
+    <span class="fn">statfs</span>(cfg.output_dir.<span class="fn">c_str</span>(), &amp;fs);
+    <span class="cm">// NFS = 0x6969, EFS (via NFS) = same; local ext4/xfs/btrfs are different</span>
+    cfg.storage_type = (fs.f_type == <span class="num">0x6969</span>) ? <span class="str">"nfs"</span> : <span class="str">"local"</span>;
+    spdlog::<span class="fn">info</span>(<span class="str">"auto storage_type detected: {}"</span>, cfg.storage_type);
+}</pre>
+
+<div class="note">
+  <strong>NFS-specific write safety:</strong> when <code>storage_type: nfs</code> and the WAL
+  still needs to be written (crash recovery), always <code>fsync()</code> before
+  <code>rename()</code> and handle a missing or zero-byte <code>live.arrow</code> gracefully
+  in <code>handle_current()</code> (return empty 200, not a 500).<br><br>
+  <strong>Background write thread:</strong> on NFS, move <code>write_live_wal()</code> to a
+  dedicated thread signalled by a condition variable so the parse thread never
+  blocks on network I/O. On local SSD this is unnecessary — the rewrite is
+  sub-millisecond.
+</div>
+
 <hr>
 
 <!-- ──────────────────────────────────────────────────────────────── -->
