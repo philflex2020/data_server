@@ -98,7 +98,8 @@
     <li><a href="#duckdb">DuckDB In-Process Query Engine</a></li>
     <li><a href="#impl">Implementation Steps</a></li>
     <li><a href="#partial">Partial Dataset Queries</a></li>
-    <li><a href="#longspan">Longer Time-Span Queries</a></li>
+    <li><a href="#longspan">Longer Time-Span Queries</a>
+      <ul><li><a href="#cpp-changes">parquet_writer.cpp — exact code changes</a></li></ul></li>
     <li><a href="#client">Client-Side Integration</a></li>
     <li><a href="#notes">Notes from Related Designs</a></li>
   </ol>
@@ -763,6 +764,216 @@ writer_urls:
   - http://192.168.86.34:8771
 s3:
   local_path: /mnt/tort-sdi/bench/bench-wide/bench</pre>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h3 id="cpp-changes">parquet_writer.cpp — exact code changes for <code>/current</code></h3>
+
+<p>Two changes to <code>parquet_writer.cpp</code> are required to support the
+<code>http://host:8771/current</code> URI in a DuckDB <code>read_parquet()</code> source list.
+No other writer changes are needed — subscriber_api uses DuckDB's <code>httpfs</code> extension to
+fetch the URI exactly like it fetches a local file.</p>
+
+<h4>Change 1 — add <code>write_parquet_table_to_buffer()</code> helper (~line 853)</h4>
+
+<p>The existing <code>write_parquet_table()</code> writes to a file path via
+<code>arrow::io::FileOutputStream</code>. A new variant writes to an
+<code>arrow::io::BufferOutputStream</code> and returns the in-memory bytes.</p>
+
+<p><strong>BEFORE</strong> — file-only write, nothing after it:</p>
+<pre><span class="cm">// parquet_writer.cpp ~line 839 — BEFORE (unchanged)</span>
+<span class="kw">static</span> arrow::Status <span class="fn">write_parquet_table</span>(<span class="kw">const</span> std::string&amp; path,
+                                          <span class="kw">const</span> std::shared_ptr&lt;arrow::Table&gt;&amp; table,
+                                          <span class="kw">const</span> std::string&amp; compression) {
+    <span class="kw">auto</span> props = parquet::WriterProperties::Builder()
+        .<span class="fn">compression</span>(<span class="fn">to_parquet_compression</span>(compression))
+        -&gt;<span class="fn">build</span>();
+    ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> out, arrow::io::FileOutputStream::<span class="fn">Open</span>(path));
+    ARROW_RETURN_NOT_OK(parquet::arrow::<span class="fn">WriteTable</span>(
+        *table, arrow::<span class="fn">default_memory_pool</span>(), out,
+        <span class="kw">static_cast</span>&lt;<span class="kw">int64_t</span>&gt;(table-&gt;<span class="fn">num_rows</span>()), props));
+    <span class="kw">return</span> arrow::Status::<span class="fn">OK</span>();
+}
+<span class="cm">// &lt;— next function is write_wal_ipc(); no buffer variant exists</span></pre>
+
+<p><strong>AFTER</strong> — add buffer variant immediately below (no other changes):</p>
+<pre><span class="cm">// parquet_writer.cpp — INSERT after write_parquet_table(), ~line 853</span>
+
+<span class="cm">// Serialize an Arrow table to an in-memory parquet buffer.
+// Used by handle_current() to serve the live buffer over HTTP.
+// Returns nullptr on error (logs to stderr).</span>
+<span class="kw">static</span> std::shared_ptr&lt;arrow::Buffer&gt;
+<span class="fn">write_parquet_table_to_buffer</span>(<span class="kw">const</span> std::shared_ptr&lt;arrow::Table&gt;&amp; table,
+                               <span class="kw">const</span> std::string&amp; compression = <span class="str">"snappy"</span>) {
+    <span class="kw">auto</span> props = parquet::WriterProperties::Builder()
+        .<span class="fn">compression</span>(<span class="fn">to_parquet_compression</span>(compression))
+        -&gt;<span class="fn">build</span>();
+    <span class="kw">auto</span> sink_res = arrow::io::BufferOutputStream::<span class="fn">Create</span>();
+    <span class="kw">if</span> (!sink_res.<span class="fn">ok</span>()) {
+        std::cerr &lt;&lt; <span class="str">"[current] BufferOutputStream::Create: "</span> &lt;&lt; sink_res.<span class="fn">status</span>() &lt;&lt; <span class="str">"\n"</span>;
+        <span class="kw">return</span> <span class="kw">nullptr</span>;
+    }
+    <span class="kw">auto</span> sink = *sink_res;
+    <span class="kw">auto</span> st = parquet::arrow::<span class="fn">WriteTable</span>(
+        *table, arrow::<span class="fn">default_memory_pool</span>(), sink,
+        <span class="kw">static_cast</span>&lt;<span class="kw">int64_t</span>&gt;(table-&gt;<span class="fn">num_rows</span>()), props);
+    <span class="kw">if</span> (!st.<span class="fn">ok</span>()) {
+        std::cerr &lt;&lt; <span class="str">"[current] WriteTable: "</span> &lt;&lt; st &lt;&lt; <span class="str">"\n"</span>; <span class="kw">return</span> <span class="kw">nullptr</span>;
+    }
+    <span class="kw">auto</span> buf_res = sink-&gt;<span class="fn">Finish</span>();
+    <span class="kw">if</span> (!buf_res.<span class="fn">ok</span>()) {
+        std::cerr &lt;&lt; <span class="str">"[current] Finish: "</span> &lt;&lt; buf_res.<span class="fn">status</span>() &lt;&lt; <span class="str">"\n"</span>; <span class="kw">return</span> <span class="kw">nullptr</span>;
+    }
+    <span class="kw">return</span> *buf_res;
+}</pre>
+
+<h4>Change 2 — <code>health_thread_fn()</code> routing + new <code>handle_current()</code></h4>
+
+<p><strong>BEFORE</strong> — routing block at ~line 1554 rejects everything except
+<code>/health</code> with a 404:</p>
+
+<pre><span class="cm">// parquet_writer.cpp health_thread_fn() ~line 1554 — BEFORE (current code)</span>
+<span class="cm">// Only respond to GET /health; return 404 for everything else</span>
+std::string req(rbuf, <span class="kw">static_cast</span>&lt;<span class="kw">size_t</span>&gt;(n));
+<span class="kw">bool</span> valid = (req.<span class="fn">rfind</span>(<span class="str">"GET "</span>, <span class="num">0</span>) == <span class="num">0</span>) &amp;&amp;
+             (req.<span class="fn">find</span>(<span class="str">" /health "</span>) != std::string::npos ||
+              req.<span class="fn">find</span>(<span class="str">" /health\r"</span>) != std::string::npos);
+<span class="kw">if</span> (!valid) {
+    <span class="kw">const char</span>* r404 = <span class="str">"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"</span>;
+    ::<span class="fn">send</span>(client_fd, r404, <span class="fn">strlen</span>(r404), MSG_NOSIGNAL);
+    ::<span class="fn">close</span>(client_fd); <span class="kw">continue</span>;
+}
+<span class="cm">// ... double-check disk, read g_total_buffered, build JSON body ...</span></pre>
+
+<p><strong>AFTER</strong> — replace that 9-line block with a dispatcher; add
+<code>handle_current()</code> as a free function immediately before
+<code>health_thread_fn()</code>:</p>
+
+<pre><span class="cm">// ── INSERT before health_thread_fn() (~line 1513) ──────────────────────────
+// Handles GET /current[?since=UNIX_S]
+// Snapshots g_buffers, serialises to parquet bytes, serves with Range support
+// so DuckDB httpfs can do its two-pass footer + column-page fetch.</span>
+<span class="kw">static void</span> <span class="fn">handle_current</span>(<span class="kw">int</span> client_fd, <span class="kw">const</span> std::string&amp; req) {
+    <span class="cm">// ── parse ?since=UNIX_S (optional) ──────────────────────────</span>
+    int64_t since_us = 0;    <span class="cm">// 0 = return all buffered rows</span>
+    <span class="kw">auto</span>    q = req.<span class="fn">find</span>(<span class="str">"?since="</span>);
+    <span class="kw">if</span> (q != std::string::npos) {
+        <span class="kw">try</span> {
+            double s = std::<span class="fn">stod</span>(req.<span class="fn">substr</span>(q + 7));
+            since_us = <span class="kw">static_cast</span>&lt;int64_t&gt;(s * 1'000'000.0);
+        } <span class="kw">catch</span> (...) {}
+    }
+
+    <span class="cm">// ── snapshot g_buffers under mutex ──────────────────────────</span>
+    std::vector&lt;Row&gt; rows;
+    {
+        std::lock_guard&lt;std::mutex&gt; lk(g_mutex);   <span class="cm">// same mutex as flush path</span>
+        <span class="kw">for</span> (<span class="kw">const auto</span>&amp; [key, part] : g_buffers) {
+            <span class="kw">for</span> (<span class="kw">const auto</span>&amp; r : part.rows) {
+                <span class="kw">if</span> (since_us &gt; 0) {
+                    <span class="kw">auto</span> it = r.ints.<span class="fn">find</span>(<span class="str">"ts"</span>);
+                    <span class="kw">if</span> (it != r.ints.<span class="fn">end</span>() &amp;&amp; it-&gt;second &lt;= since_us) <span class="kw">continue</span>;
+                }
+                rows.<span class="fn">push_back</span>(r);
+            }
+        }
+    }   <span class="cm">// mutex released — serialisation happens without holding the lock</span>
+
+    <span class="cm">// ── build Arrow table (reuse existing build_table path) ──────</span>
+    <span class="kw">auto</span> table_res = <span class="fn">build_table</span>(rows);    <span class="cm">// handles empty rows gracefully</span>
+    <span class="kw">if</span> (!table_res.<span class="fn">ok</span>()) {
+        <span class="kw">const char</span>* e500 = <span class="str">"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"</span>;
+        ::<span class="fn">send</span>(client_fd, e500, <span class="fn">strlen</span>(e500), MSG_NOSIGNAL);
+        ::<span class="fn">close</span>(client_fd); <span class="kw">return</span>;
+    }
+    <span class="kw">auto</span> buf = <span class="fn">write_parquet_table_to_buffer</span>(*table_res, g_cfg-&gt;compression);
+    <span class="kw">if</span> (!buf) {
+        <span class="kw">const char</span>* e500 = <span class="str">"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"</span>;
+        ::<span class="fn">send</span>(client_fd, e500, <span class="fn">strlen</span>(e500), MSG_NOSIGNAL);
+        ::<span class="fn">close</span>(client_fd); <span class="kw">return</span>;
+    }
+
+    <span class="cm">// ── Range header parsing ─────────────────────────────────────
+    // DuckDB httpfs issues (in order):
+    //   1. Range: bytes=-8              → last 8 bytes (Parquet magic check)
+    //   2. Range: bytes=N-M             → footer block (schema + row group offsets)
+    //   3. Range: bytes=A-B per column  → only columns referenced in SELECT/WHERE</span>
+    <span class="kw">size_t</span> total       = <span class="kw">static_cast</span>&lt;<span class="kw">size_t</span>&gt;(buf-&gt;<span class="fn">size</span>());
+    <span class="kw">size_t</span> range_start = 0, range_end = total - 1;
+    <span class="kw">bool</span>   is_range    = <span class="kw">false</span>;
+    <span class="kw">auto</span>   rpos        = req.<span class="fn">find</span>(<span class="str">"Range: bytes="</span>);
+    <span class="kw">if</span> (rpos != std::string::npos) {
+        std::string spec = req.<span class="fn">substr</span>(rpos + 13);
+        <span class="kw">auto</span> nl = spec.<span class="fn">find_first_of</span>(<span class="str">"\r\n"</span>);
+        <span class="kw">if</span> (nl != std::string::npos) spec = spec.<span class="fn">substr</span>(0, nl);
+        <span class="kw">try</span> {
+            <span class="kw">if</span> (spec[0] == <span class="str">'-'</span>) {                          <span class="cm">// suffix: bytes=-N</span>
+                <span class="kw">size_t</span> suffix = std::<span class="fn">stoull</span>(spec.<span class="fn">substr</span>(1));
+                range_start = total &gt; suffix ? total - suffix : 0;
+            } <span class="kw">else</span> {                                         <span class="cm">// range: bytes=START-END</span>
+                <span class="kw">auto</span> dash = spec.<span class="fn">find</span>(<span class="str">'-'</span>);
+                range_start = std::<span class="fn">stoull</span>(spec.<span class="fn">substr</span>(0, dash));
+                range_end   = std::<span class="fn">stoull</span>(spec.<span class="fn">substr</span>(dash + 1));
+            }
+            is_range = <span class="kw">true</span>;
+        } <span class="kw">catch</span> (...) {}
+    }
+    <span class="kw">if</span> (range_end   &gt;= total)       range_end   = total - 1;
+    <span class="kw">if</span> (range_start &gt;  range_end)   range_start = range_end;
+    <span class="kw">size_t</span>      send_len = range_end - range_start + 1;
+    std::string status   = is_range ? <span class="str">"206 Partial Content"</span> : <span class="str">"200 OK"</span>;
+
+    std::ostringstream hdr;
+    hdr &lt;&lt; <span class="str">"HTTP/1.1 "</span> &lt;&lt; status &lt;&lt; <span class="str">"\r\n"</span>
+        &lt;&lt; <span class="str">"Content-Type: application/octet-stream\r\n"</span>
+        &lt;&lt; <span class="str">"Accept-Ranges: bytes\r\n"</span>
+        &lt;&lt; <span class="str">"Access-Control-Allow-Origin: *\r\n"</span>
+        &lt;&lt; <span class="str">"Content-Length: "</span> &lt;&lt; send_len &lt;&lt; <span class="str">"\r\n"</span>
+        &lt;&lt; <span class="str">"Content-Range: bytes "</span> &lt;&lt; range_start &lt;&lt; <span class="str">"-"</span>
+                                  &lt;&lt; range_end &lt;&lt; <span class="str">"/"</span> &lt;&lt; total &lt;&lt; <span class="str">"\r\n"</span>
+        &lt;&lt; <span class="str">"Cache-Control: no-store\r\nConnection: close\r\n\r\n"</span>;
+    std::string h = hdr.<span class="fn">str</span>();
+    ::<span class="fn">send</span>(client_fd, h.<span class="fn">c_str</span>(), h.<span class="fn">size</span>(), MSG_NOSIGNAL);
+    ::<span class="fn">send</span>(client_fd,
+           <span class="kw">reinterpret_cast</span>&lt;<span class="kw">const char</span>*&gt;(buf-&gt;<span class="fn">data</span>()) + range_start,
+           send_len, MSG_NOSIGNAL);
+    ::<span class="fn">close</span>(client_fd);
+}
+
+<span class="cm">// ── REPLACE routing block in health_thread_fn() (~line 1554) ──────────────</span>
+<span class="cm">// Old 9-line block → new 6-line dispatcher:</span>
+std::string req(rbuf, <span class="kw">static_cast</span>&lt;<span class="kw">size_t</span>&gt;(n));
+<span class="kw">bool</span> is_get     = req.<span class="fn">rfind</span>(<span class="str">"GET "</span>, <span class="num">0</span>) == <span class="num">0</span>;
+<span class="kw">bool</span> is_health  = is_get &amp;&amp; (req.<span class="fn">find</span>(<span class="str">" /health "</span>)  != std::string::npos ||
+                              req.<span class="fn">find</span>(<span class="str">" /health\r"</span>) != std::string::npos);
+<span class="kw">bool</span> is_current = is_get &amp;&amp;  req.<span class="fn">find</span>(<span class="str">" /current"</span>) != std::string::npos;
+
+<span class="kw">if</span> (is_current) { <span class="fn">handle_current</span>(client_fd, req); <span class="kw">continue</span>; }  <span class="cm">// ← NEW</span>
+
+<span class="kw">if</span> (!is_health) {
+    <span class="kw">const char</span>* r404 = <span class="str">"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"</span>;
+    ::<span class="fn">send</span>(client_fd, r404, <span class="fn">strlen</span>(r404), MSG_NOSIGNAL);
+    ::<span class="fn">close</span>(client_fd); <span class="kw">continue</span>;
+}
+<span class="cm">// ... existing /health JSON response unchanged below this point ...</span></pre>
+
+<h4>Summary — all changes to parquet_writer.cpp</h4>
+<table>
+  <tr><th>Location</th><th>Change</th><th>Lines</th></tr>
+  <tr><td>~line 853 (after <code>write_parquet_table()</code>)</td>
+      <td>Add <code>write_parquet_table_to_buffer()</code></td><td>+22</td></tr>
+  <tr><td>Before <code>health_thread_fn()</code> (~line 1513)</td>
+      <td>Add <code>handle_current()</code> with <code>?since=</code> + Range support</td><td>+70</td></tr>
+  <tr><td><code>health_thread_fn()</code> routing (~line 1554)</td>
+      <td>Replace 9-line 404-all block with 6-line dispatcher</td><td>+6 / −9</td></tr>
+  <tr><td><strong>Total</strong></td><td></td><td><strong>~89 net new lines</strong></td></tr>
+</table>
+
+<div class="note">
+  <strong>No other files change.</strong> <code>build_table()</code>, <code>merge_wide_rows()</code>,
+  and the flush path are all reused unchanged. The Arrow and Parquet libraries are already linked —
+  <code>arrow::io::BufferOutputStream</code> is part of the same <code>libarrow</code> that
+  <code>FileOutputStream</code> uses. No new dependencies or Makefile changes required.
+</div>
 
 <hr>
 
