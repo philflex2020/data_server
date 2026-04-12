@@ -120,7 +120,8 @@
     <li><a href="#endpoints">Three HTTP Endpoints</a></li>
     <li><a href="#rolling">Rolling 60s Buffer Design</a></li>
     <li><a href="#duckdb">DuckDB In-Process Query Engine</a></li>
-    <li><a href="#wal-live">WAL-as-Live-Buffer (Local SSD)</a></li>
+    <li><a href="#wal-live">WAL-as-Live-Buffer (Local SSD)</a>
+      <ul><li><a href="#cov-config">Per-point COV null-fill config</a></li></ul></li>
     <li><a href="#impl">Implementation Steps</a></li>
     <li><a href="#partial">Partial Dataset Queries</a></li>
     <li><a href="#longspan">Longer Time-Span Queries</a>
@@ -683,6 +684,64 @@ output_dir: /mnt/tort-sdi/bench/bench-wide</pre>
   dedicated thread signalled by a condition variable so the parse thread never
   blocks on network I/O. On local SSD this is unnecessary — the rewrite is
   sub-millisecond.
+</div>
+
+<h3 id="cov-config">Per-point COV null-fill config (<code>NullFillCfg</code>)</h3>
+
+<p>Independent of the live-buffer strategy, wide-pivot flushes support
+<em>change-on-value</em> suppression: columns whose value has not changed
+(within an optional percentage threshold) are written as <code>NULL</code>
+instead of the repeated value. This compresses extremely well and is
+transparent at query time via forward-fill.</p>
+
+<h4>Config keys</h4>
+<table>
+  <tr><th>Key</th><th>Type</th><th>Default</th><th>Effect</th></tr>
+  <tr><td><code>null_fill_unchanged</code></td><td>bool</td><td><code>false</code></td>
+      <td>Enable COV null-fill. Only active in wide-pivot mode (<code>compound_field_name</code>).</td></tr>
+  <tr><td><code>null_fill_cov_pct</code></td><td>float</td><td><code>0.0</code></td>
+      <td>Global threshold. Suppress if |&Delta;|/|prev| &le; this value. <code>0.0</code> = exact equality.</td></tr>
+  <tr><td><code>null_fill_per_point</code></td><td>map</td><td><code>{}</code></td>
+      <td>Per-column threshold overrides. Pattern &rarr; threshold. First match wins.</td></tr>
+  <tr><td><code>null_fill_reset_interval_seconds</code></td><td>int</td><td><code>3600</code></td>
+      <td>Force a full write every N seconds so each compact window is self-contained. <code>0</code> = never.</td></tr>
+</table>
+
+<h4>Wildcard patterns in <code>null_fill_per_point</code></h4>
+<p>Pattern keys use shell-style glob syntax via <code>fnmatch()</code>.
+First matching pattern wins — list specific patterns before broad ones:</p>
+
+<table>
+  <tr><th>Wildcard</th><th>Matches</th><th>Example</th></tr>
+  <tr><td><code>*</code></td><td>Any sequence of characters (including <code>/</code>)</td>
+      <td><code>ems/*/battery/soc</code> — SOC for any site</td></tr>
+  <tr><td><code>?</code></td><td>Any single character</td>
+      <td><code>ems/site?/pcs/voltage</code> — single-char site suffix</td></tr>
+  <tr><td><code>0.0</code> threshold</td><td>Force exact equality for matched columns</td>
+      <td><code>ems/*/pcs/status_*: 0.0</code> — never suppress status bits</td></tr>
+</table>
+
+<h4>Full config example</h4>
+<pre><span class="cm"># Enable COV null-fill with per-point thresholds</span>
+null_fill_unchanged: <span class="kw">true</span>
+null_fill_cov_pct: <span class="num">0.01</span>              <span class="cm"># global 1% — suppress slow-moving signals</span>
+null_fill_per_point:
+  ems/*/battery/soc: <span class="num">0.005</span>           <span class="cm"># SOC any site — tighter, 0.5%</span>
+  ems/*/grid/freq*: <span class="num">0.001</span>            <span class="cm"># frequency signals — very tight, 0.1%</span>
+  ems/*/hvac/*: <span class="num">0.05</span>                 <span class="cm"># all HVAC signals — loose, 5%</span>
+  ems/*/pcs/dc_voltage: <span class="num">0.002</span>        <span class="cm"># DC voltage — 0.2%</span>
+  ems/*/pcs/status_*: <span class="num">0.0</span>            <span class="cm"># status bits — exact equality only</span>
+null_fill_reset_interval_seconds: <span class="num">3600</span></pre>
+
+<div class="note">
+  <strong>Priority rule:</strong> <code>null_fill_per_point</code> entries are evaluated in
+  yaml order — the first matching pattern wins. Put the most specific patterns at the top.
+  A threshold of <code>0.0</code> in a per-point entry overrides a non-zero
+  <code>null_fill_cov_pct</code>, forcing exact equality for that signal.<br><br>
+  <strong>Implementation:</strong> matching uses <code>NullFillCfg::threshold_for(col)</code>
+  via <code>fnmatch()</code> from <code>&lt;fnmatch.h&gt;</code> — no extra dependencies.
+  Per-point list stored as <code>std::vector&lt;std::pair&lt;string,double&gt;&gt;</code>
+  preserving yaml insertion order.
 </div>
 
 <hr>

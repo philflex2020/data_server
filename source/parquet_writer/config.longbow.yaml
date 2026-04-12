@@ -83,3 +83,36 @@ compact:
   interval_seconds: 600
   min_files: 3
   min_age_seconds: 0
+
+# ---------------------------------------------------------------------------
+# COV null-fill — wide-pivot change-on-value filtering
+# ---------------------------------------------------------------------------
+# null_fill_unchanged: true        suppress column if value has not changed
+#                                  (only active when topic_patterns uses
+#                                   compound_field_name / wide-pivot mode)
+#
+# null_fill_cov_pct: 0.01          global threshold — suppress if |Δ|/|prev| ≤ 1%
+#                                  0.0 (default) = exact equality only
+#
+# null_fill_per_point:             per-column overrides; first matching pattern wins.
+#   <pattern>: <threshold>         supports shell-style wildcards:
+#                                    *  — any sequence of chars (crosses '/')
+#                                    ?  — any single char
+#                                  0.0 forces exact-equality for that pattern.
+#                                  List specific patterns before broad ones.
+#
+# null_fill_reset_interval_seconds: 3600   force full write every N seconds so
+#                                          each compaction window is self-contained.
+#                                          0 = never reset.
+#
+# Example (uncomment to enable):
+#
+# null_fill_unchanged: true
+# null_fill_cov_pct: 0.01                      # global 1% — suppress slow-moving signals
+# null_fill_per_point:
+#   ems/*/battery/soc: 0.005                   # SOC — tighter, 0.5%
+#   ems/*/grid/freq*: 0.001                    # frequency — very tight, 0.1%
+#   ems/*/hvac/*: 0.05                         # HVAC signals — loose, 5%
+#   ems/*/pcs/dc_voltage: 0.002                # DC voltage — 0.2%
+#   ems/*/pcs/status_*: 0.0                    # status bits — exact equality only
+# null_fill_reset_interval_seconds: 3600
