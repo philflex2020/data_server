@@ -337,6 +337,91 @@ compact_20260411T140658Z.parquet       ← compactor merges flush files every 5 
     <code>null_fill_reset_interval_seconds</code> reset still fires at the configured interval
     to prevent indefinite gaps.
   </div>
+
+  <h3>Writer-side COV — per-signal thresholds <span class="tag tag-yellow">planned</span></h3>
+  <p>
+    Publisher-side COV (<code>--cov</code>) requires all publishers to implement the same
+    filtering logic. A cleaner alternative is COV enforcement inside the writer itself —
+    the publisher sends everything, the writer decides what to keep. This also works with
+    hardware devices that have no COV capability.
+  </p>
+  <p>
+    The design uses a single default threshold with a per-signal exception list, so most
+    signals need no config at all:
+  </p>
+<pre>output:
+  cov:
+    enabled: true
+    float_pct: 0.01        # suppress floats if change &lt; 1% (default)
+    integer: on_change     # suppress integers unless value changes (default)
+    reset_seconds: 300     # force write every 300s regardless — prevents gaps
+    exceptions:
+      bms/bms_1/SysSOC:
+        float_pct: 0.001   # tighter — SOC is operationally important
+      pcs/pcs_1/Hz:
+        float_pct: 0.005   # tighter — frequency deviation matters
+      bms/bms_1/SysTemperature:
+        disabled: true     # always write — no COV suppression</pre>
+
+  <table>
+    <thead><tr><th>Mode</th><th>Rule</th><th>Use case</th></tr></thead>
+    <tbody>
+      <tr><td><code>float_pct</code></td><td>Suppress if |new−last| / |last| &lt; threshold</td><td>Analogue signals — voltage, current, temperature</td></tr>
+      <tr><td><code>on_change</code></td><td>Suppress if new == last</td><td>Integer/boolean — fault codes, relay states, mode flags</td></tr>
+      <tr><td><code>disabled: true</code></td><td>Always write</td><td>Safety-critical signals that must never be suppressed</td></tr>
+      <tr><td><code>mon_ign</code></td><td>See below</td><td>Monotonic counters — heartbeats, sequence numbers</td></tr>
+    </tbody>
+  </table>
+
+  <h3>MON_IGN — monotonic ignore mode <span class="tag tag-yellow">planned</span></h3>
+  <p>
+    Heartbeat counters and sequence numbers increment every sweep — they always change,
+    so <code>on_change</code> would write every row, and the current workaround is to
+    exclude them entirely via <code>CSV_EXCLUDE</code>. Neither is ideal: exclusion
+    discards the signal completely; <code>on_change</code> defeats compression.
+  </p>
+  <p>
+    <code>mon_ign</code> (monotonic ignore) keeps the signal in the schema but only
+    records <em>backward jumps</em> — a counter reset, rollover, or unexpected decrement.
+    Normal monotonic increases are silently dropped:
+  </p>
+
+  <table>
+    <thead><tr><th>Condition</th><th>Action</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>new &gt; last</td><td>Suppress</td><td>Normal increment — expected, uninteresting</td></tr>
+      <tr><td>new &lt; last</td><td><strong>Write</strong></td><td>Counter reset, rollover, or device restart — meaningful event</td></tr>
+      <tr><td>new == last</td><td>Suppress</td><td>Stalled counter — optionally trigger after <code>stall_seconds</code></td></tr>
+    </tbody>
+  </table>
+
+<pre>output:
+  cov:
+    exceptions:
+      bms/bms_1/BMS_SysHB:
+        mode: mon_ign
+        stall_seconds: 30    # also write if counter hasn't moved in 30s
+                             # catches frozen heartbeat — comms fault
+      pcs/pcs_1/Counter:
+        mode: mon_ign
+      bms/bms_1/ItemDeletionTime:
+        mode: mon_ign</pre>
+
+  <p>
+    With <code>mon_ign</code> a heartbeat counter running normally for 8 hours produces
+    <strong>zero rows</strong>. A device restart produces <strong>one row</strong>. A frozen
+    heartbeat (<code>stall_seconds</code> exceeded) produces <strong>one row</strong>.
+    This is exactly the information you want from a heartbeat — noise gone, fault events preserved.
+  </p>
+
+  <div class="alert alert-info">
+    <strong>Migration from CSV_EXCLUDE:</strong> signals currently in <code>CSV_EXCLUDE</code>
+    (<code>BMS_SysHB</code>, <code>SysHB</code>, <code>Counter</code>,
+    <code>ItemDeletionTime</code>) are excluded entirely because there is no writer-side
+    MON_IGN yet. Once writer-side COV is implemented, these move from exclusion to
+    <code>mode: mon_ign</code> — they gain a column in the schema and restart/fault events
+    become queryable.
+  </div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
