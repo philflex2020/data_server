@@ -563,6 +563,50 @@ python3 scripts/continuous_publisher.py \
     null columns compress to near-zero. The benchmark does not enable <code>null_fill_unchanged</code>
     so both formats are compared on equal footing for raw ingest rate.
   </div>
+
+  <h3>Real-site measurement — SBESS3 continuous run (2026-04-12)</h3>
+  <p>
+    A full day of continuous wide-pivot output from the SBESS3 bench run (12 units × 63 signals
+    @ 1 Hz, publisher-side COV with 5-minute reset, Snappy compression) was merged into a
+    single day file using DuckDB <code>union_by_name=true</code>:
+  </p>
+
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Input</td><td>146 compact files — <strong>16.87 MB</strong></td><td>5-minute compact windows across the day</td></tr>
+      <tr><td>Output</td><td>1 merged file — <strong>11.98 MB</strong></td><td>Full day, single Parquet file, Snappy</td></tr>
+      <tr><td>Merge saving</td><td><strong>29%</strong></td><td>Single row-group re-encoding finds longer null runs across the full day</td></tr>
+      <tr><td>Row count</td><td><strong>1,514,059 rows</strong></td><td>12 units × ~8 hours — COV suppressed most constant columns</td></tr>
+      <tr><td>Columns</td><td><strong>64</strong></td><td>ts + unit_id + 62 signals (bms_1 + pcs_1)</td></tr>
+      <tr><td>Bytes per row</td><td><strong>8.3 bytes</strong></td><td>~1 byte per column — heavy null compression on constants</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Early compact files (before the first COV reset at ~5 min uptime) had only 17 columns;
+    later files had 64. <code>union_by_name=true</code> merged both schema variants seamlessly —
+    missing columns are null-filled. This is the production merge pattern for day-level compaction.
+  </p>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-val">8.3</div>
+      <div class="kpi-lbl">bytes / row (real-site COV)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">12 MB</div>
+      <div class="kpi-lbl">full day, 12 units, 63 signals</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">1.5M</div>
+      <div class="kpi-lbl">rows stored from ~2.7B possible</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">29%</div>
+      <div class="kpi-lbl">extra saving from day-level merge</div>
+    </div>
+  </div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════ -->
