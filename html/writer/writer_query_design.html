@@ -120,6 +120,7 @@
     <li><a href="#endpoints">Three HTTP Endpoints</a></li>
     <li><a href="#rolling">Rolling 60s Buffer Design</a></li>
     <li><a href="#duckdb">DuckDB In-Process Query Engine</a></li>
+    <li><a href="#wal-live">WAL-as-Live-Buffer (Local SSD)</a></li>
     <li><a href="#impl">Implementation Steps</a></li>
     <li><a href="#partial">Partial Dataset Queries</a></li>
     <li><a href="#longspan">Longer Time-Span Queries</a>
@@ -503,6 +504,142 @@ ALL_LIBS    := $(ARROW_LIBS) $(MOSQ_LIBS) $(YAML_LIBS) $(SIMDJSON_LIBS) $(DUCK_L
   at full 46-unit load. The two-connection setup also makes it easy to later expose
   <code>GET /data?sql=SELECT+AVG(float_val)+FROM+recent+GROUP+BY+device</code> for
   dashboard aggregation without any additional server code.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="wal-live">4c. WAL-as-Live-Buffer <span class="badge-todo">OPTION</span></h2>
+
+<p>At low message rates (1 Hz per topic, coalesced at 250 ms) the rolling in-memory deque
+and the WAL can be unified into a single file: a <em>live WAL</em> that is rewritten on every
+incoming message and read directly by <code>GET /current</code>. This eliminates the separate
+in-memory serialisation path and means the WAL is always current — restart replay
+automatically bridges any gap with no extra code.</p>
+
+<div class="note">
+  <strong>Storage requirement:</strong> This design is only appropriate when the Parquet
+  output path is on <strong>local SSD</strong> (e.g. <code>/mnt/tort-sdi/</code>).
+  On NFS / EFS every file rewrite incurs a network round-trip and
+  <code>rename()</code> is not guaranteed atomic across AZ mounts — use the
+  in-memory deque (section 4) instead.
+</div>
+
+<h3>Data flow</h3>
+
+<pre>
+MQTT message  (1 Hz, coalesced at 250 ms)
+     │
+     ▼
+parse_payload() ──► append to g_buffers
+                          │
+                          ▼
+                   write_live_wal()          <span class="cm">// rewrite full g_buffers → live.arrow</span>
+                          │                  <span class="cm">// cost: ~60 rows Arrow IPC, once/sec</span>
+                          ▼
+             /mnt/.../bench/live.arrow       <span class="cm">// atomic: write tmp → rename</span>
+
+flush timer fires
+     │
+     ├──► write_parquet()                    <span class="cm">// unchanged</span>
+     ├──► rename live.arrow → &lt;ts&gt;.wal.arrow <span class="cm">// rotate: live becomes crash-recovery WAL</span>
+     └──► evict old rows from g_buffers
+
+GET /current
+     │
+     ▼
+read live.arrow from disk                    <span class="cm">// replace in-memory g_buffers snapshot</span>
+serve Parquet bytes with Range support
+</pre>
+
+<h3>Why the rewrite is cheap at this rate</h3>
+
+<table>
+  <tr><th>Factor</th><th>Value</th><th>Comment</th></tr>
+  <tr><td>Message rate</td><td>1 Hz / 250 ms coalesce</td><td>≤ 4 writes/sec to live.arrow</td></tr>
+  <tr><td>Rows in 60 s window</td><td>≤ 60</td><td>trivially small Arrow IPC file</td></tr>
+  <tr><td>Write amplification</td><td>~30×</td><td>1+2+…+60 rows written vs 60 at flush — negligible at byte scale</td></tr>
+  <tr><td>Local SSD IOPS</td><td>100 k+ available</td><td>4 IOPS/sec used</td></tr>
+  <tr><td>Atomic rename latency</td><td>&lt; 1 µs (VFS)</td><td>reader always gets a complete file</td></tr>
+</table>
+
+<h3>New helper — <code>write_live_wal()</code></h3>
+<pre><span class="cm">// Called after every parse_payload() that modifies g_buffers.</span>
+<span class="cm">// Serialises current g_buffers state to live.arrow atomically.</span>
+<span class="kw">static void</span> <span class="fn">write_live_wal</span>(<span class="kw">const</span> Config&amp; cfg) {
+    <span class="cm">// 1. snapshot under lock</span>
+    std::map&lt;PartitionKey, Partition&gt; snap;
+    {
+        std::lock_guard&lt;std::mutex&gt; lk(g_buffers_mutex);
+        snap = g_buffers;
+    }
+
+    <span class="cm">// 2. build Arrow table from snapshot (reuse build_table())</span>
+    <span class="kw">auto</span> table = <span class="fn">build_table</span>(snap);
+    <span class="kw">if</span> (!table || table-&gt;<span class="fn">num_rows</span>() == <span class="num">0</span>) <span class="kw">return</span>;
+
+    <span class="cm">// 3. write to tmp file then rename (atomic)</span>
+    std::string tmp  = cfg.output_dir + <span class="str">"/.live.arrow.tmp"</span>;
+    std::string dest = cfg.output_dir + <span class="str">"/live.arrow"</span>;
+
+    <span class="kw">auto</span> sink = <span class="fn">*arrow::io::FileOutputStream::Open</span>(tmp);
+    <span class="kw">auto</span> writer = <span class="fn">*arrow::ipc::MakeFileWriter</span>(sink, table-&gt;<span class="fn">schema</span>());
+    <span class="fn">ARROW_CHECK_OK</span>(writer-&gt;<span class="fn">WriteTable</span>(*table));
+    <span class="fn">ARROW_CHECK_OK</span>(writer-&gt;<span class="fn">Close</span>());
+    <span class="fn">ARROW_CHECK_OK</span>(sink-&gt;<span class="fn">Close</span>());
+    std::<span class="fn">rename</span>(tmp.<span class="fn">c_str</span>(), dest.<span class="fn">c_str</span>());
+}</pre>
+
+<h3>Flush rotation — <code>rotate_live_wal()</code></h3>
+<pre><span class="cm">// Called at the start of each flush cycle, before write_parquet().</span>
+<span class="cm">// Moves live.arrow out of the way so it becomes the crash-recovery WAL.</span>
+<span class="kw">static void</span> <span class="fn">rotate_live_wal</span>(<span class="kw">const</span> Config&amp; cfg, <span class="kw">int64_t</span> flush_ts_us) {
+    std::string src = cfg.output_dir + <span class="str">"/live.arrow"</span>;
+    std::string dst = cfg.output_dir + <span class="str">"/"</span>
+                    + <span class="fn">ts_to_filename</span>(flush_ts_us) + <span class="str">".wal.arrow"</span>;
+    <span class="kw">if</span> (std::<span class="fn">filesystem::exists</span>(src))
+        std::<span class="fn">rename</span>(src.<span class="fn">c_str</span>(), dst.<span class="fn">c_str</span>());
+    <span class="cm">// existing wal_replay_file() handles dst on next restart — no changes needed</span>
+}</pre>
+
+<h3>Updated <code>handle_current()</code></h3>
+<pre><span class="cm">// Replace in-memory snapshot + Arrow builder with a direct file read.</span>
+<span class="kw">static void</span> <span class="fn">handle_current</span>(int client_fd, <span class="kw">const</span> std::string&amp; query,
+                            <span class="kw">const</span> Config&amp; cfg) {
+    std::string path = cfg.output_dir + <span class="str">"/live.arrow"</span>;
+    <span class="kw">if</span> (!std::filesystem::<span class="fn">exists</span>(path)) {
+        <span class="fn">send_404</span>(client_fd); <span class="kw">return</span>;
+    }
+    <span class="cm">// Read Arrow IPC → convert to in-memory Parquet bytes → serve with Range</span>
+    <span class="kw">auto</span> in  = <span class="fn">*arrow::io::ReadableFile::Open</span>(path);
+    <span class="kw">auto</span> rdr = <span class="fn">*arrow::ipc::RecordBatchFileReader::Open</span>(in);
+    arrow::RecordBatchVector batches;
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; rdr-&gt;<span class="fn">num_record_batches</span>(); ++i)
+        batches.<span class="fn">push_back</span>(<span class="fn">*rdr</span>-&gt;<span class="fn">ReadRecordBatch</span>(i));
+    <span class="kw">auto</span> table = <span class="fn">*arrow::Table::FromRecordBatches</span>(batches);
+    <span class="kw">auto</span> buf   = <span class="fn">write_parquet_table_to_buffer</span>(*table);
+    <span class="fn">send_parquet_response</span>(client_fd, query, buf);
+}</pre>
+
+<h3>Option comparison</h3>
+<table>
+  <tr><th></th><th>Deque (§4)</th><th>DuckDB (§4b)</th><th>WAL-as-buffer (§4c)</th></tr>
+  <tr><td><strong>Storage</strong></td><td>RAM only</td><td>RAM only</td><td>Local SSD required</td></tr>
+  <tr><td><strong><code>/current</code> latency</strong></td><td>µs — in-memory</td><td>µs — in-memory</td><td>ms — disk read</td></tr>
+  <tr><td><strong>High message rate</strong></td><td>Good (capped by deque)</td><td>Best (DuckDB)</td><td>Poor — rewrite cost grows</td></tr>
+  <tr><td><strong>Low rate (1 Hz)</strong></td><td>Good</td><td>Good</td><td><strong>Best — simplest code</strong></td></tr>
+  <tr><td><strong>Crash recovery</strong></td><td>Separate WAL path</td><td>Separate WAL path</td><td><strong>Unified — WAL is always current</strong></td></tr>
+  <tr><td><strong>Restart replay</strong></td><td>Unchanged</td><td>Unchanged</td><td>Unchanged — same wal_replay_file()</td></tr>
+  <tr><td><strong>NFS / EFS safe</strong></td><td>Yes</td><td>Yes</td><td><strong>No</strong> — not atomic on NFS</td></tr>
+  <tr><td><strong>New code (approx)</strong></td><td>~80 LOC</td><td>~150 LOC</td><td>~40 LOC</td></tr>
+</table>
+
+<div class="note">
+  <strong>Recommendation for the current deployment</strong> (<code>/mnt/tort-sdi/</code> = local SSD,
+  1 Hz / 250 ms coalesce, single Evelyn unit): use <strong>§4c WAL-as-buffer</strong> —
+  fewest moving parts, WAL and live buffer are one file, restart replay works unchanged.<br><br>
+  If message rate rises to hundreds of Hz or the output path moves to NFS/EFS,
+  switch to the in-memory deque (§4) without changing the rest of the stack.
 </div>
 
 <hr>
