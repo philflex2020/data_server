@@ -593,7 +593,75 @@ This is the cleanest architecture for production but requires an additional serv
   <tr><td>A — bench_server + DuckDB-WASM</td><td>Low</td><td>~200ms (file fetch + parse)</td><td>Good for demo/internal dashboards</td></tr>
   <tr><td>B — server-side stitch in parquet_writer</td><td>Medium</td><td>~50ms</td><td>Adds complexity to binary; avoid if possible</td></tr>
   <tr><td>C — bridge_api service</td><td>High</td><td>~10ms (cached)</td><td>Best for production; deploy alongside writer</td></tr>
+  <tr><td>D — subscriber_api + /current (preferred)</td><td>Low</td><td>~30ms</td><td>Clean separation; recommended for parquet bench run</td></tr>
 </table>
+
+<h3 id="subscriber-current">Option D — subscriber_api merges files + /current (recommended)</h3>
+
+<p>The <code>subscriber_api</code> (Python, server-side DuckDB) already queries date-partitioned
+parquet files via <code>read_parquet([glob1, glob2, ...], union_by_name=true)</code>. Adding the
+live 60s buffer requires only two changes:</p>
+
+<ol>
+  <li>Writer exposes <code>GET /current</code> — serialises the in-memory buffer to parquet bytes
+      on demand and returns them as <code>application/octet-stream</code></li>
+  <li>subscriber_api fetches <code>/current</code>, writes bytes to a temp file, and appends that
+      path to the DuckDB source list before running the query</li>
+</ol>
+
+<p>DuckDB then sees one unified source covering all three layers:</p>
+
+<pre><span class="cm">-- what DuckDB runs inside subscriber_api._query_history()</span>
+SELECT * FROM read_parquet([
+    <span class="str">'.../2026/04/12/*.parquet'</span>,   <span class="cm">-- compact + flush files on disk</span>
+    <span class="str">'.../2026/04/11/*.parquet'</span>,   <span class="cm">-- previous day if range spans midnight</span>
+    <span class="str">'/tmp/tmpXXXX.parquet'</span>        <span class="cm">-- live buffer fetched from writer /current</span>
+], union_by_name=<span class="kw">true</span>)
+WHERE timestamp BETWEEN from_ts AND to_ts
+ORDER BY timestamp
+LIMIT :limit</pre>
+
+<h4>Overlap and deduplication</h4>
+
+<p class="warn"><strong>Important:</strong> the flush files on disk and the <code>/current</code>
+buffer will overlap. The writer flushes at T-N seconds but the in-memory buffer still contains
+all rows since the last flush start. <code>union_by_name=true</code> merges schemas but does
+<em>not</em> deduplicate rows — a naive union will return duplicate rows for the overlap window.</p>
+
+<p>Two clean solutions:</p>
+
+<ol>
+  <li><strong>Preferred — writer trims /current to post-flush rows only.</strong> The writer
+      already tracks <code>last_flush_ts</code>. The <code>/current</code> endpoint accepts an
+      optional <code>?since=&lt;unix_ts&gt;</code> parameter and only serialises rows with
+      <code>ts &gt; since</code>. subscriber_api passes the timestamp of the newest row in the
+      most-recent flush file:
+<pre><span class="cm"># subscriber_api — pass last flush boundary to /current</span>
+since_ts = _newest_row_ts(globs)   <span class="cm"># scan last file, read max(ts)</span>
+current_tmp = _fetch_current(writer_url, since=since_ts)</pre>
+      The writer then returns only the true gap — zero overlap, zero duplicates.</li>
+
+  <li><strong>Fallback — deduplicate in DuckDB.</strong> If <code>since=</code> is not yet
+      implemented on the writer, wrap the query in a <code>SELECT DISTINCT</code> or group
+      by primary key:
+<pre>SELECT * FROM (
+    SELECT *, row_number() OVER (PARTITION BY ts, unit_id ORDER BY ts) AS rn
+    FROM read_parquet([{sources}], union_by_name=<span class="kw">true</span>)
+    WHERE timestamp BETWEEN from_ts AND to_ts
+) WHERE rn = 1
+ORDER BY timestamp</pre>
+      Slightly heavier but works without any writer changes.</li>
+</ol>
+
+<h4>subscriber_api config</h4>
+<pre><span class="cm"># config.yaml — add writer_url to enable /current stitching</span>
+writer_url: http://192.168.86.34:8771   <span class="cm"># writer health/API port</span>
+s3:
+  local_path: /mnt/tort-sdi/bench/bench-wide/bench</pre>
+
+<div class="note">The <code>_fetch_current()</code> call has a 2-second timeout. If the writer is
+unreachable the query silently falls back to files-only — no error returned to the client. This
+makes the live-buffer stitching transparent and fault-tolerant.</div>
 
 <hr>
 
