@@ -87,6 +87,31 @@ using SysClock = std::chrono::system_clock;
 
 enum class TopicParser { KV, POSITIONAL };
 
+// ---------------------------------------------------------------------------
+// NullFillCfg — configuration for COV-style null-fill on wide-pivot columns.
+// Replaces the two loose bool/int params previously passed to flush_partition().
+// ---------------------------------------------------------------------------
+struct NullFillCfg {
+    bool   enabled          {false};
+    double global_pct       {0.0};   // 0 = exact equality; 0.01 = suppress if change < 1%
+    std::unordered_map<std::string, double> per_point {}; // column → threshold (overrides global)
+    int    reset_interval   {3600};  // force full write every N seconds; 0 = off
+
+    // Return the effective threshold for a given column name.
+    // per_point entry wins over global_pct; 0.0 means exact-equality test.
+    double threshold_for(const std::string& col) const {
+        auto it = per_point.find(col);
+        return (it != per_point.end()) ? it->second : global_pct;
+    }
+
+    // True if value 'val' is "unchanged" relative to 'prev' for column 'col'.
+    bool is_unchanged(const std::string& col, double val, double prev) const {
+        double thresh = threshold_for(col);
+        if (thresh <= 0.0) return val == prev;
+        return std::abs(val - prev) / std::max(std::abs(prev), 1e-9) <= thresh;
+    }
+};
+
 struct Config {
     // MQTT
     std::string mqtt_host      {"localhost"};
@@ -116,12 +141,12 @@ struct Config {
     // Applied before compound field assembly — cheapest possible filter.
     std::unordered_set<std::string> drop_point_names {};
 
-    // null_fill_unchanged: wide-pivot COV — null out columns whose value has not
-    // changed since the last flush for this partition. Fast-moving signals still
-    // write every row; slow signals become mostly null (compresses extremely well).
+    // null_fill: wide-pivot COV — null out columns whose value has not changed
+    // (within an optional per-point or global percentage threshold) since the last
+    // flush for this partition. Fast-moving signals still write every row; slow
+    // signals become mostly null (compresses extremely well).
     // Only active when compound_field_name is set (wide-pivot mode).
-    bool null_fill_unchanged           {false};
-    int  null_fill_reset_interval_seconds {3600}; // force full write every N seconds; 0=off
+    NullFillCfg null_fill {};
 
     // drop_columns: erase these columns from every row before writing.
     // Applied after compound_point_name / compound_field_name.
@@ -279,8 +304,14 @@ Config load_config(const std::string& path) {
             if (o["store_mqtt_topic"])      cfg.store_mqtt_topic      = o["store_mqtt_topic"].as<bool>();
             if (o["store_project_id"])      cfg.store_project_id      = o["store_project_id"].as<bool>();
             if (o["store_sample_count"])    cfg.store_sample_count    = o["store_sample_count"].as<bool>();
-            if (o["null_fill_unchanged"])             cfg.null_fill_unchanged             = o["null_fill_unchanged"].as<bool>();
-            if (o["null_fill_reset_interval_seconds"]) cfg.null_fill_reset_interval_seconds = o["null_fill_reset_interval_seconds"].as<int>();
+            if (o["null_fill_unchanged"])              cfg.null_fill.enabled         = o["null_fill_unchanged"].as<bool>();
+            if (o["null_fill_reset_interval_seconds"]) cfg.null_fill.reset_interval  = o["null_fill_reset_interval_seconds"].as<int>();
+            if (o["null_fill_cov_pct"])                cfg.null_fill.global_pct      = o["null_fill_cov_pct"].as<double>();
+            if (o["null_fill_per_point"]) {
+                for (const auto& item : o["null_fill_per_point"])
+                    cfg.null_fill.per_point[item.first.as<std::string>()] =
+                        item.second.as<double>();
+            }
             if (o["wide_point_name"])    cfg.wide_point_name    = o["wide_point_name"].as<bool>();
             if (o["partitions"]) {
                 cfg.partitions.clear();
@@ -760,8 +791,7 @@ arrow::Status flush_partition(const std::string& path,
                                const std::string& compression,
                                bool merge_wide = false,
                                const std::string& partition_key = "",
-                               bool null_fill = false,
-                               int  null_fill_reset_interval = 3600) {
+                               const NullFillCfg& nf = NullFillCfg{}) {
     if (rows.empty()) return arrow::Status::OK();
     std::vector<Row> merged;
     const std::vector<Row>* rp = &rows;
@@ -771,7 +801,7 @@ arrow::Status flush_partition(const std::string& path,
     // Day boundary reset: state key includes parent dir so a new date dir = fresh state.
     // Periodic reset: every null_fill_reset_interval seconds force a full write so
     //   each compact window is self-contained (no need to look back at previous files).
-    if (merge_wide && null_fill && !partition_key.empty()) {
+    if (merge_wide && nf.enabled && !partition_key.empty()) {
         std::string parent_dir = fs::path(path).parent_path().string();
         std::string state_key  = partition_key + "|" + parent_dir;
 
@@ -782,7 +812,7 @@ arrow::Status flush_partition(const std::string& path,
             std::chrono::system_clock::now().time_since_epoch()).count();
         auto& reset_t = s_nf_reset_time[state_key];
         if (reset_t == 0) reset_t = now_s;  // initialise on first flush
-        if (null_fill_reset_interval > 0 && (now_s - reset_t) >= null_fill_reset_interval) {
+        if (nf.reset_interval > 0 && (now_s - reset_t) >= nf.reset_interval) {
             s_nf_last.erase(state_key);     // drop state → next flush writes all values
             reset_t = now_s;
         }
@@ -792,20 +822,20 @@ arrow::Status flush_partition(const std::string& path,
             // floats
             for (auto it = row.floats.begin(); it != row.floats.end(); ) {
                 auto lit = last.find(it->first);
-                if (lit != last.end() && lit->second == it->second) {
-                    it = row.floats.erase(it);   // unchanged → null
+                if (lit != last.end() && nf.is_unchanged(it->first, it->second, lit->second)) {
+                    it = row.floats.erase(it);   // unchanged (within threshold) → null
                 } else {
                     last[it->first] = it->second;
                     ++it;
                 }
             }
-            // ints (skip ts)
+            // ints (skip ts) — cast to double for threshold comparison
             for (auto it = row.ints.begin(); it != row.ints.end(); ) {
                 if (it->first == "ts") { ++it; continue; }
                 auto lit = last.find(it->first);
                 double dv = static_cast<double>(it->second);
-                if (lit != last.end() && lit->second == dv) {
-                    it = row.ints.erase(it);     // unchanged → null
+                if (lit != last.end() && nf.is_unchanged(it->first, dv, lit->second)) {
+                    it = row.ints.erase(it);     // unchanged (within threshold) → null
                 } else {
                     last[it->first] = dv;
                     ++it;
@@ -1291,8 +1321,7 @@ static void do_flush(std::map<PartitionKey, Partition> to_flush,
             status = flush_partition(path, part.rows, g_cfg->compression,
                                          !g_cfg->compound_field_name.empty(),
                                          key.partition_value,
-                                         g_cfg->null_fill_unchanged,
-                                         g_cfg->null_fill_reset_interval_seconds);
+                                         g_cfg->null_fill);
             if (status.ok()) break;
             std::cerr << "[flush] attempt " << attempt + 1 << " failed: "
                       << status.ToString() << "\n" << std::flush;
@@ -1468,8 +1497,7 @@ static void replay_wal_files() {
             auto status = flush_partition(path, part_rows, g_cfg->compression,
                                               !g_cfg->compound_field_name.empty(),
                                               key.partition_value,
-                                              g_cfg->null_fill_unchanged,
-                                              g_cfg->null_fill_reset_interval_seconds);
+                                              g_cfg->null_fill);
             if (status.ok()) {
                 std::cout << "[wal] flushed " << part_rows.size() << " replayed rows → " << path << "\n" << std::flush;
             } else {
