@@ -102,6 +102,7 @@ code { padding:1px 5px; font-size:.82rem; }
 .tag { display:inline-block; padding:1px 7px; border-radius:3px; font-size:.7rem;
        border:1px solid var(--border); color:var(--muted); }
 .tag-wide  { border-color:var(--orange); color:var(--orange); }
+.tag-influx { border-color:var(--purple); color:var(--purple); }
 .tag-long  { border-color:var(--accent); color:var(--accent); }
 .tag-cmp   { border-color:var(--green);  color:var(--green); }
 #log-out { background:var(--bg); border:1px solid var(--border); border-radius:4px;
@@ -121,7 +122,7 @@ code { padding:1px 5px; font-size:.82rem; }
 </div>
 
 <h1>Writer Schema Comparison Test</h1>
-<p class="subtitle">Benchmarks three parquet layout strategies against the same MQTT stream — norm-long, long+compound, wide-pivot (coalesced)</p>
+<p class="subtitle">Benchmarks four storage strategies against the same MQTT stream — norm-long, long+compound, wide-pivot (coalesced), and InfluxDB2 via Telegraf</p>
 
 <!-- ── COALESCING NOTE ── -->
 <div style="background:var(--code-bg);border-left:3px solid var(--teal);border-radius:4px;
@@ -260,7 +261,7 @@ rack/rack_1: Rack_FanState  Rack_DoorOpen
 coalesces each burst into one row — target ~1 row/sweep/unit.</p>
 
 <!-- ── SCHEMAS ── -->
-<h2>Three Writer Schemas</h2>
+<h2>Writer Schemas</h2>
 
 <div class="card-row">
   <div class="card">
@@ -294,6 +295,199 @@ coalesces each burst into one row — target ~1 row/sweep/unit.</p>
     </div>
   </div>
 </div>
+
+<!-- ── INFLUX SCHEMA CARD ── -->
+<div class="card-row" style="margin-top:8px">
+  <div class="card">
+    <span class="tag tag-influx">influx2 / telegraf</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      Narrow tag schema. One row per signal change (COV-filtered by publisher).<br>
+      <span style="color:var(--muted)">measurement=<code>bench</code> · tags: unit_id, device, instance, point_name · field: value</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      COV-rate rows only · TSM storage · Flux/InfluxQL query
+    </div>
+  </div>
+  <div class="card" style="flex:2">
+    <div style="font-size:.82rem;color:var(--text);margin-bottom:6px">COV behaviour at the MQTT layer</div>
+    <p style="font-size:.78rem;color:var(--muted);margin:0">
+      The publisher runs <code>--cov</code>, so only changed values arrive at MQTT.
+      Constant signals (SOH=100, RackCount=8, etc.) publish once on startup then go silent
+      until <code>--cov-reset 300</code> fires every 5 min. Telegraf stores exactly what it
+      receives — no null-fill, no repeat rows. A Flux <code>fill(usePrevious:true)</code>
+      forward-fills at query time. Storage cost scales with signal <em>change rate</em>, not
+      absolute signal count.
+    </p>
+  </div>
+</div>
+
+<!-- ── INFLUX DETAIL SECTION ── -->
+<h2 id="influx-schema">InfluxDB2 via Telegraf</h2>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0">
+<div>
+<h3>Schema</h3>
+<pre><span class="cm"># measurement (table)</span>
+bench
+
+<span class="cm"># tags  (indexed, string)</span>
+unit_id    = "0215D1D8"
+device     = "bms"
+instance   = "bms_1"
+point_name = "SysSOC"
+
+<span class="cm"># field</span>
+value      = 81.5   <span class="cm"># float64</span>
+
+<span class="cm"># timestamp — from payload ts field (ISO 8601)</span>
+_time      = 2026-04-13T16:43:39Z</pre>
+</div>
+<div>
+<h3>Storage path</h3>
+<pre><span class="cm"># TSM engine — on-disk</span>
+/var/lib/influxdb/engine/data/
+  sbess3/
+    autogen/
+      &lt;shard-id&gt;/
+        000000001-000000001.tsm
+
+<span class="cm"># Disk use after run</span>
+du -sh /var/lib/influxdb/engine/data/
+
+<span class="cm"># Series count</span>
+influx query --org longbow \
+  'import "influxdata/influxdb/schema"
+   schema.measurementTagValues(
+     bucket: "sbess3",
+     measurement: "bench",
+     tag: "point_name"
+   )'</pre>
+</div>
+</div>
+
+<h3>Telegraf config</h3>
+<pre><span class="cm"># /home/phil/data_server/source/telegraf/telegraf-sbess3.conf</span>
+
+<span class="kw">[[inputs.mqtt_consumer]]</span>
+  servers   = [<span class="st">"tcp://localhost:1883"</span>]
+  topics    = [<span class="st">"bench/#"</span>]
+  topic_tag = <span class="st">""</span>          <span class="cm"># suppress raw topic tag</span>
+  data_format = <span class="st">"json_v2"</span>
+
+  <span class="kw">[[inputs.mqtt_consumer.json_v2]]</span>
+    measurement_name = <span class="st">"bench"</span>
+    timestamp_path   = <span class="st">"ts"</span>
+    timestamp_format = <span class="st">"RFC3339"</span>
+    <span class="kw">[[inputs.mqtt_consumer.json_v2.field]]</span>
+      path = <span class="st">"value"</span>; type = <span class="st">"float"</span>
+
+  <span class="kw">[[inputs.mqtt_consumer.topic_parsing]]</span>
+    topic = <span class="st">"bench/+/+/+/+/+"</span>
+    tags  = <span class="st">"_/unit_id/device/instance/point_name/_"</span>
+
+<span class="kw">[[outputs.influxdb_v2]]</span>
+  urls = [<span class="st">"http://localhost:8086"</span>]; organization = <span class="st">"longbow"</span>; bucket = <span class="st">"sbess3"</span>
+  token = <span class="st">"&lt;token&gt;"</span></pre>
+
+<h3>Start / check</h3>
+<pre><span class="cm"># InfluxDB is enabled at boot (systemd) — check:</span>
+sudo systemctl status influxdb
+
+<span class="cm"># Start Telegraf</span>
+nohup telegraf --config /home/phil/data_server/source/telegraf/telegraf-sbess3.conf \
+  &gt; /tmp/telegraf.log 2&gt;&amp;1 &amp;
+tail -f /tmp/telegraf.log
+
+<span class="cm"># Verify data is arriving (last 2 minutes)</span>
+influx query --org longbow --token '&lt;token&gt;' \
+  'from(bucket:"sbess3") |&gt; range(start:-2m) |&gt; limit(n:5)'
+
+<span class="cm"># Disk use</span>
+du -sh /var/lib/influxdb/engine/data/</pre>
+
+<h3>Flux query examples</h3>
+<pre><span class="cm">// All signals for one unit, last 10 minutes</span>
+from(bucket: <span class="st">"sbess3"</span>)
+  |&gt; range(start: -10m)
+  |&gt; filter(fn: (r) =&gt; r.unit_id == <span class="st">"0215D1D8"</span>)
+
+<span class="cm">// Single signal — forward-fill COV gaps</span>
+from(bucket: <span class="st">"sbess3"</span>)
+  |&gt; range(start: -10m)
+  |&gt; filter(fn: (r) =&gt; r.unit_id == <span class="st">"0215D1D8"</span> and r.point_name == <span class="st">"SysSOC"</span>)
+  |&gt; fill(usePrevious: true)
+
+<span class="cm">// 1-minute mean for all signals on one unit</span>
+from(bucket: <span class="st">"sbess3"</span>)
+  |&gt; range(start: -1h)
+  |&gt; filter(fn: (r) =&gt; r.unit_id == <span class="st">"0215D1D8"</span>)
+  |&gt; aggregateWindow(every: 1m, fn: mean, createEmpty: false)</pre>
+
+<h3>Parquet wide-pivot vs InfluxDB2</h3>
+<table class="cmp-table">
+  <thead><tr>
+    <th>Aspect</th>
+    <th><span class="tag tag-wide">wide-pivot parquet</span></th>
+    <th><span class="tag tag-influx">influx2 / telegraf</span></th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="metric">Storage model</td>
+      <td>Columnar Parquet on local/NFS disk</td>
+      <td>TSM (Time-Structured Merge tree) on local disk</td>
+    </tr>
+    <tr>
+      <td class="metric">Row shape</td>
+      <td>1 row/sweep/unit — 64 columns</td>
+      <td>1 row/signal/change — 4 tags + 1 field</td>
+    </tr>
+    <tr>
+      <td class="metric">COV handling</td>
+      <td>Publisher COV + optional <code>null_fill_unchanged</code></td>
+      <td>Publisher COV only — Influx stores what arrives</td>
+    </tr>
+    <tr>
+      <td class="metric">Get all signals at time T</td>
+      <td class="best">Single row read — no join</td>
+      <td class="worst">63-series fan-out + fill(usePrevious:true)</td>
+    </tr>
+    <tr>
+      <td class="metric">Multi-unit range scan</td>
+      <td>One file per unit per day</td>
+      <td class="best">Single measurement, filter by unit_id tag</td>
+    </tr>
+    <tr>
+      <td class="metric">Schema evolution</td>
+      <td>New column on first message (dynamic)</td>
+      <td class="best">No schema — new point_name = new series</td>
+    </tr>
+    <tr>
+      <td class="metric">Compression</td>
+      <td>Snappy columnar — excellent for static columns</td>
+      <td>TSM RLE — good for repeated tag combos</td>
+    </tr>
+    <tr>
+      <td class="metric">Retention / TTL</td>
+      <td>Manual file deletion</td>
+      <td class="best">Built-in retention policy per bucket</td>
+    </tr>
+    <tr>
+      <td class="metric">Query language</td>
+      <td class="best">DuckDB SQL — portable, familiar</td>
+      <td>Flux (functional) or InfluxQL — Influx-specific</td>
+    </tr>
+    <tr>
+      <td class="metric">Estimated write CPU</td>
+      <td>~3–6% (parquet_writer process)</td>
+      <td>telegraf ~1% + influxd ~5–15% during TSM compaction</td>
+    </tr>
+    <tr>
+      <td class="metric">Portability</td>
+      <td class="best">Standard Parquet — DuckDB, Spark, Pandas, Arrow</td>
+      <td>Influx-native — export needed for external tools</td>
+    </tr>
+  </tbody>
+</table>
 
 <!-- ── SETUP ── -->
 <details style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
