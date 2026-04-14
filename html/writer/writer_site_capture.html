@@ -796,6 +796,90 @@ EXPOSE 8771
 
 ENTRYPOINT ["/entrypoint.sh"]</pre>
 
+<h3 id="image-model">One image, many sites</h3>
+
+<p>
+  The container image is <strong>generic</strong> — no site data is baked into it.
+  Site-specific values are injected at pod startup via Kubernetes Secrets.
+  This means you build and push the image <strong>once</strong> and reuse it for every site.
+</p>
+
+<table>
+  <tr><th>Concern</th><th>Where it lives</th><th>When it's set</th></tr>
+  <tr>
+    <td>Writer binary + runtime libs</td>
+    <td>Docker image in ECR</td>
+    <td>Build time — once per code change</td>
+  </tr>
+  <tr>
+    <td>AWS account ID</td>
+    <td><code>site.yaml</code> → <code>deployment.yaml</code> image URI</td>
+    <td>Manifest generation — identifies which ECR registry to pull from</td>
+  </tr>
+  <tr>
+    <td>MQTT broker address</td>
+    <td>Kubernetes Secret <code>MQTT_HOST</code></td>
+    <td>Deploy time — one secret per site namespace</td>
+  </tr>
+  <tr>
+    <td>Site ID (parquet column)</td>
+    <td>Kubernetes Secret <code>SITE_ID</code></td>
+    <td>Deploy time — written into every parquet row by the writer</td>
+  </tr>
+  <tr>
+    <td>Topic structure, flush interval</td>
+    <td>ConfigMap (generated from <code>site.yaml</code>)</td>
+    <td>Manifest generation — mounted read-only into pod</td>
+  </tr>
+</table>
+
+<p>At pod startup, <code>entrypoint.sh</code> bridges deploy-time and runtime:</p>
+
+<pre><span class="cm">           ECR image                   Kubernetes Secret
+               │                              │
+               │                    MQTT_HOST=10.0.1.5
+               │                    SITE_ID=SITE_A
+               ▼                              │
+        pod container starts                  │
+               │                              ▼
+        entrypoint.sh ◄──── reads env vars from Secret
+               │
+               ├─ sed replaces MQTT_HOST_PLACEHOLDER → 10.0.1.5
+               ├─ sed replaces SITE_ID_PLACEHOLDER   → SITE_A
+               │
+               ▼
+        parquet_writer --config /tmp/config.yaml
+               │
+               └─ connects to broker at 10.0.1.5:1883
+                  writes site_id=SITE_A into every row</span></pre>
+
+<h4>Deploying to a second site</h4>
+
+<p>No rebuild needed. Copy <code>site.yaml</code>, change the three site-specific fields, regenerate manifests, create a new secret:</p>
+
+<pre><span class="cm"># New site — no docker build, no ECR push</span>
+cp site.yaml site_B.yaml
+
+<span class="cm"># Edit site_B.yaml: set site.id, site.unit_id, mqtt.host</span>
+<span class="cm"># account_id, region, repo, tag stay the same — same image</span>
+
+python3 generate_eks_manifests.py site_B.yaml manifests_B/
+
+kubectl create namespace data-capture-b
+kubectl create secret generic parquet-writer-secrets \
+  --from-literal=MQTT_HOST=10.0.2.9 \
+  --from-literal=SITE_ID=SITE_B \
+  -n data-capture-b
+
+kubectl apply -f manifests_B/ -n data-capture-b</pre>
+
+<div class="note">
+  <strong>account_id is build/push infrastructure, not site config.</strong>
+  It appears in <code>deployment.yaml</code> only as part of the ECR image URI so EKS
+  knows which registry to pull from. The running pod never sees or uses it.
+  Once the image is in ECR, the account ID is irrelevant to day-to-day operations.
+</div>
+
 <h3 id="build-steps">Step-by-step: build and push to ECR</h3>
 
 <div class="steps">
