@@ -165,5 +165,5 @@ else
 	@echo '--- syncing source to $(DEPLOY_HOST):$(DEPLOY_DIR) ---'
 	scp parquet_writer.cpp mqtt_ring.h Makefile $(DEPLOY_HOST):$(DEPLOY_DIR)/
 	@echo '--- running redeploy.sh on $(DEPLOY_HOST) ---'
-	ssh -t $(DEPLOY_HOST) "bash $(DEPLOY_DIR)/redeploy.sh"
+	ssh -t $(DEPLOY_HOST) "GIT_HASH=$(GIT_HASH) bash $(DEPLOY_DIR)/redeploy.sh"
 endif
