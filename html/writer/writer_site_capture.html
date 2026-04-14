@@ -1926,6 +1926,124 @@ eksctl get cluster --region $REGION</pre>
 </div>
 
 <!-- ── EKS DEPLOYMENT ── -->
+<h2 id="k3s">k3s — Lightweight Kubernetes (Recommended for Single-Site Deployments)</h2>
+
+<p>
+  k3s is a fully compliant Kubernetes distribution packaged as a single 70 MB binary.
+  It runs on any Linux machine — a site server, a VM, or a Raspberry Pi — with no cloud
+  account required. The same <code>kubectl</code> commands and YAML manifests work identically
+  on k3s and EKS.
+</p>
+
+<div class="note">
+  <strong>k3s vs EKS:</strong> EKS requires an AWS account, ~15 min cluster provisioning,
+  and costs ~$2.40/day for the control plane alone. k3s installs in 30 seconds, runs for free,
+  and is the right choice for on-prem site deployments where you own the server.
+  Use EKS when you need multi-region managed infrastructure at scale.
+</div>
+
+<h3 id="k3s-install">Install k3s on .51 (or any site server)</h3>
+
+<pre><span class="cm"># One-line install — installs k3s as a systemd service</span>
+curl -sfL https://get.k3s.io | sudo sh -
+
+<span class="cm"># Set up kubectl access for the current user</span>
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $(whoami):$(whoami) ~/.kube/config
+
+<span class="cm"># Verify — should show one node Ready within 30s</span>
+kubectl get nodes</pre>
+
+<p>Expected output:</p>
+<pre>NAME           STATUS   ROLES           AGE   VERSION
+fractal-phil   Ready    control-plane   32s   v1.34.6+k3s1</pre>
+
+<h3 id="k3s-storage">Storage — local-path instead of EBS</h3>
+
+<p>
+  k3s ships with the <code>local-path</code> StorageClass by default — it provisions volumes
+  as directories on the host filesystem. Change <code>storageClassName</code> in
+  <code>pvc.yaml</code> before applying:
+</p>
+
+<pre><span class="cm"># In pvc.yaml — replace gp2 with local-path</span>
+storageClassName: local-path   <span class="cm"># k3s default (host filesystem)</span>
+<span class="cm"># storageClassName: gp2       # EKS only (AWS EBS)</span></pre>
+
+<p>Data lands at <code>/var/lib/rancher/k3s/storage/</code> on the host.</p>
+
+<h3 id="k3s-deploy">Deploy the writer on k3s</h3>
+
+<pre><span class="cm"># 1. Generate manifests — update site.yaml first if needed</span>
+cd /home/phil/build/parquet-writer
+python3 generate_eks_manifests.py site.yaml manifests/
+
+<span class="cm"># 2. Fix storage class for k3s</span>
+sed -i 's/storageClassName: gp2/storageClassName: local-path/' manifests/pvc.yaml
+
+<span class="cm"># 3. Create namespace and secret</span>
+kubectl create namespace data-capture
+
+kubectl create secret generic parquet-writer-secrets \
+  --from-literal=MQTT_HOST=mosquitto-svc \
+  --from-literal=SITE_ID=TEST_SITE \
+  -n data-capture
+
+<span class="cm"># 4. Deploy mosquitto broker pod</span>
+kubectl run mosquitto \
+  --image=eclipse-mosquitto:2 \
+  --port=1883 \
+  -n data-capture
+
+kubectl expose pod mosquitto \
+  --port=1883 \
+  --name=mosquitto-svc \
+  -n data-capture
+
+<span class="cm"># 5. Deploy the writer</span>
+kubectl apply -f manifests/ -n data-capture
+
+<span class="cm"># 6. Watch pods come up</span>
+kubectl get pods -n data-capture -w</pre>
+
+<h3 id="k3s-test">Test data flow</h3>
+
+<pre><span class="cm"># Check writer health</span>
+kubectl port-forward -n data-capture svc/mosquitto-svc 8771:8771 &amp;
+curl -s http://localhost:8771/health | python3 -m json.tool | grep -E 'status|seen_topics'
+
+<span class="cm"># Publish test messages</span>
+python3 /home/phil/data_server/source/parquet_writer/test_multi_publish.py
+
+<span class="cm"># Check seen_topics grew</span>
+python3 /home/phil/data_server/source/parquet_writer/get_health.py</pre>
+
+<h3 id="k3s-files">Extract parquet files</h3>
+
+<pre><span class="cm"># Find the pod name</span>
+kubectl get pods -n data-capture -l app=parquet-writer
+
+<span class="cm"># List files on the PVC</span>
+kubectl exec -n data-capture &lt;pod-name&gt; -- find /data -name '*.parquet'
+
+<span class="cm"># Copy files to local machine</span>
+kubectl cp data-capture/&lt;pod-name&gt;:/data ./site-capture-files/
+
+<span class="cm"># Or go direct to host filesystem (k3s only)</span>
+sudo ls /var/lib/rancher/k3s/storage/</pre>
+
+<h3 id="k3s-teardown">Teardown</h3>
+
+<pre><span class="cm"># Delete all resources</span>
+kubectl delete namespace data-capture
+
+<span class="cm"># Stop k3s (data on host filesystem is preserved)</span>
+sudo systemctl stop k3s
+
+<span class="cm"># Full uninstall</span>
+/usr/local/bin/k3s-uninstall.sh</pre>
+
 <h2 id="eks">EKS Container Deployment</h2>
 
 <p>
