@@ -52,6 +52,16 @@
 #include <yaml-cpp/yaml.h>
 
 // POSIX socket for health endpoint
+// Build identity — injected by Makefile via -D flags
+#ifndef WRITER_VERSION
+#  define WRITER_VERSION "dev"
+#endif
+#ifndef GIT_HASH
+#  define GIT_HASH "unknown"
+#endif
+static constexpr const char* kVersion = WRITER_VERSION;
+static constexpr const char* kGitHash = GIT_HASH;
+
 #include <fnmatch.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -1617,6 +1627,8 @@ static void health_thread_fn() {
 
         std::ostringstream body;
         body << "{"
+             << "\"version\":\"" << kVersion << "\","
+             << "\"git_hash\":\"" << kGitHash << "\","
              << "\"status\":\"ok\","
              << "\"site_id\":\"" << g_cfg->site_id << "\","
              << "\"msgs_received\":"       << g_msgs_received.load()     << ","

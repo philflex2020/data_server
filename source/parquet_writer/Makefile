@@ -19,6 +19,9 @@ SIMDJSON_LIBS   := $(shell pkg-config --libs   simdjson 2>/dev/null || echo "-ls
 
 ALL_CFLAGS := $(CXXFLAGS) $(ARROW_CFLAGS) $(MOSQ_CFLAGS) $(YAML_CFLAGS) $(SIMDJSON_CFLAGS)
 ALL_LIBS   := $(ARROW_LIBS) $(MOSQ_LIBS) $(YAML_LIBS) $(SIMDJSON_LIBS)
+WRITER_VERSION := 1.1.0
+GIT_HASH       := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+VERSION_FLAGS  := -DWRITER_VERSION=\"$(WRITER_VERSION)\" -DGIT_HASH=\"$(GIT_HASH)\"
 
 TEST_PYTHON := $(shell \
   ls $(HOME)/data_server/.venv/bin/python3 2>/dev/null || \
@@ -99,7 +102,7 @@ check-deps:
 all: check-deps parquet_writer
 
 parquet_writer: check-deps parquet_writer.cpp mqtt_ring.h
-	$(CXX) $(ALL_CFLAGS) parquet_writer.cpp -o $@ $(ALL_LIBS)
+	$(CXX) $(ALL_CFLAGS) $(VERSION_FLAGS) parquet_writer.cpp -o $@ $(ALL_LIBS)
 
 tests/test_parquet_writer: tests/test_parquet_writer.cpp parquet_writer.cpp mqtt_ring.h tests/test_runner.h
 	$(CXX) $(TEST_FLAGS) -I. tests/test_parquet_writer.cpp -o $@ $(ALL_LIBS)
