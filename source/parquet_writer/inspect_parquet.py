@@ -111,6 +111,5 @@ elif '--vol' in args:
     from_docker_volume(vol)
 
 else:
-    # default: Docker volume test_parquet-out
-    vol = args[0] if args else 'test_parquet-out'
-    from_docker_volume(vol)
+    # default: k3s pod in data-capture namespace
+    from_k8s_pod('data-capture')
