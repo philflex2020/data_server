@@ -135,3 +135,35 @@ deps:
 
 clean:
 	rm -f parquet_writer tests/test_parquet_writer tests/kpi_parquet_writer
+
+# --------------------------------------------------------------------------
+# Deployment — k3s / local
+# --------------------------------------------------------------------------
+# If DEPLOY_HOST is set, syncs source to that host and runs redeploy.sh there.
+# If DEPLOY_HOST is not set, assumes we are already on the build host and
+# runs the docker build + k3s import + kubectl rollout directly.
+#
+# Examples:
+#   make deploy                                     # local build host
+#   make deploy DEPLOY_HOST=phil@192.168.86.51      # remote k3s node
+
+DEPLOY_HOST ?=
+DEPLOY_DIR  ?= /home/phil/build/parquet-writer
+
+.PHONY: deploy
+
+deploy:
+ifeq ($(DEPLOY_HOST),)
+	@echo '--- building Docker image locally ---'
+	docker build -t parquet-writer:latest $(DEPLOY_DIR)
+	@echo '--- importing into k3s ---'
+	docker save parquet-writer:latest | sudo k3s ctr images import -
+	@echo '--- bouncing pod ---'
+	kubectl rollout restart deployment/parquet-writer-long -n data-capture
+	kubectl rollout status  deployment/parquet-writer-long -n data-capture --timeout=90s
+else
+	@echo '--- syncing source to $(DEPLOY_HOST):$(DEPLOY_DIR) ---'
+	scp parquet_writer.cpp mqtt_ring.h Makefile $(DEPLOY_HOST):$(DEPLOY_DIR)/
+	@echo '--- running redeploy.sh on $(DEPLOY_HOST) ---'
+	ssh -t $(DEPLOY_HOST) "bash $(DEPLOY_DIR)/redeploy.sh"
+endif
