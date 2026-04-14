@@ -63,7 +63,7 @@ PHASE_GAP        = 2.0   # seconds between phases
 
 
 def ts_now():
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     return now.strftime('%Y-%m-%dT%H:%M:%S.') + f'{now.microsecond//1000:03d}Z'
 
 
