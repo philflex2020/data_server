@@ -206,6 +206,8 @@ metadata:
     unit: {unit_label}
     topic-format: {topic_fmt}
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
   selector:
     matchLabels:
