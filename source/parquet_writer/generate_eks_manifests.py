@@ -14,7 +14,7 @@ Writes to output_dir (default: ./manifests/):
 Apply with:
   kubectl apply -f manifests/ -n <namespace>
 """
-import sys, os, pathlib
+import sys, os, pathlib, subprocess, json
 try:
     import yaml
 except ImportError:
@@ -23,6 +23,28 @@ except ImportError:
 def load(path):
     with open(path) as f:
         return yaml.safe_load(f)
+
+def resolve_image(eks):
+    """Build full ECR image URI, resolving account_id='auto' via AWS CLI if needed."""
+    account_id = str(eks.get("account_id", ""))
+    region     = eks["region"]
+    repo       = eks["repo"]
+    tag        = eks.get("tag", "latest")
+
+    if account_id.lower() == "auto":
+        try:
+            out = subprocess.check_output(
+                ["aws", "sts", "get-caller-identity", "--output", "json"],
+                stderr=subprocess.DEVNULL
+            )
+            account_id = json.loads(out)["Account"]
+            print(f"  resolved account_id: {account_id}  (via aws sts get-caller-identity)")
+        except Exception as e:
+            print(f"ERROR: account_id is 'auto' but aws sts get-caller-identity failed: {e}")
+            print("       Either run `aws configure` or set account_id explicitly in site.yaml")
+            sys.exit(1)
+
+    return f"{account_id}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}"
 
 def write(path, text):
     pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +113,7 @@ data:
       enabled: true
 """
 
-def deployment_yaml(s):
+def deployment_yaml(s, image):
     eks  = s["eks"]
     site = s["site"]
     port = eks["health_port"]
@@ -118,7 +140,7 @@ spec:
     spec:
       containers:
         - name: writer
-          image: {eks["image"]}
+          image: {image}
           command: ["/entrypoint.sh"]
           env:
             - name: MQTT_HOST
@@ -179,19 +201,28 @@ if __name__ == "__main__":
     output_dir = sys.argv[2] if len(sys.argv) > 2 else "manifests"
     s = load(site_file)
 
+    image = resolve_image(s["eks"])
     print(f"Generating manifests for site={s['site']['id']} unit={s['site']['unit_id']}")
+    print(f"  image: {image}")
     write(f"{output_dir}/pvc.yaml",           pvc_yaml(s))
     write(f"{output_dir}/configmap.yaml",     configmap_yaml(s))
-    write(f"{output_dir}/deployment.yaml",    deployment_yaml(s))
+    write(f"{output_dir}/deployment.yaml",    deployment_yaml(s, image))
     write(f"{output_dir}/kustomization.yaml", kustomization_yaml(s))
-    print(f"\nApply with:")
-    print(f"  kubectl apply -f {output_dir}/ -n {s['eks']['namespace']}")
-    print(f"\nOr create the secret first:")
-    ns = s["eks"]["namespace"]
+    ns   = s["eks"]["namespace"]
     host = s["mqtt"]["host"]
     sid  = s["site"]["id"]
+    region = s["eks"]["region"]
+
+    print(f"\nPush image to ECR:")
+    print(f"  aws ecr get-login-password --region {region} | \\")
+    print(f"    docker login --username AWS --password-stdin {image.split('/')[0]}")
+    print(f"  docker tag parquet-writer:latest {image}")
+    print(f"  docker push {image}")
+    print(f"\nCreate namespace + secret:")
     print(f"  kubectl create namespace {ns}")
     print(f"  kubectl create secret generic parquet-writer-secrets \\")
     print(f"    --from-literal=MQTT_HOST={host} \\")
     print(f"    --from-literal=SITE_ID={sid} \\")
     print(f"    -n {ns}")
+    print(f"\nApply manifests:")
+    print(f"  kubectl apply -f {output_dir}/ -n {ns}")

@@ -83,9 +83,15 @@ capture:
 
 eks:
   # ── MUST CHANGE ─────────────────────────────────────────────────────
-  # Build with: docker build -t parquet-writer:latest .
-  # Push with:  docker tag parquet-writer:latest <image> && docker push <image>
-  image: ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/parquet-writer:latest  # [CHANGE]
+  # ECR image location — three fields that combine to form the full URI:
+  #   <account_id>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>
+  #
+  # account_id: set to 'auto' to resolve via `aws sts get-caller-identity`
+  #             or paste the 12-digit AWS account ID explicitly
+  account_id: auto              # [CHANGE] 'auto' or 12-digit AWS account ID e.g. 123456789012
+  region:     us-east-1         # [CHANGE] AWS region where ECR repo lives
+  repo:       parquet-writer    # [CHANGE] ECR repository name (created with aws ecr create-repository)
+  tag:        latest
 
   # ── REVIEW ─────────────────────────────────────────────────────────
   storage_gb:       20              # EBS volume size; 20 Gi ~ 3 days at 63 signals / 1 Hz
