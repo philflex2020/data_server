@@ -38,6 +38,8 @@ ap.add_argument('unit_id',     nargs='?', default='0215D1D8',
                 help='Unit ID used in topic paths')
 ap.add_argument('--format', choices=['bench', 'fractal'], default='bench',
                 help='Topic format to publish')
+ap.add_argument('--port', type=int, default=1883,
+                help='MQTT broker port')
 args = ap.parse_args()
 
 MQTT_HOST   = args.mqtt_host
@@ -183,11 +185,11 @@ def publish_fractal_phase(client, phase, sweep_offset):
 # Connect
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 try:
-    client.connect(MQTT_HOST, 1883)
+    client.connect(MQTT_HOST, args.port)
 except OSError:
-    sys.exit(f'error: cannot connect to MQTT broker at {MQTT_HOST}:1883 — is it running?')
+    sys.exit(f'error: cannot connect to MQTT broker at {MQTT_HOST}:{args.port} — is it running?')
 client.loop_start()
-print(f'connected to MQTT {MQTT_HOST}:1883  health -> {HEALTH_URL}')
+print(f'connected to MQTT {MQTT_HOST}:{args.port}  health -> {HEALTH_URL}')
 print(f'format: {FMT}\n')
 
 phases       = FRACTAL_PHASES if FMT == 'fractal' else BENCH_PHASES
