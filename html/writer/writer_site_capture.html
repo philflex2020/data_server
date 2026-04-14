@@ -1183,6 +1183,96 @@ EOF</pre>
 <pre><span class="cm"># Tear down when done</span>
 docker compose down -v</pre>
 
+<h4 id="inspect-volume">Browsing files inside the test container</h4>
+
+<p>The writer writes to the <code>parquet-out</code> named Docker volume.
+Three ways to see what's in it while the container is running:</p>
+
+<pre><span class="cm"># 1. exec directly into the running writer container</span>
+docker exec -it test-writer-1 find /tmp/parquet-out -name '*.parquet'
+
+<span class="cm"># 2. one-shot alpine container sharing the same volume (no writer needed)</span>
+docker run --rm -v test_parquet-out:/data alpine ls -lhR /data
+
+<span class="cm"># 3. find the host path Docker uses for the volume (needs sudo)</span>
+docker volume inspect test_parquet-out | grep Mountpoint
+sudo ls $(docker volume inspect test_parquet-out --format '{{.Mountpoint}}')</pre>
+
+<div class="note">
+  The container name prefix comes from the directory name. If your
+  <code>docker-compose.yaml</code> lives in a directory called <code>test</code>,
+  Docker names the writer container <code>test-writer-1</code> and the volume
+  <code>test_parquet-out</code>. Run <code>docker ps</code> to confirm.
+</div>
+
+<h4 id="inspect-script">inspect_parquet.py &#8212; report on files written so far</h4>
+
+<p>Save as <code>inspect_parquet.py</code> in the build directory and run it any time
+the container is up. It copies each parquet file out of the volume, reads the schema,
+and prints a per-file summary.</p>
+
+<pre><span class="cm">#!/usr/bin/env python3
+# inspect_parquet.py — summarise parquet files in the test container volume
+# Usage: python3 inspect_parquet.py [volume_name]</span>
+<span class="kw">import</span> subprocess, sys, os, tempfile
+<span class="kw">import</span> pyarrow.parquet <span class="kw">as</span> pq
+<span class="kw">import</span> pyarrow <span class="kw">as</span> pa
+
+VOL = sys.argv[1] <span class="kw">if</span> len(sys.argv) &gt; 1 <span class="kw">else</span> <span class="st">'test_parquet-out'</span>
+
+<span class="cm"># List parquet files inside the volume</span>
+result = subprocess.run(
+    [<span class="st">'docker'</span>, <span class="st">'run'</span>, <span class="st">'--rm'</span>, <span class="st">'-v'</span>, f<span class="st">'{VOL}:/data'</span>, <span class="st">'alpine'</span>,
+     <span class="st">'find'</span>, <span class="st">'/data'</span>, <span class="st">'-name'</span>, <span class="st">'*.parquet'</span>],
+    capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>
+)
+files = [f.strip() <span class="kw">for</span> f <span class="kw">in</span> result.stdout.splitlines() <span class="kw">if</span> f.strip()]
+
+<span class="kw">if not</span> files:
+    print(<span class="st">f'No parquet files found in volume {VOL}'</span>)
+    sys.exit(0)
+
+print(f<span class="st">'{len(files)} file(s) in {VOL}\n'</span>)
+
+<span class="kw">with</span> tempfile.TemporaryDirectory() <span class="kw">as</span> tmp:
+    <span class="kw">for</span> src <span class="kw">in</span> sorted(files):
+        fname = os.path.basename(src)
+        dst   = os.path.join(tmp, fname)
+
+        <span class="cm"># Copy file out of volume into a temp dir</span>
+        subprocess.run(
+            [<span class="st">'docker'</span>, <span class="st">'run'</span>, <span class="st">'--rm'</span>,
+             <span class="st">'-v'</span>, f<span class="st">'{VOL}:/data'</span>,
+             <span class="st">'-v'</span>, f<span class="st">'{tmp}:/out'</span>,
+             <span class="st">'alpine'</span>, <span class="st">'cp'</span>, src, f<span class="st">'/out/{fname}'</span>],
+            check=<span class="kw">True</span>, capture_output=<span class="kw">True</span>
+        )
+
+        t    = pq.read_table(dst)
+        rows = len(t)
+        cols = t.schema.names
+        size = os.path.getsize(dst)
+
+        print(f<span class="st">'  {fname}'</span>)
+        print(f<span class="st">'    rows   : {rows}'</span>)
+        print(f<span class="st">'    columns: {len(cols)}  {cols}'</span>)
+        print(f<span class="st">'    size   : {size/1024:.1f} kB'</span>)
+        <span class="kw">if</span> rows:
+            df = t.to_pandas()
+            print(f<span class="st">'    ts range: {df["ts"].min()} → {df["ts"].max()}'</span>)
+            <span class="kw">if</span> <span class="st">'point_name'</span> <span class="kw">in</span> cols:
+                pts = df[<span class="st">'point_name'</span>].unique()
+                print(f<span class="st">'    signals : {len(pts)}  {list(pts[:5])}{"..." if len(pts)>5 else ""}'</span>)
+        print()</pre>
+
+<p>Run it while the container is live:</p>
+<pre>python3 inspect_parquet.py
+<span class="cm"># or name the volume explicitly:</span>
+python3 inspect_parquet.py test_parquet-out</pre>
+
+<pre><span class="cm"># Tear down when done</span>
+docker compose down -v</pre>
+
 <h3 id="test-4">Level 4 &#8212; EKS smoke test</h3>
 
 <p>
