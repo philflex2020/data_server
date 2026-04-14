@@ -121,6 +121,10 @@ tr:last-child td { border-bottom:none; }
   <a href="writer_query_design.html">query design</a>
   <a href="writer_compare_test.html">compare test</a>
   <a href="writer_commercial_options.html">commercial options</a>
+  <a href="#build">&#9654; build image</a>
+  <a href="#test">&#9654; test image</a>
+  <a href="#aws-cost">&#9654; AWS cost</a>
+  <a href="#from-51">&#9654; from .51</a>
   <a href="#eks">&#9654; EKS deploy</a>
 </div>
 
@@ -203,22 +207,21 @@ tr:last-child td { border-bottom:none; }
   <div class="step">
     <div class="step-num">4</div>
     <div class="step-body">
-      <div class="step-title">Run <code>long-to-wide</code> K8s Job against the PVC</div>
+      <div class="step-title">Pull parquet files from EKS to local</div>
       <div class="step-desc">
-        <code>kubectl apply -f job-long-to-wide.yaml</code>.
-        Job mounts same EFS PVC; reads <code>/data/site-capture-long</code>;
-        writes 4 output subdirs to <code>/data/converted/</code>.
-        Logs row counts, file sizes, and bytes/signal-value for each format.
+        Scale Deployment to 0 (WAL flush on SIGTERM), then copy files via temporary pod tar pipe
+        or S3 sync. All post-processing runs locally — no conversion Jobs needed in the cluster.
       </div>
     </div>
   </div>
   <div class="step">
     <div class="step-num">5</div>
     <div class="step-body">
-      <div class="step-title">Run <code>validate_formats.py</code> against InfluxDB2.0</div>
-      <div class="step-desc">For each of the 4 parquet formats: compare row counts, signal coverage,
-        value samples, time range, and bytes/signal-value.
-        Output HTML comparison report.</div>
+      <div class="step-title">Run <code>long_to_wide.py</code> and <code>validate_formats.py</code> locally</div>
+      <div class="step-desc">
+        Convert to 4 formats, then validate each against InfluxDB2.0 via VPN/tunnel.
+        Output HTML comparison report.
+      </div>
     </div>
   </div>
 </div>
@@ -610,6 +613,1144 @@ TO <span class="st">'out/D_long_raw/'</span> (FORMAT parquet, PARTITION_BY (unit
 </table>
 
 
+<!-- ── BUILDING THE IMAGE ── -->
+<h2 id="build">Building the Container Image</h2>
+
+<p>
+  The writer is a single compiled C++ binary that links against four shared libraries.
+  The job of the Dockerfile is to (a) compile the binary from source with all the right
+  build tools, then (b) produce a slim runtime image that has only the shared libraries
+  the binary needs at runtime — nothing else.
+</p>
+
+<p>
+  This is called a <strong>multi-stage build</strong>. Think of it as two separate boxes:
+</p>
+<ul>
+  <li><strong>Builder box</strong> — has compilers, headers, everything needed to compile. Throws it all away when done.</li>
+  <li><strong>Runtime box</strong> — starts clean; receives only the compiled binary + the runtime .so files it needs. This is the image that actually runs in EKS.</li>
+</ul>
+
+<h3 id="build-libs">The four libraries and why they matter</h3>
+
+<table>
+  <tr><th>Library</th><th>What it does</th><th>Runtime package</th><th>Build package</th><th>Source</th></tr>
+  <tr>
+    <td><code>libarrow</code> + <code>libparquet</code></td>
+    <td>Writes Parquet files — the core format. Arrow is the in-memory layer; Parquet is the file layer.</td>
+    <td><code>libarrow2300 libparquet2300</code></td>
+    <td><code>libarrow-dev libparquet-dev</code></td>
+    <td>Apache Arrow apt repo (not in default Ubuntu)</td>
+  </tr>
+  <tr>
+    <td><code>libmosquitto</code></td>
+    <td>MQTT client — subscribes to the site broker and receives signal data.</td>
+    <td><code>libmosquitto1</code></td>
+    <td><code>libmosquitto-dev</code></td>
+    <td>Default Ubuntu apt</td>
+  </tr>
+  <tr>
+    <td><code>libyaml-cpp</code></td>
+    <td>Parses the YAML config file.</td>
+    <td><code>libyaml-cpp0.7</code></td>
+    <td><code>libyaml-cpp-dev</code></td>
+    <td>Default Ubuntu apt</td>
+  </tr>
+  <tr>
+    <td><code>libsimdjson</code></td>
+    <td>Fast JSON parser — reads the <code>{"ts":…,"value":…}</code> MQTT payloads.</td>
+    <td><code>libsimdjson9</code></td>
+    <td><code>libsimdjson-dev</code></td>
+    <td>Default Ubuntu apt</td>
+  </tr>
+</table>
+
+<div class="note">
+  <strong>Apache Arrow is the tricky one.</strong> It is not in the default Ubuntu apt repository.
+  You have to add Apache's own apt source before <code>apt-get install</code> will find it.
+  The Dockerfile does this automatically — but it's why you can't just write a plain
+  <code>apt install libarrow-dev</code> and expect it to work.
+</div>
+
+<h3 id="build-files">Files you need alongside the Dockerfile</h3>
+
+<p>Create a build directory with these four files:</p>
+
+<pre>build/
+  ├── parquet_writer.cpp      ← source (copy from /home/phil/data_server/source/parquet_writer/)
+  ├── mqtt_ring.h             ← source (copy from same dir)
+  ├── Makefile                ← source (copy from same dir)
+  ├── entrypoint.sh           ← shell script (create below)
+  └── Dockerfile              ← create below</pre>
+
+<pre><span class="cm"># Copy source files from .34 to your local build dir</span>
+mkdir -p ~/build/parquet-writer
+scp phil@192.168.86.34:/home/phil/data_server/source/parquet_writer/parquet_writer.cpp \
+    phil@192.168.86.34:/home/phil/data_server/source/parquet_writer/mqtt_ring.h \
+    phil@192.168.86.34:/home/phil/data_server/source/parquet_writer/Makefile \
+    ~/build/parquet-writer/</pre>
+
+<h3 id="build-entrypoint">entrypoint.sh</h3>
+
+<p>
+  This script runs inside the container when it starts. It reads the environment variables
+  injected by Kubernetes (MQTT_HOST, SITE_ID) and writes them into the config before
+  launching the writer. This way the same container image works at any site — you only
+  change the Secret, not the image.
+</p>
+
+<pre><span class="cm">#!/bin/sh
+# entrypoint.sh</span>
+set -e
+
+<span class="cm"># Copy the ConfigMap-mounted config to a writable location</span>
+cp /etc/writer/config.yaml /tmp/config.yaml
+
+<span class="cm"># Substitute placeholders with values from Kubernetes Secrets</span>
+sed -i "s/MQTT_HOST_PLACEHOLDER/${MQTT_HOST}/g" /tmp/config.yaml
+sed -i "s/SITE_ID_PLACEHOLDER/${SITE_ID}/g"     /tmp/config.yaml
+
+<span class="cm"># Show the resolved config at startup (useful for debugging pod logs)</span>
+echo "=== resolved config ==="
+grep -E 'host:|site_id:' /tmp/config.yaml
+echo "======================="
+
+exec /usr/local/bin/parquet_writer --config /tmp/config.yaml</pre>
+
+<h3 id="build-dockerfile">Dockerfile</h3>
+
+<p>
+  The build uses Ubuntu 22.04 — the same OS as .34. This means the same library versions
+  are available and there are no surprises when the binary runs.
+</p>
+
+<pre><span class="cm"># ── Stage 1: Build ──────────────────────────────────────────────────────────
+# Full Ubuntu 22.04 with compilers + all dev headers.
+# Nothing from this stage ends up in the final image.</span>
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+<span class="cm"># Add the Apache Arrow apt repository.
+# Arrow is not in Ubuntu's default package list — this registers their repo.</span>
+RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends \
+      wget ca-certificates &amp;&amp; \
+    wget -q https://apache.jfrog.io/artifactory/arrow/ubuntu/apache-arrow-apt-source-latest-jammy.deb &amp;&amp; \
+    apt-get install -y ./apache-arrow-apt-source-latest-jammy.deb &amp;&amp; \
+    apt-get update
+
+<span class="cm"># Install compiler + all dev packages (headers + static/shared libs for linking)</span>
+RUN apt-get install -y --no-install-recommends \
+      build-essential \
+      pkg-config \
+      libarrow-dev \
+      libparquet-dev \
+      libmosquitto-dev \
+      libyaml-cpp-dev \
+      libsimdjson-dev &amp;&amp; \
+    rm -rf /var/lib/apt/lists/*
+
+<span class="cm"># Copy source files and compile</span>
+WORKDIR /build
+COPY parquet_writer.cpp mqtt_ring.h Makefile ./
+RUN make parquet_writer
+
+<span class="cm"># Confirm what shared libs the binary expects — shows up in build log</span>
+RUN ldd parquet_writer
+
+
+<span class="cm"># ── Stage 2: Runtime ────────────────────────────────────────────────────────
+# Fresh Ubuntu 22.04 — no compilers, no headers, no dev packages.
+# Only the runtime .so files the binary actually needs at runtime.</span>
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+<span class="cm"># Add Arrow repo again — needed to find libarrow2300 / libparquet2300 at install time.
+# These are the runtime-only packages (no headers, much smaller than -dev).</span>
+RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends \
+      wget ca-certificates &amp;&amp; \
+    wget -q https://apache.jfrog.io/artifactory/arrow/ubuntu/apache-arrow-apt-source-latest-jammy.deb &amp;&amp; \
+    apt-get install -y ./apache-arrow-apt-source-latest-jammy.deb &amp;&amp; \
+    apt-get update
+
+<span class="cm"># Install runtime libraries only.
+# libparquet2300 automatically pulls in libarrow2300 and all its dependencies
+# (compression libs: zstd, lz4, snappy, brotli — Arrow uses them internally).</span>
+RUN apt-get install -y --no-install-recommends \
+      libparquet2300 \
+      libmosquitto1 \
+      libyaml-cpp0.7 \
+      libsimdjson9 &amp;&amp; \
+    rm -rf /var/lib/apt/lists/* /tmp/*.deb
+
+<span class="cm"># Copy the compiled binary from the builder stage</span>
+COPY --from=builder /build/parquet_writer /usr/local/bin/parquet_writer
+
+<span class="cm"># Copy the startup script</span>
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+<span class="cm"># Port 8771 is the health endpoint — Kubernetes uses it for liveness probes</span>
+EXPOSE 8771
+
+ENTRYPOINT ["/entrypoint.sh"]</pre>
+
+<h3 id="build-steps">Step-by-step: build and push to ECR</h3>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Create an ECR repository (once per project)</div>
+      <div class="step-desc">ECR is AWS's container registry — where the image lives so EKS can pull it.</div>
+    </div>
+  </div>
+</div>
+
+<pre><span class="cm"># Create the repo in your AWS account</span>
+aws ecr create-repository \
+  --repository-name parquet-writer \
+  --region &lt;your-region&gt;
+
+<span class="cm"># Note the URI it returns — looks like:</span>
+<span class="cm"># 123456789.dkr.ecr.eu-west-1.amazonaws.com/parquet-writer</span></pre>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Log Docker into ECR</div>
+      <div class="step-desc">One command — you need to redo this every 12 hours (ECR tokens expire).</div>
+    </div>
+  </div>
+</div>
+
+<pre>aws ecr get-login-password --region &lt;your-region&gt; \
+  | docker login --username AWS --password-stdin \
+    &lt;account-id&gt;.dkr.ecr.&lt;your-region&gt;.amazonaws.com</pre>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Build the image</div>
+      <div class="step-desc">Run this from the <code>~/build/parquet-writer/</code> directory containing all 5 files.
+        The first build takes ~5 minutes (downloads packages, compiles). Subsequent builds are much faster.</div>
+    </div>
+  </div>
+</div>
+
+<pre><span class="cm"># Build — the dot at the end means "use the current directory"</span>
+cd ~/build/parquet-writer/
+
+docker build -t parquet-writer:latest .
+
+<span class="cm"># You'll see two main phases in the output:
+#   [builder 5/5] RUN make parquet_writer   ← compiling
+#   [builder 6/6] RUN ldd parquet_writer    ← shows the .so files found
+# If the build succeeds, the ldd output should show all 4 libs resolved.</span></pre>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Test it locally before pushing</div>
+      <div class="step-desc">Quick sanity check — the writer will fail to connect to MQTT but should print its startup config and the health port, not a library error.</div>
+    </div>
+  </div>
+</div>
+
+<pre><span class="cm"># Run locally — passes fake env vars just to verify the entrypoint works</span>
+docker run --rm \
+  -e MQTT_HOST=127.0.0.1 \
+  -e SITE_ID=TEST \
+  -v /tmp/fake-config.yaml:/etc/writer/config.yaml \
+  parquet-writer:latest
+
+<span class="cm"># Expected: prints "=== resolved config ===" with host=127.0.0.1 then
+# writer starts and complains about MQTT connection — that's fine.
+# A crash with "error while loading shared libraries" means a missing .so — see below.</span></pre>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Tag and push to ECR</div>
+      <div class="step-desc"></div>
+    </div>
+  </div>
+</div>
+
+<pre>ECR=&lt;account-id&gt;.dkr.ecr.&lt;your-region&gt;.amazonaws.com
+
+<span class="cm"># Tag</span>
+docker tag parquet-writer:latest ${ECR}/parquet-writer:latest
+
+<span class="cm"># Push (~200 MB first time; subsequent pushes only send changed layers)</span>
+docker push ${ECR}/parquet-writer:latest
+
+<span class="cm"># Update the image reference in your Deployment YAML:</span>
+<span class="cm"># image: &lt;account-id&gt;.dkr.ecr.&lt;region&gt;.amazonaws.com/parquet-writer:latest</span></pre>
+
+<h3 id="build-troubleshoot">Common problems</h3>
+
+<table>
+  <tr><th>Error</th><th>Cause</th><th>Fix</th></tr>
+  <tr>
+    <td><code>error while loading shared libraries: libparquet.so.2300</code></td>
+    <td>Runtime stage is missing Arrow packages</td>
+    <td>Confirm the Apache Arrow apt source is added in Stage 2 of the Dockerfile and <code>libparquet2300</code> is installed</td>
+  </tr>
+  <tr>
+    <td><code>Unable to locate package libarrow-dev</code></td>
+    <td>Arrow apt repo not registered</td>
+    <td>The <code>wget + apt install *.deb + apt update</code> lines must run before the <code>apt install libarrow-dev</code> line</td>
+  </tr>
+  <tr>
+    <td><code>exec format error</code> in EKS pod</td>
+    <td>Image built for wrong CPU architecture (e.g. built on Apple M1/M2 arm64 but EKS nodes are amd64)</td>
+    <td>Build on an x86_64 machine or add <code>--platform linux/amd64</code> to <code>docker build</code></td>
+  </tr>
+  <tr>
+    <td>Pod <code>CrashLoopBackOff</code>, logs show config error</td>
+    <td>ConfigMap placeholder not substituted (entrypoint.sh sed failed)</td>
+    <td>Check Secret exists: <code>kubectl get secret parquet-writer-secrets -n data-capture</code></td>
+  </tr>
+  <tr>
+    <td>Liveness probe failing</td>
+    <td>Writer hasn't opened port 8771 yet (takes a few seconds)</td>
+    <td><code>initialDelaySeconds: 10</code> is already in the Deployment YAML; increase to 20 if site startup is slow</td>
+  </tr>
+</table>
+
+<h3 id="build-arch">Architecture note (Apple Silicon / Graviton)</h3>
+
+<p>
+  The writer binary must match the CPU architecture of the EKS nodes.
+  Most EKS clusters use x86_64 (Intel/AMD). If you're building on an Apple M-series Mac,
+  Docker builds arm64 by default — add <code>--platform linux/amd64</code>:
+</p>
+
+<pre><span class="cm"># Force x86_64 build on Apple Silicon</span>
+docker build --platform linux/amd64 -t parquet-writer:latest .
+docker push ${ECR}/parquet-writer:latest</pre>
+
+<p>
+  If your EKS cluster uses Graviton (arm64) nodes, omit <code>--platform</code> on Apple Silicon
+  and use <code>--platform linux/arm64</code> on x86_64 machines.
+  Check your node instance type: <code>kubectl get nodes -o wide</code>.
+</p>
+
+<!-- ── TESTING THE IMAGE ── -->
+<h2 id="test">Testing the Image</h2>
+
+<p>
+  There are four levels of testing, each building on the previous.
+  You do not need EKS for the first three — they run entirely on your local machine with Docker.
+</p>
+
+<table>
+  <tr><th>Level</th><th>What it checks</th><th>Needs</th><th>Time</th></tr>
+  <tr>
+    <td><strong>1. Smoke</strong></td>
+    <td>Binary starts, all shared libraries resolved, entrypoint.sh works</td>
+    <td>Docker only</td>
+    <td>10 s</td>
+  </tr>
+  <tr>
+    <td><strong>2. Health</strong></td>
+    <td>HTTP health endpoint responds on port 8771</td>
+    <td>Docker + curl</td>
+    <td>15 s</td>
+  </tr>
+  <tr>
+    <td><strong>3. Integration</strong></td>
+    <td>Writer connects to MQTT, receives messages, flushes parquet files to disk</td>
+    <td>Docker + mosquitto container + Python</td>
+    <td>~3 min</td>
+  </tr>
+  <tr>
+    <td><strong>4. EKS smoke</strong></td>
+    <td>Pod starts in cluster, liveness probe passes, logs are clean</td>
+    <td>EKS cluster + kubectl</td>
+    <td>5 min</td>
+  </tr>
+</table>
+
+<h3 id="test-1">Level 1 &#8212; Smoke test (does it start?)</h3>
+
+<p>
+  Create a minimal config file on your local machine so the entrypoint has something to read,
+  then run the container. You are not connecting to a real MQTT broker — you just want to
+  confirm the binary loads without a "missing shared library" error.
+</p>
+
+<pre><span class="cm"># Create a minimal config so the entrypoint.sh sed substitution has a file to work with</span>
+cat &gt; /tmp/test-config.yaml &lt;&lt; 'EOF'
+mqtt:
+  host:    MQTT_HOST_PLACEHOLDER
+  port:    1883
+  topic:   bench/#
+  client_id: test-writer
+  qos:     0
+  topic_parser: positional
+  topic_segments: [source_type, unit_id, device_type, device, point_name, dtype_hint]
+  drop_columns:   [source_type, dtype_hint]
+  partition_field: unit_id
+output:
+  base_path: /tmp/parquet-out
+  partitions: ['{year}', '{month}', '{day}']
+  partition_as_filename_prefix: true
+  wide_point_name: false
+  flush_interval_seconds: 30
+  compression: snappy
+  store_mqtt_topic: false
+  store_sample_count: false
+  site_id: SITE_ID_PLACEHOLDER
+compact:
+  enabled: false
+health:
+  enabled: true
+  port:    8771
+wal:
+  enabled: false
+EOF
+
+<span class="cm"># Run the container</span>
+docker run --rm \
+  -e MQTT_HOST=127.0.0.1 \
+  -e SITE_ID=TEST \
+  -v /tmp/test-config.yaml:/etc/writer/config.yaml:ro \
+  parquet-writer:latest</pre>
+
+<p>
+  <strong>Pass:</strong> you see the "=== resolved config ===" block with <code>host: 127.0.0.1</code>
+  and <code>site_id: TEST</code>, then the writer logs that it cannot connect to MQTT
+  (expected — nothing is running on 127.0.0.1:1883 inside the container). No crash,
+  no library errors.<br><br>
+  <strong>Fail:</strong> <code>error while loading shared libraries: libparquet.so.2300</code>
+  — a runtime package is missing from Stage 2 of the Dockerfile. Check the troubleshooting table above.
+</p>
+
+<h3 id="test-2">Level 2 &#8212; Health endpoint</h3>
+
+<p>
+  Run the container in the background and hit port 8771 from your host.
+  This confirms the health server starts and Kubernetes liveness probes will work.
+</p>
+
+<pre><span class="cm"># Run in background, publish port 8771</span>
+docker run -d --name writer-test \
+  -e MQTT_HOST=127.0.0.1 \
+  -e SITE_ID=TEST \
+  -v /tmp/test-config.yaml:/etc/writer/config.yaml:ro \
+  -p 8771:8771 \
+  parquet-writer:latest
+
+<span class="cm"># Wait a few seconds then hit the health endpoint</span>
+sleep 5
+curl -s http://localhost:8771/health | python3 -m json.tool
+
+<span class="cm"># Clean up</span>
+docker rm -f writer-test</pre>
+
+<p>
+  <strong>Pass:</strong> curl returns JSON — something like
+  <code>{"status":"ok","uptime_s":5,"rows_buffered":0,"files_written":0}</code>.<br>
+  <strong>Fail:</strong> <code>Connection refused</code> — writer crashed on startup;
+  check <code>docker logs writer-test</code>.
+</p>
+
+<h3 id="test-3">Level 3 &#8212; Integration test (full write cycle)</h3>
+
+<p>
+  This spins up a local MQTT broker (mosquitto) alongside the writer, publishes
+  a handful of test messages, waits for a flush, and checks the parquet output.
+  All in Docker — no EKS needed.
+</p>
+
+<h4>docker-compose.yaml</h4>
+
+<pre><span class="cm"># docker-compose.yaml — save in ~/build/parquet-writer/</span>
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    command: mosquitto -c /mosquitto-no-auth.conf
+    volumes:
+      - ./mosquitto.conf:/mosquitto-no-auth.conf:ro
+
+  writer:
+    image: parquet-writer:latest
+    environment:
+      MQTT_HOST: mosquitto
+      SITE_ID:   TEST_SITE
+    volumes:
+      - ./test-config.yaml:/etc/writer/config.yaml:ro
+      - parquet-out:/tmp/parquet-out
+    ports:
+      - "8771:8771"
+    depends_on:
+      - mosquitto
+
+volumes:
+  parquet-out:</pre>
+
+<pre><span class="cm"># mosquitto.conf — allow anonymous connections (test only)</span>
+listener 1883
+allow_anonymous true</pre>
+
+<pre><span class="cm"># test-config.yaml — 30-second flush so you don't wait long</span>
+<span class="cm"># (same as /tmp/test-config.yaml above — copy it here)</span></pre>
+
+<pre><span class="cm"># Start both containers</span>
+docker compose up -d
+
+<span class="cm"># Wait for writer to connect to mosquitto</span>
+sleep 3
+docker compose logs writer | tail -5</pre>
+
+<h4>Publish test messages</h4>
+
+<pre><span class="cm"># test_publish.py — publish 10 seconds of fake SBESS3 data</span>
+import paho.mqtt.client as mqtt
+import json, time, datetime
+
+client = mqtt.Client()
+client.connect("localhost", 1883)
+client.loop_start()
+
+SIGNALS = [
+    ("bms", "bms_1", "SysSOC", 88.0),
+    ("bms", "bms_1", "SysSOH", 99.5),
+    ("bms", "bms_1", "SysVoltage", 752.3),
+    ("pcs", "pcs_1", "kW", 45.2),
+    ("pcs", "pcs_1", "kVar", 12.1),
+]
+UNIT_ID = "0215D1D8"
+
+for i in range(10):
+    ts = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    for dev_type, dev, point, base_val in SIGNALS:
+        topic   = f"bench/source/{UNIT_ID}/{dev_type}/{dev}/{point}/float"
+        payload = json.dumps({"ts": ts, "value": round(base_val + i * 0.1, 2)})
+        client.publish(topic, payload)
+    time.sleep(1)
+
+client.loop_stop()
+print("published 50 messages (10 sweeps × 5 signals)")</pre>
+
+<pre><span class="cm"># Install paho-mqtt if needed, then run</span>
+pip3 install paho-mqtt
+python3 test_publish.py</pre>
+
+<h4>Trigger a flush and check output</h4>
+
+<pre><span class="cm"># The flush_interval_seconds is 30 — wait for it, or send SIGHUP to flush early</span>
+docker compose exec writer kill -HUP 1
+
+<span class="cm"># Check that a parquet file was written</span>
+docker compose run --rm -v parquet-out:/out busybox find /out -name '*.parquet'
+
+<span class="cm"># Copy a file out and inspect it locally</span>
+docker compose run --rm -v parquet-out:/out \
+  -v /tmp:/dest busybox \
+  cp $(docker compose run --rm -v parquet-out:/out busybox \
+       find /out -name '*.parquet' | head -1) /dest/test_output.parquet
+
+python3 - &lt;&lt; 'EOF'
+import pyarrow.parquet as pq
+t = pq.read_table("/tmp/test_output.parquet")
+print("Schema:", t.schema.names)
+print("Rows:  ", len(t))
+print(t.to_pandas().head(5).to_string())
+EOF</pre>
+
+<p>
+  <strong>Pass:</strong> parquet file exists, schema shows
+  <code>['ts', 'value', 'unit_id', 'device_type', 'device', 'point_name']</code>,
+  rows contain the values you published.<br>
+  <strong>Fail — no file:</strong> flush didn't trigger;
+  check <code>docker compose logs writer</code> for MQTT connection errors.<br>
+  <strong>Fail — wrong schema:</strong> topic segment names in the config don't match
+  the topic structure you published to. Compare the <code>topic_segments</code> list
+  against the topic path used in <code>test_publish.py</code>.
+</p>
+
+<pre><span class="cm"># Tear down when done</span>
+docker compose down -v</pre>
+
+<h3 id="test-4">Level 4 &#8212; EKS smoke test</h3>
+
+<p>
+  Once the image is pushed to ECR and the Kubernetes resources are applied,
+  confirm the pod is healthy before pointing it at live site data.
+</p>
+
+<pre><span class="cm"># Apply all resources</span>
+kubectl apply -f pvc-parquet-capture.yaml -n data-capture
+kubectl apply -f configmap-writer.yaml    -n data-capture
+kubectl apply -f deployment-writer.yaml   -n data-capture
+
+<span class="cm"># Watch the pod come up — should go Running within 30 s</span>
+kubectl get pods -n data-capture -w
+
+<span class="cm"># Check the startup logs — look for "resolved config" and no error lines</span>
+kubectl logs -n data-capture -l app=parquet-writer --tail=30
+
+<span class="cm"># Hit the health endpoint through kubectl port-forward (no ingress needed)</span>
+kubectl port-forward -n data-capture \
+  $(kubectl get pod -n data-capture -l app=parquet-writer -o name) \
+  8771:8771 &amp;
+curl -s http://localhost:8771/health | python3 -m json.tool
+kill %1
+
+<span class="cm"># Confirm liveness probe is passing (Events should show no Unhealthy entries)</span>
+kubectl describe pod -n data-capture -l app=parquet-writer \
+  | grep -A5 'Events:'</pre>
+
+<p>
+  <strong>Pass:</strong> pod status is <code>Running</code>, health returns JSON,
+  no <code>Unhealthy</code> events in pod description.<br>
+  <strong>Fail — ImagePullBackOff:</strong> EKS can't pull from ECR —
+  check the node IAM role has <code>AmazonEC2ContainerRegistryReadOnly</code> policy attached.<br>
+  <strong>Fail — CrashLoopBackOff:</strong> check logs;
+  usually the Secret env vars are missing or the ConfigMap key name doesn't match.
+</p>
+
+<!-- ── AWS COST + FILE EXTRACTION ── -->
+<h2 id="aws-cost">AWS Cost &amp; Extracting Files While Running</h2>
+
+<h3 id="aws-cost-breakdown">Cost for a 1-day capture run</h3>
+
+<table>
+  <tr><th>Component</th><th>Rate</th><th>1 day</th><th>Notes</th></tr>
+  <tr>
+    <td>EKS control plane</td>
+    <td>$0.10 / hr</td>
+    <td class="worst">$2.40</td>
+    <td>Runs whether the pod is doing anything or not</td>
+  </tr>
+  <tr>
+    <td>EC2 node — t3.small &#215;1</td>
+    <td>$0.021 / hr</td>
+    <td>$0.50</td>
+    <td>Enough for the writer pod (256 Mi request)</td>
+  </tr>
+  <tr>
+    <td>EBS 10 GB gp2</td>
+    <td>$0.10 / GB / month</td>
+    <td>$0.03</td>
+    <td>PVC for parquet output</td>
+  </tr>
+  <tr>
+    <td>ECR storage (~300 MB)</td>
+    <td>500 MB free tier</td>
+    <td class="best">$0</td>
+    <td>Image fits in free tier</td>
+  </tr>
+  <tr>
+    <td>Data transfer</td>
+    <td>&#8212;</td>
+    <td class="best">~$0</td>
+    <td>MQTT is local / VPN; no significant egress</td>
+  </tr>
+  <tr style="font-weight:600">
+    <td>Total</td>
+    <td></td>
+    <td>~$3.00</td>
+    <td></td>
+  </tr>
+</table>
+
+<div class="warn">
+  <strong>Don't forget to delete the cluster.</strong>
+  The control plane costs $0.10/hr whether you use it or not.
+  Left running for a month = $72 in control plane charges alone.
+  Always run <code>eksctl delete cluster</code> when the capture is done.
+</div>
+
+<h3 id="aws-cost-cheaper">Cheaper alternative for a one-off test: ECS Fargate</h3>
+
+<p>
+  Same container image. No cluster to create or manage. No control plane charge.
+  You pay only while the container is running.
+</p>
+
+<div class="card-row">
+  <div class="card c-green">
+    <div class="card-label">ECS Fargate — 1 day</div>
+    <div class="card-val">~$0.30</div>
+    <div class="card-sub">0.25 vCPU + 0.5 GB RAM<br>vs $3.00 for EKS</div>
+  </div>
+  <div class="card c-orange">
+    <div class="card-label">EKS — 1 day</div>
+    <div class="card-val">~$3.00</div>
+    <div class="card-sub">$2.40 control plane<br>+ $0.50 node</div>
+  </div>
+  <div class="card c-blue">
+    <div class="card-label">EKS — 1 month idle</div>
+    <div class="card-val">~$75</div>
+    <div class="card-sub">if you forget<br>to delete the cluster</div>
+  </div>
+</div>
+
+<p>
+  If the cluster is already running for other workloads, adding one writer pod costs
+  only the marginal EC2 capacity — effectively nothing if there is spare headroom on
+  existing nodes. The $3/day only matters when you create a cluster specifically for
+  this test.
+</p>
+
+<h3 id="extract-running">Extracting parquet files while the writer is running</h3>
+
+<p>
+  Yes &#8212; the writer flushes completed <code>.parquet</code> files every 10 minutes
+  and closes them. Once a file is closed it is safe to copy. Two approaches:
+</p>
+
+<h4>Option 1 &#8212; <code>kubectl cp</code> (ad-hoc, simplest)</h4>
+
+<p>Pull files at any time without stopping the writer. Only copies closed (flushed) files &#8212;
+never touches the writer process.</p>
+
+<pre><span class="cm"># See what has been flushed so far</span>
+kubectl exec -n data-capture \
+  $(kubectl get pod -n data-capture -l app=parquet-writer -o name) \
+  -- find /data/site-capture-long -name '*.parquet' | sort
+
+<span class="cm"># Copy entire output directory to local machine</span>
+kubectl cp data-capture/$(kubectl get pod -n data-capture \
+  -l app=parquet-writer \
+  -o jsonpath='{.items[0].metadata.name}'):/data/site-capture-long \
+  ./site-capture-long/
+
+<span class="cm"># Or copy just today's files</span>
+kubectl cp data-capture/$(kubectl get pod -n data-capture \
+  -l app=parquet-writer \
+  -o jsonpath='{.items[0].metadata.name}'):/data/site-capture-long/bench/$(date +%Y/%m/%d) \
+  ./site-capture-local/</pre>
+
+<h4>Option 2 &#8212; S3 sync sidecar (continuous, production approach)</h4>
+
+<p>
+  Add a second container to the <strong>same pod</strong> as the writer.
+  Both containers share the <code>/data</code> volume.
+  The sidecar runs <code>aws s3 sync</code> every 60 seconds, picking up any
+  newly flushed files. The writer never knows it is there.
+</p>
+
+<pre><span class="cm"># Add this to the containers: list in deployment.yaml, after the writer container</span>
+- name: s3-sync
+  image: amazon/aws-cli
+  command:
+    - /bin/sh
+    - -c
+    - |
+      echo "s3-sync starting — bucket: $S3_BUCKET"
+      while true; do
+        aws s3 sync /data/site-capture-long \
+          s3://${S3_BUCKET}/site-capture-long \
+          --exclude '*' --include '*.parquet' \
+          --no-progress --quiet
+        sleep 60
+      done
+  env:
+    - name: S3_BUCKET
+      value: my-capture-bucket      <span class="cm"># replace with your bucket name</span>
+    - name: AWS_DEFAULT_REGION
+      value: eu-west-1              <span class="cm"># replace with your region</span>
+  volumeMounts:
+    - name: data
+      mountPath: /data
+      readOnly: true                <span class="cm"># sidecar only reads — writer has full access</span>
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits:   {cpu: 100m, memory: 128Mi}</pre>
+
+<div class="note">
+  <strong>IAM permission needed:</strong> the EKS node IAM role (or a pod service account via IRSA)
+  needs <code>s3:PutObject</code> + <code>s3:ListBucket</code> on the target bucket.
+  Simplest for a test: attach <code>AmazonS3FullAccess</code> to the node group IAM role in the
+  AWS console. For production, use IRSA (IAM Roles for Service Accounts) to scope it to just
+  the writer pod.
+</div>
+
+<p>Then pull to local at any time during or after the capture:</p>
+
+<pre><span class="cm"># Pull all captured files from S3 to local</span>
+aws s3 sync s3://my-capture-bucket/site-capture-long ./site-capture-long/
+
+<span class="cm"># Check how much has been captured so far</span>
+aws s3 ls s3://my-capture-bucket/site-capture-long/ --recursive --summarize \
+  | tail -3</pre>
+
+<table>
+  <tr><th></th><th><code>kubectl cp</code></th><th>S3 sidecar</th></tr>
+  <tr>
+    <td>Setup effort</td>
+    <td class="best">None — works now</td>
+    <td class="mid">Add sidecar to deployment + S3 bucket + IAM</td>
+  </tr>
+  <tr>
+    <td>Extra cost</td>
+    <td class="best">$0</td>
+    <td>~$0.023/GB S3 storage + PUT requests (pennies)</td>
+  </tr>
+  <tr>
+    <td>Access without kubectl</td>
+    <td class="worst">No — need kubectl + cluster access</td>
+    <td class="best">Yes — anyone with S3 access can pull files</td>
+  </tr>
+  <tr>
+    <td>Continuous / automatic</td>
+    <td class="worst">Manual — run when you want files</td>
+    <td class="best">Yes — every 60 s automatically</td>
+  </tr>
+  <tr>
+    <td>Best for</td>
+    <td>1-day test runs, ad-hoc checks</td>
+    <td>Production / multi-day captures</td>
+  </tr>
+</table>
+
+<!-- ── FROM .51 ── -->
+<h2 id="from-51">Running the full test from .51 (192.168.86.51)</h2>
+
+<p>
+  .51 is Ubuntu 24.04, x86_64, with Python 3.12 but nothing else installed yet.
+  The steps below go from zero to a tested EKS deployment.
+  Run everything over SSH: <code>ssh phil@192.168.86.51</code>.
+</p>
+
+<div class="warn">
+  <strong>Cost warning:</strong> an EKS cluster costs ~$0.10/hr for the control plane
+  plus ~$0.02/hr per t3.small node. Leave it running for a 2-hour test and it costs
+  about $0.30. <strong>Delete the cluster when you are done</strong> — see the cleanup
+  step at the bottom. Forgetting to delete it costs ~$75/month.
+</div>
+
+<h3 id="s51-install">Step 1 &#8212; Install the four tools</h3>
+
+<p>These only need to be installed once on .51.</p>
+
+<h4>Docker</h4>
+<pre><span class="cm"># Add Docker's official apt repo and install (not the Ubuntu snap version)</span>
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+     -o /etc/apt/keyrings/docker.asc
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+
+<span class="cm"># Allow your user to run docker without sudo</span>
+sudo usermod -aG docker $USER
+newgrp docker
+
+<span class="cm"># Verify</span>
+docker --version    <span class="cm"># should print Docker version 27.x or similar</span></pre>
+
+<h4>AWS CLI v2</h4>
+<pre><span class="cm"># Download and install (official installer — not the apt version which is v1)</span>
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp/
+sudo /tmp/aws/install
+rm -rf /tmp/aws /tmp/awscliv2.zip
+
+aws --version    <span class="cm"># should print aws-cli/2.x.x</span></pre>
+
+<h4>kubectl</h4>
+<pre>curl -fsSL "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+     -o /tmp/kubectl
+sudo install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+kubectl version --client    <span class="cm"># should print Client Version: v1.3x.x</span></pre>
+
+<h4>eksctl</h4>
+<pre>ARCH=amd64
+curl -fsSL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_${ARCH}.tar.gz" \
+     | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin/
+
+eksctl version    <span class="cm"># should print 0.x.x</span></pre>
+
+<h3 id="s51-aws-creds">Step 2 &#8212; Configure AWS credentials</h3>
+
+<p>
+  You need an AWS Access Key. In the AWS console: click your account name (top right)
+  → <strong>Security credentials</strong> → <strong>Access keys</strong> → <strong>Create access key</strong>.
+  Copy the Access Key ID and Secret Access Key.
+</p>
+
+<pre>aws configure
+<span class="cm"># Prompts:
+# AWS Access Key ID:     paste your key ID
+# AWS Secret Access Key: paste your secret key
+# Default region name:   eu-west-1   (or whichever region you want)
+# Default output format: json</span>
+
+<span class="cm"># Test it — should list your S3 buckets (or empty list if you have none)</span>
+aws sts get-caller-identity</pre>
+
+<p>
+  <code>get-caller-identity</code> returns your account ID and user name.
+  If it prints JSON you are authenticated. If you get an error the credentials are wrong.
+</p>
+
+<h3 id="s51-source">Step 3 &#8212; Copy source files from .34</h3>
+
+<pre>mkdir -p ~/build/parquet-writer
+scp phil@192.168.86.34:/home/phil/data_server/source/parquet_writer/parquet_writer.cpp \
+    phil@192.168.86.34:/home/phil/data_server/source/parquet_writer/mqtt_ring.h \
+    phil@192.168.86.34:/home/phil/data_server/source/parquet_writer/Makefile \
+    ~/build/parquet-writer/</pre>
+
+<p>Then create <code>entrypoint.sh</code> and <code>Dockerfile</code> in the same directory.
+   Full contents are in the <a href="#build">Building the Image</a> section above.</p>
+
+<pre><span class="cm"># Quick check — you should have exactly 5 files</span>
+ls ~/build/parquet-writer/
+<span class="cm"># parquet_writer.cpp  mqtt_ring.h  Makefile  entrypoint.sh  Dockerfile</span></pre>
+
+<h3 id="s51-ecr">Step 4 &#8212; Create ECR repository and push image</h3>
+
+<pre><span class="cm"># Set your region and account ID</span>
+REGION=$(aws configure get region)
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+ECR="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
+
+<span class="cm"># Create the repo (one-time)</span>
+aws ecr create-repository --repository-name parquet-writer --region $REGION
+
+<span class="cm"># Build the image (~5 min first time — downloads packages and compiles)</span>
+cd ~/build/parquet-writer/
+docker build -t parquet-writer:latest .
+
+<span class="cm"># Log Docker into ECR</span>
+aws ecr get-login-password --region $REGION \
+  | docker login --username AWS --password-stdin $ECR
+
+<span class="cm"># Tag and push</span>
+docker tag parquet-writer:latest ${ECR}/parquet-writer:latest
+docker push ${ECR}/parquet-writer:latest
+
+echo "Image: ${ECR}/parquet-writer:latest"</pre>
+
+<h3 id="s51-cluster">Step 5 &#8212; Create an EKS cluster</h3>
+
+<p>
+  This creates a minimal cluster with one small node. It takes about 15 minutes.
+  Go make a coffee.
+</p>
+
+<pre><span class="cm"># Create cluster — 1 × t3.small node, in your default region</span>
+eksctl create cluster \
+  --name    parquet-writer-test \
+  --region  $REGION \
+  --nodes   1 \
+  --node-type t3.small \
+  --with-oidc \
+  --managed
+
+<span class="cm"># eksctl automatically updates ~/.kube/config so kubectl points at this cluster</span>
+kubectl get nodes    <span class="cm"># should show 1 node in Ready state</span></pre>
+
+<h3 id="s51-k8s">Step 6 &#8212; Create the namespace and secrets</h3>
+
+<pre><span class="cm"># Namespace</span>
+kubectl create namespace data-capture
+
+<span class="cm"># Secret — use the bench MQTT broker on .34 as the test target</span>
+kubectl create secret generic parquet-writer-secrets \
+  --from-literal=MQTT_HOST=192.168.86.34 \
+  --from-literal=SITE_ID=TEST_SITE \
+  -n data-capture</pre>
+
+<h3 id="s51-yamls">Step 7 &#8212; Write and apply the Kubernetes YAML files</h3>
+
+<pre><span class="cm"># pvc.yaml</span>
+cat &gt; ~/build/parquet-writer/pvc.yaml &lt;&lt; 'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: parquet-capture-pvc
+  namespace: data-capture
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 10Gi
+EOF</pre>
+
+<div class="note">
+  <strong>gp2 vs gp3:</strong> EKS clusters come with a <code>gp2</code> StorageClass by default.
+  <code>gp3</code> is cheaper but needs the EBS CSI driver configured separately.
+  Use <code>gp2</code> for the test — it works out of the box.
+  Check what's available: <code>kubectl get storageclass</code>
+</div>
+
+<pre><span class="cm"># configmap.yaml — writer config with placeholders</span>
+cat &gt; ~/build/parquet-writer/configmap.yaml &lt;&lt; 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parquet-writer-config
+  namespace: data-capture
+data:
+  config.yaml: |
+    mqtt:
+      host:    MQTT_HOST_PLACEHOLDER
+      port:    1883
+      topic:   bench/#
+      client_id: parquet-writer-eks-test
+      qos:     0
+      topic_parser: positional
+      topic_segments: [source_type, unit_id, device_type, device, point_name, dtype_hint]
+      drop_columns:   [source_type, dtype_hint]
+      partition_field: unit_id
+    output:
+      base_path: /data/site-capture-long
+      partitions: ['{year}', '{month}', '{day}']
+      partition_as_filename_prefix: true
+      wide_point_name: false
+      flush_interval_seconds: 60
+      compression: snappy
+      store_mqtt_topic: false
+      store_sample_count: false
+      site_id: SITE_ID_PLACEHOLDER
+      max_messages_per_part: 5000000
+      max_total_buffer_rows: 2000000
+    compact:
+      enabled: false
+    guard:
+      min_free_gb: 1.0
+    health:
+      enabled: true
+      port: 8771
+    wal:
+      enabled: true
+EOF</pre>
+
+<pre><span class="cm"># deployment.yaml — update the image URI with your ECR address</span>
+cat &gt; ~/build/parquet-writer/deployment.yaml &lt;&lt; EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parquet-writer-long
+  namespace: data-capture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parquet-writer
+  template:
+    metadata:
+      labels:
+        app: parquet-writer
+    spec:
+      containers:
+        - name: writer
+          image: ${ECR}/parquet-writer:latest
+          command: ["/entrypoint.sh"]
+          env:
+            - name: MQTT_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: parquet-writer-secrets
+                  key: MQTT_HOST
+            - name: SITE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: parquet-writer-secrets
+                  key: SITE_ID
+          volumeMounts:
+            - name: config
+              mountPath: /etc/writer
+              readOnly: true
+            - name: data
+              mountPath: /data
+          ports:
+            - containerPort: 8771
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8771
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits:   {cpu: 500m, memory: 1Gi}
+      volumes:
+        - name: config
+          configMap:
+            name: parquet-writer-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: parquet-capture-pvc
+EOF</pre>
+
+<pre><span class="cm"># Apply all three</span>
+kubectl apply -f ~/build/parquet-writer/pvc.yaml
+kubectl apply -f ~/build/parquet-writer/configmap.yaml
+kubectl apply -f ~/build/parquet-writer/deployment.yaml
+
+<span class="cm"># Watch the pod start — takes 20-30 s to pull the image the first time</span>
+kubectl get pods -n data-capture -w</pre>
+
+<h3 id="s51-verify">Step 8 &#8212; Verify it is working</h3>
+
+<pre><span class="cm"># Check startup logs</span>
+kubectl logs -n data-capture -l app=parquet-writer
+
+<span class="cm"># Expected output includes:
+# === resolved config ===
+# host: 192.168.86.34
+# site_id: TEST_SITE
+# =======================
+# (then writer MQTT connect attempt)</span>
+
+<span class="cm"># Hit the health endpoint via port-forward</span>
+kubectl port-forward -n data-capture \
+  $(kubectl get pod -n data-capture -l app=parquet-writer -o name) \
+  8771:8771 &amp;
+PF_PID=$!
+sleep 3
+curl -s http://localhost:8771/health | python3 -m json.tool
+kill $PF_PID
+
+<span class="cm"># Check liveness probe hasn't fired any failures</span>
+kubectl describe pod -n data-capture -l app=parquet-writer | grep -A10 Events</pre>
+
+<h3 id="s51-cleanup">Step 9 &#8212; Clean up (important &#8212; avoids ongoing charges)</h3>
+
+<pre><span class="cm"># Delete the K8s resources</span>
+kubectl delete namespace data-capture
+
+<span class="cm"># Delete the EKS cluster and all its EC2 nodes (~5 min)</span>
+eksctl delete cluster --name parquet-writer-test --region $REGION
+
+<span class="cm"># Optionally delete the ECR repo (keeps the image for later if you leave it)</span>
+aws ecr delete-repository --repository-name parquet-writer \
+  --region $REGION --force
+
+<span class="cm"># Confirm the cluster is gone</span>
+eksctl get cluster --region $REGION</pre>
+
+<div class="note">
+  Once the test passes, the next deployment is just:
+  rebuild the image with the real site config (update MQTT topic and base_path),
+  push to ECR, apply the YAMLs with the site Secret, and the pod starts collecting.
+  No cluster recreation needed if you keep the cluster running between tests.
+</div>
+
 <!-- ── EKS DEPLOYMENT ── -->
 <h2 id="eks">EKS Container Deployment</h2>
 
@@ -631,37 +1772,37 @@ TO <span class="st">'out/D_long_raw/'</span> (FORMAT parquet, PARTITION_BY (unit
     <td>Mounted as <code>/etc/writer/config.yaml</code> inside container</td>
   </tr>
   <tr>
-    <td>InfluxDB token / credentials</td>
+    <td>MQTT host / site credentials</td>
     <td>Secret <code>parquet-writer-secrets</code></td>
-    <td>Env vars <code>INFLUX_TOKEN</code>, <code>MQTT_HOST</code>, <code>SITE_ID</code></td>
+    <td>Env vars <code>MQTT_HOST</code>, <code>SITE_ID</code> — one Secret per site</td>
   </tr>
   <tr>
     <td>Parquet output</td>
-    <td>PVC &rarr; EFS StorageClass</td>
-    <td>ReadWriteMany so conversion Job mounts the same volume after capture</td>
+    <td>PVC &rarr; EBS gp3 (ReadWriteOnce)</td>
+    <td>Only the writer pod mounts it; pull files locally after capture</td>
   </tr>
   <tr>
     <td>Writer process</td>
     <td>Deployment (1 replica)</td>
-    <td>Liveness probe on <code>:8771/health</code>; restartPolicy Always</td>
+    <td>Liveness probe on <code>:8771/health</code></td>
   </tr>
   <tr>
     <td>Post-processing</td>
-    <td>Job <code>long-to-wide</code></td>
-    <td>Run manually after capture; mounts same PVC; writes 4 format subdirs</td>
+    <td><em>local</em> — <code>long_to_wide.py</code></td>
+    <td>Run on local machine after <code>kubectl cp</code> or S3 sync</td>
   </tr>
   <tr>
     <td>Validation</td>
-    <td>Job <code>validate-formats</code></td>
-    <td>Mounts PVC + reaches InfluxDB; writes HTML report to PVC</td>
+    <td><em>local</em> — <code>validate_formats.py</code></td>
+    <td>Run on local machine; connects to site InfluxDB over VPN/tunnel</td>
   </tr>
 </table>
 
-<div class="warn">
-  <strong>EFS vs EBS:</strong> use EFS (NFS) not EBS. The writer Deployment and the
-  post-processing Job both need to mount the same volume. EBS is ReadWriteOnce (single node);
-  EFS is ReadWriteMany and works across nodes. If EFS is not available, use S3 sync after
-  capture instead (see below).
+<div class="note">
+  <strong>Scope:</strong> the EKS container only runs <code>parquet_writer</code> to collect
+  long-format parquet files. All post-processing (4 format conversions, validation) runs
+  locally after pulling the files from site. EBS (ReadWriteOnce) is fine — only one pod
+  writes to the volume.
 </div>
 
 <h3 id="eks-pvc">PersistentVolumeClaim</h3>
@@ -674,11 +1815,11 @@ metadata:
   namespace: data-capture
 spec:
   accessModes:
-    - ReadWriteMany
-  storageClassName: efs-sc          <span class="cm"># EFS CSI driver StorageClass</span>
+    - ReadWriteOnce           <span class="cm"># EBS is fine — only the writer pod mounts this</span>
+  storageClassName: gp3
   resources:
     requests:
-      storage: 50Gi                 <span class="cm"># 24 h long-format ~2-4 GB; headroom for post-processing</span></pre>
+      storage: 10Gi           <span class="cm"># 24 h long-format ~2-4 GB; 10 Gi is ample</span></pre>
 
 <h3 id="eks-configmap">ConfigMap — writer config</h3>
 
@@ -738,21 +1879,11 @@ data:
 
 <h3 id="eks-secret">Secret</h3>
 
-<pre><span class="cm"># Apply with: kubectl create secret generic parquet-writer-secrets \
-#   --from-literal=MQTT_HOST=192.168.x.x \
-#   --from-literal=SITE_ID=SITE_A \
-#   --from-literal=INFLUX_TOKEN=xEbFxk... \
-#   -n data-capture</span>
-apiVersion: v1
-kind: Secret
-metadata:
-  name: parquet-writer-secrets
-  namespace: data-capture
-type: Opaque
-stringData:
-  MQTT_HOST:    <span class="st">"192.168.x.x"</span>       <span class="cm"># site MQTT broker — set per site</span>
-  SITE_ID:      <span class="st">"SITE_A"</span>
-  INFLUX_TOKEN: <span class="st">"&lt;site-influx-token&gt;"</span></pre>
+<pre><span class="cm"># One secret per site — only MQTT connectivity needed in the container</span>
+kubectl create secret generic parquet-writer-secrets \
+  --from-literal=MQTT_HOST=192.168.x.x \
+  --from-literal=SITE_ID=SITE_A \
+  -n data-capture</pre>
 
 <h3 id="eks-entrypoint">Container entrypoint</h3>
 
@@ -805,11 +1936,6 @@ spec:
                 secretKeyRef:
                   name: parquet-writer-secrets
                   key: SITE_ID
-            - name: INFLUX_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: parquet-writer-secrets
-                  key: INFLUX_TOKEN
           volumeMounts:
             - name: config
               mountPath: /etc/writer
@@ -847,68 +1973,50 @@ spec:
           persistentVolumeClaim:
             claimName: parquet-capture-pvc</pre>
 
-<h3 id="eks-post-processing">Post-processing Jobs</h3>
+<h3 id="eks-pull">Pulling files to local after capture</h3>
 
 <p>
-  After the capture window, scale the Deployment to 0 to flush and close all files,
-  then run the conversion Job against the same PVC.
+  After the capture window, scale the Deployment to 0 (SIGTERM triggers WAL flush),
+  then pull the parquet files to local for post-processing.
 </p>
 
-<pre><span class="cm"># Stop writer cleanly (SIGTERM triggers WAL flush)</span>
+<pre><span class="cm"># 1. Stop writer cleanly — SIGTERM flushes WAL before exit</span>
 kubectl scale deployment parquet-writer-long --replicas=0 -n data-capture
 kubectl wait --for=delete pod -l app=parquet-writer -n data-capture --timeout=60s
 
-<span class="cm"># Run conversion Job</span>
-kubectl apply -f job-long-to-wide.yaml</pre>
+<span class="cm"># 2a. Pull directly from PVC via a temporary pod</span>
+kubectl run pull-pod --rm -it --restart=Never \
+  --image=busybox \
+  --overrides='{
+    "spec":{
+      "containers":[{"name":"pull-pod","image":"busybox","command":["sh"],
+        "volumeMounts":[{"name":"data","mountPath":"/data"}]}],
+      "volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"parquet-capture-pvc"}}]
+    }
+  }' -n data-capture -- tar czf - /data/site-capture-long \
+  | tar xzf - -C /local/capture/
 
-<pre><span class="cm"># job-long-to-wide.yaml</span>
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: long-to-wide
-  namespace: data-capture
-spec:
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: converter
-          image: &lt;ecr-account&gt;.dkr.ecr.&lt;region&gt;.amazonaws.com/parquet-tools:latest
-          command: [<span class="st">"python3"</span>, <span class="st">"/scripts/long_to_wide.py"</span>,
-                    <span class="st">"--input"</span>,  <span class="st">"/data/site-capture-long"</span>,
-                    <span class="st">"--output"</span>, <span class="st">"/data/converted"</span>]
-          volumeMounts:
-            - name: data
-              mountPath: /data
-          resources:
-            requests:
-              cpu:    500m
-              memory: 2Gi
-            limits:
-              cpu:    2000m
-              memory: 8Gi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: parquet-capture-pvc</pre>
+<span class="cm"># 2b. Alternative: sync to S3, then pull locally</span>
+kubectl run s3-sync --rm -it --restart=Never \
+  --image=amazon/aws-cli \
+  --overrides='{
+    "spec":{
+      "containers":[{"name":"s3-sync","image":"amazon/aws-cli",
+        "command":["aws","s3","sync","/data/site-capture-long","s3://my-bucket/site-capture-long"],
+        "volumeMounts":[{"name":"data","mountPath":"/data"}]}],
+      "volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"parquet-capture-pvc"}}]
+    }
+  }' -n data-capture
 
-<h3 id="eks-s3-alt">Alternative: S3 sync (if EFS not available)</h3>
+<span class="cm"># Then locally:</span>
+aws s3 sync s3://my-bucket/site-capture-long /local/capture/site-capture-long
 
-<p>
-  If only EBS (ReadWriteOnce) storage is available, sync parquet output to S3
-  at the end of capture instead of sharing a PVC. Post-processing runs locally
-  or in a Job that reads directly from S3 via DuckDB's <code>httpfs</code>.
-</p>
-
-<pre><span class="cm"># Sync capture output to S3 after scaling down the Deployment</span>
-kubectl run s3-sync --rm -it --image=amazon/aws-cli \
-  --overrides='{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"parquet-capture-pvc"}}],"containers":[{"name":"s3-sync","image":"amazon/aws-cli","command":["aws","s3","sync","/data/site-capture-long","s3://my-bucket/site-capture-long"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}]}}' \
-  -- aws s3 sync /data/site-capture-long s3://my-bucket/site-capture-long
-
-<span class="cm"># Post-processing with DuckDB reading directly from S3</span>
-SELECT * FROM read_parquet(<span class="st">'s3://my-bucket/site-capture-long/**/*.parquet'</span>,
-                           union_by_name=<span class="kw">true</span>)
-LIMIT 5;</pre>
+<span class="cm"># 3. Run post-processing locally</span>
+python3 long_to_wide.py --input /local/capture/site-capture-long --output /local/converted/
+python3 validate_formats.py --influx-url http://site:8086 --token $INFLUX_TOKEN \
+  --org myorg --bucket mybucket \
+  --start 2026-04-14T09:00:00Z --stop 2026-04-15T09:00:00Z \
+  --output /local/converted/ --report /local/validation_report.html</pre>
 
 <h3 id="eks-dockerfile">Dockerfile (reference)</h3>
 
@@ -1208,8 +2316,8 @@ Algorithm:
   </li>
   <li>
     <div class="chk-status"><span class="tag tag-missing">needed</span></div>
-    <div class="chk-item">EFS StorageClass + PVC</div>
-    <div class="chk-note">EFS CSI driver must be installed; apply <code>pvc-parquet-capture.yaml</code></div>
+    <div class="chk-item">EBS PVC (gp3, 10 Gi)</div>
+    <div class="chk-note">Standard EBS — no EFS needed. Apply <code>pvc-parquet-capture.yaml</code>. Confirm <code>gp3</code> StorageClass exists: <code>kubectl get sc</code></div>
   </li>
   <li>
     <div class="chk-status"><span class="tag tag-partial">confirm</span></div>
