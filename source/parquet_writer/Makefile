@@ -101,7 +101,7 @@ check-deps:
 
 all: check-deps parquet_writer
 
-parquet_writer: check-deps parquet_writer.cpp mqtt_ring.h
+parquet_writer: parquet_writer.cpp mqtt_ring.h
 	$(CXX) $(ALL_CFLAGS) $(VERSION_FLAGS) parquet_writer.cpp -o $@ $(ALL_LIBS)
 
 tests/test_parquet_writer: tests/test_parquet_writer.cpp parquet_writer.cpp mqtt_ring.h tests/test_runner.h
