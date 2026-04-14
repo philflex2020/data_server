@@ -1,136 +1,355 @@
-# Parquet Writer
+# parquet_writer — MQTT → Parquet ingest daemon
 
-Consumes battery telemetry from NATS JetStream, buffers messages, and flushes compressed Parquet files to S3 (or MinIO).  Designed for **zero data loss** — messages are acknowledged only after a successful upload.
-
----
-
-## What it does
-
-1. Creates a **durable pull consumer** named `parquet-writer` on the `BATTERY_DATA` JetStream stream.
-2. Fetches messages in batches (up to `fetch_batch` per iteration, default 500).
-3. Accumulates messages in an in-memory buffer.
-4. When either `flush_interval_seconds` or `max_messages` is reached, converts the buffer to Parquet (Snappy-compressed by default) and uploads to S3.
-5. Sends NATS ACKs **only after** the S3 upload succeeds.
-6. On shutdown (SIGINT/SIGTERM) performs a final flush before draining.
+Subscribes to an MQTT broker and writes time-series rows into partitioned Parquet files.
+Designed for 80 k+ msg/s: a lock-free SPSC ring buffer (`mqtt_ring.h`) keeps the
+libmosquitto network thread free — `on_message` does only a `memcpy`.
 
 ---
 
-## Zero Data Loss Guarantee
-
-The writer never acknowledges a NATS message until the corresponding data has been durably stored in S3:
-
-```
-buffer.append((payload, nats_msg))
-...
-# --- upload succeeds or raises after 5 retries ---
-await upload_with_retry(s3, bucket, key, data)
-# --- only reached after successful upload ---
-for msg in msgs_to_ack:
-    await msg.ack()
-```
-
-If the writer crashes, loses network, or S3 is unreachable, all buffered messages remain **unacknowledged** in NATS.  On restart the durable consumer resumes from the last acknowledged position — no gap in S3.
-
-S3 uploads are retried up to 5 times with exponential back-off (2, 4, 8, 16, 32 seconds).  If all retries fail, the flush is aborted and retried on the next interval — messages remain in the buffer.
-
-The only scenario that can lose data is if the NATS stream's 48-hour retention window expires before the writer recovers from an extended outage.
-
----
-
-## Quick Start
+## Quick start
 
 ```bash
-cd source/parquet_writer
-pip install nats-py pyarrow boto3 pyyaml
-python writer.py
-# or
-python writer.py --config config.yaml
+make parquet_writer
+./parquet_writer --config writer_config.yaml
 ```
 
-Requires:
-- NATS server running with JetStream enabled.
-- `BATTERY_DATA` stream to exist (created by `nats_bridge` on its first start).
-- S3/MinIO accessible at `endpoint_url`.
+Health check:
 
-The writer retries all connections on startup — it can be started before NATS or MinIO are ready.
+```bash
+curl http://localhost:8771/health
+```
 
 ---
 
-## Config Reference
+## Topic parsing
 
-File: `source/parquet_writer/config.yaml`
+The writer extracts structured metadata from the MQTT topic string and stores each
+segment as a column in the Parquet row.  There are three modes, selected by
+`mqtt.topic_parser` in the config.
+
+---
+
+### Mode 1 — `positional` (most common)
+
+Topic segments are mapped positionally to column names via `topic_segments`.
+
+**Special segment names:**
+
+| Name | Effect |
+|---|---|
+| `_` | Skip — segment is consumed but not stored |
+| `dtype_hint` | Consumed for value casting (`float` → FLOAT64, `integer`/`boolean_integer` → INT64); not stored as a column |
+| `field_name` | Renames the `value` column to this segment's value (wide-sparse schema); not stored as a separate column |
+| anything else | Stored as a UTF-8 string column with that name (narrow schema) |
+
+**How `source_type` is derived:**
+`source_type` is always `parts[0]` — the first segment of the topic.  It feeds into the
+output directory path: `{base_path}/{source_type}/{partitions…}/{timestamp}.parquet`.
+
+#### Example — single-prefix topic
+
+```
+topic:  unit/0215F562/bms/bms_1/Batt1_SBMU1_Current/float
+parts:  [0]unit  [1]0215F562  [2]bms  [3]bms_1  [4]Batt1_SBMU1_Current  [5]float
+```
+
+Config:
 
 ```yaml
-nats:
-  url: "nats://localhost:4222"
-  stream_name: BATTERY_DATA
-  consumer_name: parquet-writer    # durable — survives restarts
-  subject_filter: "batteries.>"
-
-buffer:
-  flush_interval_seconds: 60       # flush after this many seconds
-  max_messages: 10000              # or after this many messages
-  fetch_batch: 500                 # messages to pull per NATS fetch call
-
-s3:
-  endpoint_url: "http://spark-22b6:9000"  # omit for real AWS S3
-  bucket: battery-data
-  region: us-east-1
-  access_key: minioadmin
-  secret_key: minioadmin
-  prefix: ""                       # optional key prefix within the bucket
-
-parquet:
-  compression: snappy              # snappy | zstd | gzip
+mqtt:
+  topic: "unit/#"
+  topic_parser: positional
+  topic_segments:
+    - "_"          # 0: "unit" — literal, skip
+    - unit_id      # 1: stored as string column
+    - device       # 2: stored as string column
+    - instance     # 3: stored as string column
+    - point_name   # 4: stored as string column
+    - dtype_hint   # 5: drives INT64 vs FLOAT64 cast, not stored
 ```
 
-| Key | Type | Default | Notes |
-|-----|------|---------|-------|
-| `nats.consumer_name` | string | `parquet-writer` | Durable consumer name; changing this creates a new consumer from the beginning |
-| `nats.subject_filter` | string | `batteries.>` | NATS subject filter for the consumer |
-| `buffer.flush_interval_seconds` | int | `60` | Maximum seconds between flushes |
-| `buffer.max_messages` | int | `10000` | Flush early if buffer reaches this size |
-| `buffer.fetch_batch` | int | `500` | Messages fetched per NATS pull call |
-| `s3.endpoint_url` | string | — | MinIO URL; omit for AWS S3 |
-| `s3.bucket` | string | `battery-data` | Target bucket (created if missing) |
-| `parquet.compression` | string | `snappy` | `snappy`, `zstd`, or `gzip` |
+Resulting Parquet columns: `ts`, `unit_id`, `device`, `instance`, `point_name`, `value` (FLOAT64),
+`site_id` (from `output.site_id`), `mqtt_topic` (full topic string).
+
+#### Example — namespaced/sliced topic (multi-writer deployment)
+
+When multiple writers share a broker namespace, each slice gets a prefix letter.
+
+```
+topic:  A/unit/0215F562/bms/bms_1/Batt1_SBMU1_Current/float
+parts:  [0]A  [1]unit  [2]0215F562  [3]bms  [4]bms_1  [5]Batt1_SBMU1_Current  [6]float
+```
+
+Config:
+
+```yaml
+mqtt:
+  topic: "A/unit/#"
+  topic_parser: positional
+  topic_segments:
+    - "_"          # 0: "A" — slice prefix, skip
+    - "_"          # 1: "unit" — literal, skip
+    - unit_id      # 2
+    - device       # 3
+    - instance     # 4
+    - point_name   # 5
+    - dtype_hint   # 6
+```
+
+The output path is `{base_path}/A/{partitions…}/{timestamp}.parquet` because
+`source_type = parts[0] = "A"`.
 
 ---
 
-## S3 Partition Layout
+### Mode 2 — `kv` (key=value topics)
 
-Files are written with Hive-compatible partition keys so that DuckDB (used by the Subscriber API) can prune partitions efficiently:
+Segments in the form `key=value` are parsed into integer columns.  Bare segments
+(no `=`) set `field_name`.
 
 ```
-s3://battery-data/
-  site=0/
-    date=2026-03-14/
-      hour=13/
-        20260314T130009Z.parquet
-        20260314T133335Z.parquet
-      hour=14/
-        20260314T140059Z.parquet
-  site=1/
-    date=2026-03-14/
-      hour=13/
-        ...
+topic:  sensors/site=3/rack=7/temperature
 ```
 
-Each flush produces **one file per unique `site_id`** in the buffer at flush time.  The filename is the UTC timestamp of the flush (`YYYYMMDDTHHMMSSz.parquet`).
+```yaml
+mqtt:
+  topic: "sensors/#"
+  topic_parser: kv
+```
 
-**Parquet schema:**
+Resulting columns: `ts`, `site` (INT64 = 3), `rack` (INT64 = 7), `value` (column named
+`temperature` in wide-sparse mode).
 
-| Column | Type |
-|--------|------|
-| `timestamp` | float64 (Unix epoch seconds) |
-| `site_id` | numeric |
-| `rack_id` | numeric |
-| `module_id` | numeric |
-| `cell_id` | numeric |
-| `voltage` | float64 |
-| `current` | float64 |
-| `temperature` | float64 |
-| `soc` | float64 |
-| `internal_resistance` | float64 |
+---
 
-Note: The generator emits measurements as `{"value": 3.71, "unit": "V"}` objects.  The writer **flattens** these to plain floats before writing Parquet.
+### Mode 3 — `topic_patterns` (multi-pattern / Telegraf-style)
+
+For brokers that publish mixed topic structures, define multiple patterns.  The first
+matching pattern wins.  Use `+` to match any single segment, `#` to match the remainder.
+
+```yaml
+mqtt:
+  topic: "#"
+  topic_patterns:
+    - match: "ems/+/+/+/+"
+      segments:
+        - "_"        # 0: "ems"
+        - site_id    # 1
+        - device     # 2
+        - point_name # 3
+        - dtype_hint # 4
+
+    - match: "legacy/+/+"
+      segments:
+        - "_"        # 0: "legacy"
+        - unit_id    # 1
+        - point_name # 2
+
+    - match: "debug/#"
+      segments:
+        - "_"        # 0: "debug"
+        - subsystem  # 1
+```
+
+The `reverse: true` flag maps `segs[0]` to the **last** topic segment, working
+right-to-left.  Useful when the meaningful part is at the end of variable-depth topics.
+
+```yaml
+    - match: "telemetry/#"
+      reverse: true
+      segments:
+        - dtype_hint   # last segment
+        - point_name   # second-to-last
+```
+
+Unmatched topics are written with empty tags and a warning logged once per unique
+depth+prefix combination (for discovery during bringup).
+
+---
+
+## Output path
+
+```
+{base_path}/{source_type}/{partition_1}/{partition_2}/…/{timestamp}.parquet
+```
+
+Partitions are rendered by substituting `{var}` tokens:
+
+| Token | Value |
+|---|---|
+| `{site_id}` | `output.site_id` from config |
+| `{year}` | UTC year of flush time |
+| `{month}` | UTC month |
+| `{day}` | UTC day |
+| `{<field>}` | Any string column parsed from the topic |
+
+Default partition layout: `site={site_id}/{year}/{month}/{day}`.
+
+---
+
+## Filename prefix — avoiding collisions across writers
+
+When multiple writer instances write to the **same `base_path`** (or when files are
+later merged into a shared directory), the default timestamp filename
+(`1711234567890.parquet`) can collide.
+
+Use `output.filename_prefix` to prepend a fixed string:
+
+```yaml
+output:
+  base_path: /data/parquet-evelyn
+  filename_prefix: "slice-a"   # → slice-a_1711234567890.parquet
+```
+
+Alternatively, give each writer a distinct `base_path` or a distinct `source_type` via
+the topic prefix (the `A/`, `B/`, … pattern above is the preferred approach on gx10):
+
+```
+/data/parquet-evelyn/A/site=0215D1D8/2026/03/30/1711234567890.parquet
+/data/parquet-evelyn/B/site=0215D1D8/2026/03/30/1711234567890.parquet
+```
+
+DuckDB can query both slices in a single glob:
+
+```sql
+SELECT * FROM read_parquet('/data/parquet-evelyn/*/site=0215D1D8/*/*/*.parquet')
+WHERE point_name = 'Batt1_SBMU1_Current';
+```
+
+---
+
+## MQTT topic options
+
+### Single-writer, flat namespace
+
+```
+unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}
+```
+
+Subscribe: `unit/#`
+
+### Multi-writer, prefixed namespace (gx10 style)
+
+```
+A/unit/{unit_id}/…
+B/unit/{unit_id}/…
+```
+
+Subscribe per writer: `A/unit/#`, `B/unit/#`.  The prefix becomes `source_type` in the
+output path automatically — no extra config needed beyond adding one extra `"_"` skip in
+`topic_segments`.
+
+### Site-qualified namespace (multi-site broker)
+
+```
+{site_id}/unit/{unit_id}/…
+```
+
+Subscribe: `{site_id}/unit/#` or `+/unit/#` with a pattern rule.  Use `site_id` as the
+first non-skipped segment name to override the config `site_id` per-message.
+
+### Mixed-type broker (use `topic_patterns`)
+
+When a single broker carries EMS, HVAC, metering, etc.:
+
+```
+ems/{site}/{device}/{point}/{dtype}
+hvac/{zone}/{sensor}
+meter/{site}/{channel}
+```
+
+Subscribe: `#`
+Define one `topic_patterns` entry per structure.  Each can have different segment names
+and independent column schemas.  Rows from different patterns coexist in the same
+Parquet files as long as they land in the same partition; DuckDB handles sparse columns
+gracefully.
+
+---
+
+## Full config reference
+
+```yaml
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer
+  topic: "unit/#"          # MQTT subscription filter
+  qos: 0
+
+  # Parser mode: positional | kv
+  topic_parser: positional
+
+  # Positional map (segment index → column name)
+  topic_segments:
+    - "_"
+    - unit_id
+    - device
+    - instance
+    - point_name
+    - dtype_hint
+
+  # OR: multi-pattern (mutually exclusive with topic_segments)
+  # topic_patterns:
+  #   - match: "unit/+/+/+/+/+"
+  #     segments: ["_", unit_id, device, instance, point_name, dtype_hint]
+  #   - match: "status/+"
+  #     segments: ["_", unit_id]
+  #     reverse: false
+
+  partition_field:  site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+  # MQTT tuning
+  keepalive_seconds:     60
+  reconnect_min_seconds: 2
+  reconnect_max_seconds: 30
+  connect_retry_seconds: 5
+
+output:
+  base_path: /srv/data/parquet-ems
+  site_id: "0215D1D8"
+  filename_prefix: ""          # optional: prepended to timestamp filename
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy          # snappy | zstd | lz4 | none
+  flush_interval_seconds: 60
+  max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000
+  flush_max_retries: 3
+  flush_retry_base_seconds: 1
+
+wal:
+  enabled: true
+  # path: ""   # default: {base_path}/.wal/
+
+health:
+  enabled: true
+  port: 8771
+
+guard:
+  min_free_gb: 1.0
+
+compact:
+  enabled: false
+  interval_seconds: 600
+  min_files: 3
+  min_age_seconds: 0
+```
+
+---
+
+## Build
+
+```bash
+make              # builds parquet_writer (C++20, requires g++ >= 10)
+make test         # 32 unit tests
+make kpi          # throughput benchmarks
+make check-deps   # diagnose missing libraries
+make deps         # install apt packages (requires sudo)
+```
+
+Dependencies: `libarrow-dev`, `libparquet-dev`, `libmosquitto-dev`,
+`libyaml-cpp-dev`, `libsimdjson-dev`.

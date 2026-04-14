@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evelyn — Visualization Platform Comparison</title>
+<style>
+  :root {
+    --bg:#1a1a2e; --surface:#16213e; --surface2:#0d1117;
+    --border:#2a2a4a; --border2:#30363d;
+    --text:#e0e0e0; --muted:#abb2bf;
+    --h1:#61dafb; --h2:#e5c07b; --h3:#98c379; --h4:#56b6c2;
+    --kw:#56b6c2; --str:#98c379; --fn:#e5c07b; --cm:#5c6370; --num:#d19a66; --tag-c:#e06c75;
+    --green-bg:#1e3a1e; --yellow-bg:#3a3a1e; --red-bg:#3a1e1e;
+  }
+  body.light {
+    --bg:#f5f5f0; --surface:#ffffff; --surface2:#f0f0e8;
+    --border:#d0d0c0; --border2:#c0c0b0;
+    --text:#1a1a2e; --muted:#555566;
+    --h1:#0066aa; --h2:#8a6000; --h3:#2a6e2a; --h4:#006688;
+    --kw:#006688; --str:#2a6e2a; --fn:#8a6000; --cm:#888877; --num:#aa4400; --tag-c:#cc2222;
+    --green-bg:#d4f0d4; --yellow-bg:#f0f0d4; --red-bg:#f0d4d4;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.6; padding:0 0 60px 0; transition:background .2s,color .2s; }
+  h1 { font-size:2em; color:var(--h1); padding:40px 40px 10px; border-bottom:2px solid var(--border); margin-bottom:20px; }
+  h2 { font-size:1.4em; color:var(--h2); margin:40px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.1em; color:var(--h3); margin:24px 0 8px; }
+  h4 { font-size:1em; color:var(--h4); margin:16px 0 6px; }
+  p { margin:10px 0; max-width:860px; }
+  ul,ol { margin:10px 0 10px 24px; max-width:860px; }
+  li { margin:4px 0; }
+  .content { padding:0 40px; }
+  pre { background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:16px; overflow-x:auto; font-family:'Cascadia Code','Fira Code',monospace; font-size:13px; margin:12px 0; max-width:860px; }
+  code { background:var(--surface2); padding:2px 6px; border-radius:3px; font-family:monospace; font-size:13px; color:var(--fn); }
+  .kw{color:var(--kw)} .str{color:var(--str)} .fn{color:var(--fn)} .cm{color:var(--cm);font-style:italic} .num{color:var(--num)} .tag-s{color:var(--tag-c)}
+  table { border-collapse:collapse; margin:16px 0; width:100%; }
+  th { background:var(--surface); color:var(--h1); padding:8px 12px; text-align:left; border:1px solid var(--border2); font-size:13px; }
+  td { padding:7px 12px; border:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tr:nth-child(even) td { background:var(--surface); }
+  .check{color:var(--str);font-weight:bold} .cross{color:var(--tag-c);font-weight:bold} .half{color:var(--num);font-weight:bold}
+  .toc { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 28px; margin:20px 40px 30px; display:inline-block; min-width:320px; }
+  .toc h2 { margin-top:0; border:none; font-size:1.05em; }
+  .toc ol { margin-left:18px; }
+  .toc li { margin:4px 0; }
+  .toc a { color:var(--h1); text-decoration:none; }
+  .toc a:hover { text-decoration:underline; }
+  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
+  .note { background:var(--green-bg); border-left:3px solid var(--str); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .warn { background:var(--yellow-bg); border-left:3px solid var(--fn); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .platform-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 24px; margin:20px 0; max-width:860px; }
+  .platform-card h3 { margin-top:0; color:var(--h1); }
+  .verdict { display:inline-block; padding:3px 12px; border-radius:4px; font-size:13px; font-weight:bold; margin-top:8px; }
+  .verdict.good { background:var(--green-bg); color:var(--str); border:1px solid var(--str); }
+  .verdict.ok { background:var(--yellow-bg); color:var(--fn); border:1px solid var(--fn); }
+  .verdict.poor { background:var(--red-bg); color:var(--tag-c); border:1px solid var(--tag-c); }
+  .theme-btn { position:fixed; top:14px; right:20px; background:var(--surface); border:1px solid var(--border2); color:var(--muted); border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  .theme-btn:hover { color:var(--text); }
+  .page-nav { padding:14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:var(--muted); text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .page-nav a:hover { color:var(--h1); border-color:var(--h1); }
+  .sdk-box { background:var(--surface2); border:2px solid var(--h4); border-radius:8px; padding:20px 24px; margin:20px 0; max-width:860px; }
+  .sdk-box h3 { color:var(--h4); margin-top:0; }
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="page-nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="evelyn_real_time_data.html">Real-Time Data</a>
+  <a href="evelyn_influx3_analysis.html">InfluxDB 3</a>
+  <a href="evelyn_kafka_analysis.html">Kafka Analysis</a>
+  <a href="evelyn_container_design.html">Container Design</a>
+</div>
+
+<h1>Visualization Platform Comparison</h1>
+<p style="padding:0 40px;color:var(--muted);font-size:14px">How customer-designed UI integrates with the Evelyn EMS product — Grafana and seven alternatives evaluated.</p>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#problem">The Customer UI Problem</a></li>
+    <li><a href="#current-apis">What the Current Stack Already Provides</a></li>
+    <li><a href="#platforms">Platform Comparison (7 options)</a></li>
+    <li><a href="#matrix">Feature Matrix</a></li>
+    <li><a href="#sdk">Recommended Architecture: SDK-first</a></li>
+    <li><a href="#grafana-note">What This Means for Grafana Specifically</a></li>
+    <li><a href="#roadmap">Implementation Roadmap</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- 1 -->
+<h2 id="problem">1. The Customer UI Problem</h2>
+<p>The company ships an EMS product. Customers want their own branded dashboards, not generic Grafana panels with Grafana branding. Three distinct customer personas drive different integration requirements:</p>
+<ul>
+  <li><strong>OEM integrator</strong> — embeds the EMS dashboard inside their own product web app. Needs a JavaScript component or clean iframe embed, not a Grafana link.</li>
+  <li><strong>Enterprise operator</strong> — wants to customize layouts, add company logos, write custom alert views. Needs white-label or deep theming.</li>
+  <li><strong>Developer customer</strong> — wants to build bespoke data apps on top of EMS data using their own tech stack (React, Vue, Python). Needs clean data APIs, not a dashboard tool.</li>
+</ul>
+
+<pre>
+Customer app / portal
+        │
+  [visualization platform]
+        │
+EMS data layer
+  ├── Parquet files  (DuckDB queryable)
+  ├── FlashMQ WS :9001  (live MQTT stream)
+  ├── bridge_api :8772  (REST management + /query/current)
+  └── real_writer :8771  (health metrics)
+</pre>
+
+<hr>
+
+<!-- 2 -->
+<h2 id="current-apis">2. What the Current Stack Already Provides</h2>
+<p>The existing bridge_api and FlashMQ already form an API-first data layer. Any visualization platform that speaks REST JSON and WebSocket can build a full UI on top:</p>
+<table>
+  <tr><th>Endpoint</th><th>Returns</th><th>Use case</th></tr>
+  <tr><td><code>GET :8772/status</code></td><td>Stack health JSON</td><td>Service status panel</td></tr>
+  <tr><td><code>GET :8772/storage</code></td><td>Parquet path, file stats</td><td>Storage monitor</td></tr>
+  <tr><td><code>GET :8772/bridge</code></td><td>Current bridge config</td><td>Connectivity view</td></tr>
+  <tr><td><code>POST :8772/bridge</code></td><td>—</td><td>Connect to EMS hardware</td></tr>
+  <tr><td><code>GET :8772/query/current</code></td><td>DuckDB current_state → JSON</td><td>Latest readings table</td></tr>
+  <tr><td><code>GET :8771/health</code></td><td>Writer metrics JSON</td><td>Ingest rate, drops, buffer</td></tr>
+  <tr><td><code>ws://host:9001</code></td><td>MQTT-over-WebSocket</td><td>Live streaming to browser</td></tr>
+  <tr><td><code>GET :8080/parquet/*.parquet</code></td><td>Parquet files (HTTP range)</td><td>DuckDB-WASM historical queries</td></tr>
+</table>
+<div class="note"><strong>This is already an API-first architecture.</strong> The choice of visualization platform is a UI layer decision, not a data layer decision. Any platform that can consume REST + WebSocket works.</div>
+
+<hr>
+
+<!-- 3 -->
+<h2 id="platforms">3. Platform Comparison</h2>
+
+<div class="platform-card">
+  <h3>3a. Grafana</h3>
+  <p>Industry-standard observability platform. Plugin-based. Strong time-series focus. The most familiar tool in this space.</p>
+  <h4>Customer UI integration</h4>
+  <ul>
+    <li><strong>Panel embedding:</strong> individual panels via iframe. Set <code>allow_embedding = true</code> in grafana.ini. URL: <code>http://grafana:3000/d-solo/UID?panelId=N&amp;from=now-1h&amp;to=now&amp;kiosk=1</code></li>
+    <li><strong>Limitations:</strong> iframes only — no JS SDK, no React component. Grafana chrome is always present unless using kiosk mode.</li>
+    <li><strong>White-label:</strong> Grafana Enterprise only (paid). Removes branding, adds custom themes, SAML SSO.</li>
+    <li><strong>Plugin development:</strong> custom panel plugins in React/TypeScript via Grafana plugin SDK. Steep learning curve, requires signing for production.</li>
+  </ul>
+  <h4>Data layer connection</h4>
+  <ul>
+    <li>DuckDB datasource plugin (community) — can query parquet files via <code>parquet_scan()</code></li>
+    <li>JSON datasource plugin — polls bridge_api REST endpoints</li>
+    <li>No native MQTT/WebSocket live streaming — needs InfluxDB or Prometheus as intermediary</li>
+  </ul>
+  <span class="verdict poor">Poor fit for customer-branded product</span>
+  <span class="verdict ok">Good for internal ops dashboards</span>
+</div>
+
+<div class="platform-card">
+  <h3>3b. Apache Superset</h3>
+  <p>SQL-first BI platform. Dashboards built from SQL queries. Proper embedding SDK unlike Grafana's iframe-only approach.</p>
+  <h4>Customer UI integration</h4>
+  <ul>
+    <li><strong>Embedded SDK:</strong> <code>@superset-ui/embedded-sdk</code> — guest tokens, React component or iframe with auth. More flexible than Grafana.</li>
+    <li><strong>White-label:</strong> possible via forking the React frontend and theming it</li>
+  </ul>
+  <pre><span class="kw">import</span> { <span class="fn">embedDashboard</span> } <span class="kw">from</span> <span class="str">"@superset-ui/embedded-sdk"</span>;
+<span class="fn">embedDashboard</span>({
+  id: <span class="str">"dashboard-uuid"</span>,
+  supersetDomain: <span class="str">"http://superset:8088"</span>,
+  mountPoint: document.<span class="fn">getElementById</span>(<span class="str">"container"</span>),
+  fetchGuestToken: () => <span class="fn">yourBackend</span>.<span class="fn">getToken</span>(),
+  dashboardUiConfig: { hideTitle: <span class="kw">true</span>, hideChartControls: <span class="kw">true</span> }
+});</pre>
+  <h4>Data layer</h4>
+  <p>DuckDB SQLAlchemy connector — queries parquet with <code>parquet_scan()</code>. No native MQTT streaming — polling only.</p>
+  <span class="verdict ok">Better embedding story than Grafana</span>
+  <span class="verdict poor">Heavy ops (Flask + Redis + metadata DB)</span>
+</div>
+
+<div class="platform-card">
+  <h3>3c. Observable Framework</h3>
+  <p>Static site generator for data apps. Markdown + JavaScript + DuckDB-WASM built-in. Built by Mike Bostock (D3 author). <strong>The most architecturally aligned option for this project.</strong></p>
+  <h4>Customer UI integration</h4>
+  <ul>
+    <li>Customers write <code>.md</code> files with SQL queries and custom charts → build outputs a static site they host anywhere</li>
+    <li>No embedding needed — the output IS the customer's page, fully branded</li>
+    <li>DuckDB-WASM first-class: <code>const db = await DuckDBClient.of({data: FileAttachment("parquet/*.parquet")})</code></li>
+    <li>Observable Plot library built-in (from D3 author); ECharts, uPlot also work</li>
+  </ul>
+  <pre><span class="cm">// In a .md cell — queries our parquet directly in the browser</span>
+<span class="kw">const</span> db = <span class="kw">await</span> DuckDBClient.<span class="fn">of</span>({ ems: FileAttachment(<span class="str">"current_state.parquet"</span>) });
+<span class="kw">const</span> soc = <span class="kw">await</span> db.<span class="fn">query</span>(<span class="str">`SELECT unit_id, value FROM ems WHERE point_name='soc'`</span>);
+Plot.<span class="fn">plot</span>({ marks: [Plot.<span class="fn">barY</span>(soc, {x: <span class="str">"unit_id"</span>, y: <span class="str">"value"</span>})] })</pre>
+  <span class="verdict good">Best fit for developer customers building custom data apps</span>
+  <span class="verdict poor">Requires build step (Node.js) — not no-code</span>
+</div>
+
+<div class="platform-card">
+  <h3>3d. Retool / Appsmith (No-code app builders)</h3>
+  <p>Drag-and-drop internal app builders. Connect to REST APIs and WebSockets directly. Good for operator-class customers.</p>
+  <h4>Customer UI integration</h4>
+  <ul>
+    <li>Customers drag components onto a canvas, connect them to bridge_api REST queries</li>
+    <li><strong>Retool WebSocket support:</strong> built-in WebSocket resource — connects to FlashMQ port 9001 directly, binds data to components in real time</li>
+    <li><strong>Appsmith:</strong> open-source, self-hostable alternative to Retool</li>
+    <li>Custom components: both support embedding React/HTML widgets for cases built-ins don't cover</li>
+  </ul>
+  <span class="verdict ok">Good for operator customers who want custom views without coding</span>
+  <span class="verdict poor">Not designed for end-product embedding or deep white-label</span>
+</div>
+
+<div class="platform-card">
+  <h3>3e. Custom HTML + uPlot (Extend the existing approach)</h3>
+  <p>The most product-appropriate model for customer-branded UI. The existing html/*.html pages already demonstrate this pattern. uPlot is the charting library Grafana uses internally for its high-performance panels.</p>
+  <h4>uPlot key properties</h4>
+  <ul>
+    <li>~40 KB, zero dependencies</li>
+    <li>Renders 100,000+ points at 60fps — handles 81k msg/s Evelyn data without dropping frames</li>
+    <li>Canvas-based, fully customizable styling</li>
+    <li>Used by Grafana internally for its time-series panels</li>
+  </ul>
+  <pre><span class="cm">// ECharts — similar power, more chart types</span>
+<span class="kw">const</span> chart = echarts.<span class="fn">init</span>(document.<span class="fn">getElementById</span>(<span class="str">'chart'</span>));
+<span class="kw">const</span> data  = [];
+client.<span class="fn">on</span>(<span class="str">'message'</span>, (topic, payload) => {
+  <span class="kw">const</span> { value } = JSON.<span class="fn">parse</span>(payload);
+  data.<span class="fn">push</span>([Date.<span class="fn">now</span>(), value]);
+  <span class="kw">if</span> (data.length > <span class="num">500</span>) data.<span class="fn">shift</span>();
+  chart.<span class="fn">setOption</span>({ series: [{ data }] });
+});</pre>
+  <span class="verdict good">Full customer branding — 100% control</span>
+  <span class="verdict good">No extra services to operate</span>
+  <span class="verdict ok">Customers need to write code (or use reference HTML as templates)</span>
+</div>
+
+<div class="platform-card">
+  <h3>3f. Grafana Scenes (React SDK)</h3>
+  <p>Grafana's newer SDK for building custom React apps that embed Grafana's rendering engine without the full Grafana UI. No iframes — Grafana panels become React components in your own layout.</p>
+  <pre><span class="kw">import</span> { SceneApp, SceneTimeSeries, SceneFlexLayout } <span class="kw">from</span> <span class="str">'@grafana/scenes'</span>;
+<span class="kw">const</span> app = <span class="kw">new</span> <span class="fn">SceneApp</span>({
+  pages: [<span class="kw">new</span> <span class="fn">SceneAppPage</span>({
+    scene: <span class="fn">buildScene</span>()
+  })]
+});</pre>
+  <p>Requires Grafana backend running as data API proxy. Relatively new (2023). Tight coupling to Grafana version.</p>
+  <span class="verdict ok">Escape hatch from iframe limitation — if Grafana is already committed</span>
+  <span class="verdict poor">Requires Grafana backend + React + Grafana SDK expertise</span>
+</div>
+
+<div class="platform-card">
+  <h3>3g. Apache ECharts (direct embedding)</h3>
+  <p>The charting library Grafana uses internally. Used directly — no Grafana dependency. Supports 30+ chart types including time-series, heatmaps, gauge, scatter, geo maps.</p>
+  <ul>
+    <li>CDN: <code>https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js</code> (~1 MB)</li>
+    <li>Fully customizable themes, dark/light built-in</li>
+    <li>Streaming data: call <code>chart.setOption()</code> on each MQTT message</li>
+    <li>Works in any HTML page alongside mqtt.js — zero framework required</li>
+  </ul>
+  <span class="verdict good">Best performance/feature ratio for direct embedding</span>
+  <span class="verdict good">No Grafana dependency, full styling control</span>
+</div>
+
+<hr>
+
+<!-- 4 -->
+<h2 id="matrix">4. Feature Matrix</h2>
+<table>
+  <tr>
+    <th>Feature</th>
+    <th>Grafana</th>
+    <th>Superset</th>
+    <th>Observable</th>
+    <th>Retool/Appsmith</th>
+    <th>Custom+uPlot</th>
+    <th>Grafana Scenes</th>
+    <th>ECharts direct</th>
+  </tr>
+  <tr>
+    <td>Customer branding / white-label</td>
+    <td><span class="cross">✗</span> (Enterprise$)</td>
+    <td><span class="half">⚠</span> fork</td>
+    <td><span class="check">✓</span></td>
+    <td><span class="half">⚠</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+  </tr>
+  <tr>
+    <td>Embed in customer app (non-iframe)</td>
+    <td><span class="cross">✗</span> iframe only</td>
+    <td><span class="check">✓</span> SDK</td>
+    <td><span class="check">✓</span> static site</td>
+    <td><span class="half">⚠</span> iframe</td>
+    <td><span class="check">✓</span> JS module</td>
+    <td><span class="check">✓</span> React</td>
+    <td><span class="check">✓</span> JS</td>
+  </tr>
+  <tr>
+    <td>Live MQTT streaming</td>
+    <td><span class="cross">✗</span> needs DB</td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="half">⚠</span> DIY</td>
+    <td><span class="check">✓</span> WebSocket</td>
+    <td><span class="check">✓</span> mqtt.js</td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="check">✓</span> mqtt.js</td>
+  </tr>
+  <tr>
+    <td>DuckDB / Parquet native</td>
+    <td><span class="half">⚠</span> plugin</td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span> built-in</td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="check">✓</span> WASM</td>
+    <td><span class="half">⚠</span></td>
+    <td><span class="cross">✗</span></td>
+  </tr>
+  <tr>
+    <td>No-code for operators</td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="cross">✗</span></td>
+  </tr>
+  <tr>
+    <td>Self-hostable</td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span> Appsmith</td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+  </tr>
+  <tr>
+    <td>Works with bridge_api as-is</td>
+    <td><span class="half">⚠</span> JSON plugin</td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+    <td><span class="check">✓</span></td>
+  </tr>
+  <tr>
+    <td>81k msg/s rendering</td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="half">⚠</span></td>
+    <td><span class="cross">✗</span></td>
+    <td><span class="check">✓</span> uPlot</td>
+    <td><span class="half">⚠</span></td>
+    <td><span class="check">✓</span></td>
+  </tr>
+  <tr>
+    <td>Time to first customer dashboard</td>
+    <td>Days</td>
+    <td>Days</td>
+    <td>Hours</td>
+    <td>Hours</td>
+    <td>Hours</td>
+    <td>Weeks</td>
+    <td>Hours</td>
+  </tr>
+  <tr>
+    <td>Operational overhead</td>
+    <td>Medium</td>
+    <td>High</td>
+    <td>None</td>
+    <td>Medium</td>
+    <td>None</td>
+    <td>Medium</td>
+    <td>None</td>
+  </tr>
+</table>
+
+<hr>
+
+<!-- 5 -->
+<h2 id="sdk">5. Recommended Architecture: SDK-first + Optional Grafana Overlay</h2>
+
+<pre>
+Customer app (React / Vue / Angular / plain HTML)
+        │
+   evelyn-sdk.js
+   ┌────────────────────────────────┐
+   │  EvelynClient                  │
+   │  EvelynChart  (uPlot wrapper)  │
+   │  EvelynStateTable              │
+   └────────────────────────────────┘
+        │                    │
+REST :8772              MQTT WS :9001
+bridge_api              FlashMQ live stream
+        │
+DuckDB on parquet
+(current_state / archive)
+</pre>
+
+<div class="sdk-box">
+  <h3>evelyn-sdk.js — Proposed API Surface</h3>
+  <pre>
+<span class="cm">// Connection + data access</span>
+<span class="kw">class</span> <span class="fn">EvelynClient</span> {
+  <span class="fn">constructor</span>({ host, apiPort = <span class="num">8772</span>, mqttPort = <span class="num">9001</span> })
+  <span class="kw">async</span> <span class="fn">getHealth</span>()              <span class="cm">// GET :8771/health → {msgs_received, drops, …}</span>
+  <span class="kw">async</span> <span class="fn">getStatus</span>()              <span class="cm">// GET :8772/status → {broker, writer, …}</span>
+  <span class="kw">async</span> <span class="fn">getCurrentState</span>()        <span class="cm">// GET :8772/query/current → {columns, rows}</span>
+  <span class="fn">subscribeUnit</span>(unitId, cb)     <span class="cm">// mqtt.js subscribe to unit/${unitId}/#</span>
+  <span class="fn">subscribePoint</span>(unit, pt, cb)  <span class="cm">// subscribe to unit/${unit}/+/${pt}</span>
+  <span class="fn">unsubscribe</span>(topic)
+  <span class="fn">disconnect</span>()
+}
+
+<span class="cm">// uPlot time-series chart, pre-configured for Evelyn data</span>
+<span class="kw">class</span> <span class="fn">EvelynChart</span> {
+  <span class="fn">constructor</span>(element, { title, maxPoints = <span class="num">500</span>, unit = <span class="str">''</span> })
+  <span class="fn">push</span>(timestamp, value)        <span class="cm">// add a live data point</span>
+  <span class="fn">setData</span>(rows)                 <span class="cm">// replace with historical rows [{ts, value}]</span>
+  <span class="fn">destroy</span>()
+}
+
+<span class="cm">// Auto-updating table of latest readings</span>
+<span class="kw">class</span> <span class="fn">EvelynStateTable</span> {
+  <span class="fn">constructor</span>(element, { refreshMs = <span class="num">2000</span>, client })
+  <span class="fn">start</span>() / <span class="fn">stop</span>()
+}</pre>
+</div>
+
+<h3>Layer model</h3>
+<ul>
+  <li><strong>Layer 1 — Data APIs</strong> (already exists): bridge_api REST + FlashMQ WS :9001 + DuckDB /query/current</li>
+  <li><strong>Layer 2 — evelyn-sdk.js</strong> (to build): small ES module wrapping the APIs. Shipped with the product. Zero dependencies except uPlot (~40 KB).</li>
+  <li><strong>Layer 3 — Reference dashboards</strong> (already exists): the html/*.html pages become working templates showing customers how to use the SDK.</li>
+  <li><strong>Layer 4 — Optional Grafana overlay</strong>: for customers who specifically require Grafana — DuckDB datasource plugin + bridge_api JSON endpoint. An option, not the primary path.</li>
+</ul>
+
+<hr>
+
+<!-- 6 -->
+<h2 id="grafana-note">6. What This Means for Grafana Specifically</h2>
+<ul>
+  <li>Keep Grafana as an <strong>optional integration</strong> for customers who already use it, not as the primary UI layer</li>
+  <li>Use the DuckDB datasource plugin to expose parquet data to Grafana without requiring InfluxDB</li>
+  <li>Grafana panel embedding (iframe) is acceptable for simple portal integration where branding is not critical</li>
+  <li>For full customer branding: the SDK approach is the right answer — Grafana cannot deliver this without Enterprise licensing</li>
+  <li><strong>Do not invest in Grafana plugin development as a primary effort</strong> — the existing HTML architecture is more flexible and already works. A Grafana plugin requires the Grafana plugin SDK, webpack build tooling, and Grafana signing — significant maintenance overhead for a second-class experience.</li>
+</ul>
+
+<hr>
+
+<!-- 7 -->
+<h2 id="roadmap">7. Implementation Roadmap</h2>
+<table>
+  <tr><th>Phase</th><th>Work</th><th>Outcome</th></tr>
+  <tr>
+    <td><strong>Now</strong></td>
+    <td>Document bridge_api endpoints, add <code>/query/current</code>, expose FlashMQ WS :9001</td>
+    <td>Any HTTP + MQTT client can build on top without waiting for the SDK</td>
+  </tr>
+  <tr>
+    <td><strong>Phase 1</strong></td>
+    <td>Extract <code>evelyn-sdk.js</code> from the existing html/*.html pages — the connection + subscription logic is already there</td>
+    <td>Versioned JS library ships with the product. Reference HTML pages as examples.</td>
+  </tr>
+  <tr>
+    <td><strong>Phase 2</strong></td>
+    <td>Add <code>EvelynChart</code> (uPlot wrapper) and <code>EvelynStateTable</code> to SDK. Write React/Vue integration guide.</td>
+    <td>OEM integrators can embed live charts in their own React app in &lt;1 hour</td>
+  </tr>
+  <tr>
+    <td><strong>Phase 3</strong></td>
+    <td>Grafana config guide: DuckDB plugin + bridge_api JSON endpoint config for customers who require Grafana. Documentation only — no plugin code.</td>
+    <td>Grafana users served without engineering investment in a plugin</td>
+  </tr>
+  <tr>
+    <td><strong>Future</strong></td>
+    <td>Observable Framework templates for developer customers building analytics apps on top of the parquet archive</td>
+    <td>Self-service data app development on top of EMS data</td>
+  </tr>
+</table>
+
+</div>
+</body>
+</html>

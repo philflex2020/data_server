@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chiller Controller</title>
+<style>
+:root {
+    --bg:#0d1117;--bg-card:#161b22;--bg-input:#1c2128;
+    --accent:#38bdf8;--green:#4ade80;--amber:#fbbf24;--red:#f87171;--cyan:#22d3ee;
+    --text:#e6edf3;--muted:#7d8590;--border:#30363d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:14px}
+.topbar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.dot{width:9px;height:9px;border-radius:50%;background:#444;flex-shrink:0}
+.dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.fault{background:var(--red);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.lbl{font-size:12px;color:var(--muted)}
+.val{font-size:12px;font-variant-numeric:tabular-nums}
+.ip{background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:12px;width:130px}
+.btn{padding:5px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-c{background:var(--accent);color:#000}
+.btn-g{background:var(--green);color:#000}
+.btn-a{background:var(--amber);color:#000}
+.btn-r{background:var(--red);color:#000}
+.btn-ghost{background:rgba(255,255,255,.07);color:var(--text);border:1px solid var(--border)}
+.ping{font-size:11px;padding:1px 5px;border-radius:3px;background:rgba(74,222,128,.1);color:var(--green)}
+.ping.w{background:rgba(251,191,36,.1);color:var(--amber)}
+.ping.b{background:rgba(248,113,113,.1);color:var(--red)}
+
+.main{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:900px;margin:0 auto}
+@media(max-width:640px){.main{grid-template-columns:1fr}}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px}
+.card h3{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px}
+
+.gauges{display:flex;gap:10px;margin-bottom:12px}
+.g{flex:1;background:var(--bg-input);border-radius:7px;padding:10px;text-align:center}
+.g-lbl{font-size:10px;color:var(--muted);margin-bottom:3px}
+.g-val{font-size:20px;font-weight:700}
+.g-unit{font-size:11px;color:var(--muted)}
+.cold{color:var(--cyan)}
+.hot{color:var(--red)}
+.ok{color:var(--green)}
+
+.bar{margin-bottom:8px}
+.bar-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
+.bar-track{height:7px;background:var(--bg-input);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .35s}
+.f-c{background:var(--cyan)}
+.f-g{background:var(--green)}
+.f-a{background:var(--amber)}
+.f-r{background:var(--red)}
+
+.ctrl{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.ctrl-lbl{font-size:12px;color:var(--muted);width:110px;flex-shrink:0}
+.ctrl input[type=range]{flex:1;accent-color:var(--accent)}
+.ctrl-v{width:48px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.ctrl input[type=number]{flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px}
+
+.mode-row{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+.m-btn{flex:1;min-width:70px;padding:7px;text-align:center}
+.m-btn.act-cooling{background:var(--green);color:#000}
+.m-btn.act-manual{background:var(--amber);color:#000}
+.m-btn.act-standby{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border)}
+.m-btn.act-fault{background:var(--red);color:#000}
+
+.alm-row{display:flex;gap:7px;flex-wrap:wrap}
+.alm{padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
+.alm.on{background:rgba(248,113,113,.15);color:var(--red);border-color:var(--red);animation:blink 1.5s infinite}
+
+.log{background:var(--bg-input);border-radius:6px;height:110px;overflow-y:auto;padding:6px 8px;font-size:11px;font-family:monospace;color:var(--muted)}
+.ll{margin-bottom:2px}
+.ll.i{color:var(--accent)}
+.ll.w{color:var(--amber)}
+.ll.e{color:var(--red)}
+/* Discovery modal */
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:100;justify-content:center;align-items:center}
+.modal.show{display:flex}
+.discover-modal-content{background:var(--bg-card);border-radius:12px;padding:30px;min-width:560px;max-width:680px}
+.discover-modal-content h3{color:var(--accent);margin-bottom:15px}
+.discover-subnet-row{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.discover-subnet-row input{flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px}
+.discover-progress{height:6px;background:var(--bg-input);border-radius:3px;margin-bottom:14px;overflow:hidden}
+.discover-progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width 0.2s}
+.discover-status{font-size:12px;color:var(--muted);margin-bottom:10px;min-height:18px}
+.discover-table{width:100%;border-collapse:collapse;font-size:13px}
+.discover-table th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.discover-table td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,0.05);vertical-align:middle}
+.discover-table tr:last-child td{border-bottom:none}
+.discover-table .dev-ip{color:var(--accent);font-family:monospace}
+.discover-table .dev-ver{color:var(--green)}
+.discover-table .dev-host{color:var(--muted);font-size:12px}
+.discover-empty{color:var(--muted);font-size:13px;text-align:center;padding:20px 0}
+.btn-primary{background:var(--accent);color:#000}
+.btn-small{padding:4px 10px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="dot" id="dot"></div>
+  <span style="font-weight:700;color:var(--cyan)">Chiller</span>
+  <span class="lbl">IP</span>
+  <input class="ip" id="devIp" value="192.168.86.35">
+  <button class="btn btn-c" id="connBtn" onclick="toggleWS()">Connect</button>
+  <button class="btn btn-ghost btn-small" onclick="openDiscoverModal()" title="Discover devices">⊕ Scan</button>
+  <span class="lbl">Mode</span><span class="val" id="sMode">—</span>
+  <span class="lbl">v</span><span class="val" id="sVer">—</span>
+  <span class="lbl">Ping</span><span class="ping" id="pingEl">—</span>
+  <span class="lbl" style="margin-left:8px">Loc</span>
+  <span class="val" id="sLoc" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
+  <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="editLocation()">Set</button>
+</div>
+
+<div class="main">
+
+  <!-- Temperature -->
+  <div class="card">
+    <h3>Temperature</h3>
+    <div class="gauges">
+      <div class="g"><div class="g-lbl">Inlet</div><div><span class="g-val cold" id="gIn">—</span><span class="g-unit">°C</span></div></div>
+      <div class="g"><div class="g-lbl">Outlet</div><div><span class="g-val" id="gOut">—</span><span class="g-unit">°C</span></div></div>
+      <div class="g"><div class="g-lbl">Setpoint</div><div><span class="g-val ok" id="gSp">18.0</span><span class="g-unit">°C</span></div></div>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Outlet − Setpoint delta</span><span id="bDeltaV">—</span></div>
+      <div class="bar-track"><div class="bar-fill f-g" id="bDelta" style="width:0%"></div></div>
+    </div>
+    <div class="ctrl">
+      <span class="ctrl-lbl">Setpoint (°C)</span>
+      <input type="range" min="-5" max="30" step="0.5" value="18" id="sSp"
+        oninput="document.getElementById('vSp').textContent=this.value+'°C'">
+      <span class="ctrl-v" id="vSp">18°C</span>
+    </div>
+    <button class="btn btn-c" onclick="sendSetpoint()">Apply Setpoint</button>
+  </div>
+
+  <!-- Compressor & Fan -->
+  <div class="card">
+    <h3>Compressor &amp; Fan</h3>
+    <div class="gauges">
+      <div class="g"><div class="g-lbl">Compressor</div><div><span class="g-val" id="gComp">—</span><span class="g-unit">%</span></div></div>
+      <div class="g"><div class="g-lbl">Fan</div><div><span class="g-val" id="gFan">—</span><span class="g-unit">%</span></div></div>
+      <div class="g"><div class="g-lbl">Pressure</div><div><span class="g-val" id="gPres">—</span><span class="g-unit">bar</span></div></div>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Compressor</span><span id="bCompV">0%</span></div>
+      <div class="bar-track"><div class="bar-fill f-c" id="bComp" style="width:0%"></div></div>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Fan</span><span id="bFanV">0%</span></div>
+      <div class="bar-track"><div class="bar-fill f-g" id="bFan" style="width:0%"></div></div>
+    </div>
+    <div class="ctrl">
+      <span class="ctrl-lbl">Compressor %</span>
+      <input type="range" min="0" max="100" value="0" id="sComp"
+        oninput="document.getElementById('vComp').textContent=this.value+'%'">
+      <span class="ctrl-v" id="vComp">0%</span>
+    </div>
+    <div class="ctrl">
+      <span class="ctrl-lbl">Fan %</span>
+      <input type="range" min="0" max="100" value="0" id="sFan"
+        oninput="document.getElementById('vFan').textContent=this.value+'%'">
+      <span class="ctrl-v" id="vFan">0%</span>
+    </div>
+    <button class="btn btn-a" onclick="sendManual()">Send (manual)</button>
+  </div>
+
+  <!-- Mode & Pump -->
+  <div class="card">
+    <h3>Mode &amp; Pump</h3>
+    <div class="mode-row">
+      <button class="btn m-btn" id="mCooling" onclick="setMode('cooling')">Cooling</button>
+      <button class="btn m-btn" id="mManual"  onclick="setMode('manual')">Manual</button>
+      <button class="btn m-btn" id="mStandby" onclick="setMode('standby')">Standby</button>
+    </div>
+    <div class="gauges">
+      <div class="g"><div class="g-lbl">Flow</div><div><span class="g-val" id="gFlow">—</span><span class="g-unit">L/min</span></div></div>
+      <div class="g"><div class="g-lbl">Pump</div><div><span class="g-val" id="gPump">—</span></div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-g" onclick="ws&&ws.send(JSON.stringify({cmd:'set_pump',state:true}))">Pump ON</button>
+      <button class="btn btn-ghost" onclick="ws&&ws.send(JSON.stringify({cmd:'set_pump',state:false}))">Pump OFF</button>
+      <button class="btn btn-r" onclick="ws&&ws.send(JSON.stringify({cmd:'clear_fault'}))">Clear Fault</button>
+    </div>
+  </div>
+
+  <!-- Alarms & Log -->
+  <div class="card">
+    <h3>Alarms</h3>
+    <div class="alm-row">
+      <div class="alm" id="almHT">HIGH TEMP</div>
+      <div class="alm" id="almLF">LOW FLOW</div>
+      <div class="alm" id="almCF">COMP FAULT</div>
+    </div>
+    <h3 style="margin-top:12px">Log</h3>
+    <div class="log" id="logEl"></div>
+  </div>
+
+</div>
+
+<!-- Device Discovery Modal -->
+<div class="modal" id="discoverModal">
+  <div class="discover-modal-content">
+    <h3>Discover Controllers</h3>
+    <div id="discoverRelayPanel">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+        <span id="discoverRelayDot" style="width:10px;height:10px;border-radius:50%;background:#555;display:inline-block;flex-shrink:0"></span>
+        <span id="discoverRelayLabel" style="font-size:12px;color:var(--muted);flex:1">Connecting to beacon relay…</span>
+        <button class="btn btn-small" onclick="showScanPanel()" style="background:rgba(255,255,255,0.08);color:#888;font-size:11px;">Manual scan</button>
+        <button class="btn btn-small" onclick="closeDiscoverModal()" style="background:rgba(255,255,255,0.1);color:#aaa;">Close</button>
+      </div>
+    </div>
+    <div id="discoverScanPanel" style="display:none">
+      <div class="discover-subnet-row">
+        <input type="text" id="discoverSubnet" placeholder="192.168.86." value="192.168.86.">
+        <button class="btn btn-primary btn-small" id="discoverScanBtn" onclick="startScan()">Scan</button>
+        <button class="btn btn-small" onclick="showRelayPanel()" style="background:rgba(255,255,255,0.08);color:#888;font-size:11px;">mDNS</button>
+        <button class="btn btn-small" onclick="closeDiscoverModal()" style="background:rgba(255,255,255,0.1);color:#aaa;">Close</button>
+      </div>
+      <div class="discover-progress"><div class="discover-progress-fill" id="discoverProgressFill" style="width:0%"></div></div>
+      <div class="discover-status" id="discoverStatus">Enter subnet prefix and click Scan.</div>
+    </div>
+    <table class="discover-table">
+      <thead><tr><th>IP Address</th><th>Version</th><th>Type</th><th>Location</th><th>RTT</th><th></th></tr></thead>
+      <tbody id="discoverTableBody"></tbody>
+    </table>
+    <div class="discover-empty" id="discoverEmpty" style="display:none">No devices found. Try Manual scan if the relay is not running.</div>
+  </div>
+</div>
+
+<script>
+let ws=null,conn=false,pingSeq=0,pingT=0,pingTmr=null;
+function lg(m,c=''){const b=document.getElementById('logEl');const d=document.createElement('div');d.className='ll '+c;d.textContent=new Date().toLocaleTimeString()+' '+m;b.appendChild(d);b.scrollTop=b.scrollHeight;if(b.children.length>150)b.removeChild(b.firstChild);}
+function send(o){if(ws&&conn)ws.send(JSON.stringify(o));}
+function toggleWS(){
+  if(conn){ws.close();return;}
+  const ip=document.getElementById('devIp').value.trim();
+  ws=new WebSocket('ws://'+ip+':81');
+  document.getElementById('connBtn').textContent='…';
+  ws.onopen=()=>{conn=true;document.getElementById('dot').className='dot ok';document.getElementById('connBtn').textContent='Disconnect';lg('Connected to '+ip,'i');startPing();send({cmd:'get_status'});};
+  ws.onclose=()=>{conn=false;document.getElementById('dot').className='dot';document.getElementById('connBtn').textContent='Connect';stopPing();lg('Disconnected','w');document.getElementById('sMode').textContent='—';document.getElementById('sVer').textContent='—';document.getElementById('sLoc').textContent='—';};
+  ws.onerror=()=>lg('Error','e');
+  ws.onmessage=(e)=>{try{handle(JSON.parse(e.data));}catch(_){}};
+}
+function handle(d){
+  if(d.type==='pong'){if(pingT&&d.t===pingSeq){const r=Date.now()-pingT;pingT=0;const el=document.getElementById('pingEl');el.textContent=r+'ms';el.className='ping'+(r>150?' b':r>50?' w':'');} return;}
+  if(d.type!=='status')return;
+  document.getElementById('sMode').textContent=d.mode||'—';
+  document.getElementById('sVer').textContent=d.version||'—';
+  if(d.location!==undefined)document.getElementById('sLoc').textContent=d.location||'—';
+  const i=parseFloat(d.temp_inlet||0),o=parseFloat(d.temp_outlet||0),sp=parseFloat(d.temp_setpoint||0);
+  document.getElementById('gIn').textContent=i.toFixed(1);
+  const oe=document.getElementById('gOut');oe.textContent=o.toFixed(1);oe.className='g-val'+(o>30?' hot':o<sp+2?' ok':'');
+  document.getElementById('gSp').textContent=sp.toFixed(1);
+  const dt=Math.abs(o-sp);
+  document.getElementById('bDeltaV').textContent=dt.toFixed(1)+'°C';
+  document.getElementById('bDelta').style.width=Math.min(dt/20*100,100)+'%';
+  document.getElementById('bDelta').className='bar-fill '+(dt>5?'f-r':dt>2?'f-a':'f-g');
+  const cp=parseFloat(d.compressor_pct||0),fp=parseFloat(d.fan_pct||0);
+  document.getElementById('gComp').textContent=cp.toFixed(0);
+  document.getElementById('gFan').textContent=fp.toFixed(0);
+  document.getElementById('gPres').textContent=parseFloat(d.pressure_bar||0).toFixed(1);
+  document.getElementById('bComp').style.width=cp+'%';document.getElementById('bCompV').textContent=cp.toFixed(0)+'%';
+  document.getElementById('bFan').style.width=fp+'%';document.getElementById('bFanV').textContent=fp.toFixed(0)+'%';
+  document.getElementById('gFlow').textContent=parseFloat(d.flow_lpm||0).toFixed(1);
+  document.getElementById('gPump').textContent=d.pump_on?'ON':'OFF';
+  document.getElementById('gPump').className='g-val'+(d.pump_on?' ok':' hot');
+  ['mCooling','mManual','mStandby'].forEach(id=>document.getElementById(id).className='btn m-btn btn-ghost');
+  const mn={cooling:'mCooling',manual:'mManual',standby:'mStandby',fault:'mStandby'};
+  if(mn[d.mode])document.getElementById(mn[d.mode]).className='btn m-btn act-'+d.mode;
+  document.getElementById('almHT').className='alm'+(d.alarm_high_temp?' on':'');
+  document.getElementById('almLF').className='alm'+(d.alarm_low_flow?' on':'');
+  document.getElementById('almCF').className='alm'+(d.alarm_comp_fault?' on':'');
+  if(d.alarm_bitmap)document.getElementById('dot').className='dot fault';
+  else if(conn)document.getElementById('dot').className='dot ok';
+}
+function sendSetpoint(){const v=parseFloat(document.getElementById('sSp').value);send({cmd:'set_setpoint',value:v});lg('Setpoint → '+v+'°C');}
+function sendManual(){
+  send({cmd:'set_mode',mode:'manual'});
+  send({cmd:'set_compressor',value:parseFloat(document.getElementById('sComp').value)});
+  send({cmd:'set_fan',value:parseFloat(document.getElementById('sFan').value)});
+  lg('Manual sent');
+}
+function setMode(m){send({cmd:'set_mode',mode:m});lg('Mode → '+m);}
+function editLocation(){const cur=document.getElementById('sLoc').textContent;const n=prompt('Location name (e.g. chiller_rack_1):',cur==='—'?'':cur);if(n!==null){const v=n.trim();send({cmd:'set_location',value:v});lg('Location → '+(v||'(cleared)'));document.getElementById('sLoc').textContent=v||'—';}}
+function startPing(){pingTmr=setInterval(()=>{if(!conn)return;pingSeq=(pingSeq+1)&0xFFFF;pingT=Date.now();send({cmd:'ping',t:pingSeq});},2000);}
+function stopPing(){clearInterval(pingTmr);document.getElementById('pingEl').textContent='—';}
+// Pre-fill IP from URL hash (set by discovery modal) or localStorage
+(function(){const h=location.hash.slice(1);if(h&&h.match(/^\d+\.\d+\.\d+\.\d+$/)){document.getElementById('devIp').value=h;localStorage.setItem('chillerCtrlIp',h);history.replaceState(null,'',location.pathname);}else{const sv=localStorage.getItem('chillerCtrlIp');if(sv)document.getElementById('devIp').value=sv;}})();
+document.getElementById('devIp').addEventListener('change',()=>localStorage.setItem('chillerCtrlIp',document.getElementById('devIp').value));
+
+// ── Device Discovery ──────────────────────────────────────────────────────────
+const RELAY_URL = `ws://${window.location.hostname}:5558`;
+const MY_DEVICE_TYPE = 'chiller_control';
+const DEVICE_PAGE = {
+  'load_controller': 'load_simulator.html',
+  'chiller_control': 'chiller_ctrl.html',
+  'pcs_control':     'pcs_ctrl.html',
+  'ups_control':     'ups_ctrl.html',
+};
+let scanAbort=false, relayWs=null, relayConnected=false;
+
+function showRelayPanel(){document.getElementById('discoverScanPanel').style.display='none';document.getElementById('discoverRelayPanel').style.display='';if(!relayConnected)connectRelay();}
+function showScanPanel(){document.getElementById('discoverRelayPanel').style.display='none';document.getElementById('discoverScanPanel').style.display='';const ip=document.getElementById('devIp').value.trim();const m=ip.match(/^(\d+\.\d+\.\d+\.)/);if(m)document.getElementById('discoverSubnet').value=m[1];}
+function setRelayIndicator(state){const dot=document.getElementById('discoverRelayDot'),label=document.getElementById('discoverRelayLabel');if(state==='ok'){dot.style.background='#4ade80';label.textContent='Listening for OTA beacons (mDNS)…';}else if(state==='error'){dot.style.background='#f87171';label.textContent='Relay not running — start beacon_relay.py or use Manual scan.';}else{dot.style.background='#fbbf24';label.textContent='Connecting to beacon relay…';}}
+function connectRelay(){if(relayWs){try{relayWs.close();}catch(_){}}setRelayIndicator('connecting');try{relayWs=new WebSocket(RELAY_URL);}catch(_){setRelayIndicator('error');return;}relayWs.onopen=()=>{relayConnected=true;setRelayIndicator('ok');};relayWs.onmessage=(e)=>{try{const d=JSON.parse(e.data);if(d.type==='device'){upsertDeviceRow(d);document.getElementById('discoverEmpty').style.display='none';}else if(d.type==='remove'){const row=document.getElementById('devrow-'+d.ip.replace(/\./g,'-'));if(row)row.remove();}}catch(_){}};relayWs.onerror=()=>{relayConnected=false;setRelayIndicator('error');};relayWs.onclose=()=>{relayConnected=false;if(document.getElementById('discoverModal').classList.contains('show')&&document.getElementById('discoverRelayPanel').style.display!=='none')setRelayIndicator('error');};}
+function upsertDeviceRow(r){const tbody=document.getElementById('discoverTableBody');const rowId='devrow-'+r.ip.replace(/\./g,'-');let tr=document.getElementById(rowId);const rowHtml=`<td class="dev-ip">${r.ip}</td><td class="dev-ver">${r.version!=='?'?'v'+r.version:'?'}</td><td class="dev-host">${r.device_type||r.hostname||'?'}</td><td style="color:var(--muted);font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis">${r.location||'—'}</td><td style="color:var(--muted);font-size:12px">${r.rtt>=0?r.rtt+'ms':'—'}</td><td><button class="btn btn-primary btn-small" onclick="connectToDevice('${r.ip}','${r.device_type||''}')">Open</button></td>`;if(tr){tr.innerHTML=rowHtml;}else{tr=document.createElement('tr');tr.id=rowId;tr.innerHTML=rowHtml;tbody.appendChild(tr);}}
+function openDiscoverModal(){document.getElementById('discoverModal').classList.add('show');if(relayConnected&&relayWs){document.getElementById('discoverScanPanel').style.display='none';document.getElementById('discoverRelayPanel').style.display='';setRelayIndicator('ok');if(document.getElementById('discoverTableBody').childElementCount===0)document.getElementById('discoverEmpty').style.display='block';}else{showRelayPanel();}}
+function closeDiscoverModal(){scanAbort=true;document.getElementById('discoverModal').classList.remove('show');}
+function probeDevice(ip,port){return new Promise((resolve)=>{const t0=Date.now();let done=false;const finish=(r)=>{if(done)return;done=true;try{sock.close();}catch(_){}resolve(r);};let sock;try{sock=new WebSocket(`ws://${ip}:${port}`);}catch(_){resolve(null);return;}const timeout=setTimeout(()=>finish(null),1000);sock.onopen=()=>sock.send(JSON.stringify({cmd:'get_status'}));sock.onmessage=(e)=>{try{const d=JSON.parse(e.data);if(d.type==='status'){clearTimeout(timeout);finish({ip,port,version:d.version||'?',hostname:d.hostname||'device',device_type:d.device_type||'',location:d.location||'',rtt:Date.now()-t0});}}catch(_){}};sock.onerror=()=>{clearTimeout(timeout);finish(null);};sock.onclose=()=>{setTimeout(()=>finish(null),100);}});}
+async function startScan(){scanAbort=false;const subnet=document.getElementById('discoverSubnet').value.trim();if(!subnet.match(/^\d+\.\d+\.\d+\.$/)){document.getElementById('discoverStatus').textContent='Invalid subnet — use format: 192.168.86.';return;}const tbody=document.getElementById('discoverTableBody');const empty=document.getElementById('discoverEmpty');const statusEl=document.getElementById('discoverStatus');const progressFill=document.getElementById('discoverProgressFill');const scanBtn=document.getElementById('discoverScanBtn');tbody.innerHTML='';empty.style.display='none';scanBtn.textContent='Stop';scanBtn.onclick=()=>{scanAbort=true;};const BATCH=8;let found=0;for(let start=1;start<=254&&!scanAbort;start+=BATCH){const ips=[];for(let i=start;i<start+BATCH&&i<=254;i++)ips.push(subnet+i);const results=await Promise.all(ips.map(ip=>probeDevice(ip,81)));results.forEach(r=>{if(!r)return;found++;upsertDeviceRow(r);});const pct=Math.min(100,Math.round(((start+BATCH-1)/254)*100));progressFill.style.width=pct+'%';statusEl.textContent=`Scanning ${subnet}${start}–${Math.min(start+BATCH-1,254)} … found ${found}`;}progressFill.style.width='100%';statusEl.textContent=scanAbort?`Scan stopped. Found ${found} device(s).`:`Scan complete. Found ${found} device(s).`;if(found===0)empty.style.display='block';scanBtn.textContent='Scan';scanBtn.onclick=startScan;}
+function connectToDevice(ip,deviceType){closeDiscoverModal();if(deviceType===MY_DEVICE_TYPE||!DEVICE_PAGE[deviceType]){document.getElementById('devIp').value=ip;localStorage.setItem('chillerCtrlIp',ip);if(conn)ws.close();else toggleWS();}else{window.location.href=DEVICE_PAGE[deviceType]+'#'+ip;}}
+(function(){try{const bgWs=new WebSocket(RELAY_URL);bgWs.onopen=()=>{relayConnected=true;relayWs=bgWs;};bgWs.onmessage=(e)=>{try{const d=JSON.parse(e.data);if(d.type==='device')upsertDeviceRow(d);else if(d.type==='remove'){const row=document.getElementById('devrow-'+d.ip.replace(/\./g,'-'));if(row)row.remove();}}catch(_){}};bgWs.onerror=()=>{relayConnected=false;};bgWs.onclose=()=>{relayConnected=false;relayWs=null;};}catch(_){}})();
+</script>
+</body>
+</html>

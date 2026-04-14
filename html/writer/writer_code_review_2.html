@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Second Critical Review</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; line-height: 1.6; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 0 0 8px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .finding {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin-bottom: 16px;
+    border-left: 4px solid var(--border);
+  }
+  .finding.critical { border-left-color: var(--red); }
+  .finding.major    { border-left-color: var(--yellow); }
+  .finding.minor    { border-left-color: var(--muted); }
+  .finding.fixed    { border-left-color: var(--green); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-right: 8px; }
+  .badge-crit   { background: #3d0a0a; color: var(--red);    border: 1px solid #7a1515; }
+  .badge-major  { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-minor  { background: #21262d; color: var(--muted);  border: 1px solid #30363d; }
+  .badge-fixed  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .badge-new    { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; font-size: 0.68rem; padding: 1px 5px; }
+
+  pre  { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.5; overflow-x: auto; color: #e6edf3; margin: 10px 0; }
+  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: #e6edf3; }
+  .loc  { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
+  p { margin-bottom: 8px; font-size: 0.88rem; }
+  ul { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+  .label { font-weight: 600; color: var(--orange); font-size: 0.82rem; margin-top: 10px; display: block; }
+  .ok   { color: var(--green); }
+  .err  { color: var(--red); }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+  .summary-num { font-size: 2rem; font-weight: 700; }
+  .summary-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 16px; }
+  .comparison-table th { background: #21262d; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  .comparison-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .comparison-table tr:last-child td { border-bottom: none; }
+  .comparison-table tr:hover td { background: #1c2128; }
+</style>
+</head>
+<body>
+
+<h1>writer.cpp — Second Critical Review</h1>
+<p class="subtitle">
+  Second independent pass over the post-fix codebase · 2026-03-21 ·
+  First review: <a href="writer_code_review.html" style="color:var(--accent)">writer_code_review.html</a> ·
+  Fixes applied: <a href="writer_critical_fixes.html" style="color:var(--accent)">writer_critical_fixes.html</a>
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Critical Fixes</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  <a href="writer_diff_detector.html">Diff Detector</a>
+  <a href="writer_code_review_2.html" class="here">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_code_review_3.html">Review 3</a>
+  <a href="writer_critical_fixes_3.html">Fixes 3</a>
+</div>
+
+<!-- ═══════════════ SUMMARY ═══════════════════════════════════════════════ -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--green)">6</div>
+    <div class="summary-label">Review-1 criticals confirmed fixed</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--red)">4</div>
+    <div class="summary-label">New critical bugs found</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--yellow)">4</div>
+    <div class="summary-label">New major issues</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--muted)">7</div>
+    <div class="summary-label">New minor issues</div>
+  </div>
+</div>
+
+<!-- ═══════════════ FIRST-REVIEW STATUS ════════════════════════════════════ -->
+<h2>First-Review Critical Fixes — Verification</h2>
+
+<div class="finding fixed">
+  <h3><span class="badge badge-fixed">FIXED ✓</span> C1 — Signal handler UB (notify_all)</h3>
+  <div class="loc">Lines 1017–1024 · handle_signal()</div>
+  <p>Signal handler now writes a single byte to <code>g_signal_pipe[1]</code> via async-signal-safe <code>write()</code>. The <code>condition_variable::notify_all()</code> call is gone. The <code>-Wunused-result</code> suppression is correct and intentional.</p>
+</div>
+
+<div class="finding fixed">
+  <h3><span class="badge badge-fixed">FIXED ✓</span> C2 — WAL write failure silently proceeds to Parquet</h3>
+  <div class="loc">Lines 756–764 · do_flush()</div>
+  <p>WAL failure now <code>continue</code>s to the next partition, skipping the Parquet flush. <code>out-&gt;Close()</code> is checked in <code>write_wal_ipc</code>. Correct.</p>
+</div>
+
+<div class="finding fixed">
+  <h3><span class="badge badge-fixed">FIXED ✓</span> C3 — WAL replay hard-coded <code>source_type = "batteries"</code></h3>
+  <div class="loc">Lines 613–622 · replay_wal_files()</div>
+  <p>Filename is now parsed: <code>{source_type}_{pval}_{ts}.wal.arrow</code>. Fallback to <code>"data"</code> is safe. Correct.</p>
+</div>
+
+<div class="finding fixed">
+  <h3><span class="badge badge-fixed">FIXED ✓</span> C4 — on_message holds g_mutex for duration — blocked at 80k msg/sec</h3>
+  <div class="loc">Lines 975–1000 · on_message()</div>
+  <p>Current-state pointer swap at flush time uses <code>std::move</code> (O(1)), not O(N) copy. Lock hold time is minimal. Correct.</p>
+</div>
+
+<div class="finding fixed">
+  <h3><span class="badge badge-fixed">FIXED ✓</span> C5 — g_health_buffer_rows not zeroed after flush</h3>
+  <div class="loc">Lines 855–856 · flush_thread_fn()</div>
+  <p><code>g_health_buffer_rows.store(0)</code> now called immediately after <code>std::exchange(g_buffers, {})</code>. The <code>check_disk_space</code> fix (always samples before guard) is also present.</p>
+</div>
+
+<div class="finding fixed">
+  <h3><span class="badge badge-fixed">FIXED ✓</span> C6 — WAL replay reads only chunk(0) — drops multi-chunk tables</h3>
+  <div class="loc">Lines 579–585 · wal_replay_file()</div>
+  <p><code>arrow::Concatenate(table-&gt;column(c)-&gt;chunks())</code> is used. Handles single-chunk tables with zero overhead. Correct.</p>
+</div>
+
+<!-- ═══════════════ NEW CRITICALS ══════════════════════════════════════════ -->
+<h2>NEW Critical Issues</h2>
+
+<!-- NC1 -->
+<div class="finding critical">
+  <h3><span class="badge badge-crit">CRITICAL</span><span class="badge badge-new">NEW</span> NC1 — WAL replay timestamp searches <code>r.ints</code> but timestamp is always in <code>r.floats</code></h3>
+  <div class="loc">replay_wal_files() · lines 629–637</div>
+
+  <p><code>collection_ts</code> is supposed to derive the original collection date from WAL rows so that replayed data is written to the correct date partition — not today's partition. The code searches <code>r.ints.find("timestamp")</code>:</p>
+
+  <pre><span class="err">int64_t min_ts_ms = INT64_MAX;
+for (const auto& r : rows) {
+    if (auto it = r.ints.find("timestamp"); it != r.ints.end())  // ← always misses
+        min_ts_ms = std::min(min_ts_ms, it->second);
+}
+// ... min_ts_ms is still INT64_MAX, collection_ts stays nullopt</span></pre>
+
+  <p>But <code>timestamp</code> is a flat scalar double in the JSON payload. In <code>parse_payload()</code> it enters the float path and is stored in <code>row.floats["timestamp"]</code> — never in <code>row.ints</code>. So <code>r.ints.find("timestamp")</code> always returns <code>r.ints.end()</code>, <code>min_ts_ms</code> stays <code>INT64_MAX</code>, and <code>collection_ts</code> is always <code>std::nullopt</code>.</p>
+
+  <p>The result: <code>make_output_path()</code> falls through to <code>collection_ts.value_or(std::chrono::system_clock::now())</code> — every WAL replay writes to <strong>today's</strong> date partition regardless of when the data was collected. A WAL written on Monday and replayed on Tuesday silently writes all its data into Tuesday's partition. DuckDB date-range queries return wrong data with no error.</p>
+
+  <p>There is also a units bug in the variable name: <code>min_ts_ms</code> implies milliseconds, but the generator sends Unix timestamps in <strong>seconds</strong> (e.g. <code>1700000000.0</code>). If the ints lookup ever were to succeed, interpreting a 1.7-billion-second timestamp as milliseconds would give a date of ~January 20, 1970 (476 hours from epoch).</p>
+
+  <span class="label">Fix:</span>
+  <pre><span class="ok">double min_ts_sec = std::numeric_limits<double>::max();
+for (const auto& r : rows) {
+    if (auto it = r.floats.find("timestamp"); it != r.floats.end())
+        min_ts_sec = std::min(min_ts_sec, it->second);
+}
+std::optional<std::chrono::system_clock::time_point> collection_ts;
+if (min_ts_sec < std::numeric_limits<double>::max()) {
+    auto dur = std::chrono::duration_cast<std::chrono::system_clock::duration>(
+                   std::chrono::duration<double>(min_ts_sec));
+    collection_ts = std::chrono::system_clock::time_point{dur};
+}</span></pre>
+  Add <code>#include &lt;limits&gt;</code> if not already present.
+</div>
+
+<!-- NC2 -->
+<div class="finding critical">
+  <h3><span class="badge badge-crit">CRITICAL</span><span class="badge badge-new">NEW</span> NC2 — <code>flush_partition</code> writes directly to final path — partial file left on disk after failure</h3>
+  <div class="loc">flush_partition() · lines 475–479; do_flush() · line 777; replay_wal_files() · line 650</div>
+
+  <p><code>flush_partition(path, rows, compression)</code> opens <code>path</code> and writes directly — no temp-file-then-rename:</p>
+  <pre><span class="err">ARROW_ASSIGN_OR_RAISE(auto outfile, arrow::io::FileOutputStream::Open(path));   // creates file
+ARROW_RETURN_NOT_OK(parquet::arrow::WriteTable(                                 // ← if this fails:
+    *table, arrow::default_memory_pool(), outfile, ...));
+//   ↑ returns early on first error — partial .parquet file stays at path</span></pre>
+
+  <p>If <code>WriteTable</code> fails partway through (disk full, broken NFS, OOM), a truncated file sits at the final path. The Parquet footer — which contains the schema, row-group offsets, and the magic bytes at the end — has not been written. The next flush cycle creates a new file with a different timestamp, leaving the partial file permanently in the partition directory.</p>
+
+  <p>DuckDB scans partition directories with <code>GLOB('**/*.parquet')</code>. When it encounters the partial file it will attempt to read the footer, fail to find it, and either raise an exception that aborts the query or, worse, return corrupt data depending on how the Arrow reader handles the truncated file. This makes a transient I/O error into a permanent query-breaking event.</p>
+
+  <p>Compare: both <code>hot_file_path</code> and <code>current_state_path</code> already use the correct temp+rename pattern (<code>path+".tmp"</code> → <code>fs::rename</code>). The main partition flush should do the same.</p>
+
+  <span class="label">Fix — move atomic-write responsibility into flush_partition itself:</span>
+  <pre><span class="ok">arrow::Status flush_partition(const std::string& path,
+                               const std::vector<Row>& rows,
+                               const std::string& compression) {
+    if (rows.empty()) return arrow::Status::OK();
+    ARROW_ASSIGN_OR_RAISE(auto table, rows_to_arrow_table(rows));
+    auto props = parquet::WriterProperties::Builder()
+        .compression(to_parquet_compression(compression))->build();
+
+    std::string tmp = path + ".tmp";
+    ARROW_ASSIGN_OR_RAISE(auto outfile, arrow::io::FileOutputStream::Open(tmp));
+    ARROW_RETURN_NOT_OK(parquet::arrow::WriteTable(
+        *table, arrow::default_memory_pool(), outfile,
+        static_cast<int64_t>(rows.size()), props));
+    ARROW_RETURN_NOT_OK(outfile->Close());
+
+    std::error_code ec;
+    fs::rename(tmp, path, ec);
+    if (ec) {
+        fs::remove(tmp, ec);   // best-effort cleanup
+        return arrow::Status::IOError("rename failed: " + ec.message());
+    }
+    return arrow::Status::OK();
+}</span></pre>
+  <p>Adding <code>outfile-&gt;Close()</code> before rename also ensures the OS kernel flushes all buffered writes before the file appears at the final path. The temp file is on the same filesystem so rename is atomic on POSIX.</p>
+</div>
+
+<!-- NC3 -->
+<div class="finding critical">
+  <h3><span class="badge badge-crit">CRITICAL</span><span class="badge badge-new">NEW</span> NC3 — <code>fs::remove(tmp)</code> without <code>error_code</code> in failure paths — uncaught exception crashes flush thread</h3>
+  <div class="loc">do_flush() · line 819 (hot file) and line 841 (current_state)</div>
+
+  <pre><span class="err">// Hot file failure path (line 818–820):
+} else {
+    std::cerr << "[hot] write failed: " << status.ToString() << "\n";
+    fs::remove(tmp);   // ← throws std::filesystem::filesystem_error if remove fails
+}
+
+// Current-state failure path (line 840–842):
+} else {
+    std::cerr << "[cs] write failed: " << status.ToString() << "\n";
+    fs::remove(tmp);   // ← same
+}</span></pre>
+
+  <p><code>std::filesystem::remove(path)</code> (the overload without <code>error_code</code>) throws <code>std::filesystem::filesystem_error</code> if it fails — for example, if the filesystem is read-only, the directory is mounted on a different device, or a permissions error occurs. These conditions can occur precisely when the disk is in trouble, i.e., the same moment a Parquet write failure triggered this cleanup path.</p>
+
+  <p>There is no try/catch anywhere in <code>do_flush()</code> or <code>flush_thread_fn()</code>. The exception propagates to <code>std::thread</code>'s entry wrapper, which calls <code>std::terminate()</code>. The entire writer process crashes — no more flushing, all buffered data lost, process needs manual restart.</p>
+
+  <p>Compare: every <em>other</em> <code>fs::remove</code> call in the file already uses the error_code overload (lines 611, 658, 784). These two are the only exceptions.</p>
+
+  <span class="label">Fix — both lines, identical pattern:</span>
+  <pre><span class="ok">std::error_code ec;
+fs::remove(tmp, ec);   // best-effort cleanup; failure is non-fatal</span></pre>
+</div>
+
+<!-- NC4 -->
+<div class="finding critical">
+  <h3><span class="badge badge-crit">CRITICAL</span><span class="badge badge-new">NEW</span> NC4 — Early flush trigger is broken: <code>notify_one()</code> is dead code; overflow/partition-full doesn't wake flush thread</h3>
+  <div class="loc">flush_thread_fn() · lines 849–851; on_message · lines 983–984, 998–999; g_flush_cv · line 727</div>
+
+  <p>The m2 fix replaced <code>g_flush_cv.wait_for()</code> with <code>poll()</code> on <code>g_signal_pipe[0]</code> in the flush thread. But the two places that need to wake the flush thread early (overflow guard and per-partition trigger) were not updated — they still call <code>g_flush_cv.notify_one()</code>:</p>
+
+  <pre><span class="err">// on_message — overflow path (line 983–984):
+g_flush_needed.store(true);
+g_flush_cv.notify_one();   // ← flush thread is in poll(), not waiting on condvar → no-op
+
+// on_message — per-partition full (line 998–999):
+g_flush_needed.store(true);
+g_flush_cv.notify_one();   // ← same: no-op</span></pre>
+
+  <p>The flush thread's <code>poll()</code> at line 850 is only interrupted by:</p>
+  <ol style="padding-left:20px;font-size:.88rem;margin-bottom:8px">
+    <li>Timeout expiry (<code>flush_interval_seconds</code> — 60s by default)</li>
+    <li>A byte written to <code>g_signal_pipe[1]</code> — only <code>handle_signal()</code> does this</li>
+  </ol>
+
+  <p>The <code>g_flush_needed</code> sticky flag is only checked at the <strong>top of the while loop</strong>, before calling <code>poll()</code>. Once <code>poll()</code> is entered, a subsequent <code>g_flush_needed.store(true)</code> from <code>on_message</code> is invisible to the sleeping flush thread. The flag is not seen until the next loop iteration, which starts only after <code>poll()</code> returns.</p>
+
+  <p><strong>Consequence at 80k msg/sec:</strong> with default settings (<code>max_total_buffer_rows=2,000,000</code>, <code>flush_interval_seconds=60</code>), the overflow guard fires at second 25. If the flush thread started its 60s sleep at second 1, it won't wake for another 35 seconds. During those 35 seconds, every incoming message is dropped. That is 35 × 80,000 = <strong>2.8 million dropped rows per overflow event</strong>, with zero data written to disk during that time.</p>
+
+  <p>The <code>g_flush_cv</code> condition variable (line 727) is declared and called but <strong>never waited on</strong> anywhere in the post-m2 code. It is dead code.</p>
+
+  <span class="label">Fix — write to the signal pipe when requesting an early flush, and drain the pipe at the start of each flush cycle:</span>
+  <pre><span class="ok">// Replace both notify_one() calls in on_message with a pipe write:
+g_flush_needed.store(true);
+{ char b = 1; (void)::write(g_signal_pipe[1], &b, 1); }  // async-signal-safe; wakes poll()
+
+// Remove g_flush_cv declaration entirely (it is dead code).
+
+// In flush_thread_fn, drain the pipe before processing each cycle
+// so the next iteration's poll() doesn't return instantly:
+static void flush_thread_fn() {
+    while (!g_shutdown) {
+        if (!g_flush_needed.exchange(false)) {
+            struct pollfd pfd = { g_signal_pipe[0], POLLIN, 0 };
+            poll(&pfd, 1, g_cfg->flush_interval_seconds * 1000);
+        }
+        // Drain any bytes written by on_message or handle_signal
+        { char drain[64]; while (::read(g_signal_pipe[0], drain, sizeof(drain)) > 0) {} }
+        // ... lock/swap/flush as before
+    }
+}</span></pre>
+  <p>Note: <code>read()</code> on the pipe will return <code>EAGAIN</code>/<code>EWOULDBLOCK</code> when drained (set pipe to O_NONBLOCK via <code>pipe2(g_signal_pipe, O_NONBLOCK)</code> in main, or use <code>fcntl</code> after <code>pipe()</code>). Without O_NONBLOCK the drain loop would block. Alternatively, use a self-pipe pattern where exactly one byte is written per wakeup request and the byte is consumed in the flush thread.</p>
+</div>
+
+<!-- ═══════════════ NEW MAJOR ════════════════════════════════════════════ -->
+<h2>NEW Major Issues</h2>
+
+<!-- NM1 -->
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span><span class="badge badge-new">NEW</span> NM1 — <code>g_flush_cv</code> declared and notified but never waited on — dead code with side effects</h3>
+  <div class="loc">Line 727 (declaration); lines 984, 999 (notify_one calls)</div>
+  <p>The condition variable was the original wakeup mechanism for the flush thread. The m2 fix replaced the <code>wait_for()</code> call with <code>poll()</code> but left the condvar and both <code>notify_one()</code> calls in place. The notify calls execute under <code>g_mutex</code> (held by <code>on_message</code>'s <code>std::lock_guard</code>) at 80k msg/sec. Calling <code>notify_one()</code> on a condvar that nothing is waiting on is a no-op at the OS level, but the call itself still has overhead — it acquires an internal mutex inside the condvar implementation. At 80k msg/sec this adds measurable contention on the hot path.</p>
+  <span class="label">Fix:</span>
+  <p>Remove the <code>static std::condition_variable g_flush_cv;</code> declaration and both <code>g_flush_cv.notify_one();</code> calls. Replace with the pipe-write fix from NC4.</p>
+</div>
+
+<!-- NM2 -->
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span><span class="badge badge-new">NEW</span> NM2 — <code>FD_SET</code> in health thread: undefined behaviour if socket fd ≥ 1024</h3>
+  <div class="loc">health_thread_fn() · lines 680–682</div>
+  <pre><span class="err">fd_set fds; FD_ZERO(&fds); FD_SET(srv, &fds);          // ← UB if srv >= FD_SETSIZE
+timeval tv{1, 0};
+if (select(srv + 1, &fds, nullptr, nullptr, &tv) <= 0) continue;</span></pre>
+  <p><code>FD_SETSIZE</code> is typically 1024 on Linux. <code>FD_SET(fd, &fds)</code> is defined as a bit-array index operation — if <code>fd >= FD_SETSIZE</code>, it writes past the end of the <code>fd_set</code> struct, corrupting adjacent stack memory. In a long-running process or one that opens many files (e.g., Arrow opens file handles per partition), the health server socket can easily receive an fd above 1024.</p>
+  <span class="label">Fix — replace select with poll (which has no fd limit):</span>
+  <pre><span class="ok">struct pollfd srv_pfd = { srv, POLLIN, 0 };
+if (poll(&srv_pfd, 1, 1000) <= 0) continue;   // 1-second timeout, same as before</span></pre>
+</div>
+
+<!-- NM3 -->
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span><span class="badge badge-new">NEW</span> NM3 — <code>load_config()</code>: a YAML type error silently discards all subsequent config fields</h3>
+  <div class="loc">load_config() · lines 156–217 · outer try/catch</div>
+  <p>All YAML parsing happens inside a single try/catch block. A single bad value — e.g., <code>mqtt.port: "one-eight-eight-three"</code> — causes <code>m["port"].as&lt;int&gt;()</code> to throw <code>YAML::BadConversion</code>. The outer catch prints one line and returns the partially-initialised <code>Config</code> with default values for every field that was not yet reached.</p>
+  <pre><span class="err">try {
+    // ... parse mqtt.host ... (ok)
+    cfg.mqtt_port = m["port"].as<int>();   // ← throws here
+    // ... parse client_id, topic, qos, base_path, wal, health ...  ← NEVER REACHED
+} catch (const YAML::Exception& e) {
+    std::cerr << "[config] " << e.what() << " — using defaults\n";
+}</span></pre>
+  <p><code>validate_config()</code> may still pass because the defaults for base_path, compression, and flush_interval are all valid. The writer starts but ignores the operator's WAL, health, and guard settings. A typo in the MQTT section silently disables crash recovery. This could cause silent data loss in production with no indication of the root cause other than the one-line config warning (which may scroll off a systemd journal).</p>
+  <span class="label">Fix — per-field try/catch with a helper:</span>
+  <pre><span class="ok">// Macro or lambda for graceful per-field parse:
+auto safe_as = [&](auto node, auto& field) {
+    try { if (node) field = node.as<decltype(field)>(); }
+    catch (const YAML::Exception& e) {
+        std::cerr << "[config] " << e.what() << " — field ignored, keeping default\n";
+    }
+};
+safe_as(m["port"], cfg.mqtt_port);
+safe_as(m["host"], cfg.mqtt_host);
+// ... etc — every field parsed independently</span></pre>
+</div>
+
+<!-- NM4 -->
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span><span class="badge badge-new">NEW</span> NM4 — <code>SensorKey</code> includes all <code>row.ints</code> — current_state map grows unboundedly if payload contains int fields</h3>
+  <div class="loc">on_message() · line 990</div>
+  <pre><span class="err">if (!g_cfg->current_state_path.empty())
+    (*g_current_state)[SensorKey{info_opt->source_type, row.ints}] = row;</span></pre>
+  <p><code>row.ints</code> contains <em>all</em> integer columns: topic-derived identity fields (<code>site_id</code>, <code>rack_id</code>, <code>module_id</code>, <code>cell_id</code>) <em>and</em> any integer-typed payload fields. If a payload contains even one integer field that varies per message (e.g., a sequence counter, a status code, a fault code), the SensorKey is unique for every message rather than for every physical sensor.</p>
+  <p>Instead of one entry per sensor (the design intent), the current_state map accumulates one entry per <em>distinct reading</em> — effectively a secondary buffer that grows without bound. At 80k msg/sec with one varying int field this means ~80,000 new map entries per second, consuming ~5–10 MB/s of RAM until the writer OOMs.</p>
+  <span class="label">Fix — build SensorKey from only the topic-derived columns (those in cfg.topic_kv_map):</span>
+  <pre><span class="ok">if (!g_cfg->current_state_path.empty()) {
+    // Key uses only topic-identity fields, not payload-derived ints
+    std::map<std::string, int64_t> id_ints;
+    id_ints["project_id"] = row.ints.count("project_id") ? row.ints.at("project_id") : 0;
+    for (const auto& [_, col] : g_cfg->topic_kv_map)
+        if (row.ints.count(col)) id_ints[col] = row.ints.at(col);
+    (*g_current_state)[SensorKey{info_opt->source_type, id_ints}] = row;
+}</span></pre>
+</div>
+
+<!-- ═══════════════ NEW MINOR ════════════════════════════════════════════ -->
+<h2>NEW Minor Issues</h2>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm1 — Variable shadowing: outer <code>wp</code> (std::string) shadowed by inner <code>wp</code> (fs::path)</h3>
+  <div class="loc">replay_wal_files() · lines 601, 609</div>
+  <pre>std::string wp = g_cfg->wal_path.empty() ? ...;   // outer: std::string
+for (const auto& wp : wal_files) {                 // inner: fs::path — shadows outer</pre>
+  <p>Compiles and works correctly. A future editor adding code inside the loop that references the outer <code>wp</code> will silently get the inner <code>fs::path</code> instead. Rename one of them: e.g., outer <code>wal_dir</code>, inner <code>wf</code>.</p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm2 — <code>flush_partition</code>: <code>outfile</code> not explicitly closed before return</h3>
+  <div class="loc">flush_partition() · line 479</div>
+  <p>The RAII destructor of <code>shared_ptr&lt;FileOutputStream&gt;</code> closes the fd when <code>outfile</code> goes out of scope. This is fine in the single-threaded case but means any OS-level write errors during <code>close(2)</code> (which flushes kernel buffers) are silently ignored. With the NC2 fix (temp+rename), adding an explicit <code>ARROW_RETURN_NOT_OK(outfile-&gt;Close())</code> before the rename ensures write errors surface as Arrow Status errors rather than silent data corruption.</p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm3 — <code>send()</code> in health thread: no retry on partial write</h3>
+  <div class="loc">health_thread_fn() · line 712</div>
+  <pre>send(cli, resp.c_str(), resp.size(), 0);</pre>
+  <p><code>send()</code> may return fewer bytes than requested if the kernel send buffer is full (e.g., slow client). The response is silently truncated. For diagnostic traffic on localhost this is extremely unlikely, but a standards-compliant fix is a simple write loop.</p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm4 — CLI flag without argument silently falls back to default</h3>
+  <div class="loc">main() · lines 1101–1108</div>
+  <pre>if (a == "--config" && i + 1 < argc) config_path = argv[++i];
+// If --config is the last argument, i+1 == argc: condition fails, --config silently ignored</pre>
+  <p>Typing <code>./parquet_writer --config</code> with no path uses the default <code>writer_config.yaml</code> with no warning. Should check: if the flag is recognised but the condition fails, print an error and exit. Same for all flags with required arguments.</p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm5 — Duplicate KV key warning in <code>parse_topic</code> not rate-limited</h3>
+  <div class="loc">parse_topic() · line 293</div>
+  <pre>if (info.kv.count(kv_key))
+    std::cerr << "[topic] duplicate key '" << kv_key << "' in: " << topic << "\n";</pre>
+  <p>If a malformed publisher sends duplicate keys, this fires on every message. At 80k msg/sec this floods stderr with identical lines, making logs unreadable and potentially causing I/O overhead. Rate-limit to once per key per minute or use a per-key suppression counter.</p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm6 — WAL replay: no retry logic — transient I/O errors leave WAL permanently undeleted until next restart</h3>
+  <div class="loc">replay_wal_files() · lines 648–658</div>
+  <p><code>replay_wal_files()</code> calls <code>flush_partition()</code> directly with no retry loop. <code>do_flush()</code> retries up to <code>flush_max_retries</code> times with exponential backoff. A transient I/O error during WAL replay leaves the WAL file in place (correct — it will be retried on next startup) but does not retry immediately. A brief NFS hiccup at startup would delay WAL recovery until the next process restart. Minor since WAL files are not deleted on failure by design, but consistency with <code>do_flush()</code> retry logic would be better.</p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">minor</span> nm7 — Header comment still references cmake; build uses plain make</h3>
+  <div class="loc">writer.cpp · line 21</div>
+  <pre>// Build:
+//   cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build</pre>
+  <p>The build system is a plain <code>Makefile</code>. The comment should read <code>make parquet_writer</code>.</p>
+</div>
+
+<!-- ═══════════════ APPLY ORDER ══════════════════════════════════════════ -->
+<h2>Recommended Fix Order</h2>
+<table class="comparison-table">
+  <thead>
+    <tr><th>#</th><th>Issue</th><th>Risk</th><th>Effort</th><th>Rationale</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td><strong>NC3</strong> — <code>fs::remove(tmp, ec)</code></td>
+      <td><span style="color:var(--red)">crash</span></td>
+      <td>2 lines</td>
+      <td>Highest blast radius (crashes process), easiest fix. Zero risk of introducing new bugs.</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><strong>NC1</strong> — WAL timestamp <code>r.floats</code></td>
+      <td><span style="color:var(--red)">wrong data</span></td>
+      <td>~6 lines</td>
+      <td>Silent data loss. The fix is a pure bug correction with no behaviour change for non-WAL paths.</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><strong>NM2</strong> — <code>FD_SET</code> → <code>poll</code> in health</td>
+      <td><span style="color:var(--yellow)">UB/stack</span></td>
+      <td>3 lines</td>
+      <td>Very isolated change, only affects the health server thread. Easy to verify.</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><strong>NC4 + NM1</strong> — pipe wakeup + remove dead condvar</td>
+      <td><span style="color:var(--red)">data loss</span></td>
+      <td>~20 lines</td>
+      <td>Fixes early flush trigger; removes dead code. Requires adding O_NONBLOCK to pipe and a drain loop. Benchmark hot path after.</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><strong>NC2</strong> — temp+rename in <code>flush_partition</code></td>
+      <td><span style="color:var(--red)">corruption</span></td>
+      <td>~10 lines</td>
+      <td>Atomic write already done for hot/cs files. Test that existing unit tests still pass (they should — temp file is same dir).</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td><strong>NM3</strong> — per-field config parse</td>
+      <td><span style="color:var(--yellow)">silent miscfg</span></td>
+      <td>moderate</td>
+      <td>Requires refactoring load_config. Test all config variants in writer_kpi_config.yaml and writer_config.yaml.</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td><strong>NM4</strong> — SensorKey identity fields only</td>
+      <td><span style="color:var(--yellow)">OOM if enabled</span></td>
+      <td>~10 lines</td>
+      <td>Only active when current_state_path is set. Can defer until that feature is in use.</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>Minor fixes nm1–nm7</td>
+      <td><span style="color:var(--muted)">low</span></td>
+      <td>trivial</td>
+      <td>Clean up after the critical fixes land.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════ WHAT WAS MISSED IN REVIEW 1 ═══════════════════════════ -->
+<h2>Why These Were Missed in Review 1</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <table class="comparison-table">
+    <thead>
+      <tr><th>Issue</th><th>Root Cause of Miss</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>NC1 — WAL timestamp in r.ints</td>
+        <td>The timestamp is stored as a float (parse_payload → r.floats). Review 1 focused on the WAL <em>format</em> (chunk(0)) and the source_type field. The timestamp lookup was new code written as part of the C3 fix — introduced during the fix, not present before it.</td>
+      </tr>
+      <tr>
+        <td>NC2 — Partial parquet file</td>
+        <td>Review 1 focused on correctness of the WAL-write-before-flush ordering. The atomicity of the Parquet write itself (no temp+rename) was not examined. The hot_file and current_state code using temp+rename made it easy to miss that flush_partition itself doesn't.</td>
+      </tr>
+      <tr>
+        <td>NC3 — fs::remove throws</td>
+        <td>All other fs::remove calls in the file correctly use the error_code overload. These two are in the <em>error-handling</em> branch of flush — easy to miss since the path isn't exercised in unit tests.</td>
+      </tr>
+      <tr>
+        <td>NC4 — Early flush broken</td>
+        <td>The m2 fix correctly replaced wait_for with poll() but the interaction between on_message's notify_one() and the new poll() mechanism was not verified. The condvar and pipe serve the same logical purpose, and it's easy to assume "m2 fixed the flush wakeup" without checking that both sides of the mechanism were updated.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════ FUTURE ARCHITECTURE: OUTPUT QUEUE ════════════════════ -->
+<h2>Future Architecture — Async Output Queue</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
+
+  <h3 style="color:var(--accent);margin-bottom:10px">Motivation</h3>
+  <p style="margin-bottom:12px">
+    Torture-test observation (2026-03-21, 330k msg/s × 4 writers): writer-b hit
+    <code>flush_max_ms=2614ms</code> with <code>ring_drops=5M</code> and
+    <code>overflow_drops=195k</code>. Root cause: even though
+    <code>flush_thread</code> releases <code>g_mutex</code> before disk I/O,
+    <code>g_buffer</code> refills and exceeds <code>max_total_buffer_rows</code>
+    during a 2.6 s parquet write. The slow disk write directly sets the ceiling
+    on sustainable input rate.
+  </p>
+
+  <h3 style="color:var(--accent);margin-bottom:10px">Proposed Design</h3>
+  <p style="margin-bottom:8px">Decouple the flush decision from the actual disk write by inserting an output queue:</p>
+  <pre style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.82rem;overflow-x:auto;margin-bottom:12px">
+parse_thread → g_buffer → flush_thread → [output queue] → disk_writer_thread → parquet
+                          (fast: slice      (Arrow tables,
+                           buffer, build     in-memory,
+                           Arrow table,      max depth N)
+                           enqueue &amp; return)
+  </pre>
+
+  <p style="margin-bottom:4px"><strong>flush_thread</strong> becomes very fast:</p>
+  <ol style="margin-left:20px;margin-bottom:12px;line-height:1.8">
+    <li>Acquire <code>g_mutex</code>, move rows to local vectors, release mutex.</li>
+    <li>Build Arrow table from rows (CPU-only, no I/O).</li>
+    <li>Push <code>FlushJob{key, table, output_path}</code> onto output queue.</li>
+    <li>Return immediately — g_buffer is free for new data.</li>
+  </ol>
+
+  <p style="margin-bottom:4px"><strong>disk_writer_thread</strong> drains the queue:</p>
+  <ol style="margin-left:20px;margin-bottom:12px;line-height:1.8">
+    <li>Pop <code>FlushJob</code> from queue.</li>
+    <li>Write Arrow table to parquet (slow I/O, no mutex held).</li>
+    <li>On success: delete WAL file if applicable. On failure: retain for recovery.</li>
+  </ol>
+
+  <h3 style="color:var(--accent);margin-bottom:10px">Memory Cost</h3>
+  <p style="margin-bottom:8px">
+    At torture-test load: <code>last_flush_rows = 321k rows × ~200 B/row Arrow ≈ 64 MB</code> per queued table.
+    With a max queue depth of 4 jobs: <strong>~256 MB peak</strong>. Trivial on phil-256g (256 GB),
+    acceptable on lp3 (1 GB — shallower cap of 2 jobs recommended).
+  </p>
+  <p style="margin-bottom:12px">
+    <strong>Backpressure:</strong> if the queue is full (disk persistently slow), flush_thread blocks on enqueue.
+    This propagates disk pressure up through g_buffer → ring → broker QoS-0 drops,
+    rather than silently discarding data mid-pipeline.
+  </p>
+
+  <h3 style="color:var(--accent);margin-bottom:10px">Implementation Sketch</h3>
+  <pre style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.82rem;overflow-x:auto;margin-bottom:12px">struct FlushJob {
+    PartitionKey                  key;
+    std::shared_ptr&lt;arrow::Table&gt; table;
+    std::string                   output_path;
+    std::string                   wal_path;    // empty if WAL disabled
+};
+
+struct OutputQueue {
+    std::deque&lt;FlushJob&gt;    jobs;
+    std::mutex              mu;
+    std::condition_variable cv_consumer;
+    std::condition_variable cv_producer;
+    size_t                  max_depth = 4;
+    std::atomic&lt;bool&gt;       shutdown{false};
+
+    void push(FlushJob j) {
+        std::unique_lock lk(mu);
+        cv_producer.wait(lk, [&amp;]{ return jobs.size() &lt; max_depth || shutdown; });
+        jobs.push_back(std::move(j));
+        cv_consumer.notify_one();
+    }
+    bool pop(FlushJob&amp; out) {   // returns false on shutdown+empty
+        std::unique_lock lk(mu);
+        cv_consumer.wait(lk, [&amp;]{ return !jobs.empty() || shutdown; });
+        if (jobs.empty()) return false;
+        out = std::move(jobs.front()); jobs.pop_front();
+        cv_producer.notify_one();
+        return true;
+    }
+};</pre>
+
+  <h3 style="color:var(--accent);margin-bottom:10px">Relationship to SHM Input Ring</h3>
+  <p style="margin-bottom:8px">The output queue mirrors the SHM input ring — one absorbs burst on ingress, the other on egress:</p>
+  <pre style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.82rem;overflow-x:auto;margin-bottom:12px">[MQTT broker]
+     │ QoS-0
+     ▼
+[SHM input ring]       ← absorbs broker burst; survives writer restart
+     │
+     ▼
+[parse_thread → g_buffer → flush_thread]
+     │
+     ▼
+[output queue]         ← absorbs disk I/O burst; decouples flush from write
+     │
+     ▼
+[disk_writer_thread → parquet files]</pre>
+  <p>Together they sandwich the writer core and isolate it from both input and output timing variance.</p>
+
+  <h3 style="color:var(--accent);margin-bottom:10px">Priority &amp; Short-Term Workaround</h3>
+  <p>
+    Implement <strong>after</strong> the SHM input ring (SHM-1 through SHM-6).
+    Once the full input→output latency budget is visible from live instrumentation,
+    the correct <code>max_depth</code> and thread count can be set empirically.<br><br>
+    Short-term: increase <code>max_total_buffer_rows</code> from 500k → 2M in writer configs
+    to buy more headroom against slow flushes without the architectural change.
+  </p>
+</div>
+
+</body>
+</html>

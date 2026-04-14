@@ -1,0 +1,83 @@
+# overtemp_cascade.yaml — staged thermal fault across 4 battery clusters
+#
+# Timeline:
+#   t=10s   sim-1: rack-0 overtemp (52°C)
+#   t=30s   sim-2: rack-0 overtemp (54°C) + discharge at 400A
+#   t=60s   sim-3: SOC imbalance (20% spread)
+#   t=90s   sim-4: noise spike (amplitude 5.0)
+#   t=120s  sim-1: clear faults, return to standby
+#   t=150s  sim-2: clear faults
+#   t=180s  all:   clear faults, standby
+
+name: overtemp_cascade
+
+steps:
+  - at: 10
+    sim: 1
+    command: inject_fault
+    units: [ALL]
+    fault: overtemp
+    rack: 0
+    value: 52.0
+
+  - at: 30
+    sim: 2
+    command: inject_fault
+    units: [ALL]
+    fault: overtemp
+    rack: 0
+    value: 54.0
+
+  - at: 35
+    sim: 2
+    command: set_mode
+    units: [ALL]
+    mode: discharge
+    current_a: 400
+
+  - at: 60
+    sim: 3
+    command: inject_fault
+    units: [ALL]
+    fault: soc_imbalance
+    rack: -1
+    value: 20.0
+
+  - at: 90
+    sim: 4
+    command: set_noise
+    units: [ALL]
+    amplitude: 5.0
+
+  - at: 120
+    sim: 1
+    command: clear_faults
+    units: [ALL]
+
+  - at: 125
+    sim: 1
+    command: set_mode
+    units: [ALL]
+    mode: standby
+
+  - at: 150
+    sim: 2
+    command: clear_faults
+    units: [ALL]
+
+  - at: 155
+    sim: 2
+    command: set_mode
+    units: [ALL]
+    mode: standby
+
+  - at: 180
+    sim: all
+    command: clear_faults
+    units: [ALL]
+
+  - at: 185
+    sim: all
+    command: set_noise
+    units: [ALL]
+    amplitude: 0.5

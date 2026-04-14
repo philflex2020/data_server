@@ -1,0 +1,39 @@
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer-kpi   # ★ MUST BE UNIQUE — different from primary writer
+  topic: "#"
+  qos: 0                          # QoS 0 for benchmarking — no ack overhead
+
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+
+  partition_field: site_id
+
+output:
+  base_path: /tmp/parquet-kpi     # ★ MUST BE UNIQUE — isolated from production data
+  project_id: 0
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 10      # short flush cycle for KPI measurement
+  max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000
+
+wal:
+  enabled: true                   # enable WAL so WAL KPIs can be measured
+  # path: /tmp/parquet-kpi/.wal   # defaults to {base_path}/.wal
+
+health:
+  enabled: true
+  port: 8773                      # ★ MUST BE UNIQUE — separate from primary (8771) and test (8772)
+
+guard:
+  min_free_gb: 0.0                # disabled — don't block KPI runs on disk space

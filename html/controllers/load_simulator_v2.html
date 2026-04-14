@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Load Simulator Control</title>
+    <style>
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-input: #0f3460;
+            --accent: #6ebcdb;
+            --accent-hover: #5ba8c7;
+            --text: #e0e0e0;
+            --text-muted: #888;
+            --green: #4ade80;
+            --red: #f87171;
+            --yellow: #fbbf24;
+            --orange: #fb923c;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0f0f23 100%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        h1 { text-align: center; color: var(--accent); margin-bottom: 20px; font-weight: 300; }
+        h2 { color: var(--accent); font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(110, 188, 219, 0.3); }
+        
+        .container { max-width: 1400px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+        .card { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid rgba(110, 188, 219, 0.2); }
+        
+        /* Connection Panel */
+        .connection-panel { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+        .connection-panel select, .connection-panel input { background: var(--bg-input); border: 1px solid var(--accent); color: var(--text); padding: 8px 12px; border-radius: 6px; }
+        .connection-panel input { width: 200px; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 5px; }
+        .status-dot.connected { background: var(--green); }
+        
+        /* Buttons */
+        .btn { padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: var(--accent); color: var(--bg-dark); }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-danger { background: var(--red); color: white; }
+        .btn-success { background: var(--green); color: var(--bg-dark); }
+        .btn-small { padding: 6px 12px; font-size: 12px; }
+        
+        /* Waveform Designer */
+        .waveform-container { background: linear-gradient(180deg, #1e2a45 0%, #0d1a30 100%); border-radius: 8px; padding: 15px; margin-bottom: 20px; position: relative; }
+        #waveformCanvas { width: 100%; height: 250px; border-radius: 6px; }
+        
+        /* Step List */
+        .step-list { max-height: 300px; overflow-y: auto; }
+        .step-item { background: var(--bg-input); border-radius: 8px; padding: 12px; margin-bottom: 10px; display: grid; grid-template-columns: 30px 1fr 80px 80px 80px 50px; gap: 10px; align-items: center; }
+        .step-item:hover { background: rgba(110, 188, 219, 0.1); }
+        .step-handle { cursor: grab; color: var(--text-muted); text-align: center; }
+        .step-name { background: transparent; border: 1px solid transparent; color: var(--text); padding: 4px 8px; border-radius: 4px; width: 100%; }
+        .step-name:hover, .step-name:focus { border-color: var(--accent); background: var(--bg-dark); }
+        .step-input { background: var(--bg-dark); border: 1px solid rgba(110, 188, 219, 0.3); color: var(--text); padding: 4px 8px; border-radius: 4px; width: 100%; text-align: right; }
+        .step-input:focus { border-color: var(--accent); outline: none; }
+        .step-color { width: 20px; height: 20px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+        .step-color:hover { border-color: white; }
+        .step-delete { background: none; border: none; color: var(--red); cursor: pointer; font-size: 18px; }
+        .step-delete:hover { color: #ff5555; }
+        
+        .step-header { display: grid; grid-template-columns: 30px 1fr 80px 80px 80px 50px; gap: 10px; padding: 0 12px 8px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+        
+        /* Profile Panel */
+        .profile-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+        .profile-btn { background: var(--bg-input); border: 1px solid rgba(110, 188, 219, 0.3); color: var(--text); padding: 8px 16px; border-radius: 20px; cursor: pointer; transition: all 0.2s; }
+        .profile-btn:hover, .profile-btn.active { background: var(--accent); color: var(--bg-dark); border-color: var(--accent); }
+        
+        /* Serial Terminal */
+        .terminal { background: #0a0a0a; border-radius: 6px; padding: 10px; font-family: 'Consolas', monospace; font-size: 12px; height: 200px; overflow-y: auto; margin-bottom: 10px; }
+        .terminal-line { margin: 2px 0; }
+        .terminal-line.sent { color: var(--green); }
+        .terminal-line.recv { color: var(--accent); }
+        .terminal-input { display: flex; gap: 10px; }
+        .terminal-input input { flex: 1; background: var(--bg-input); border: 1px solid var(--accent); color: var(--text); padding: 8px; border-radius: 4px; font-family: 'Consolas', monospace; }
+        
+        /* Sliders */
+        .slider-group { margin-bottom: 15px; }
+        .slider-label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 13px; }
+        .slider-value { color: var(--accent); font-weight: 600; }
+        input[type="range"] { width: 100%; height: 6px; border-radius: 3px; background: var(--bg-input); outline: none; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+        
+        /* Color picker */
+        .color-options { display: flex; gap: 8px; margin-top: 10px; }
+        .color-swatch { width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+        .color-swatch:hover, .color-swatch.selected { border-color: white; }
+        
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+        .modal.show { display: flex; }
+        .modal-content { background: var(--bg-card); border-radius: 12px; padding: 30px; min-width: 400px; max-width: 500px; }
+        .modal-content h3 { color: var(--accent); margin-bottom: 20px; }
+        .modal-content input { width: 100%; background: var(--bg-input); border: 1px solid var(--accent); color: var(--text); padding: 10px; border-radius: 6px; margin-bottom: 15px; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+        
+        /* Status bar */
+        .status-bar { display: flex; gap: 20px; padding: 10px 20px; background: var(--bg-input); border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
+        .status-item { display: flex; align-items: center; gap: 8px; }
+        .status-value { color: var(--accent); font-weight: 600; }
+
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+        
+        /* GPIO Indicators */
+        .gpio-indicator {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            background: var(--bg-input);
+            border: 2px solid #555;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: bold;
+            color: #888;
+            transition: all 0.2s;
+        }
+        .gpio-indicator.high {
+            background: #22c55e;
+            border-color: #16a34a;
+            color: #fff;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+        }
+        .gpio-output {
+            cursor: pointer;
+        }
+        .gpio-output:hover {
+            border-color: var(--accent);
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Load Simulator Control</h1>
+        
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-dot" id="connDot"></span>
+                <span id="connStatus">Disconnected</span>
+            </div>
+            <div class="status-item">
+                Power: <span class="status-value" id="currentPower">0 kW</span>
+            </div>
+            <div class="status-item">
+                Profile: <span class="status-value" id="profileStatus">Stopped</span>
+            </div>
+            <div class="status-item">
+                Step: <span class="status-value" id="currentStep">-</span>
+            </div>
+        </div>
+        
+        <!-- Connection Panel -->
+        <div class="card" style="margin-bottom: 20px;">
+            <h2>Device Connection</h2>
+            <div class="connection-panel">
+                <select id="connectionMode">
+                    <option value="websocket">WebSocket (Wireless)</option>
+                    <option value="serial">Serial (USB Setup)</option>
+                </select>
+                
+                <div id="wsConfig" style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="deviceIp" placeholder="Device IP (e.g., 192.168.1.100)">
+                    <input type="number" id="devicePort" value="81" style="width: 80px;" placeholder="Port">
+                    <button class="btn btn-primary" id="wsConnectBtn" onclick="toggleWebSocket()">Connect</button>
+                </div>
+                
+                <div id="serialConfig" style="display: none; gap: 10px; align-items: center;">
+                    <select id="serialPort"></select>
+                    <button class="btn btn-primary" onclick="refreshPorts()">Refresh</button>
+                    <button class="btn btn-primary" id="serialConnectBtn" onclick="toggleSerial()">Connect</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <!-- Left Panel: Profiles & Serial -->
+            <div>
+                <!-- Profiles -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <h2>Load Profiles</h2>
+                    <div class="profile-list" id="profileList"></div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary" onclick="saveProfileModal()">Save Profile</button>
+                        <button class="btn btn-small" onclick="loadProfileFromFile()">Import</button>
+                        <button class="btn btn-small" onclick="exportProfile()">Export</button>
+                    </div>
+                    <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileImport(event)">
+                </div>
+                
+                <!-- Serial Terminal -->
+                <div class="card" id="serialCard" style="display: none;">
+                    <h2>Serial Terminal</h2>
+                    <div class="terminal" id="terminal"></div>
+                    <div class="terminal-input">
+                        <input type="text" id="serialInput" placeholder="Enter command..." onkeypress="if(event.key==='Enter')sendSerialCommand()">
+                        <button class="btn btn-primary" onclick="sendSerialCommand()">Send</button>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 11px; color: var(--text-muted);">
+                        Quick: 
+                        <a href="#" onclick="sendQuickCmd('status');return false;">status</a> | 
+                        <a href="#" onclick="sendQuickCmd('wifi status');return false;">wifi status</a> | 
+                        <a href="#" onclick="sendQuickCmd('help');return false;">help</a>
+                    </div>
+                </div>
+                
+                <!-- Quick Controls -->
+                <div class="card">
+                    <h2>Quick Controls</h2>
+                    <div class="slider-group">
+                        <div class="slider-label">
+                            <span>Power</span>
+                            <span class="slider-value" id="powerSliderValue">0 kW</span>
+                        </div>
+                        <input type="range" id="powerSlider" min="0" max="1000" value="0" oninput="updatePowerSlider()">
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-small" onclick="setPowerPreset(0)">0 kW</button>
+                        <button class="btn btn-small" onclick="setPowerPreset(200)">200 kW</button>
+                        <button class="btn btn-small" onclick="setPowerPreset(500)">500 kW</button>
+                        <button class="btn btn-small" onclick="setPowerPreset(800)">800 kW</button>
+                        <button class="btn btn-small" onclick="setPowerPreset(1000)">1000 kW</button>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span style="font-size: 12px; color: var(--text-muted);">LED:</span>
+                        <button class="btn btn-small" onclick="setLed('on')">On</button>
+                        <button class="btn btn-small" onclick="setLed('off')">Off</button>
+                        <button class="btn btn-small" onclick="setLed('blink')">Blink</button>
+                    </div>
+                </div>
+                
+                <!-- GPIO Panel -->
+                <div class="card" style="margin-top: 15px;">
+                    <h2>GPIO Control</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <!-- Inputs (read-only) -->
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Inputs (12,13,14,27)</div>
+                            <div style="display: flex; gap: 8px;">
+                                <div class="gpio-indicator" id="gpioIn0" title="GPIO12">0</div>
+                                <div class="gpio-indicator" id="gpioIn1" title="GPIO13">1</div>
+                                <div class="gpio-indicator" id="gpioIn2" title="GPIO14">2</div>
+                                <div class="gpio-indicator" id="gpioIn3" title="GPIO27">3</div>
+                            </div>
+                        </div>
+                        <!-- Outputs (clickable) -->
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Outputs (2,17,22,23)</div>
+                            <div style="display: flex; gap: 8px;">
+                                <div class="gpio-indicator gpio-output" id="gpioOut0" title="GPIO2" onclick="toggleGpioOutput(0)">0</div>
+                                <div class="gpio-indicator gpio-output" id="gpioOut1" title="GPIO17" onclick="toggleGpioOutput(1)">1</div>
+                                <div class="gpio-indicator gpio-output" id="gpioOut2" title="GPIO22" onclick="toggleGpioOutput(2)">2</div>
+                                <div class="gpio-indicator gpio-output" id="gpioOut3" title="GPIO23" onclick="toggleGpioOutput(3)">3</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-small" onclick="requestGpioStatus()">Refresh GPIO</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel: Waveform Designer -->
+            <div>
+                <div class="card">
+                    <h2>Waveform Designer</h2>
+                    
+                    <!-- Canvas -->
+                    <div class="waveform-container">
+                        <canvas id="waveformCanvas"></canvas>
+                    </div>
+                    
+                    <!-- Step List -->
+                    <div class="step-header">
+                        <span></span>
+                        <span>Step Name</span>
+                        <span style="text-align: right;">Power (kW)</span>
+                        <span style="text-align: right;">Duration (s)</span>
+                        <span style="text-align: right;">Ramp (ms)</span>
+                        <span></span>
+                    </div>
+                    <div class="step-list" id="stepList"></div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="addStep()">+ Add Step</button>
+                        <div style="flex: 1;"></div>
+                        <button class="btn btn-success" onclick="startProfile()" id="startBtn">▶ Start</button>
+                        <button class="btn btn-danger" onclick="stopProfile()" id="stopBtn" disabled>■ Stop</button>
+                        <button class="btn btn-primary" onclick="sendToDevice()">Send to Device</button>
+                    </div>
+                    
+                    <!-- Cycle Settings -->
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(110, 188, 219, 0.2);">
+                        <div style="display: flex; gap: 20px; align-items: center;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="loopProfile" checked>
+                                Loop Profile
+                            </label>
+                            <span style="font-size: 13px;">
+                                Total Cycle: <span id="totalCycleTime" class="status-value">0s</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Save Profile Modal -->
+    <div class="modal" id="saveModal">
+        <div class="modal-content">
+            <h3>Save Profile</h3>
+            <input type="text" id="profileName" placeholder="Profile name...">
+            <input type="text" id="profileDesc" placeholder="Description (optional)...">
+            <div class="modal-buttons">
+                <button class="btn" onclick="closeSaveModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveProfile()">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        //=====================================================================
+        // State
+        //=====================================================================
+        const STEP_COLORS = ['#4ade80', '#fb923c', '#fbbf24', '#6ebcdb', '#a78bfa', '#f87171', '#38bdf8', '#34d399'];
+        
+        let steps = [
+            { name: 'Idle', powerKw: 200, durationMs: 5000, rampMs: 1000, color: STEP_COLORS[0] },
+            { name: 'Training', powerKw: 600, durationMs: 10000, rampMs: 2000, color: STEP_COLORS[1] },
+            { name: 'Inference', powerKw: 400, durationMs: 8000, rampMs: 1500, color: STEP_COLORS[2] }
+        ];
+        
+        let ws = null;
+        let wsConnected = false;
+        let serialConnected = false;
+        let profileRunning = false;
+        let currentStepIndex = 0;
+        let animationId = null;
+        let profileStartTime = 0;
+        
+        //=====================================================================
+        // Initialization
+        //=====================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSteps();
+            drawWaveform();
+            updateCycleTime();
+            loadProfiles();
+            
+            // Connection mode toggle
+            document.getElementById('connectionMode').addEventListener('change', (e) => {
+                document.getElementById('wsConfig').style.display = e.target.value === 'websocket' ? 'flex' : 'none';
+                document.getElementById('serialConfig').style.display = e.target.value === 'serial' ? 'flex' : 'none';
+                document.getElementById('serialCard').style.display = e.target.value === 'serial' ? 'block' : 'none';
+            });
+            
+            // Load saved device IP
+            const savedIp = localStorage.getItem('deviceIp');
+            if (savedIp) document.getElementById('deviceIp').value = savedIp;
+            
+            // Canvas resize
+            window.addEventListener('resize', drawWaveform);
+        });
+        
+        //=====================================================================
+        // Step Management
+        //=====================================================================
+        function renderSteps() {
+            const list = document.getElementById('stepList');
+            list.innerHTML = steps.map((step, i) => `
+                <div class="step-item" data-index="${i}">
+                    <div class="step-handle">☰</div>
+                    <input type="text" class="step-name" value="${step.name}" 
+                           onchange="updateStep(${i}, 'name', this.value)">
+                    <input type="number" class="step-input" value="${step.powerKw}" min="0" max="1000"
+                           onchange="updateStep(${i}, 'powerKw', parseFloat(this.value))">
+                    <input type="number" class="step-input" value="${step.durationMs / 1000}" min="0.1" step="0.1"
+                           onchange="updateStep(${i}, 'durationMs', parseFloat(this.value) * 1000)">
+                    <input type="number" class="step-input" value="${step.rampMs}" min="0" step="100"
+                           onchange="updateStep(${i}, 'rampMs', parseFloat(this.value))">
+                    <div class="step-color" style="background: ${step.color}" 
+                         onclick="cycleColor(${i})"></div>
+                    <button class="step-delete" onclick="deleteStep(${i})">×</button>
+                </div>
+            `).join('');
+        }
+        
+        function updateStep(index, field, value) {
+            steps[index][field] = value;
+            drawWaveform();
+            updateCycleTime();
+        }
+        
+        function addStep() {
+            const colorIndex = steps.length % STEP_COLORS.length;
+            steps.push({
+                name: `Step ${steps.length + 1}`,
+                powerKw: 300,
+                durationMs: 5000,
+                rampMs: 1000,
+                color: STEP_COLORS[colorIndex]
+            });
+            renderSteps();
+            drawWaveform();
+            updateCycleTime();
+        }
+        
+        function deleteStep(index) {
+            if (steps.length <= 1) return;
+            steps.splice(index, 1);
+            renderSteps();
+            drawWaveform();
+            updateCycleTime();
+        }
+        
+        function cycleColor(index) {
+            const currentIdx = STEP_COLORS.indexOf(steps[index].color);
+            steps[index].color = STEP_COLORS[(currentIdx + 1) % STEP_COLORS.length];
+            renderSteps();
+            drawWaveform();
+        }
+        
+        function updateCycleTime() {
+            const totalMs = steps.reduce((sum, s) => sum + s.durationMs + s.rampMs, 0);
+            document.getElementById('totalCycleTime').textContent = (totalMs / 1000).toFixed(1) + 's';
+        }
+        
+        //=====================================================================
+        // Waveform Drawing
+        //=====================================================================
+        function drawWaveform() {
+            const canvas = document.getElementById('waveformCanvas');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set canvas size
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            
+            const width = rect.width;
+            const height = rect.height;
+            const padding = { left: 50, right: 20, top: 20, bottom: 30 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+            
+            // Clear
+            ctx.fillStyle = '#0d1a30';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Grid
+            ctx.strokeStyle = 'rgba(110, 188, 219, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 10; i++) {
+                const y = padding.top + (plotHeight * i / 10);
+                ctx.beginPath();
+                ctx.moveTo(padding.left, y);
+                ctx.lineTo(width - padding.right, y);
+                ctx.stroke();
+            }
+            
+            // Y-axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'right';
+            for (let kw = 0; kw <= 1000; kw += 200) {
+                const y = padding.top + plotHeight - (kw / 1000 * plotHeight);
+                ctx.fillText(kw + ' kW', padding.left - 8, y + 4);
+            }
+            
+            // Calculate total time
+            const totalMs = steps.reduce((sum, s) => sum + s.durationMs + s.rampMs, 0);
+            if (totalMs === 0) return;
+            
+            // Draw steps
+            let x = padding.left;
+            let prevPower = 0;
+            
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                const rampWidth = (step.rampMs / totalMs) * plotWidth;
+                const holdWidth = (step.durationMs / totalMs) * plotWidth;
+                
+                const y1 = padding.top + plotHeight - (prevPower / 1000 * plotHeight);
+                const y2 = padding.top + plotHeight - (step.powerKw / 1000 * plotHeight);
+                
+                // Ramp line
+                ctx.strokeStyle = step.color;
+                ctx.lineWidth = 3;
+                ctx.shadowColor = step.color;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.moveTo(x, y1);
+                ctx.lineTo(x + rampWidth, y2);
+                ctx.stroke();
+                
+                // Hold line
+                ctx.beginPath();
+                ctx.moveTo(x + rampWidth, y2);
+                ctx.lineTo(x + rampWidth + holdWidth, y2);
+                ctx.stroke();
+                
+                // Step label
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = step.color;
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                const labelX = x + rampWidth + holdWidth / 2;
+                ctx.fillText(step.name, labelX, y2 - 10);
+                ctx.fillStyle = '#aaa';
+                ctx.font = '10px sans-serif';
+                ctx.fillText(step.powerKw + ' kW', labelX, y2 + 15);
+                
+                x += rampWidth + holdWidth;
+                prevPower = step.powerKw;
+            }
+            
+            // X-axis time markers
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#888';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            const timeSteps = Math.min(10, Math.ceil(totalMs / 1000));
+            for (let i = 0; i <= timeSteps; i++) {
+                const t = (totalMs / timeSteps * i) / 1000;
+                const tx = padding.left + (i / timeSteps) * plotWidth;
+                ctx.fillText(t.toFixed(1) + 's', tx, height - 8);
+            }
+            
+            // Playhead (if running)
+            if (profileRunning && animationId) {
+                const elapsed = Date.now() - profileStartTime;
+                const progress = (elapsed % totalMs) / totalMs;
+                const playheadX = padding.left + progress * plotWidth;
+                
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(playheadX, padding.top);
+                ctx.lineTo(playheadX, height - padding.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        
+        function animateWaveform() {
+            drawWaveform();
+            if (profileRunning) {
+                animationId = requestAnimationFrame(animateWaveform);
+            }
+        }
+        
+        //=====================================================================
+        // WebSocket Connection
+        //=====================================================================
+        function connectWebSocket() {
+            const ip = document.getElementById('deviceIp').value.trim();
+            const port = document.getElementById('devicePort').value || 81;
+            
+            if (!ip) {
+                alert('Please enter device IP');
+                return;
+            }
+            
+            localStorage.setItem('deviceIp', ip);
+            
+            const url = `ws://${ip}:${port}`;
+            console.log('Connecting to:', url);
+            
+            try {
+                ws = new WebSocket(url);
+                
+                ws.onopen = () => {
+                    wsConnected = true;
+                    updateConnectionStatus(true, `Connected to ${ip}`);
+                    ws.send(JSON.stringify({ cmd: 'get_status' }));
+                    ws.send(JSON.stringify({ cmd: 'get_gpio' }));
+                };
+                
+                ws.onclose = () => {
+                    wsConnected = false;
+                    updateConnectionStatus(false, 'Disconnected');
+                };
+                
+                ws.onerror = (err) => {
+                    console.error('WebSocket error:', err);
+                    updateConnectionStatus(false, 'Connection error');
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleDeviceMessage(data);
+                    } catch (e) {
+                        console.log('Received:', event.data);
+                    }
+                };
+            } catch (e) {
+                alert('Connection failed: ' + e.message);
+            }
+        }
+        
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            wsConnected = false;
+            updateConnectionStatus(false, 'Disconnected');
+        }
+        
+        function toggleWebSocket() {
+            if (wsConnected) {
+                disconnectWebSocket();
+            } else {
+                connectWebSocket();
+            }
+        }
+        
+        function handleDeviceMessage(data) {
+            if (data.type === 'status') {
+                document.getElementById('currentPower').textContent = (data.power_kw || 0).toFixed(1) + ' kW';
+                document.getElementById('profileStatus').textContent = data.profile_running ? 'Running' : 'Stopped';
+                document.getElementById('currentStep').textContent = data.profile_step_name || '-';
+                document.getElementById('powerSlider').value = data.power_kw || 0;
+                document.getElementById('powerSliderValue').textContent = (data.power_kw || 0).toFixed(0) + ' kW';
+            } else if (data.type === 'gpio') {
+                updateGpioDisplay(data);
+            }
+        }
+        
+        function updateConnectionStatus(connected, text) {
+            document.getElementById('connDot').classList.toggle('connected', connected);
+            document.getElementById('connStatus').textContent = text;
+            
+            // Update WebSocket connect button
+            const wsBtn = document.getElementById('wsConnectBtn');
+            if (wsBtn) {
+                wsBtn.textContent = connected ? 'Disconnect' : 'Connect';
+                wsBtn.classList.toggle('btn-primary', !connected);
+                wsBtn.classList.toggle('btn-danger', connected);
+            }
+            
+            // Update Serial connect button  
+            const serialBtn = document.getElementById('serialConnectBtn');
+            if (serialBtn) {
+                serialBtn.textContent = connected ? 'Disconnect' : 'Connect';
+                serialBtn.classList.toggle('btn-primary', !connected);
+                serialBtn.classList.toggle('btn-danger', connected);
+            }
+        }
+        
+        //=====================================================================
+        // Device Control
+        //=====================================================================
+        function sendToDevice() {
+            if (!ws || !wsConnected) {
+                alert('Not connected to device');
+                return;
+            }
+            
+            const profile = {
+                steps: steps.map(s => ({
+                    name: s.name,
+                    power_kw: s.powerKw,
+                    duration_ms: s.durationMs,
+                    ramp_ms: s.rampMs
+                })),
+                loop: document.getElementById('loopProfile').checked
+            };
+            
+            ws.send(JSON.stringify({ cmd: 'load_profile', profile }));
+            console.log('Profile sent to device');
+        }
+        
+        function startProfile() {
+            if (ws && wsConnected) {
+                sendToDevice();
+                ws.send(JSON.stringify({ cmd: 'start_profile' }));
+            }
+            
+            profileRunning = true;
+            profileStartTime = Date.now();
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('profileStatus').textContent = 'Running';
+            animateWaveform();
+        }
+        
+        function stopProfile() {
+            if (ws && wsConnected) {
+                ws.send(JSON.stringify({ cmd: 'stop_profile' }));
+            }
+            
+            profileRunning = false;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('profileStatus').textContent = 'Stopped';
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            drawWaveform();
+        }
+        
+        function updatePowerSlider() {
+            const value = document.getElementById('powerSlider').value;
+            document.getElementById('powerSliderValue').textContent = value + ' kW';
+            
+            if (ws && wsConnected) {
+                ws.send(JSON.stringify({ cmd: 'set_power', kw: parseFloat(value) }));
+            }
+        }
+        
+        function setPowerPreset(kw) {
+            document.getElementById('powerSlider').value = kw;
+            document.getElementById('powerSliderValue').textContent = kw + ' kW';
+            
+            if (ws && wsConnected) {
+                ws.send(JSON.stringify({ cmd: 'set_power', kw: kw }));
+            }
+        }
+        
+        function setLed(state) {
+            if (ws && wsConnected) {
+                ws.send(JSON.stringify({ cmd: 'set_led', state: state }));
+            }
+        }
+        
+        //=====================================================================
+        // GPIO Functions
+        //=====================================================================
+        let gpioOutputStates = [0, 0, 0, 0];  // Track output states locally
+        
+        function requestGpioStatus() {
+            if (ws && wsConnected) {
+                ws.send(JSON.stringify({ cmd: 'get_gpio' }));
+            }
+        }
+        
+        function toggleGpioOutput(index) {
+            if (ws && wsConnected) {
+                gpioOutputStates[index] = gpioOutputStates[index] ? 0 : 1;
+                ws.send(JSON.stringify({ cmd: 'set_gpio', index: index, state: gpioOutputStates[index] === 1 }));
+            }
+        }
+        
+        function updateGpioDisplay(data) {
+            // Update inputs
+            if (data.inputs) {
+                data.inputs.forEach((inp, i) => {
+                    const el = document.getElementById('gpioIn' + i);
+                    if (el) {
+                        el.classList.toggle('high', inp.state === 1);
+                    }
+                });
+            }
+            // Update outputs
+            if (data.outputs) {
+                data.outputs.forEach((out, i) => {
+                    const el = document.getElementById('gpioOut' + i);
+                    if (el) {
+                        el.classList.toggle('high', out.state === 1);
+                        gpioOutputStates[i] = out.state;
+                    }
+                });
+            }
+        }
+        
+        //=====================================================================
+        // Profile Management
+        //=====================================================================
+        function loadProfiles() {
+            fetch('/api/profile/list')
+                .then(r => r.json())
+                .then(profiles => {
+                    const list = document.getElementById('profileList');
+                    list.innerHTML = profiles.map(name => `
+                        <button class="profile-btn" onclick="loadProfile('${name}')">${name}</button>
+                    `).join('');
+                })
+                .catch(e => console.log('Could not load profiles:', e));
+        }
+        
+        function loadProfile(name) {
+            fetch(`/api/profile/load/${name}`)
+                .then(r => r.json())
+                .then(profile => {
+                    if (profile.steps) {
+                        steps = profile.steps.map((s, i) => ({
+                            name: s.name || `Step ${i+1}`,
+                            powerKw: s.power_kw || s.powerKw || 0,
+                            durationMs: s.duration_ms || s.durationMs || 5000,
+                            rampMs: s.ramp_ms || s.rampMs || 1000,
+                            color: STEP_COLORS[i % STEP_COLORS.length]
+                        }));
+                        renderSteps();
+                        drawWaveform();
+                        updateCycleTime();
+                        document.getElementById('loopProfile').checked = profile.loop !== false;
+                    }
+                })
+                .catch(e => console.error('Load profile error:', e));
+        }
+        
+        function saveProfileModal() {
+            document.getElementById('saveModal').classList.add('show');
+            document.getElementById('profileName').focus();
+        }
+        
+        function closeSaveModal() {
+            document.getElementById('saveModal').classList.remove('show');
+        }
+        
+        function saveProfile() {
+            const name = document.getElementById('profileName').value.trim();
+            const desc = document.getElementById('profileDesc').value.trim();
+            
+            if (!name) {
+                alert('Please enter a profile name');
+                return;
+            }
+            
+            const profile = {
+                name: name,
+                description: desc,
+                steps: steps.map(s => ({
+                    name: s.name,
+                    power_kw: s.powerKw,
+                    duration_ms: s.durationMs,
+                    ramp_ms: s.rampMs
+                })),
+                loop: document.getElementById('loopProfile').checked
+            };
+            
+            fetch('/api/profile/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, profile })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    closeSaveModal();
+                    loadProfiles();
+                } else {
+                    alert('Save failed');
+                }
+            })
+            .catch(e => console.error('Save error:', e));
+        }
+        
+        function exportProfile() {
+            const profile = {
+                name: 'exported_profile',
+                steps: steps.map(s => ({
+                    name: s.name,
+                    power_kw: s.powerKw,
+                    duration_ms: s.durationMs,
+                    ramp_ms: s.rampMs
+                })),
+                loop: document.getElementById('loopProfile').checked
+            };
+            
+            const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'load_profile.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function loadProfileFromFile() {
+            document.getElementById('fileInput').click();
+        }
+        
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const profile = JSON.parse(e.target.result);
+                    if (profile.steps) {
+                        steps = profile.steps.map((s, i) => ({
+                            name: s.name || `Step ${i+1}`,
+                            powerKw: s.power_kw || s.powerKw || 0,
+                            durationMs: s.duration_ms || s.durationMs || 5000,
+                            rampMs: s.ramp_ms || s.rampMs || 1000,
+                            color: STEP_COLORS[i % STEP_COLORS.length]
+                        }));
+                        renderSteps();
+                        drawWaveform();
+                        updateCycleTime();
+                        document.getElementById('loopProfile').checked = profile.loop !== false;
+                    }
+                } catch (err) {
+                    alert('Invalid profile file');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';  // Reset for re-import
+        }
+        
+        //=====================================================================
+        // Serial Terminal
+        //=====================================================================
+        function refreshPorts() {
+            fetch('/api/serial/ports')
+                .then(r => r.json())
+                .then(ports => {
+                    const select = document.getElementById('serialPort');
+                    select.innerHTML = ports.map(p => `<option value="${p.device}">${p.device} - ${p.description}</option>`).join('');
+                })
+                .catch(e => console.error('Port list error:', e));
+        }
+        
+        function connectSerial() {
+            const port = document.getElementById('serialPort').value;
+            if (!port) {
+                alert('Select a port first');
+                return;
+            }
+            
+            fetch('/api/serial/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    serialConnected = true;
+                    updateConnectionStatus(true, `Serial: ${port}`);
+                    startSerialPolling();
+                } else {
+                    alert('Connection failed');
+                }
+            });
+        }
+        
+        function disconnectSerial() {
+            fetch('/api/serial/disconnect', { method: 'POST' });
+            serialConnected = false;
+            updateConnectionStatus(false, 'Disconnected');
+        }
+        
+        function toggleSerial() {
+            if (serialConnected) {
+                disconnectSerial();
+            } else {
+                connectSerial();
+            }
+        }
+        
+        let serialPollId = null;
+        function startSerialPolling() {
+            if (serialPollId) clearInterval(serialPollId);
+            serialPollId = setInterval(() => {
+                fetch('/api/serial/recv')
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.data) {
+                            appendTerminal(result.data, 'recv');
+                        }
+                    });
+            }, 200);
+        }
+        
+        function sendSerialCommand() {
+            const input = document.getElementById('serialInput');
+            const cmd = input.value.trim();
+            if (!cmd) return;
+            
+            fetch('/api/serial/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd })
+            });
+            
+            appendTerminal('> ' + cmd, 'sent');
+            input.value = '';
+        }
+        
+        function sendQuickCmd(cmd) {
+            document.getElementById('serialInput').value = cmd;
+            sendSerialCommand();
+        }
+        
+        function appendTerminal(text, type) {
+            const terminal = document.getElementById('terminal');
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                if (line.trim()) {
+                    const div = document.createElement('div');
+                    div.className = 'terminal-line ' + type;
+                    div.textContent = line;
+                    terminal.appendChild(div);
+                }
+            });
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    </script>
+</body>
+</html>

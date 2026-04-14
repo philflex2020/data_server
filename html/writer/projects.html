@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Writer Projects</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+          padding:14px 16px; text-decoration:none; display:block;
+          transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .card-title { color:var(--accent); font-size:.95rem; font-weight:600; margin-bottom:4px; }
+  .card-desc  { color:var(--muted); font-size:.8rem; line-height:1.4; }
+  .card-tag   { display:inline-block; margin-top:8px; font-size:.7rem;
+                padding:1px 6px; border-radius:3px; border:1px solid var(--border);
+                color:var(--muted); }
+  .tag-live   { border-color:var(--green); color:var(--green); }
+  .tag-tool   { border-color:var(--purple); color:var(--purple); }
+  .tag-demo   { border-color:var(--yellow); color:var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html" class="here">Writer Projects</a>
+</div>
+
+<h1>Writer Projects</h1>
+<p class="subtitle">EMS ingest, parquet writer, MQTT tools — served from phil-dev :8080</p>
+
+<h2>Live Tools</h2>
+<div class="card-grid">
+
+  <a class="card" href="ems_physics_proposal.html">
+    <div class="card-title">EMS Physics Generator</div>
+    <div class="card-desc">Proposal to replace uniform-random signal pools with a physics-based charge/discharge state machine: OCV curve, RC thermal model, Poisson fault events, and realistic binary states.</div>
+    <span class="card-tag">proposal</span>
+    <span class="card-tag">simulation</span>
+  </a>
+
+
+  <a class="card" href="writer_compact_design.html">
+    <div class="card-title">Compact Process Design</div>
+    <div class="card-desc">How flush files are merged into compact_*.parquet — C++ thread config, execution flow, atomicity, compact.log format, Python script comparison, and the April 2026 fix that stopped compact files being re-consumed.</div>
+    <span class="card-tag">design</span>
+    <span class="card-tag">parquet</span>
+  </a>
+  <a class="card" href="writer_compare_test.html">
+    <div class="card-title">Writer Schema Comparison</div>
+    <div class="card-desc">Benchmarks norm-long, long+compound, and wide-pivot parquet schemas against the same MQTT stream. Live results viewer, file browser, schema dropdowns, and 24-hr storage estimates.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">benchmark</span>
+    <span class="card-tag">parquet</span>
+  </a>
+
+  <a class="card" href="evelyn_docker_34.html">
+    <div class="card-title">Evelyn .34 Live</div>
+    <div class="card-desc">Evelyn EMS demo on phil-256g (.34) — Docker broker + parquet writer, bridge config, storage stats, compactor countdown.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">bridge_api :8772</span>
+  </a>
+
+  <a class="card" href="mqtt_viewer.html">
+    <div class="card-title">MQTT Viewer</div>
+    <div class="card-desc">Live MQTT subscriber — connect to any broker, browse topics, view payloads. Includes Parquet / Replay tab for querying parquet files.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="parquet_viewer.html">
+    <div class="card-title">Parquet Viewer</div>
+    <div class="card-desc">Query EMS parquet files via bridge_api DuckDB. Returns all readings per point_name with MQTT topic reconstruction, JSON export, and data: URI downloads.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="ems_simulator_control.html">
+    <div class="card-title">EMS Simulator Control</div>
+    <div class="card-desc">WebSocket control UI for ems_site_simulator — set mode, contactor, faults, noise, and rate per unit.</div>
+    <span class="card-tag tag-live">live</span>
+  </a>
+
+</div>
+
+<h2>Architecture &amp; Design Docs</h2>
+<div class="card-grid">
+
+  <a class="card" href="aws_sim_stack.html">
+    <div class="card-title">AWS Simulation Stack</div>
+    <div class="card-desc">Docker stack mirroring the cloud ingest path — FlashMQ → Telegraf → InfluxDB2 — alongside the parquet edge path. Includes rsync plan, subscriber_api query routing, and 5-phase implementation roadmap.</div>
+    <span class="card-tag">docker</span>
+    <span class="card-tag">influxdb</span>
+    <span class="card-tag">parquet</span>
+  </a>
+
+  <a class="card" href="evelyn_container_design.html">
+    <div class="card-title">Container Design (Option C)</div>
+    <div class="card-desc">Single Docker container: FlashMQ + parquet_writer + bridge_api + nginx under supervisord. Full Dockerfile, supervisord.conf, build script, and port map.</div>
+    <span class="card-tag">design</span>
+    <span class="card-tag">docker</span>
+  </a>
+
+  <a class="card" href="evelyn_writer_project_build.html">
+    <div class="card-title">Kubernetes Build &amp; Package</div>
+    <div class="card-desc">Build script that compiles parquet_writer and FlashMQ via Docker, collects HTML/Python/shell files from the repo, writes K8s manifests, and packages a deployment tar.gz.</div>
+    <span class="card-tag">kubernetes</span>
+    <span class="card-tag">build</span>
+    <span class="card-tag">docker</span>
+  </a>
+
+  <a class="card" href="evelyn_real_time_data.html">
+    <div class="card-title">Real-Time Web Interface</div>
+    <div class="card-desc">Three-layer real-time architecture: FlashMQ WebSocket + mqtt.js live stream, DuckDB current_state.parquet, DuckDB-WASM historical queries. Includes 4 working browser demos.</div>
+    <span class="card-tag tag-demo">demo</span>
+    <span class="card-tag">mqtt.js</span>
+    <span class="card-tag">duckdb-wasm</span>
+  </a>
+
+  <a class="card" href="evelyn_influx3_analysis.html">
+    <div class="card-title">InfluxDB 3 Analysis</div>
+    <div class="card-desc">Technical comparison of InfluxDB 3 vs direct Parquet + DuckDB. Covers storage format, schema lock-in, migration options, query capability, and recommendation.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">influxdb3</span>
+  </a>
+
+  <a class="card" href="evelyn_viz_comparison.html">
+    <div class="card-title">Visualization Platform Comparison</div>
+    <div class="card-desc">Grafana vs Superset vs Observable Framework vs Retool vs custom HTML+uPlot. Focus on customer-designed UI integration, embedding, and white-label options.</div>
+    <span class="card-tag">design</span>
+    <span class="card-tag">grafana</span>
+  </a>
+
+  <a class="card" href="evelyn_kafka_analysis.html">
+    <div class="card-title">Kafka Integration Analysis</div>
+    <div class="card-desc">Where Kafka adds value in the EMS stack: message durability, multi-site cloud aggregation, multi-consumer fan-out. Covers Redpanda, NATS, and placement options.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">kafka</span>
+  </a>
+
+</div>
+
+<h2>Analysis &amp; Reports</h2>
+<div class="card-grid">
+
+  <a class="card" href="evelyn_live_compare.html">
+    <div class="card-title">Evelyn Live Compare</div>
+    <div class="card-desc">Side-by-side baseline vs filtered InfluxDB ingest — measures Filter A+B savings (~27% fewer rows).</div>
+    <span class="card-tag tag-demo">demo</span>
+  </a>
+
+  <a class="card" href="evelyn_cost_analysis.html">
+    <div class="card-title">Evelyn Cost Analysis</div>
+    <div class="card-desc">Static cost reduction analysis for Evelyn EMS fleet — Filter A+B, moderate, and aggressive scenarios.</div>
+    <span class="card-tag tag-demo">demo</span>
+  </a>
+
+  <a class="card" href="demo_compare.html">
+    <div class="card-title">Demo Compare</div>
+    <div class="card-desc">InfluxDB vs DuckDB/parquet query comparison.</div>
+    <span class="card-tag tag-demo">demo</span>
+  </a>
+
+  <a class="card" href="stress_report_34.html">
+    <div class="card-title">Stress Report .34</div>
+    <div class="card-desc">Stress test results from phil-256g torture run.</div>
+    <span class="card-tag">report</span>
+  </a>
+
+  <a class="card" href="mqtt_topic_formats.html">
+    <div class="card-title">MQTT Topic Formats</div>
+    <div class="card-desc">Longbow vs Evelyn MQTT topic formats — Telegraf topic_parsing pipeline, parquet column mapping, and schema alignment gaps.</div>
+    <span class="card-tag">reference</span>
+  </a>
+
+  <a class="card" href="longbow_topic_parsing.html">
+    <div class="card-title">Longbow Topic Parsing</div>
+    <div class="card-desc">Real Longbow CSV data analysis — 9-segment topic structure, segment role decisions, parquet_writer config, multi-site partitioning, and Filter A/B strategy.</div>
+    <span class="card-tag">reference</span>
+  </a>
+
+  <a class="card" href="parquet_column_schema.html">
+    <div class="card-title">Parquet Column Schema</div>
+    <div class="card-desc">How MQTT topic segments and payload fields become parquet columns — positional vs KV parsers, compound_point_name, drop_columns, and DuckDB query examples for each schema mode.</div>
+    <span class="card-tag">reference</span>
+  </a>
+
+  <a class="card" href="parquet_writer_options.html">
+    <div class="card-title">Parquet Writer vs InfluxDB2 — Cost Comparison</div>
+    <div class="card-desc">Wide Pivot Parquet on S3 vs FlashMQ→Telegraf→InfluxDB2. Storage cost at 1, 2, 5, 10 year retention. 20× cheaper at 10 years. Real-time recovery path TBD.</div>
+    <span class="card-tag">cost</span>
+    <span class="card-tag">aws</span>
+  </a>
+
+  <a class="card" href="wide_parquet_writer.html">
+    <div class="card-title">Wide Parquet Schema Benchmark</div>
+    <div class="card-desc">Long+compound vs Wide (pivot) — 2.45M messages, 12 units, 34 signals. Results, DuckDB queries, and full YAML configs for both schema options.</div>
+    <span class="card-tag">benchmark</span>
+  </a>
+
+  <a class="card" href="prelim_parquet.html">
+    <div class="card-title">Prelim Parquet Inventory</div>
+    <div class="card-desc">Real BESS site parquet snapshot — 3,057 rows, 451 points across 9 devices (NA, pcs_1, bms_1, rack 1–6). Searchable point list with count and first value.</div>
+    <span class="card-tag">reference</span>
+    <span class="card-tag">real-data</span>
+  </a>
+
+  <a class="card" href="prelim_pivot.html">
+    <div class="card-title">Prelim Pivot Experiment</div>
+    <div class="card-desc">Narrow vs wide-device vs wide-unit layout comparison on the real 3,057-row file (17 scan cycles). Narrow wins 24×–28×; COV had zero effect at 2m50s window.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">real-data</span>
+  </a>
+
+  <a class="card" href="prelim_generated.html">
+    <div class="card-title">Prelim Generated Data</div>
+    <div class="card-desc">Synthetic 10-minute BESS dataset from prelim_generator.py — 204,720 narrow rows, 33 files across 3 formats. Actual file sizes and B/row stats from the generator run.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">generated</span>
+  </a>
+
+  <a class="card" href="prelim_gen_pivot.html">
+    <div class="card-title">Prelim Generated Pivot Analysis</div>
+    <div class="card-desc">Layout break-even analysis at 60 scan cycles — wide-device+zstd reaches parity with narrow; COV filtering tips it into a win. Updated recommendations.</div>
+    <span class="card-tag">analysis</span>
+    <span class="card-tag">generated</span>
+  </a>
+
+  <a class="card" href="prelim_generator_doc.html">
+    <div class="card-title">Generator Docs</div>
+    <div class="card-desc">prelim_generator.py reference — CLI options, signal speed classes, COV behaviour, time jitter + bucketing, output files, and the 9-device 451-point schema.</div>
+    <span class="card-tag">reference</span>
+    <span class="card-tag">generated</span>
+  </a>
+
+</div>
+
+</body>
+</html>

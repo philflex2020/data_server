@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edge Parquet — Live Demo</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 28px 32px; max-width: 1100px; margin: auto; line-height: 1.5;
+}
+
+h1   { color: #58a6ff; font-size: 1.7em; margin-bottom: 3px; }
+.subtitle { color: #8b949e; font-size: 0.88em; margin-bottom: 22px; }
+
+/* ── Config bar ── */
+.config-bar {
+  display: flex; align-items: center; gap: 14px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 10px 18px; margin-bottom: 28px;
+}
+.config-bar label { font-size: 0.83em; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+.config-bar input[type=text] {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  color: #e6edf3; font-size: 0.85em; padding: 4px 8px; width: 150px;
+}
+.config-bar button {
+  background: #1f6feb; border: none; border-radius: 6px;
+  color: #fff; font-size: 0.83em; padding: 6px 16px; cursor: pointer; min-width: 100px;
+}
+.config-bar button:hover { background: #388bfd; }
+.config-bar button.disconnect { background: #da3633; }
+.config-bar button.disconnect:hover { background: #f85149; }
+.connect-status { font-size: 0.78em; color: #8b949e; margin-left: auto; }
+.connect-status .ok   { color: #3fb950; }
+.connect-status .err  { color: #f85149; }
+
+/* ── Top row: 3 panels ── */
+.top-row {
+  display: grid;
+  grid-template-columns: 1fr 48px 1fr 48px 1fr;
+  gap: 0;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+/* ── Panel boxes ── */
+.panel {
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+  padding: 18px 20px; transition: border-color 0.3s;
+}
+.panel.ok   { border-color: #3fb95066; }
+.panel.warn { border-color: #d2992266; }
+.panel.err  { border-color: #f8514966; }
+
+.panel-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.78em; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #8b949e; margin-bottom: 14px;
+}
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: #484f58;
+}
+.dot.ok   { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
+.dot.warn { background: #d29922; box-shadow: 0 0 6px #d2992288; }
+.dot.err  { background: #f85149; }
+
+/* big rate number */
+.big-rate {
+  font-size: 2.8em; font-weight: 700; color: #58a6ff;
+  line-height: 1; margin-bottom: 4px; font-variant-numeric: tabular-nums;
+}
+.big-rate-unit { font-size: 0.85em; color: #8b949e; margin-bottom: 14px; }
+
+.metric-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.83em; padding: 3px 0; border-bottom: 1px solid #21262d;
+}
+.metric-row:last-child { border-bottom: none; }
+.metric-label { color: #8b949e; }
+.metric-value { color: #e6edf3; font-variant-numeric: tabular-nums; }
+.metric-value.ok   { color: #3fb950; }
+.metric-value.blue { color: #58a6ff; }
+
+/* sites chip grid */
+.sites-grid {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px;
+}
+.site-chip {
+  font-size: 0.72em; padding: 2px 6px; border-radius: 10px;
+  background: #21262d; color: #8b949e; font-variant-numeric: tabular-nums;
+}
+.site-chip.ok { background: #1a3a2a; color: #3fb950; }
+
+/* ── Arrow connectors ── */
+.arrow-col {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 0 4px;
+}
+.arrow-line {
+  width: 100%; height: 2px; background: #30363d;
+  border-radius: 1px; transition: background 0.4s;
+}
+.arrow-line.active {
+  background: linear-gradient(90deg, #58a6ff88, #3fb95088);
+  box-shadow: 0 0 6px #58a6ff44;
+}
+.arrow-tip { font-size: 1em; color: #30363d; line-height: 1; }
+.arrow-tip.active { color: #3fb950; }
+
+/* ── Chain of custody card ── */
+.custody-card {
+  background: #161b22; border: 1px solid #3fb95033;
+  border-radius: 10px; padding: 16px 20px; margin-bottom: 20px;
+}
+.custody-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #3fb950; margin-bottom: 12px;
+}
+.custody-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 16px;
+}
+
+/* ── Data reduction panel ── */
+.reduction-panel {
+  background: #161b22; border: 1px solid #388bfd44;
+  border-radius: 10px; padding: 24px 28px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 0 24px;
+}
+.reduction-headline {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #388bfd; margin-bottom: 16px;
+}
+.stat-block { text-align: center; padding: 0 8px; }
+.stat-block + .stat-block { border-left: 1px solid #21262d; }
+.stat-num {
+  font-size: 3em; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-num.blue  { color: #58a6ff; }
+.stat-num.green { color: #3fb950; }
+.stat-num.orange { color: #f0883e; }
+.stat-unit { font-size: 0.82em; color: #8b949e; margin-top: 4px; }
+.stat-sub  { font-size: 0.75em; color: #6e7681; margin-top: 6px; line-height: 1.4; }
+
+/* ── Zero loss badge ── */
+.zero-loss {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 12px; padding: 6px 12px;
+  background: #1a3a2a; border: 1px solid #3fb95044; border-radius: 20px;
+  font-size: 0.78em; color: #3fb950; font-weight: 600;
+}
+.zero-loss::before { content: '✓'; font-size: 1em; }
+
+/* ── MQTT frame popup ── */
+.popup-overlay {
+  display: none; position: fixed; inset: 0;
+  background: #0d111788; backdrop-filter: blur(2px);
+  z-index: 100; align-items: center; justify-content: center;
+}
+.popup-overlay.open { display: flex; }
+.popup-box {
+  background: #1c2128; border: 1px solid #444c56; border-radius: 12px;
+  padding: 28px 32px; max-width: 720px; width: 94%;
+  position: relative;
+}
+.popup-box h3 { color: #79c0ff; font-size: 1.15em; margin-bottom: 5px; }
+.popup-box .popup-sub { font-size: 0.85em; color: #adbac7; margin-bottom: 20px; }
+.popup-close {
+  position: absolute; top: 14px; right: 16px;
+  background: none; border: none; color: #8b949e;
+  font-size: 1.2em; cursor: pointer; line-height: 1;
+}
+.popup-close:hover { color: #e6edf3; }
+.frame-row {
+  display: flex; align-items: stretch; margin-bottom: 8px;
+  border-radius: 6px; overflow: hidden; font-size: 0.9em;
+}
+.frame-bytes {
+  padding: 10px 14px; font-family: monospace; font-size: 1em;
+  white-space: pre; flex-shrink: 0; min-width: 80px; text-align: center;
+  font-weight: 700;
+}
+.frame-desc { padding: 10px 14px; line-height: 1.5; }
+.frame-desc strong { display: block; margin-bottom: 3px; font-size: 1em; }
+.frame-desc span { font-size: 0.9em; }
+.f-header  { background: #1f3348; color: #79c0ff; }
+.f-header .frame-desc span  { color: #adbac7; }
+.f-topiclen{ background: #1e3228; color: #56d364; }
+.f-topiclen .frame-desc span{ color: #adbac7; }
+.f-topic   { background: #263520; color: #7ee787; }
+.f-topic .frame-desc span   { color: #adbac7; }
+.f-payload { background: #332618; color: #f0883e; }
+.f-payload .frame-desc span { color: #adbac7; }
+.frame-total {
+  margin-top: 14px; padding: 11px 16px;
+  background: #22272e; border: 1px solid #444c56; border-radius: 6px;
+  font-size: 0.88em; display: flex; justify-content: space-between; align-items: baseline;
+}
+.frame-total .t-label { color: #adbac7; }
+.frame-total .t-val   { color: #e6edf3; font-variant-numeric: tabular-nums; }
+.json-block {
+  margin-top: 16px; background: #22272e; border: 1px solid #444c56;
+  border-radius: 6px; padding: 14px 18px; font-family: monospace; font-size: 0.9em;
+  line-height: 1.9;
+}
+.json-block .j-title {
+  font-family: 'Segoe UI', system-ui, sans-serif; font-size: 0.78em;
+  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #adbac7; margin-bottom: 10px;
+}
+.j-brace   { color: #e6edf3; }
+.j-key     { color: #79c0ff; }
+.j-str     { color: #a5d6ff; }
+.j-num     { color: #f0883e; }
+.j-comment { color: #768390; font-style: italic; }
+/* storage comparison bar chart */
+.storage-compare {
+  margin-top: 16px; background: #22272e; border: 1px solid #444c56;
+  border-radius: 6px; padding: 14px 18px;
+}
+.sc-title {
+  font-size: 0.78em; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #adbac7; margin-bottom: 12px;
+}
+.sc-row {
+  display: grid; grid-template-columns: 120px 1fr auto;
+  align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.sc-label { font-size: 0.82em; color: #adbac7; }
+.sc-bar-wrap { height: 18px; background: #161b22; border-radius: 3px; overflow: hidden; }
+.sc-bar { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.sc-val { font-size: 0.78em; white-space: nowrap; min-width: 200px; text-align: right; }
+.sc-val em { color: #768390; font-style: normal; font-size: 0.9em; }
+.sc-note {
+  margin-top: 12px; padding: 10px 14px;
+  background: #22272e; border: 1px solid #444c56; border-left: 3px solid #d29922;
+  border-radius: 4px; font-size: 0.82em; color: #adbac7; line-height: 1.6;
+}
+
+/* topic key breakdown */
+.topic-block {
+  margin-top: 14px; background: #22272e; border: 1px solid #444c56;
+  border-radius: 6px; padding: 14px 18px; font-size: 0.88em; line-height: 1.8;
+}
+.topic-block .j-title { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 0.78em;
+  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #adbac7; margin-bottom: 10px; }
+.t-seg   { color: #7ee787; font-family: monospace; }
+.t-sep   { color: #768390; font-family: monospace; }
+.t-annot { color: #adbac7; font-size: 0.88em; margin-left: 10px; }
+
+/* ── Status bar ── */
+.status-bar {
+  margin-top: 18px; padding: 8px 14px;
+  background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+  font-size: 0.76em; color: #6e7681;
+  display: flex; gap: 18px; flex-wrap: wrap;
+}
+.status-item strong { color: #8b949e; }
+</style>
+</head>
+<body>
+
+<h1>Edge Telemetry · Parquet Demo</h1>
+<p class="subtitle">Live edge node — real-time telemetry ingestion and local parquet storage</p>
+
+<!-- ── Config bar ── -->
+<div class="config-bar">
+  <label>Edge host
+    <input type="text" id="cfg-host" value="192.168.86.20" placeholder="192.168.86.x">
+  </label>
+  <button id="btn-connect" onclick="toggleConnect()">Connect</button>
+  <div class="connect-status">
+    Generator WS <span id="ws-status" class="err">disconnected</span>
+    &nbsp;·&nbsp;
+    Store poll <span id="poll-status">—</span>
+  </div>
+</div>
+
+<!-- ── Top row: Generator → Writer → Store ── -->
+<div class="top-row">
+
+  <!-- Generator panel -->
+  <div class="panel" id="panel-gen">
+    <div class="panel-title">
+      <span class="dot" id="dot-gen"></span>
+      Telemetry Generator
+    </div>
+    <div class="big-rate" id="gen-mps">—</div>
+    <div class="big-rate-unit">messages / sec</div>
+    <div class="metric-row">
+      <span class="metric-label">Total published</span>
+      <span class="metric-value blue" id="gen-total">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Active sites</span>
+      <span class="metric-value" id="gen-tasks">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Mode</span>
+      <span class="metric-value" id="gen-mode">—</span>
+    </div>
+    <div class="sites-grid" id="gen-sites"></div>
+  </div>
+
+  <!-- Arrow: Generator → Writer -->
+  <div class="arrow-col">
+    <div class="arrow-line" id="arrow-gen-writer"></div>
+    <div class="arrow-tip" id="arrow-gen-tip">▶</div>
+  </div>
+
+  <!-- Writer panel -->
+  <div class="panel" id="panel-writer">
+    <div class="panel-title">
+      <span class="dot" id="dot-writer"></span>
+      Parquet Writer
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Inflow</span>
+      <span class="metric-value ok" id="writer-rate">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Status</span>
+      <span class="metric-value" id="writer-status">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Format</span>
+      <span class="metric-value">Parquet (columnar)</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Flush interval</span>
+      <span class="metric-value">60 s</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Partition</span>
+      <span class="metric-value">project / site / date</span>
+    </div>
+  </div>
+
+  <!-- Arrow: Writer → Store -->
+  <div class="arrow-col">
+    <div class="arrow-line" id="arrow-writer-store"></div>
+    <div class="arrow-tip" id="arrow-writer-tip">▶</div>
+  </div>
+
+  <!-- Store panel -->
+  <div class="panel" id="panel-store">
+    <div class="panel-title">
+      <span class="dot" id="dot-store"></span>
+      Edge Parquet Store
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Files</span>
+      <span class="metric-value blue" id="store-files">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Size on disk</span>
+      <span class="metric-value blue" id="store-mb">— MB</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Latest file</span>
+      <span class="metric-value" id="store-age">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Est. raw MQTT</span>
+      <span class="metric-value" id="store-raw-est">—</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Chain of custody ── -->
+<div class="custody-card">
+  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px;">
+    <div class="custody-title" style="margin-bottom:0">Chain of Custody · Sync Heartbeat</div>
+    <button onclick="$('mqtt-popup').classList.add('open')"
+      style="background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;
+             font-size:0.75em;padding:3px 10px;cursor:pointer">
+      MQTT frame ↗
+    </button>
+  </div>
+  <div class="custody-grid">
+    <div class="metric-row">
+      <span class="metric-label">Session</span>
+      <span class="metric-value blue" id="coc-session">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Sync sequence</span>
+      <span class="metric-value" id="coc-seq">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Total published</span>
+      <span class="metric-value" id="coc-total">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Last heartbeat</span>
+      <span class="metric-value ok" id="coc-last">—</span>
+    </div>
+  </div>
+  <div class="zero-loss">Zero loss — writer subscribes direct to local broker, no network hop</div>
+</div>
+
+<!-- ── MQTT frame popup ── -->
+<div class="popup-overlay" id="mqtt-popup" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="popup-box">
+    <button class="popup-close" onclick="$('mqtt-popup').classList.remove('open')">✕</button>
+    <h3>Typical MQTT PUBLISH Frame · QoS 0</h3>
+    <p class="popup-sub">per_cell_item mode — one message per cell per field · measured avg</p>
+
+    <div class="frame-row">
+      <div class="frame-bytes f-header">30 00</div>
+      <div class="frame-desc f-header">
+        <strong>Fixed header</strong>
+        <span>PUBLISH (0x30) · QoS 0 · no retain · remaining length byte</span>
+      </div>
+    </div>
+    <div class="frame-row">
+      <div class="frame-bytes f-topiclen">00 39</div>
+      <div class="frame-desc f-topiclen">
+        <strong>Topic length</strong>
+        <span>2-byte big-endian prefix · value = 57 bytes</span>
+      </div>
+    </div>
+    <div class="frame-row">
+      <div class="frame-bytes f-topic" style="font-size:0.7em;padding-top:10px">57 B</div>
+      <div class="frame-desc f-topic">
+        <strong>Topic string</strong>
+        <span>batteries/project=0/site=5/rack=3/module=2/cell=14/voltage</span>
+      </div>
+    </div>
+    <div class="frame-row">
+      <div class="frame-bytes f-payload" style="font-size:0.7em;padding-top:10px">48 B</div>
+      <div class="frame-desc f-payload">
+        <strong>Payload (JSON)</strong>
+        <span>{"timestamp":1773994163.802,"value":3.847}</span>
+      </div>
+    </div>
+
+    <div class="frame-total">
+      <span class="t-label">Total wire bytes per message</span>
+      <span class="t-val">109 B &nbsp;·&nbsp; 2 header + 2 topic-len + 57 topic + 48 payload</span>
+    </div>
+    <div class="frame-total" style="margin-top:6px">
+      <span class="t-label">Same data in parquet (columnar, Snappy)</span>
+      <span class="t-val">9.6 B/row &nbsp;·&nbsp; <strong style="color:#3fb950">11.4× smaller</strong></span>
+    </div>
+    <div class="topic-block">
+      <div class="j-title">Topic Key — segment breakdown</div>
+      <div>
+        <span class="t-seg">batteries</span><span class="t-sep">/</span><span class="t-annot">← namespace / measurement type</span>
+      </div>
+      <div>
+        <span class="t-seg">project=0</span><span class="t-sep">/</span><span class="t-annot">← project ID  → parquet partition</span>
+      </div>
+      <div>
+        <span class="t-seg">site=5</span><span class="t-sep">/</span><span class="t-annot">← site ID     → parquet partition</span>
+      </div>
+      <div>
+        <span class="t-seg">rack=3</span><span class="t-sep">/</span><span class="t-annot">← rack ID     → row column</span>
+      </div>
+      <div>
+        <span class="t-seg">module=2</span><span class="t-sep">/</span><span class="t-annot">← module ID   → row column</span>
+      </div>
+      <div>
+        <span class="t-seg">cell=14</span><span class="t-sep">/</span><span class="t-annot">← cell ID     → row column</span>
+      </div>
+      <div>
+        <span class="t-seg">voltage</span><span class="t-annot">← field name  → column name in parquet row</span>
+      </div>
+    </div>
+
+    <div class="json-block">
+      <div class="j-title">Payload JSON — 48 bytes on the wire</div>
+<span class="j-brace">{</span>
+  <span class="j-key">"timestamp"</span><span class="j-brace">: </span><span class="j-num">1773994163.802</span><span class="j-brace">,</span>  <span class="j-comment">// Unix epoch float — writer uses for date partition + row ts</span>
+  <span class="j-key">"value"</span><span class="j-brace">:     </span><span class="j-num">3.847</span>             <span class="j-comment">// measurement — field name comes from topic leaf above</span>
+<span class="j-brace">}</span>
+
+<span class="j-comment">// Payload is intentionally minimal — all identity is in the topic key.</span>
+<span class="j-comment">// Writer joins topic segments + payload → one parquet row:</span>
+<span class="j-comment">//   project_id=0, site_id=5, rack_id=3, module_id=2, cell_id=14,</span>
+<span class="j-comment">//   voltage=3.847, timestamp=1773994163.802</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Data reduction panel ── -->
+<div class="reduction-panel">
+  <div style="grid-column: 1 / -1">
+    <div class="reduction-headline">Data Reduction · Parquet vs Raw MQTT</div>
+  </div>
+
+  <div class="stat-block">
+    <div class="stat-num blue" id="dr-ratio">11.4×</div>
+    <div class="stat-unit">compression ratio</div>
+    <div class="stat-sub">Parquet columnar encoding vs<br>raw MQTT wire bytes per message</div>
+  </div>
+
+  <div class="stat-block">
+    <div class="stat-num green" id="dr-saving">91%</div>
+    <div class="stat-unit">storage saved</div>
+    <div class="stat-sub" id="dr-saving-sub">9.6 B/row parquet<br>vs 109 B/msg raw MQTT</div>
+  </div>
+
+  <div class="stat-block">
+    <div class="stat-num orange" id="dr-raw-avoided">—</div>
+    <div class="stat-unit">raw MQTT avoided</div>
+    <div class="stat-sub" id="dr-raw-sub">based on current store size</div>
+  </div>
+</div>
+
+<!-- ── Storage comparison ── -->
+<div class="storage-compare" style="margin-top:20px">
+  <div class="sc-title">Storage comparison · 1.02 billion points · 6.6 hours measured</div>
+  <div class="sc-row">
+    <span class="sc-label">Raw MQTT</span>
+    <div class="sc-bar-wrap">
+      <div class="sc-bar" style="width:100%;background:#f8514966"></div>
+    </div>
+    <span class="sc-val" style="color:#f85149">104 GB &nbsp;·&nbsp; 109 B/msg</span>
+  </div>
+  <div class="sc-row">
+    <span class="sc-label">InfluxDB2 TSM</span>
+    <div class="sc-bar-wrap">
+      <div class="sc-bar" style="width:53.9%;background:#d2992266"></div>
+    </div>
+    <span class="sc-val" style="color:#d29922">56 GB &nbsp;·&nbsp; 58.7 B/pt &nbsp;<em>measured</em></span>
+  </div>
+  <div class="sc-row">
+    <span class="sc-label">Parquet (this node)</span>
+    <div class="sc-bar-wrap">
+      <div class="sc-bar" style="width:8.8%;background:#3fb95088"></div>
+    </div>
+    <span class="sc-val" style="color:#3fb950">9.2 GB &nbsp;·&nbsp; 9.6 B/row</span>
+  </div>
+  <div class="sc-note" style="margin-top:10px">
+    InfluxDB2 barely compresses vs raw MQTT (1.9×) because 79,872 unique tag-series
+    (cells × fields) forces tiny per-series TSM blocks — Gorilla float encoding needs
+    long runs to be effective. Parquet batches all values column-by-column across
+    800k+ rows, giving Snappy far more to work with.
+  </div>
+</div>
+
+<!-- ── Status bar ── -->
+<div class="status-bar">
+  <span class="status-item">Host <strong id="sb-host">—</strong></span>
+  <span class="status-item">WS :8769 <strong id="sb-ws">—</strong></span>
+  <span class="status-item">Poll :8770 <strong id="sb-poll">—</strong></span>
+  <span class="status-item">Last update <strong id="sb-updated">—</strong></span>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const PARQUET_BYTES_PER_ROW = 9.6;   // measured: tools/parquet_mqtt_ratio.py
+const MQTT_BYTES_PER_MSG    = 109.0; // measured: 57 topic + 48 payload + 4 header
+const RATIO                 = MQTT_BYTES_PER_MSG / PARQUET_BYTES_PER_ROW; // 11.4
+
+// ── State ────────────────────────────────────────────────────────────────────
+let genWS        = null;
+let pollTimer    = null;
+let genLive      = false;
+let lastSyncSeq  = null;
+let lastSyncTime = null;
+let userDisconnected = false;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function setText(id, v) { const el = $(id); if (el) el.textContent = v; }
+function setClass(id, cls) {
+  const el = $(id); if (!el) return;
+  el.className = el.className.replace(/\b(ok|warn|err|active)\b/g, '').trim();
+  if (cls) el.classList.add(cls);
+}
+
+function fmtNum(n) {
+  if (n == null) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + ' B';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + ' M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + ' K';
+  return n.toLocaleString();
+}
+
+function fmtBytes(mb) {
+  if (mb == null) return '—';
+  if (mb >= 1024) return (mb/1024).toFixed(1) + ' GB';
+  return mb.toFixed(1) + ' MB';
+}
+
+function fmtAge(s) {
+  if (s == null) return '—';
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+
+function setPanel(panelId, dotId, state) {
+  const panel = $(panelId), dot = $(dotId);
+  if (!panel || !dot) return;
+  panel.className = 'panel ' + (state || '');
+  dot.className   = 'dot '   + (state || '');
+}
+
+function setArrow(lineId, tipId, active) {
+  const line = $(lineId), tip = $(tipId);
+  if (line) line.className = 'arrow-line' + (active ? ' active' : '');
+  if (tip)  tip.className  = 'arrow-tip'  + (active ? ' active' : '');
+}
+
+// ── Generator WS (:8769) ─────────────────────────────────────────────────────
+function connectGen(host) {
+  if (genWS) { try { genWS.close(); } catch(e){} genWS = null; }
+  const url = `ws://${host}:8769`;
+  setText('ws-status', 'connecting…');
+  try { genWS = new WebSocket(url); } catch(e) {
+    setText('ws-status', 'error'); scheduleReconnect(); return;
+  }
+  genWS.onopen = () => {
+    setText('ws-status', 'connected');
+    setClass('ws-status', 'ok');
+    setText('sb-ws', 'connected');
+    _syncConnectBtn(true);
+  };
+  genWS.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.type !== 'stats') return;
+      updateGen(d);
+    } catch(e) {}
+  };
+  genWS.onerror = () => {};
+  genWS.onclose = () => {
+    setText('ws-status', 'disconnected');
+    setClass('ws-status', 'err');
+    setText('sb-ws', 'disconnected');
+    genLive = false;
+    setPanel('panel-gen', 'dot-gen', 'err');
+    setArrow('arrow-gen-writer', 'arrow-gen-tip', false);
+    setArrow('arrow-writer-store', 'arrow-writer-tip', false);
+    setPanel('panel-writer', 'dot-writer', '');
+    setText('gen-mps', '—');
+    genWS = null;
+    _syncConnectBtn(false);
+    scheduleReconnect();
+  };
+}
+
+let reconnectTimer = null;
+function scheduleReconnect() {
+  if (reconnectTimer || userDisconnected) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (!userDisconnected) connectGen($('cfg-host').value.trim() || 'localhost');
+  }, 3000);
+}
+
+function updateGen(d) {
+  const mps  = d.mps ?? 0;
+  const live = mps > 0;
+  genLive = live;
+
+  setText('gen-mps',   mps > 0 ? mps.toLocaleString() : '0');
+  setText('gen-total', fmtNum(d.total_published));
+  setText('gen-tasks', d.active_tasks ?? '—');
+  setText('gen-mode',  d.topic_mode === 'per_cell_item' ? 'per cell · per field' : (d.topic_mode ?? '—'));
+
+  setPanel('panel-gen', 'dot-gen', live ? 'ok' : 'warn');
+  setPanel('panel-writer', 'dot-writer', live ? 'ok' : 'warn');
+  setText('writer-rate',   live ? mps.toLocaleString() + ' msg/s' : '0');
+  setText('writer-status', live ? 'writing' : 'idle');
+
+  setArrow('arrow-gen-writer',   'arrow-gen-tip',    live);
+  setArrow('arrow-writer-store', 'arrow-writer-tip', live);
+
+  // Per-site chips
+  const sitesEl = $('gen-sites');
+  if (sitesEl && d.projects) {
+    const chips = [];
+    for (const proj of d.projects) {
+      for (const site of proj.sites) {
+        chips.push(
+          `<span class="site-chip ${site.published > 0 ? 'ok' : ''}">`
+          + `P${proj.project_id}/S${site.site_id} ${fmtNum(site.published)}`
+          + `</span>`
+        );
+      }
+    }
+    sitesEl.innerHTML = chips.join('');
+  }
+
+  // Chain of custody
+  if (d.session_id) setText('coc-session', d.session_id);
+  if (d.sync_seq != null) {
+    setText('coc-seq', '#' + d.sync_seq);
+    if (d.sync_seq !== lastSyncSeq) {
+      lastSyncSeq  = d.sync_seq;
+      lastSyncTime = new Date();
+    }
+  }
+  setText('coc-total', fmtNum(d.total_published));
+  setText('coc-last',  lastSyncTime ? lastSyncTime.toLocaleTimeString() : '—');
+
+  setText('sb-updated', new Date().toLocaleTimeString());
+}
+
+// ── Parquet store poll (:8770/parquet_stats) ──────────────────────────────────
+async function pollStore() {
+  const host = $('cfg-host').value.trim() || 'localhost';
+  try {
+    const r = await fetch(`http://${host}:8770/parquet_stats`,
+                          {signal: AbortSignal.timeout(4000)});
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+
+    setText('store-files', d.file_count?.toLocaleString() ?? '—');
+    setText('store-mb',    fmtBytes(d.total_mb));
+    setText('store-age',   fmtAge(d.latest_age_s));
+
+    // Estimated raw MQTT equivalent
+    const rawMB = d.total_mb != null ? d.total_mb * RATIO : null;
+    setText('store-raw-est', rawMB != null ? fmtBytes(rawMB) : '—');
+
+    // Data reduction panel — live figures
+    const savedMB = rawMB != null ? rawMB - d.total_mb : null;
+    setText('dr-raw-avoided', savedMB != null ? fmtBytes(savedMB) : '—');
+    setText('dr-raw-sub',
+      d.total_mb != null
+        ? `${fmtBytes(d.total_mb)} stored · ${fmtBytes(rawMB)} would have been`
+        : 'based on current store size'
+    );
+
+    if (d.file_count > 0) setPanel('panel-store', 'dot-store', 'ok');
+
+    setText('poll-status', '✓ ' + new Date().toLocaleTimeString());
+    setText('sb-poll', 'ok');
+  } catch(e) {
+    setText('poll-status', 'unreachable');
+    setText('sb-poll', 'error');
+  }
+}
+
+// ── Connect / Disconnect toggle ───────────────────────────────────────────────
+function toggleConnect() {
+  const btn = $('btn-connect');
+  if (genWS && genWS.readyState === WebSocket.OPEN) {
+    // Disconnect
+    userDisconnected = true;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (pollTimer)      { clearInterval(pollTimer);     pollTimer = null; }
+    genWS.close();
+    genWS = null;
+    btn.textContent = 'Connect';
+    btn.classList.remove('disconnect');
+    setText('ws-status', 'disconnected');
+    setClass('ws-status', 'err');
+    setText('poll-status', '—');
+  } else {
+    // Connect
+    userDisconnected = false;
+    const host = $('cfg-host').value.trim() || 'localhost';
+    setText('sb-host', host);
+    connectGen(host);
+    pollStore();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollStore, 5000);
+    btn.textContent = 'Disconnect';
+    btn.classList.add('disconnect');
+  }
+}
+
+// Update button label whenever WS opens/closes
+function _syncConnectBtn(connected) {
+  const btn = $('btn-connect');
+  if (!btn) return;
+  if (connected) {
+    btn.textContent = 'Disconnect';
+    btn.classList.add('disconnect');
+  } else if (!userDisconnected) {
+    btn.textContent = 'Connect';
+    btn.classList.remove('disconnect');
+  }
+}
+
+// Kick off on load
+window.addEventListener('load', () => {
+  userDisconnected = false;
+  const host = $('cfg-host').value.trim() || 'localhost';
+  setText('sb-host', host);
+  connectGen(host);
+  pollStore();
+  pollTimer = setInterval(pollStore, 5000);
+  $('btn-connect').textContent = 'Disconnect';
+  $('btn-connect').classList.add('disconnect');
+});
+</script>
+</body>
+</html>

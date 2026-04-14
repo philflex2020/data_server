@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MQTT Topic Formats — Longbow vs Evelyn</title>
+<style>
+  /* ── dark mode (default) ── */
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --pre-bg: #0d1117; --th-bg: #21262d; --tr-alt: #0d1117;
+  }
+
+  /* ── light mode ── */
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+  }
+
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #c8d1d9;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+    }
+    .theme-toggle, .nav { display: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 32px; line-height: 1.7; max-width: 1100px;
+         margin: 0 auto; transition: background .2s, color .2s; }
+
+  h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: .88rem; margin-bottom: 28px; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 10px;
+       padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: .92rem; margin: 18px 0 7px; }
+  p  { margin-bottom: 10px; font-size: .88rem; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { font-size: .88rem; margin-bottom: 3px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 20px 24px; margin-bottom: 18px; }
+
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+  code { background: var(--code-bg); border: 1px solid var(--border);
+         padding: 1px 5px; border-radius: 4px; font-size: .82rem;
+         color: var(--code-text); }
+  pre  { background: var(--pre-bg); border: 1px solid var(--border);
+         border-radius: 6px; padding: 14px; font-size: .82rem;
+         line-height: 1.6; overflow-x: auto; color: var(--code-text); margin: 10px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; margin: 10px 0 16px; }
+  th    { background: var(--th-bg); color: var(--accent); text-align: left;
+          padding: 7px 12px; border: 1px solid var(--border); font-size: .8rem; }
+  td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--tr-alt); }
+
+  .segment-row { display: flex; gap: 0; margin: 12px 0 6px; flex-wrap: wrap; }
+  .seg { display: flex; flex-direction: column; border: 1px solid var(--border);
+         border-right: none; min-width: 80px; }
+  .seg:last-child { border-right: 1px solid var(--border); }
+  .seg-val  { font-family: 'Consolas', monospace; font-size: .78rem;
+              padding: 5px 8px; background: var(--code-bg); color: var(--code-text);
+              border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .seg-lbl  { font-size: .65rem; color: var(--muted); padding: 3px 8px 4px;
+              text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  .seg.accent .seg-val  { background: #0c2d6b33; color: var(--accent); }
+  .seg.green  .seg-val  { background: #0d442933; color: var(--green); }
+  .seg.orange .seg-val  { background: #2d180033; color: var(--orange); }
+  .seg.purple .seg-val  { background: #1c0a3633; color: var(--purple); }
+  .seg.muted  .seg-val  { color: var(--muted); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 10px 0; }
+  @media (max-width: 760px) { .two-col { grid-template-columns: 1fr; } }
+
+  .format-card { background: var(--surface); border: 1px solid var(--border);
+                 border-radius: 8px; padding: 16px 18px; }
+  .format-title { font-size: .95rem; font-weight: 700; margin-bottom: 4px; }
+  .format-title.lb { color: var(--orange); }
+  .format-title.ev { color: var(--green); }
+  .format-origin { font-size: .78rem; color: var(--muted); margin-bottom: 12px;
+                   font-style: italic; }
+
+  .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: .84rem; line-height: 1.5; }
+  .alert-info { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
+  .alert-warn { background: #2d200022; border: 1px solid #5a4000; color: var(--yellow); }
+  .alert-ok   { background: #0d442922; border: 1px solid #1a6e3a; color: var(--green); }
+  body.light .alert-info { background: #dbeafe; border-color: #93c5fd; }
+  body.light .alert-warn { background: #fef9c3; border-color: #fde047; }
+  body.light .alert-ok   { background: #dcfce7; border-color: #86efac; }
+
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: .72rem;
+         font-weight: 700; margin-left: 6px; vertical-align: middle; }
+  .tag-orange { background: #2d1800; color: var(--orange); border: 1px solid #5a3000; }
+  .tag-green  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .tag-blue   { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .tag-yellow { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  body.light .tag-orange { background: #fff7ed; border-color: #fed7aa; }
+  body.light .tag-green  { background: #dcfce7; border-color: #86efac; }
+  body.light .tag-blue   { background: #dbeafe; border-color: #93c5fd; }
+  body.light .tag-yellow { background: #fef9c3; border-color: #fde047; }
+
+  .arrow { color: var(--muted); margin: 0 6px; }
+
+  .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 26px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: .8rem;
+           padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here  { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .theme-toggle { float: right; margin-top: -4px;
+                  background: var(--surface); border: 1px solid var(--border);
+                  color: var(--muted); border-radius: 4px; padding: 3px 10px;
+                  font-size: .78rem; cursor: pointer; font-family: inherit; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  .col-source { font-size: .75rem; color: var(--muted); }
+  .col-accent { color: var(--accent); font-family: monospace; font-size: .85rem; }
+  .col-green  { color: var(--green);  font-family: monospace; font-size: .85rem; }
+  .col-orange { color: var(--orange); font-family: monospace; font-size: .85rem; }
+  .col-muted  { color: var(--muted);  font-family: monospace; font-size: .85rem; }
+
+  .pipeline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+              margin: 12px 0; font-size: .82rem; }
+  .pipe-box { background: var(--code-bg); border: 1px solid var(--border);
+              border-radius: 4px; padding: 4px 10px;
+              font-family: 'Consolas', monospace; white-space: nowrap; }
+  .pipe-box.lb { border-color: var(--orange); color: var(--orange); }
+  .pipe-box.ev { border-color: var(--green); color: var(--green); }
+  .pipe-box.pq { border-color: var(--accent); color: var(--accent); }
+  .pipe-box.tg { border-color: var(--purple); color: var(--purple); }
+  .pipe-arrow { color: var(--muted); font-size: 1rem; }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="document.body.classList.toggle('light')">☀ Light / Dark</button>
+
+<div class="nav">
+  <a href="projects.html">← Projects</a>
+  <a href="writer_design.html">Writer Design</a>
+  <a href="evelyn_docker_34.html">Evelyn .34 Live</a>
+  <a href="mqtt_topic_formats.html" class="here">MQTT Topic Formats</a>
+  <a href="longbow_topic_parsing.html">Longbow Parsing</a>
+</div>
+
+<h1>MQTT Topic Formats</h1>
+<p class="subtitle">Longbow (raw MQTT) vs Evelyn (InfluxDB extract) — how each maps to the parquet schema</p>
+
+<!-- ── Origin ── -->
+<div class="section">
+  <h2 style="margin-top:0">Origin of the two formats</h2>
+
+  <div class="two-col">
+    <div class="format-card">
+      <div class="format-title lb">Longbow format <span class="tag tag-orange">raw MQTT</span></div>
+      <div class="format-origin">Source: packet capture from live EMS hardware</div>
+      <p>Taken directly off the MQTT broker from a running Longbow system. Every message
+      is exactly as the EMS firmware publishes it — topic structure and JSON payload are
+      unmodified. This is the native wire format.</p>
+      <p>The parquet writer (<code>real_writer.cpp</code>) was designed around this format
+      and subscribes directly to <code>unit/#</code>.</p>
+    </div>
+    <div class="format-card">
+      <div class="format-title ev">Evelyn format <span class="tag tag-green">InfluxDB extract</span></div>
+      <div class="format-origin">Source: CSV export from InfluxDB2 database</div>
+      <p>Taken from the Telegraf → InfluxDB2 pipeline. Telegraf subscribes to the same
+      MQTT broker, applies <code>topic_parsing</code> to split the topic into tags,
+      optionally filters and deduplicates, then writes line-protocol to InfluxDB.</p>
+      <p>The CSV export reflects the InfluxDB measurement schema — tag names, field
+      names, and timestamps may differ from the raw wire format.</p>
+    </div>
+  </div>
+
+  <div class="alert alert-warn" style="margin-top:12px">
+    <strong>Key point:</strong> both formats originate from the <em>same MQTT broker</em> and the
+    <em>same topic structure</em>. The difference is entirely in how Telegraf processes
+    the data before it reaches InfluxDB. The parquet writer bypasses Telegraf and reads
+    raw MQTT directly, so its schema is anchored to the Longbow wire format.
+  </div>
+</div>
+
+<!-- ── Longbow ── -->
+<div class="section">
+  <h2 style="margin-top:0">Longbow — raw MQTT topic format</h2>
+
+  <h3>Topic structure</h3>
+  <pre>unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}</pre>
+
+  <div class="segment-row">
+    <div class="seg muted">
+      <div class="seg-val">unit</div>
+      <div class="seg-lbl">literal prefix</div>
+    </div>
+    <div class="seg accent">
+      <div class="seg-val">02281660</div>
+      <div class="seg-lbl">unit_id</div>
+    </div>
+    <div class="seg orange">
+      <div class="seg-val">bms</div>
+      <div class="seg-lbl">device</div>
+    </div>
+    <div class="seg orange">
+      <div class="seg-val">bms_1</div>
+      <div class="seg-lbl">instance</div>
+    </div>
+    <div class="seg green">
+      <div class="seg-val">Batt1_SBMU1_Current</div>
+      <div class="seg-lbl">point_name</div>
+    </div>
+    <div class="seg purple">
+      <div class="seg-val">float</div>
+      <div class="seg-lbl">dtype_hint</div>
+    </div>
+  </div>
+
+  <h3>Payload (JSON)</h3>
+  <pre>{"ts":"2024-11-15T21:27:52.775Z","value":0.999393}</pre>
+
+  <h3>Real examples</h3>
+  <pre>unit/02281660/bms/bms_1/Batt1_SBMU1_Current/float
+unit/0215F562/bms/bms_1/AvgCellV/float
+unit/0215F5DD/pcs/pcs_1/ActivePower/float
+unit/02281660/bms/bms_1/Batt1_Batt_MBMS_BMS_status/integer
+unit/0215F5A0/bms/bms_1/Batt1_Ambient_average_Temperature_MBMU/float
+unit/0227C829/rack/rack_0/SystemVoltage/float</pre>
+
+  <h3>dtype_hint values</h3>
+  <table>
+    <tr><th>dtype_hint</th><th>Meaning</th><th>Writer handling</th></tr>
+    <tr><td><code>float</code></td><td>Floating-point measurement</td><td>Stored as <code>value_f</code> (FLOAT64)</td></tr>
+    <tr><td><code>integer</code></td><td>Integer measurement</td><td>Payload float cast to INT64, stored as <code>value_i</code></td></tr>
+    <tr><td><code>boolean_integer</code></td><td>Boolean represented as 0/1</td><td>Same as <code>integer</code> — stored as <code>value_i</code></td></tr>
+  </table>
+
+  <div class="alert alert-info">
+    <code>dtype_hint</code> is consumed by the writer at parse time to determine column type.
+    It is <strong>not written as a parquet column</strong> — it disappears after the type cast.
+  </div>
+</div>
+
+<!-- ── Evelyn / Telegraf ── -->
+<div class="section">
+  <h2 style="margin-top:0">Evelyn — Telegraf processing and InfluxDB schema</h2>
+
+  <h3>Pipeline</h3>
+  <div class="pipeline">
+    <span class="pipe-box lb">MQTT broker :1883</span>
+    <span class="pipe-arrow">→</span>
+    <span class="pipe-box tg">Telegraf mqtt_consumer</span>
+    <span class="pipe-arrow">→</span>
+    <span class="pipe-box tg">topic_parsing</span>
+    <span class="pipe-arrow">→</span>
+    <span class="pipe-box tg">processors.dedup (opt)</span>
+    <span class="pipe-arrow">→</span>
+    <span class="pipe-box ev">InfluxDB2</span>
+    <span class="pipe-arrow">→</span>
+    <span class="pipe-box ev">CSV export</span>
+  </div>
+
+  <h3>Telegraf topic_parsing</h3>
+  <p>Telegraf splits the raw MQTT topic into tags using <code>topic_parsing</code>:</p>
+  <pre>[[inputs.mqtt_consumer]]
+  name_override = "ems"
+  topics        = ["unit/#"]
+  data_format   = "json"
+  json_time_key = "ts"
+  json_time_format = "2006-01-02T15:04:05.999Z07:00"
+
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "unit/+/+/+/+/+"
+    tags  = "_/unit_id/device/instance/point_name/dtype"</pre>
+
+  <p>The <code>_</code> placeholder discards the <code>unit</code> literal prefix.
+  Each remaining segment becomes an InfluxDB <strong>tag</strong>. The JSON
+  <code>value</code> field becomes the <strong>field</strong>.</p>
+
+  <h3>InfluxDB2 measurement schema (Evelyn CSV columns)</h3>
+  <table>
+    <tr><th>InfluxDB column</th><th>Kind</th><th>Source</th><th>Notes</th></tr>
+    <tr>
+      <td><code class="col-muted">_time</code></td>
+      <td>timestamp</td>
+      <td>payload <code>ts</code></td>
+      <td>RFC3339, nanosecond precision in InfluxDB</td>
+    </tr>
+    <tr>
+      <td><code class="col-muted">_measurement</code></td>
+      <td>measurement</td>
+      <td><code>name_override</code></td>
+      <td><code>ems</code> (or <code>ems_float</code> / <code>ems_int</code> in filtered path)</td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">unit_id</code></td>
+      <td>tag</td>
+      <td>topic[1]</td>
+      <td>Hex serial, e.g. <code>02281660</code></td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">device</code></td>
+      <td>tag</td>
+      <td>topic[2]</td>
+      <td><code>bms</code>, <code>pcs</code>, <code>rack</code></td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">instance</code></td>
+      <td>tag</td>
+      <td>topic[3]</td>
+      <td><code>bms_1</code>, <code>pcs_2</code>, <code>rack_0</code></td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">point_name</code></td>
+      <td>tag</td>
+      <td>topic[4]</td>
+      <td>Signal name, e.g. <code>Batt1_SBMU1_Current</code></td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">dtype</code></td>
+      <td>tag</td>
+      <td>topic[5]</td>
+      <td><code>float</code>, <code>integer</code>, <code>boolean_integer</code></td>
+    </tr>
+    <tr>
+      <td><code class="col-green">value</code></td>
+      <td>field</td>
+      <td>payload</td>
+      <td>Always FLOAT64 in InfluxDB regardless of dtype — no int/float split</td>
+    </tr>
+  </table>
+
+  <div class="alert alert-info">
+    In the InfluxDB schema <code>dtype</code> is preserved as a <strong>tag</strong>
+    (indexed string). In the raw parquet schema it is consumed and discarded — the type
+    information is encoded structurally as <code>value_i</code> vs <code>value_f</code> column presence.
+  </div>
+
+  <div class="alert alert-info" style="margin-top:10px">
+    <strong>Baseline config only.</strong> The Telegraf configuration collected from the live system
+    subscribes to <code>unit/#</code> with no filtering processors. Filter A (string drop) and
+    Filter A+B (+ int/bool dedup) exist only in the Evelyn cost-comparison demo stack
+    and are not present in standard collected configs.
+  </div>
+</div>
+
+<!-- ── topic_parsing variants ── -->
+<div class="section">
+  <h2 style="margin-top:0">topic_parsing variants and their effect</h2>
+
+  <p>The <code>topic_parsing</code> stanza is the single most impactful config choice —
+  it determines which topic segments become queryable InfluxDB tags and which are lost.
+  Several variants are in use across different environments.</p>
+
+  <h3>Variant 1 — Full 6-segment (standard collected config)</h3>
+  <p>All six topic segments extracted, including <code>dtype</code> as a tag.
+  This is the baseline config found in the live system.</p>
+  <pre>[[inputs.mqtt_consumer.topic_parsing]]
+  topic = "unit/+/+/+/+/+"
+  tags  = "_/unit_id/device/instance/point_name/dtype"</pre>
+  <table>
+    <tr><th>Tag produced</th><th>Example value</th><th>Note</th></tr>
+    <tr><td><code>unit_id</code></td><td><code>02281660</code></td><td>hex serial</td></tr>
+    <tr><td><code>device</code></td><td><code>bms</code></td><td></td></tr>
+    <tr><td><code>instance</code></td><td><code>bms_1</code></td><td></td></tr>
+    <tr><td><code>point_name</code></td><td><code>Batt1_SBMU1_Current</code></td><td></td></tr>
+    <tr><td><code>dtype</code></td><td><code>float</code></td><td>retained as queryable tag</td></tr>
+  </table>
+  <div class="alert alert-ok">
+    <strong>Best fidelity.</strong> All structural metadata is preserved.
+    <code>dtype</code> can be used to filter or group queries by signal type.
+  </div>
+
+  <h3>Variant 2 — 5-segment (no dtype tag)</h3>
+  <p>Omits the sixth segment — <code>dtype</code> is silently dropped.
+  All values land in a single <code>value</code> field as FLOAT64 regardless of type.</p>
+  <pre>[[inputs.mqtt_consumer.topic_parsing]]
+  topic = "unit/+/+/+/+"
+  tags  = "_/unit_id/device/instance/point_name"</pre>
+  <table>
+    <tr><th>Tag produced</th><th>Note</th></tr>
+    <tr><td><code>unit_id</code>, <code>device</code>, <code>instance</code>, <code>point_name</code></td><td>Same as Variant 1</td></tr>
+    <tr><td><em>dtype</em></td><td class="col-orange">Not captured — lost</td></tr>
+  </table>
+  <div class="alert alert-warn">
+    <strong>Type information lost.</strong> Integer and boolean signals cannot be
+    distinguished from float signals in InfluxDB queries. The parquet writer,
+    which parses dtype from the topic directly, is unaffected.
+  </div>
+
+  <h3>Variant 3 — Split measurement by dtype</h3>
+  <p>Uses two separate <code>mqtt_consumer</code> inputs with different
+  <code>name_override</code> values to route float and integer signals into separate
+  InfluxDB measurements. This avoids a mixed-type field but requires two Telegraf input blocks.</p>
+  <pre>[[inputs.mqtt_consumer]]
+  name_override = "ems_float"
+  topics        = ["unit/+/+/+/+/float"]
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "unit/+/+/+/+/float"
+    tags  = "_/unit_id/device/instance/point_name/_"
+
+[[inputs.mqtt_consumer]]
+  name_override = "ems_int"
+  topics        = ["unit/+/+/+/+/integer", "unit/+/+/+/+/boolean_integer"]
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "unit/+/+/+/+/+"
+    tags  = "_/unit_id/device/instance/point_name/_"</pre>
+  <table>
+    <tr><th>Measurement</th><th>Signals</th><th>Effect</th></tr>
+    <tr><td><code>ems_float</code></td><td>dtype=float</td><td>Floats isolated — cleaner aggregation</td></tr>
+    <tr><td><code>ems_int</code></td><td>dtype=integer, boolean_integer</td><td>Integers isolated — exact values preserved</td></tr>
+  </table>
+  <div class="alert alert-info">
+    <strong>Used in the cost-comparison demo stack</strong> (Evelyn filtered path) to enable
+    per-type dedup processors. This separation mirrors the <code>value_f</code> / <code>value_i</code>
+    split in the parquet schema.
+  </div>
+
+  <h3>Variant 4 — Prefixed topic (multi-sim test environments)</h3>
+  <p>On gx10 with 4 simultaneous simulators, each slice uses a namespace prefix
+  (<code>A/unit/#</code>, <code>B/unit/#</code>, …) to avoid collision.
+  Telegraf must account for the extra leading segment.</p>
+  <pre>[[inputs.mqtt_consumer]]
+  topics = ["A/unit/#"]
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "A/unit/+/+/+/+/+"
+    tags  = "_/_/unit_id/device/instance/point_name/dtype"</pre>
+  <p>Both leading segments are discarded with <code>_</code>. The resulting tag set is identical
+  to Variant 1 — the prefix is never stored.</p>
+  <div class="alert alert-warn">
+    <strong>Test environments only.</strong> Production topics do not carry a prefix.
+    The parquet writer handles this via a <code>depth_offset</code> config option.
+  </div>
+
+  <h3>Summary — what each variant preserves</h3>
+  <table>
+    <tr>
+      <th>Variant</th>
+      <th>unit_id … point_name</th>
+      <th>dtype tag</th>
+      <th>int/float split</th>
+      <th>Parquet alignment</th>
+    </tr>
+    <tr>
+      <td>1 — Full 6-segment</td>
+      <td class="col-green">✓</td>
+      <td class="col-green">✓ tag</td>
+      <td class="col-orange">✗ (single float field)</td>
+      <td>dtype gap remains</td>
+    </tr>
+    <tr>
+      <td>2 — 5-segment</td>
+      <td class="col-green">✓</td>
+      <td class="col-orange">✗ lost</td>
+      <td class="col-orange">✗</td>
+      <td>worst alignment</td>
+    </tr>
+    <tr>
+      <td>3 — Split measurement</td>
+      <td class="col-green">✓</td>
+      <td class="col-green">✓ via measurement</td>
+      <td class="col-green">✓</td>
+      <td>closest to parquet value_i/value_f</td>
+    </tr>
+    <tr>
+      <td>4 — Prefixed</td>
+      <td class="col-green">✓</td>
+      <td class="col-green">✓ tag</td>
+      <td class="col-orange">✗</td>
+      <td>same as Variant 1</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ── Parquet mapping ── -->
+<div class="section">
+  <h2 style="margin-top:0">Parquet column mapping — both formats side by side</h2>
+
+  <table>
+    <tr>
+      <th>Parquet column</th>
+      <th>Type</th>
+      <th>Longbow source</th>
+      <th>Evelyn/InfluxDB equivalent</th>
+      <th>Notes</th>
+    </tr>
+    <tr>
+      <td><code class="col-muted">project_id</code></td>
+      <td>INT64</td>
+      <td>config <code>output.project_id</code></td>
+      <td>— (not in InfluxDB schema)</td>
+      <td>Injected by writer config</td>
+    </tr>
+    <tr>
+      <td><code class="col-green">ts</code></td>
+      <td>FLOAT64</td>
+      <td>payload <code>ts</code> → Unix epoch s</td>
+      <td><code>_time</code> (nanoseconds)</td>
+      <td>Parquet stores as float seconds; InfluxDB as int nanoseconds</td>
+    </tr>
+    <tr>
+      <td><code class="col-muted">site_id</code></td>
+      <td>VARCHAR</td>
+      <td>config <code>output.site_id</code></td>
+      <td>— (not in InfluxDB schema)</td>
+      <td>Injected by writer; represents the physical site</td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">unit_id</code></td>
+      <td>VARCHAR</td>
+      <td>topic[1]</td>
+      <td>tag <code>unit_id</code></td>
+      <td>Identical in both paths ✓</td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">device</code></td>
+      <td>VARCHAR</td>
+      <td>topic[2]</td>
+      <td>tag <code>device</code></td>
+      <td>Identical in both paths ✓</td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">instance</code></td>
+      <td>VARCHAR</td>
+      <td>topic[3]</td>
+      <td>tag <code>instance</code></td>
+      <td>Identical in both paths ✓</td>
+    </tr>
+    <tr>
+      <td><code class="col-accent">point_name</code></td>
+      <td>VARCHAR</td>
+      <td>topic[4]</td>
+      <td>tag <code>point_name</code></td>
+      <td>Identical in both paths ✓</td>
+    </tr>
+    <tr>
+      <td><code class="col-orange">value_f</code></td>
+      <td>FLOAT64</td>
+      <td>payload <code>value</code> when dtype=float</td>
+      <td>field <code>value</code></td>
+      <td>InfluxDB always stores as float; parquet splits on dtype</td>
+    </tr>
+    <tr>
+      <td><code class="col-orange">value_i</code></td>
+      <td>INT64</td>
+      <td>payload <code>value</code> when dtype=integer / boolean_integer</td>
+      <td>field <code>value</code> (as float)</td>
+      <td>InfluxDB loses the int/bool distinction; parquet preserves it</td>
+    </tr>
+    <tr>
+      <td><code class="col-muted">mqtt_topic</code></td>
+      <td>VARCHAR</td>
+      <td>full topic string</td>
+      <td>— (not stored)</td>
+      <td>Added by writer for full MQTT replay; absent from InfluxDB</td>
+    </tr>
+    <tr>
+      <td><code class="col-muted">sample_count</code></td>
+      <td>INT64</td>
+      <td>always 1 (placeholder)</td>
+      <td>— (not in InfluxDB schema)</td>
+      <td>Future COV dedup counter — see docs/float_dedup_design.md</td>
+    </tr>
+    <tr>
+      <td><code class="col-muted">dtype</code></td>
+      <td>—</td>
+      <td><em>not stored</em> (consumed at parse)</td>
+      <td>tag <code>dtype</code></td>
+      <td class="col-orange">Gap: InfluxDB retains dtype as queryable tag; parquet does not</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ── Alignment gap ── -->
+<div class="section">
+  <h2 style="margin-top:0">Schema alignment — current gaps and path forward</h2>
+
+  <div class="alert alert-warn">
+    <strong>Outstanding alignment task:</strong> the parquet schema needs to be reconciled
+    with the live system design. The table below summarises the known gaps.
+  </div>
+
+  <table>
+    <tr><th>Topic / field</th><th>Raw parquet (today)</th><th>InfluxDB / target</th><th>Action needed</th></tr>
+    <tr>
+      <td><code>dtype</code></td>
+      <td>Consumed, not stored</td>
+      <td>Stored as tag</td>
+      <td>Add <code>dtype</code> VARCHAR column to parquet schema</td>
+    </tr>
+    <tr>
+      <td><code>value</code> split</td>
+      <td><code>value_i</code> / <code>value_f</code> separate columns</td>
+      <td>Single <code>value</code> field (always float)</td>
+      <td>Decide: keep split (preserves type fidelity) or unify to match InfluxDB</td>
+    </tr>
+    <tr>
+      <td><code>ts</code> precision</td>
+      <td>FLOAT64 Unix seconds</td>
+      <td>INT64 nanoseconds</td>
+      <td>Consider changing to INT64 microseconds or nanoseconds</td>
+    </tr>
+    <tr>
+      <td><code>project_id</code> / <code>site_id</code></td>
+      <td>Config-injected</td>
+      <td>Not present in InfluxDB</td>
+      <td>Keep — useful for multi-site DuckDB federation</td>
+    </tr>
+    <tr>
+      <td><code>mqtt_topic</code></td>
+      <td>Stored for replay</td>
+      <td>Not stored</td>
+      <td>Keep — enables exact MQTT replay without topic reconstruction</td>
+    </tr>
+    <tr>
+      <td><code>sample_count</code></td>
+      <td>Always 1 (placeholder)</td>
+      <td>Not present</td>
+      <td>Keep — will carry COV dedup count when implemented</td>
+    </tr>
+  </table>
+
+  <h3>Multi-simulator prefix (test environments only)</h3>
+  <p>On gx10 with 4 simultaneous simulators, each slice uses a topic prefix
+  (<code>A/unit/#</code>, <code>B/unit/#</code>, etc.) to avoid namespace collision.
+  The writer config uses a depth offset to skip the prefix — it is <strong>never stored</strong>
+  in parquet and does not appear in production data.</p>
+
+  <pre># config.gx10-evelyn-a.yaml
+mqtt:
+  topic: "A/unit/#"
+
+topic_segments:
+  depth_offset: 1    # skip the "A" prefix, treat "unit" as segment 0
+  - unit_id
+  - device
+  - instance
+  - point_name
+  - dtype_hint</pre>
+</div>
+
+<!-- ── Quick ref ── -->
+<div class="section">
+  <h2 style="margin-top:0">Quick reference — topic to parquet, one example</h2>
+
+  <p><strong>Raw MQTT message:</strong></p>
+  <pre>Topic:   unit/02281660/bms/bms_1/Batt1_SBMU1_Current/float
+Payload: {"ts":"2024-11-15T21:27:52.775Z","value":0.999393}</pre>
+
+  <p><strong>Resulting parquet row:</strong></p>
+  <table>
+    <tr><th>Column</th><th>Value</th><th>Source</th></tr>
+    <tr><td><code>project_id</code></td>  <td><code>0</code></td>                          <td>config</td></tr>
+    <tr><td><code>ts</code></td>          <td><code>1731706072.775</code></td>              <td>payload ts</td></tr>
+    <tr><td><code>site_id</code></td>     <td><code>"0215D1D8"</code></td>                  <td>config</td></tr>
+    <tr><td><code>unit_id</code></td>     <td><code>"02281660"</code></td>                  <td>topic[1]</td></tr>
+    <tr><td><code>device</code></td>      <td><code>"bms"</code></td>                       <td>topic[2]</td></tr>
+    <tr><td><code>instance</code></td>    <td><code>"bms_1"</code></td>                     <td>topic[3]</td></tr>
+    <tr><td><code>point_name</code></td>  <td><code>"Batt1_SBMU1_Current"</code></td>       <td>topic[4]</td></tr>
+    <tr><td><code>value_f</code></td>     <td><code>0.999393</code></td>                    <td>payload value (dtype=float)</td></tr>
+    <tr><td><code>value_i</code></td>     <td><em>null</em></td>                            <td>n/a — this is a float signal</td></tr>
+    <tr><td><code>mqtt_topic</code></td>  <td><code>"unit/02281660/bms/bms_1/Batt1_SBMU1_Current/float"</code></td><td>full topic</td></tr>
+    <tr><td><code>sample_count</code></td><td><code>1</code></td>                           <td>placeholder</td></tr>
+  </table>
+</div>
+
+<script>
+// Restore theme preference
+if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+document.querySelector('.theme-toggle').addEventListener('click', () => {
+  localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+});
+</script>
+</body>
+</html>

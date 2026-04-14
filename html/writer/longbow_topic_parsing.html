@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Longbow MQTT Topic Parsing — parquet_writer config guide</title>
+<style>
+  /* ── dark mode (default) ── */
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --pre-bg: #0d1117; --th-bg: #21262d; --tr-alt: #0d1117;
+  }
+
+  /* ── light mode ── */
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+  }
+
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #c8d1d9;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+    }
+    .theme-toggle, .nav { display: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 32px; line-height: 1.7; max-width: 1100px;
+         margin: 0 auto; transition: background .2s, color .2s; }
+
+  h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: .88rem; margin-bottom: 28px; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 10px;
+       padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: .92rem; margin: 18px 0 7px; }
+  p  { margin-bottom: 10px; font-size: .88rem; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { font-size: .88rem; margin-bottom: 3px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 20px 24px; margin-bottom: 18px; }
+
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+  code { background: var(--code-bg); border: 1px solid var(--border);
+         padding: 1px 5px; border-radius: 4px; font-size: .82rem;
+         color: var(--code-text); }
+  pre  { background: var(--pre-bg); border: 1px solid var(--border);
+         border-radius: 6px; padding: 14px; font-size: .82rem;
+         line-height: 1.6; overflow-x: auto; color: var(--code-text); margin: 10px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; margin: 10px 0 16px; }
+  th    { background: var(--th-bg); color: var(--accent); text-align: left;
+          padding: 7px 12px; border: 1px solid var(--border); font-size: .8rem; }
+  td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--tr-alt); }
+
+  /* ── segment strip ── */
+  .segment-row { display: flex; gap: 0; margin: 14px 0 6px; flex-wrap: nowrap; overflow-x: auto; }
+  .seg { display: flex; flex-direction: column; border: 1px solid var(--border);
+         border-right: none; min-width: 72px; flex-shrink: 0; }
+  .seg:last-child { border-right: 1px solid var(--border); }
+  .seg-idx  { font-size: .6rem; color: var(--muted); padding: 2px 8px;
+              background: var(--th-bg); border-bottom: 1px solid var(--border);
+              font-family: monospace; }
+  .seg-val  { font-family: 'Consolas', monospace; font-size: .78rem;
+              padding: 5px 8px; background: var(--code-bg); color: var(--code-text);
+              border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .seg-lbl  { font-size: .62rem; color: var(--muted); padding: 3px 8px 4px;
+              text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+
+  .seg.skip    .seg-val { color: var(--muted); }
+  .seg.skip    .seg-lbl { color: var(--border); }
+  .seg.src     .seg-val { background: #2d180033; color: var(--orange); }
+  .seg.src     .seg-lbl { color: var(--orange); }
+  .seg.part    .seg-val { background: #0c2d6b33; color: var(--accent); }
+  .seg.part    .seg-lbl { color: var(--accent); }
+  .seg.col     .seg-val { background: #0d442933; color: var(--green); }
+  .seg.col     .seg-lbl { color: var(--green); }
+  .seg.dtype   .seg-val { background: #1c0a3633; color: var(--purple); }
+  .seg.dtype   .seg-lbl { color: var(--purple); }
+
+  /* light mode segment overrides */
+  body.light .seg.skip  .seg-val { background: var(--code-bg); }
+  body.light .seg.src   .seg-val { background: #fff7ed; }
+  body.light .seg.part  .seg-val { background: #dbeafe; }
+  body.light .seg.col   .seg-val { background: #dcfce7; }
+  body.light .seg.dtype .seg-val { background: #f3e8ff; }
+
+  .seg-legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 16px; font-size: .75rem; }
+  .leg-item { display: flex; align-items: center; gap: 5px; }
+  .leg-swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--border); }
+  .sw-skip  { background: var(--code-bg); }
+  .sw-src   { background: #2d180033; }
+  .sw-part  { background: #0c2d6b33; }
+  .sw-col   { background: #0d442933; }
+  .sw-dtype { background: #1c0a3633; }
+  body.light .sw-src   { background: #fff7ed; }
+  body.light .sw-part  { background: #dbeafe; }
+  body.light .sw-col   { background: #dcfce7; }
+  body.light .sw-dtype { background: #f3e8ff; }
+
+  .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: .84rem; line-height: 1.5; }
+  .alert-info { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
+  .alert-warn { background: #2d200022; border: 1px solid #5a4000; color: var(--yellow); }
+  .alert-ok   { background: #0d442922; border: 1px solid #1a6e3a; color: var(--green); }
+  body.light .alert-info { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+  body.light .alert-warn { background: #fef9c3; border-color: #fde047; color: #854d0e; }
+  body.light .alert-ok   { background: #dcfce7; border-color: #86efac; color: #166534; }
+
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: .72rem;
+         font-weight: 700; margin-left: 6px; vertical-align: middle; }
+  .tag-orange { background: #2d1800; color: var(--orange); border: 1px solid #5a3000; }
+  .tag-green  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .tag-blue   { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .tag-purple { background: #1c0a36; color: var(--purple); border: 1px solid #5b2d9e; }
+  .tag-muted  { background: var(--th-bg); color: var(--muted); border: 1px solid var(--border); }
+  body.light .tag-orange { background: #fff7ed; border-color: #fed7aa; color: var(--orange); }
+  body.light .tag-green  { background: #dcfce7; border-color: #86efac; color: var(--green); }
+  body.light .tag-blue   { background: #dbeafe; border-color: #93c5fd; color: var(--accent); }
+  body.light .tag-purple { background: #f3e8ff; border-color: #d8b4fe; color: var(--purple); }
+  body.light .tag-muted  { background: var(--th-bg); border-color: var(--border); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 10px 0; }
+  @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+  .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 26px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: .8rem;
+           padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here  { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .theme-toggle { float: right; margin-top: -4px;
+                  background: var(--surface); border: 1px solid var(--border);
+                  color: var(--muted); border-radius: 4px; padding: 3px 10px;
+                  font-size: .78rem; cursor: pointer; font-family: inherit; }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  .arrow { color: var(--muted); margin: 0 4px; }
+  .path  { font-family: monospace; font-size: .82rem; color: var(--green);
+           background: var(--pre-bg); border: 1px solid var(--border);
+           border-radius: 4px; padding: 6px 12px; display: inline-block; margin: 4px 0; }
+  .label { font-size: .75rem; font-weight: 600; text-transform: uppercase;
+           letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="document.body.classList.toggle('light')">
+  Light / Dark
+</button>
+
+<nav class="nav">
+  <a href="projects.html">← Projects</a>
+  <a href="writer_design.html">Writer Design</a>
+  <a href="mqtt_topic_formats.html">Topic Formats</a>
+  <a href="evelyn_docker_34.html">Evelyn .34 Live</a>
+  <a href="longbow_topic_parsing.html" class="here">Longbow Parsing</a>
+</nav>
+
+<h1>Longbow MQTT Topic Parsing</h1>
+<p class="subtitle">How real Longbow data maps to parquet_writer config — segment roles, partition design, and multi-site handling</p>
+
+<!-- ─────────────────────────────────────────────── -->
+<div class="section" style="border-color:var(--accent);margin-bottom:24px">
+  <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);margin-bottom:10px">TL;DR</div>
+  <ul style="margin-bottom:16px">
+    <li>Real Longbow topics follow <code>ems/site/{site_id}/unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}</code> — <strong>9 segments</strong>, confirmed from a 1.3M row recording.</li>
+    <li>The recording contains <strong>4 distinct topic depths</strong> (9/8/7/6 segments) for different signal classes — a single <code>topic_segments</code> array only handles depth-9 correctly.</li>
+    <li>Use <strong><code>topic_patterns</code></strong> (already implemented in <code>parquet_writer.cpp</code>) with one pattern per depth — first match wins.</li>
+    <li><strong>Output file paths are always correct</strong> for all depths — <code>site_id</code> is at segment 2 in every variant. Only stored column values break without patterns.</li>
+    <li><code>unit_id</code> must be a <strong>column</strong>, not a filename prefix — 46 units × per-flush files = small-file problem.</li>
+    <li>Set <code>output.site_id</code> to <strong>empty</strong> in config so the topic-extracted value drives partitioning. The config value is a fallback only.</li>
+    <li>String payloads (<code>dtype_hint=string</code>) are <strong>kept</strong> — IP addresses, version strings, ifconfig dumps stored as UTF-8.</li>
+    <li>Three small code changes needed: (1) don't overwrite topic-extracted <code>site_id</code>, (2) store string JSON values in <code>row.strings</code>, (3) remove redundant static <code>site_id</code> in path vars.</li>
+  </ul>
+
+  <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Topic → output file path + Parquet columns (partition base: <code>/data/parquet-longbow</code>)</div>
+  <table style="font-size:.78rem;margin-bottom:12px">
+    <thead>
+      <tr><th>Depth</th><th>%</th><th>Example topic</th><th>Output path</th><th>Parquet columns populated</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>9</code></td><td>95%</td>
+        <td><code>ems/site/0215D1D8/unit/0215F562/bms/bms_1/AvgCellT/float</code></td>
+        <td><code style="color:var(--green)">/…/ems/site=0215D1D8/2026/03/30/{ts}.parquet</code></td>
+        <td><code>ts, site_id, unit_id, device, instance, point_name, value</code> <span style="color:var(--muted)">[mqtt_topic]</span></td>
+      </tr>
+      <tr>
+        <td><code>8</code></td><td>2%</td>
+        <td><code>ems/site/0215D1D8/unit/0215F562/root/AllowedMaxP/float</code></td>
+        <td><code style="color:var(--green)">/…/ems/site=0215D1D8/2026/03/30/{ts}.parquet</code></td>
+        <td><code>ts, site_id, unit_id, device, point_name, value</code> <span style="color:var(--muted)">[mqtt_topic] (instance: null)</span></td>
+      </tr>
+      <tr>
+        <td><code>7</code></td><td>1%</td>
+        <td><code>ems/site/0215D1D8/meter/meter_1/Current/float</code></td>
+        <td><code style="color:var(--green)">/…/ems/site=0215D1D8/2026/03/30/{ts}.parquet</code></td>
+        <td><code>ts, site_id, device, instance, point_name, value</code> <span style="color:var(--muted)">[mqtt_topic] (unit_id: null)</span></td>
+      </tr>
+      <tr>
+        <td><code>6</code></td><td>&lt;1%</td>
+        <td><code>ems/site/0215D1D8/root/AllowedMaxP/float</code></td>
+        <td><code style="color:var(--green)">/…/ems/site=0215D1D8/2026/03/30/{ts}.parquet</code></td>
+        <td><code>ts, site_id, device, point_name, value</code> <span style="color:var(--muted)">[mqtt_topic] (unit_id, instance: null)</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="alert alert-ok" style="margin-bottom:12px">
+    All four topic depths land in the <strong>same partition directory</strong> and the same Parquet file per flush — they differ only in which columns are populated. DuckDB reads them as one unified dataset with nulls for absent columns.
+  </div>
+
+  <div style="font-size:.8rem;color:var(--muted)">
+    Quick config: <code>topic: "ems/#"</code> &nbsp;·&nbsp; <code>topic_parser: positional</code> &nbsp;·&nbsp;
+    <code>partition_field: site_id</code> &nbsp;·&nbsp; <code>output.site_id: ""</code> &nbsp;·&nbsp; 4 <code>topic_patterns</code> entries (see §8)
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>1. Real Longbow Topic Structure</h2>
+
+<div class="section">
+  <p>The following is taken directly from <code>ref_data/longbow_recording.csv.gz</code> — a 1.3 million row capture from site <code>0215D1D8</code>:</p>
+
+  <pre>ems/site/0215D1D8/unit/0228168A/pcs/pcs_2/Hz/float
+{"ts":"2024-11-15T21:27:51.836Z","value":  60.010000}
+
+ems/site/0215D1D8/unit/0215F5DD/bms/bms_2/Batt2_SBMU1_warning_and_Fault__HV_circuit_(Fuse)open_circuit_fault/integer
+{"ts":"2024-11-15T21:27:52.775Z","value":    0.000000}
+
+ems/site/SiteSN/unit/0215D1D8/root/IP_address/string
+{"ts":"2024-11-15T21:21:04.196Z","value":"10.7.2.72"}</pre>
+
+  <div class="label">Segment breakdown — numeric topic</div>
+  <div class="segment-row">
+    <div class="seg src">
+      <div class="seg-idx">0</div>
+      <div class="seg-val">ems</div>
+      <div class="seg-lbl">source_type</div>
+    </div>
+    <div class="seg skip">
+      <div class="seg-idx">1</div>
+      <div class="seg-val">site</div>
+      <div class="seg-lbl">skip</div>
+    </div>
+    <div class="seg part">
+      <div class="seg-idx">2</div>
+      <div class="seg-val">0215D1D8</div>
+      <div class="seg-lbl">site_id</div>
+    </div>
+    <div class="seg skip">
+      <div class="seg-idx">3</div>
+      <div class="seg-val">unit</div>
+      <div class="seg-lbl">skip</div>
+    </div>
+    <div class="seg col">
+      <div class="seg-idx">4</div>
+      <div class="seg-val">0228168A</div>
+      <div class="seg-lbl">unit_id</div>
+    </div>
+    <div class="seg col">
+      <div class="seg-idx">5</div>
+      <div class="seg-val">pcs</div>
+      <div class="seg-lbl">device</div>
+    </div>
+    <div class="seg col">
+      <div class="seg-idx">6</div>
+      <div class="seg-val">pcs_2</div>
+      <div class="seg-lbl">instance</div>
+    </div>
+    <div class="seg col">
+      <div class="seg-idx">7</div>
+      <div class="seg-val">Hz</div>
+      <div class="seg-lbl">point_name</div>
+    </div>
+    <div class="seg dtype">
+      <div class="seg-idx">8</div>
+      <div class="seg-val">float</div>
+      <div class="seg-lbl">dtype_hint</div>
+    </div>
+  </div>
+
+  <div class="seg-legend">
+    <div class="leg-item"><div class="leg-swatch sw-src"></div><span style="color:var(--orange)">source_type</span> — auto: becomes first output dir level</div>
+    <div class="leg-item"><div class="leg-swatch sw-skip"></div><span style="color:var(--muted)">skip (_)</span> — constant literal, discarded</div>
+    <div class="leg-item"><div class="leg-swatch sw-part"></div><span style="color:var(--accent)">partition</span> — drives directory split + column</div>
+    <div class="leg-item"><div class="leg-swatch sw-col"></div><span style="color:var(--green)">column</span> — stored as string in Parquet row</div>
+    <div class="leg-item"><div class="leg-swatch sw-dtype"></div><span style="color:var(--purple)">dtype_hint</span> — drives INT64 vs FLOAT64 cast, not stored</div>
+  </div>
+
+  <div class="alert alert-warn">
+    Segment 0 (<code>ems</code>) is always <strong>source_type</strong> — it is consumed automatically as
+    <code>parts[0]</code> and becomes the first directory level in the output path.
+    Do <em>not</em> add a skip for it in <code>topic_segments</code> — the array starts at segment 0,
+    which means index 0 = <code>"_"</code> skips the source_type and index 1 maps to <code>site</code>.
+    Start the segments array at index 0 = <code>"_"</code> to skip <code>ems</code>,
+    index 1 = <code>"_"</code> to skip <code>site</code>, etc.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>2. Segment Role Decisions</h2>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th>Seg</th><th>Example value</th><th>Role</th><th>Rationale</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>0</code></td>
+        <td><code>ems</code></td>
+        <td><span class="tag tag-orange">source_type</span></td>
+        <td>Always <code>parts[0]</code> — auto-consumed, feeds first output dir level. Use <code>"_"</code> in segments to skip storing it as a column.</td>
+      </tr>
+      <tr>
+        <td><code>1</code></td>
+        <td><code>site</code></td>
+        <td><span class="tag tag-muted">skip</span></td>
+        <td>Constant literal — no information value.</td>
+      </tr>
+      <tr>
+        <td><code>2</code></td>
+        <td><code>0215D1D8</code></td>
+        <td><span class="tag tag-blue">partition + column</span></td>
+        <td>Site serial. Extracted as <code>site_id</code> column and used as the partition directory value. Enables one writer to handle multiple sites on a shared broker.</td>
+      </tr>
+      <tr>
+        <td><code>3</code></td>
+        <td><code>unit</code></td>
+        <td><span class="tag tag-muted">skip</span></td>
+        <td>Constant literal — no information value.</td>
+      </tr>
+      <tr>
+        <td><code>4</code></td>
+        <td><code>0228168A</code></td>
+        <td><span class="tag tag-green">column</span></td>
+        <td>Unit serial (46 units per site). Stored as <code>unit_id</code> column — <strong>not</strong> a file prefix. Using it as a prefix would create 46 files per flush cycle (small-file problem).</td>
+      </tr>
+      <tr>
+        <td><code>5</code></td>
+        <td><code>pcs</code> / <code>bms</code> / <code>rack</code></td>
+        <td><span class="tag tag-green">column</span></td>
+        <td>Device class. Key filter for queries — "give me all PCS signals".</td>
+      </tr>
+      <tr>
+        <td><code>6</code></td>
+        <td><code>pcs_2</code> / <code>bms_1</code></td>
+        <td><span class="tag tag-green">column</span></td>
+        <td>Device instance. Differentiates multiple PCS or BMS units within the same hardware unit.</td>
+      </tr>
+      <tr>
+        <td><code>7</code></td>
+        <td><code>Hz</code> / <code>PF</code> / <code>Batt2_SBMU1_...</code></td>
+        <td><span class="tag tag-green">column</span></td>
+        <td>Signal name (<code>point_name</code>). Primary query dimension — "give me Hz over time".</td>
+      </tr>
+      <tr>
+        <td><code>8</code></td>
+        <td><code>float</code> / <code>integer</code> / <code>string</code></td>
+        <td><span class="tag tag-purple">dtype_hint</span></td>
+        <td>Drives INT64 vs FLOAT64 cast; also signals string payloads (IP addresses, ifconfig dumps). String values are stored as UTF-8 in the <code>value_str</code> column.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>3. Message Types in Real Data</h2>
+
+<div class="section">
+  <div class="two-col">
+    <div>
+      <h3>Numeric float <span class="tag tag-green">keep</span></h3>
+      <pre>Topic:   ems/site/0215D1D8/unit/0228168A/pcs/pcs_2/Hz/float
+Payload: {"ts":"2024-11-15T21:27:51.836Z","value":60.010000}
+
+→ stored as FLOAT64 row
+→ point_name = "Hz", device = "pcs"</pre>
+    </div>
+    <div>
+      <h3>Integer / fault flag <span class="tag tag-green">keep</span></h3>
+      <pre>Topic:   ems/site/.../bms/bms_2/Batt2_SBMU1_warning_.../integer
+Payload: {"ts":"2024-11-15T21:27:52.775Z","value":0.000000}
+
+→ stored as INT64 row (value cast: 0)
+→ mostly zero — Filter B (dedup) eliminates these</pre>
+    </div>
+  </div>
+  <div class="two-col">
+    <div>
+      <h3>String payload <span class="tag tag-green">keep</span></h3>
+      <pre>Topic:   ems/site/SiteSN/unit/0215D1D8/root/IP_address/string
+Payload: {"ts":"...","value":"10.7.2.72"}
+
+→ stored as UTF-8 string row
+→ ~4% of message volume
+→ ifconfig dumps can be multi-KB blobs</pre>
+    </div>
+    <div>
+      <h3>Note: alternate site_id topic</h3>
+      <pre>ems/site/<b>SiteSN</b>/unit/<b>0215D1D8</b>/root/...
+
+Some system-level topics use "SiteSN" as the
+site placeholder and the real site_id as unit_id.
+Segment 2 still maps to site_id column —
+these land in a separate site=SiteSN partition.</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>4. parquet_writer Config</h2>
+
+<div class="section">
+  <h3>Standard Longbow — single or multi-site broker</h3>
+  <pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer-longbow
+  topic: "ems/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"        # 0: "ems"       → source_type (auto), skip as column
+    - "_"        # 1: "site"      → constant literal, skip
+    - site_id    # 2: "0215D1D8"  → partition value + column
+    - "_"        # 3: "unit"      → constant literal, skip
+    - unit_id    # 4: "0228168A"  → column (46 values — not a file prefix)
+    - device     # 5: "pcs"       → column
+    - instance   # 6: "pcs_2"     → column
+    - point_name # 7: "Hz"        → column
+    - dtype_hint # 8: "float"     → INT64 vs FLOAT64 cast, not stored
+
+  partition_field: site_id        # uses value extracted from topic segment 2
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+output:
+  base_path: /data/parquet-longbow
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 5000000
+
+wal:
+  enabled: true
+
+health:
+  enabled: true
+  port: 8771
+
+guard:
+  min_free_gb: 2.0</pre>
+
+  <div class="label">Output path produced</div>
+  <div class="path">/data/parquet-longbow/ems/site=0215D1D8/2026/03/30/20260330T120000Z.parquet</div>
+
+  <div class="alert alert-info" style="margin-top:12px">
+    <strong>partition_field: site_id</strong> — the writer uses the value extracted from topic segment 2
+    as the partition directory value, rather than the static <code>output.site_id</code> config field.
+    This allows a single writer instance to receive data from multiple sites on one broker and split
+    them into separate directory trees automatically.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>5. Comparison: Longbow vs Evelyn vs Stress Runner</h2>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th>Property</th>
+        <th>Longbow (real)</th>
+        <th>Evelyn (ems_site_simulator)</th>
+        <th>Stress Runner</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Topic depth</td>
+        <td>9 segments</td>
+        <td>6 segments (7 with slice prefix)</td>
+        <td>7 segments (6 + measurement)</td>
+      </tr>
+      <tr>
+        <td>Example topic</td>
+        <td><code>ems/site/0215D1D8/unit/0228168A/pcs/pcs_2/Hz/float</code></td>
+        <td><code>unit/0215F562/bms/bms_1/AvgCellT/float</code></td>
+        <td><code>batteries/project=1/site=10/rack=0/module=3/cell=7/voltage</code></td>
+      </tr>
+      <tr>
+        <td>site_id source</td>
+        <td>Topic segment 2</td>
+        <td>Config (<code>output.site_id</code>)</td>
+        <td>Topic KV (<code>site=10</code>)</td>
+      </tr>
+      <tr>
+        <td>unit_id</td>
+        <td>Hex serial, topic seg 4</td>
+        <td>Hex serial, topic seg 1</td>
+        <td>N/A (cell hierarchy instead)</td>
+      </tr>
+      <tr>
+        <td>Timestamp format</td>
+        <td>ISO 8601 (<code>ts</code>)</td>
+        <td>ISO 8601 (<code>ts</code>)</td>
+        <td>Unix epoch float (<code>timestamp</code>)</td>
+      </tr>
+      <tr>
+        <td>Type info</td>
+        <td><code>float</code> / <code>integer</code> / <code>string</code></td>
+        <td><code>float</code> / <code>integer</code> / <code>boolean_integer</code></td>
+        <td>None — all float</td>
+      </tr>
+      <tr>
+        <td>String payloads</td>
+        <td>Yes — IP addresses, ifconfig dumps, version strings</td>
+        <td>No</td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td>Parser mode</td>
+        <td>positional</td>
+        <td>positional</td>
+        <td>kv</td>
+      </tr>
+      <tr>
+        <td>Segments config</td>
+        <td><code>_,_,site_id,_,unit_id,device,instance,point_name,dtype_hint</code></td>
+        <td><code>_,unit_id,device,instance,point_name,dtype_hint</code></td>
+        <td>kv map — project/site/rack/module/cell → INT64</td>
+      </tr>
+      <tr>
+        <td>Rate (typical)</td>
+        <td>~81,420 msg/s (46 units)</td>
+        <td>~81,420 msg/s (46 units)</td>
+        <td>~79,872 msg/s (9,984 cells)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>6. File Prefix Strategy</h2>
+
+<div class="section">
+  <p>
+    <code>output.filename_prefix</code> is a <em>static</em> config value intended for
+    writer-process-level collision avoidance — not for per-message metadata.
+    Site-level separation is handled by the partition directory; unit-level data lives as columns.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Use case</th><th>Recommended approach</th><th>Example output path</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Single writer, single site</td>
+        <td>No prefix needed — partition dirs are sufficient</td>
+        <td><code>/data/parquet/ems/site=0215D1D8/2026/03/30/{ts}.parquet</code></td>
+      </tr>
+      <tr>
+        <td>Multi-site broker</td>
+        <td><code>partition_field: site_id</code> from topic → automatic split</td>
+        <td><code>/data/parquet/ems/site=0215D1D8/…/{ts}.parquet</code><br>
+            <code>/data/parquet/ems/site=SiteSN/…/{ts}.parquet</code></td>
+      </tr>
+      <tr>
+        <td>Two writer processes, shared dir</td>
+        <td><code>filename_prefix: writer-a</code> in config</td>
+        <td><code>…/writer-a_20260330T120000Z.parquet</code></td>
+      </tr>
+      <tr>
+        <td>Multi-slice (gx10 style)</td>
+        <td>Topic prefix (<code>A/unit/#</code>) → <code>source_type = "A"</code> → separate dir</td>
+        <td><code>/data/parquet/A/site=…</code> vs <code>/data/parquet/B/site=…</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-ok">
+    The gx10 multi-slice approach (prefix letter in topic = first segment = source_type) is the
+    cleanest design — no extra config needed, each writer gets its own output directory tree
+    automatically just from the topic subscription filter.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>7. Topic Depth Analysis — Real Recording</h2>
+
+<div class="section">
+  <p>
+    Analysis of <code>ref_data/longbow_recording.csv.gz</code> (1,304,167 rows) reveals
+    <strong>four distinct topic depths</strong>. A single <code>topic_segments</code> array
+    only correctly handles the dominant 9-segment form.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Depth</th><th>Count</th><th>%</th><th>Example topic</th><th>Structure</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>9</code></td><td>1,238,698</td><td>95%</td>
+        <td><code>ems/site/0215D1D8/unit/0215F562/bms/bms_1/AvgCellT/float</code></td>
+        <td>unit signals with device + instance</td>
+      </tr>
+      <tr>
+        <td><code>8</code></td><td>27,975</td><td>2%</td>
+        <td><code>ems/site/0215D1D8/unit/0215F562/root/AllowedMaxP/float</code></td>
+        <td>unit root signals — no instance level</td>
+      </tr>
+      <tr>
+        <td><code>7</code></td><td>12,810</td><td>1%</td>
+        <td><code>ems/site/0215D1D8/meter/meter_1/Current/float</code></td>
+        <td>meter / site-device — no unit segment</td>
+      </tr>
+      <tr>
+        <td><code>6</code></td><td>4,323</td><td>&lt;1%</td>
+        <td><code>ems/site/0215D1D8/root/AllowedMaxP/float</code></td>
+        <td>site-level root signals — no unit or instance</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>What a single 9-entry topic_segments produces for each depth</h3>
+  <p style="margin-bottom:10px">
+    <code>apply_segments</code> maps positionally — <code>segs[i] → parts[i]</code>, stops at whichever is shorter.
+    The output <strong>directory is always correct</strong> (site_id is segment 2 in all depths).
+    The <strong>column values break</strong> when depth &lt; 9.
+  </p>
+
+  <pre style="margin-bottom:16px"><span style="color:var(--green)">9-seg (correct):</span>
+ems / site / 0215D1D8 / unit / 0215F562 / bms  / bms_1    / AvgCellT   / float
+ _      _    site_id    _     unit_id    device  instance   point_name   dtype_hint
+
+→ device="bms"  instance="bms_1"  point_name="AvgCellT"  dtype_hint="float"
+→ /data/parquet-longbow/ems/site=0215D1D8/2026/03/30/{ts}.parquet  ✓
+
+<span style="color:var(--yellow)">8-seg (columns shifted — dtype_hint lost):</span>
+ems / site / 0215D1D8 / unit / 0215F562 / root / AllowedMaxP / float
+ _      _    site_id    _     unit_id    device  instance      point_name
+                                                               ↑ "float" stored as point_name
+                                                               dtype_hint = (missing — seg 8)
+
+→ device="root"  instance="AllowedMaxP"  point_name="float"  dtype_hint=""
+→ value stored as float by default (correct by luck)
+→ /data/parquet-longbow/ems/site=0215D1D8/2026/03/30/{ts}.parquet  (dir ✓, columns ✗)
+
+<span style="color:var(--red)">7-seg (meter topics — no 'unit' in path):</span>
+ems / site / 0215D1D8 / meter / meter_1 / Current / float
+ _      _    site_id     _     unit_id    device    instance
+                              ↑ "meter_1" stored as unit_id
+                                          ↑ "Current" stored as device
+                                                     ↑ "float" stored as instance
+                              point_name = ""  dtype_hint = ""
+
+→ unit_id="meter_1"  device="Current"  instance="float"  point_name=""
+→ /data/parquet-longbow/ems/site=0215D1D8/2026/03/30/{ts}.parquet  (dir ✓, columns ✗)
+
+<span style="color:var(--red)">6-seg (site-level root — no unit):</span>
+ems / site / 0215D1D8 / root / AllowedMaxP / float
+ _      _    site_id    _     unit_id        device
+                              ↑ "AllowedMaxP" stored as unit_id
+                                              ↑ "float" stored as device
+                              instance, point_name, dtype_hint = all empty
+
+→ unit_id="AllowedMaxP"  device="float"  everything else empty
+→ /data/parquet-longbow/ems/site=0215D1D8/2026/03/30/{ts}.parquet  (dir ✓, columns ✗)</pre>
+
+  <div class="alert alert-info">
+    <strong>Key insight:</strong> the output file path is correct for all four depths because
+    <code>site_id</code> is always at segment 2. Only the stored column values break for depths
+    6, 7, and 8. This is exactly the problem <code>topic_patterns</code> solves.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>8. topic_patterns — Four-Pattern Config</h2>
+
+<div class="section">
+  <p>
+    <code>topic_patterns</code> is already implemented in <code>parquet_writer.cpp</code> —
+    <code>match_topic_pattern()</code>, <code>Config::TopicPattern</code>, and the multi-pattern
+    branch in <code>parse_topic_positional()</code> all exist. It just needs the right config.
+    First matching pattern wins; <code>+</code> matches any single segment, <code>#</code> matches remainder.
+  </p>
+
+  <pre>mqtt:
+  topic: "ems/#"
+  topic_parser: positional   # topic_patterns takes over when present (topic_segments ignored)
+  partition_field: site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+  topic_patterns:
+
+    # 9-seg: unit signals with device + instance (95% of traffic)
+    # ems/site/{site}/unit/{unit}/{device}/{instance}/{point}/{dtype}
+    - match: "ems/site/+/unit/+/+/+/+/+"
+      segments: ["_","_","site_id","_","unit_id","device","instance","point_name","dtype_hint"]
+
+    # 8-seg: unit root signals — no instance level
+    # ems/site/{site}/unit/{unit}/root/{point}/{dtype}
+    - match: "ems/site/+/unit/+/+/+/+"
+      segments: ["_","_","site_id","_","unit_id","device","point_name","dtype_hint"]
+
+    # 7-seg: meter / site-device signals — no unit
+    # ems/site/{site}/{device}/{instance}/{point}/{dtype}
+    - match: "ems/site/+/+/+/+/+"
+      segments: ["_","_","site_id","device","instance","point_name","dtype_hint"]
+
+    # 6-seg: site-level root signals — no unit or instance
+    # ems/site/{site}/root/{point}/{dtype}
+    - match: "ems/site/+/+/+/+"
+      segments: ["_","_","site_id","device","point_name","dtype_hint"]</pre>
+
+  <h3>Resulting columns per pattern</h3>
+  <table>
+    <thead>
+      <tr><th>Pattern</th><th>site_id</th><th>unit_id</th><th>device</th><th>instance</th><th>point_name</th><th>dtype_hint</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>9-seg</td>
+        <td><span style="color:var(--green)">0215D1D8</span></td>
+        <td><span style="color:var(--green)">0215F562</span></td>
+        <td><span style="color:var(--green)">bms</span></td>
+        <td><span style="color:var(--green)">bms_1</span></td>
+        <td><span style="color:var(--green)">AvgCellT</span></td>
+        <td><span style="color:var(--green)">float</span></td>
+      </tr>
+      <tr>
+        <td>8-seg</td>
+        <td><span style="color:var(--green)">0215D1D8</span></td>
+        <td><span style="color:var(--green)">0215F562</span></td>
+        <td><span style="color:var(--green)">root</span></td>
+        <td><span style="color:var(--muted)">—</span></td>
+        <td><span style="color:var(--green)">AllowedMaxP</span></td>
+        <td><span style="color:var(--green)">float</span></td>
+      </tr>
+      <tr>
+        <td>7-seg</td>
+        <td><span style="color:var(--green)">0215D1D8</span></td>
+        <td><span style="color:var(--muted)">—</span></td>
+        <td><span style="color:var(--green)">meter</span></td>
+        <td><span style="color:var(--green)">meter_1</span></td>
+        <td><span style="color:var(--green)">Current</span></td>
+        <td><span style="color:var(--green)">float</span></td>
+      </tr>
+      <tr>
+        <td>6-seg</td>
+        <td><span style="color:var(--green)">0215D1D8</span></td>
+        <td><span style="color:var(--muted)">—</span></td>
+        <td><span style="color:var(--green)">root</span></td>
+        <td><span style="color:var(--muted)">—</span></td>
+        <td><span style="color:var(--green)">AllowedMaxP</span></td>
+        <td><span style="color:var(--green)">float</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    DuckDB handles sparse columns across row groups — rows where <code>unit_id</code> or
+    <code>instance</code> are absent simply have nulls in those columns. All four patterns
+    write to the same partition directory and the same Parquet file per flush cycle.
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>9. String Payload Handling</h2>
+
+<div class="section">
+  <p>
+    String-typed messages (dtype_hint = <code>string</code>) carry system metadata: IP addresses,
+    ifconfig output, software version strings. These are kept in full — they are stored as UTF-8
+    in the Parquet row alongside numeric signals. ~4% of Longbow message volume.
+  </p>
+
+  <div class="two-col">
+    <div>
+      <h3>String signals (all kept)</h3>
+      <pre>ems/site/SiteSN/unit/0215D1D8/root/IP_address/string
+→ value: "10.7.2.72"
+
+ems/site/SiteSN/unit/0215D1D8/root/software_version/string
+→ value: "v3.1.4"
+
+ems/site/SiteSN/unit/0215D1D8/root/ifconfig/string
+→ value: "eth0  inet addr:10.7.2.72 ..."  (multi-KB blob)</pre>
+    </div>
+    <div>
+      <h3>Parquet schema note</h3>
+      <pre>All three dtype_hint values map to columns:
+
+  float   → value  FLOAT64
+  integer → value  INT64
+  string  → value  UTF-8 string
+
+DuckDB handles the mixed column type across
+row groups transparently when querying.
+
+Ifconfig blobs are large but low-frequency
+(~1/s vs 81k/s for numeric signals) so their
+storage impact is negligible.</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── -->
+<h2>10. DuckDB Query Examples</h2>
+
+<div class="section">
+  <pre>-- All Hz readings for site 0215D1D8, last 24 hours
+SELECT ts, unit_id, instance, value
+FROM read_parquet('/data/parquet-longbow/ems/site=0215D1D8/2026/03/30/*.parquet')
+WHERE point_name = 'Hz'
+ORDER BY ts;
+
+-- PCS power factor across all units
+SELECT ts, unit_id, instance, value
+FROM read_parquet('/data/parquet-longbow/ems/site=0215D1D8/*/*/*.parquet')
+WHERE device = 'pcs' AND point_name = 'PF';
+
+-- All sites — fault flags that fired (value != 0)
+SELECT site_id, unit_id, device, point_name, value, ts
+FROM read_parquet('/data/parquet-longbow/ems/site=*/2026/03/30/*.parquet')
+WHERE value != 0 AND point_name LIKE 'Batt%warning%'
+ORDER BY ts DESC
+LIMIT 100;</pre>
+
+  <div class="alert alert-info" style="margin-top:8px">
+    DuckDB prunes partition directories automatically from the glob path —
+    <code>site=0215D1D8</code> in the path filters to a single site without scanning others.
+    Columns (<code>unit_id</code>, <code>device</code>, <code>point_name</code>) are filtered
+    within each file using Parquet column statistics.
+  </div>
+</div>
+
+<p style="color:var(--muted);font-size:.76rem;margin-top:28px">
+  Source: <code>ref_data/longbow_recording.csv.gz</code> — 1,304,167 rows, site 0215D1D8, 2024-11-15 &nbsp;|&nbsp;
+  Writer: <code>source/parquet_writer/parquet_writer.cpp</code>
+</p>
+
+<script>
+  // Persist theme in localStorage
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light') document.body.classList.add('light');
+  document.querySelector('.theme-toggle').addEventListener('click', () => {
+    localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  });
+</script>
+</body>
+</html>

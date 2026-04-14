@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Load Controller — Heltec LoRa32</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --orange:#e3b341;
+    --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; max-width:860px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .btn-row { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+  .btn { display:inline-block; padding:8px 16px; border-radius:6px; font-size:.85rem;
+         font-weight:600; text-decoration:none; border:none; cursor:pointer; }
+  .btn-primary { background:#1f6feb; color:#fff; }
+  .btn-primary:hover { background:#388bfd; }
+  .btn-dl { background:var(--surface); color:var(--accent);
+             border:1px solid var(--accent); }
+  .btn-dl:hover { background:#0c2d6b44; }
+
+  table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:6px 10px;
+       border-bottom:1px solid var(--border); }
+  td { padding:6px 10px; border-bottom:1px solid #21262d; }
+  td:first-child { color:var(--accent); font-family:monospace; white-space:nowrap; }
+
+  .tag { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:3px;
+         border:1px solid var(--border); color:var(--muted); margin-right:4px; }
+  .tag-ws { border-color:var(--green); color:var(--green); }
+
+  pre { background:var(--code-bg); padding:12px; border-radius:6px; font-size:.78rem;
+        overflow-x:auto; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Controller Projects</a>
+</div>
+
+<h1>Load Controller — Heltec LoRa32</h1>
+<p class="subtitle">ESP32 DAC load controller with WebSocket control, OLED display, OTA, and waveform profiles</p>
+<span class="tag tag-ws">ws :81</span>
+<span class="tag">Heltec LoRa32 V2/V3</span>
+<span class="tag">ESP32-S3</span>
+
+<div class="btn-row">
+  <a class="btn btn-primary" href="load_simulator_v2.html">Open Control UI</a>
+  <a class="btn btn-dl" href="arduino/load_controller_lora32/load_controller_lora32.ino" download>Download load_controller_lora32.ino</a>
+  <a class="btn btn-dl" href="arduino/fast_load_control/fast_load_control.ino" download>Download fast_load_control.ino</a>
+</div>
+
+<h2>Overview</h2>
+<p style="font-size:.85rem;line-height:1.6;color:var(--muted)">
+  Runs on a Heltec LoRa32 V2 (ESP32) or V3 (ESP32-S3). Serves a WebSocket on port 81 for browser control.
+  Drives two DAC channels (voltage + current) and executes ramp/profile sequences.
+  The <strong>fast_load_control</strong> variant uses I2S DMA at 5000 Hz for smooth 200 µs steps instead of the standard ~10 ms steps.
+</p>
+
+<h2>Hardware</h2>
+<table>
+  <tr><th>Pin</th><th>Function</th><th>Notes</th></tr>
+  <tr><td>GPIO25 / DAC1</td><td>Voltage reference output</td><td>0–3.3 V → 0–60 V via scaling</td></tr>
+  <tr><td>GPIO26 / DAC2</td><td>Current reference output</td><td>0–3.3 V → 0–200 A via scaling</td></tr>
+  <tr><td>GPIO36 / ADC1</td><td>Analog feedback input</td><td>WiFi-safe ADC1 channel</td></tr>
+  <tr><td>OLED (I2C)</td><td>Status display</td><td>IP, load bar, mode</td></tr>
+</table>
+
+<h2>WebSocket Commands (JSON, port 81)</h2>
+<pre>{"cmd": "set_voltage",    "value": 48.0}
+{"cmd": "set_current",    "value": 100.0}
+{"cmd": "set_dac",        "channel": 0, "value": 2048}
+{"cmd": "set_led",        "state": "blink"}
+{"cmd": "get_status"}
+{"cmd": "load_profile",   "profile": {...}}
+{"cmd": "start_profile",  "channel": "voltage"|"current"|"both"}
+{"cmd": "stop_profile",   "channel": "voltage"|"current"|"both"}
+{"cmd": "set_display",    "channel": "voltage"|"current"}</pre>
+
+<h2>Serial Config Commands</h2>
+<pre>wifi ssid &lt;name&gt;        wifi pass &lt;password&gt;     wifi connect
+set voltage &lt;0-60&gt;      set current &lt;0-200&gt;      set dac1 &lt;0-4095&gt;
+profile start           profile stop             status</pre>
+
+<h2>Library Requirements</h2>
+<p style="font-size:.82rem;color:var(--muted)">ArduinoJson · WebSocketsServer · ArduinoOTA · Preferences · U8g2 (V2) or TFT_eSPI (T-Display) · driver/i2s.h (fast variant, built-in)</p>
+
+</body>
+</html>

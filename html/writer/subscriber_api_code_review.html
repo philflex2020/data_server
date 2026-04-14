@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>subscriber_api — Critical Code Review</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --head:     #e6edf3;
+    --red:      #f85149;
+    --orange:   #d29922;
+    --yellow:   #e3b341;
+    --green:    #3fb950;
+    --blue:     #58a6ff;
+    --purple:   #bc8cff;
+    --tag-bg:   #21262d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; padding: 24px; }
+  h1 { color: var(--head); font-size: 22px; margin-bottom: 4px; }
+  h2 { color: var(--head); font-size: 17px; margin: 28px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { color: var(--blue); font-size: 14px; margin: 16px 0 8px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .lbl { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .num.critical { color: var(--red); }
+  .num.high     { color: var(--orange); }
+  .num.medium   { color: var(--yellow); }
+  .num.low      { color: var(--blue); }
+  .num.info     { color: var(--muted); }
+
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .finding-header {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 16px; cursor: pointer;
+    user-select: none;
+  }
+  .finding-header:hover { background: #1c2128; }
+  .sev {
+    flex-shrink: 0; font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 4px; margin-top: 2px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .sev.critical { background: #3d0c0c; color: var(--red); border: 1px solid var(--red); }
+  .sev.high     { background: #2d1a00; color: var(--orange); border: 1px solid var(--orange); }
+  .sev.medium   { background: #2d2200; color: var(--yellow); border: 1px solid var(--yellow); }
+  .sev.low      { background: #0c1e3d; color: var(--blue); border: 1px solid var(--blue); }
+  .sev.info     { background: var(--tag-bg); color: var(--muted); border: 1px solid var(--border); }
+
+  .finding-title { font-weight: 600; color: var(--head); flex-grow: 1; }
+  .finding-file  { color: var(--muted); font-size: 12px; font-family: monospace; margin-top: 2px; }
+  .chevron { color: var(--muted); font-size: 11px; margin-top: 3px; flex-shrink: 0; transition: transform 0.15s; }
+  .finding.open .chevron { transform: rotate(90deg); }
+  .finding-body { display: none; padding: 0 16px 16px 16px; border-top: 1px solid var(--border); }
+  .finding.open .finding-body { display: block; }
+  .finding-body p { margin: 10px 0 6px; }
+  pre {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; overflow-x: auto; font-size: 13px; line-height: 1.5;
+    margin: 8px 0;
+  }
+  code { font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; }
+  pre code { color: var(--text); }
+  .fix { background: #0d1f0d; border: 1px solid #2ea04326; border-radius: 6px; padding: 12px; margin: 10px 0; }
+  .fix-label { color: var(--green); font-weight: 700; font-size: 12px; text-transform: uppercase; margin-bottom: 6px; }
+  .tag { background: var(--tag-bg); color: var(--muted); font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-right: 4px; font-family: monospace; }
+  .category { color: var(--purple); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  a { color: var(--blue); }
+  .file-label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<h1>subscriber_api — Critical Code Review</h1>
+<p class="meta">Reviewed: 2026-03-26 &nbsp;|&nbsp; Reviewer: Claude Sonnet 4.6 &nbsp;|&nbsp; Scope: source/subscriber_api/**</p>
+
+<div class="summary-grid">
+  <div class="stat"><div class="num critical">2</div><div class="lbl">Critical</div></div>
+  <div class="stat"><div class="num high">4</div><div class="lbl">High</div></div>
+  <div class="stat"><div class="num medium">7</div><div class="lbl">Medium</div></div>
+  <div class="stat"><div class="num low">5</div><div class="lbl">Low</div></div>
+  <div class="stat"><div class="num info">4</div><div class="lbl">Info</div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════ CRITICAL ═══════════════════════════════════════════ -->
+<h2>Critical</h2>
+
+<!-- C-1 -->
+<div class="finding" id="c1">
+  <div class="finding-header" onclick="toggle('c1')">
+    <span class="sev critical">Critical</span>
+    <div>
+      <div class="finding-title">SQL injection in DuckDB queries — site, instance, fields unsanitized</div>
+      <div class="finding-file">duckdb_backend.py:109–115 &nbsp;|&nbsp; subscriber.py:143–148</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Security / Correctness</span></p>
+    <p><code>site</code>, <code>instance</code>, and <code>fields</code> values from the HTTP/WebSocket request are interpolated directly into SQL without any escaping or parameterization.</p>
+    <pre><code># duckdb_backend.py — current
+field_sql = "*" if not fields else ", ".join(f'"{f}"' for f in fields)
+
+result = conn.execute(f"""
+    SELECT {field_sql}
+    FROM read_parquet([{sources}], union_by_name=true)
+    WHERE timestamp >= {from_ts} AND timestamp <= {to_ts}
+    ORDER BY timestamp
+    LIMIT {limit}
+""")</code></pre>
+    <p>An HTTP caller sending <code>?fields=*+FROM+sqlite_master--</code> or a field name containing <code>"</code> can break out of the double-quote identifier quoting. A site value of <code>'; DROP TABLE --</code> gets directly embedded in the glob path string fed to DuckDB.</p>
+    <p>DuckDB also supports <code>read_parquet</code> with <code>http://</code> paths — a crafted <code>local_path</code> or glob could cause the process to make outbound HTTP requests to attacker-controlled servers (SSRF via DuckDB httpfs).</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <p>Validate <code>site</code>, <code>instance</code>, and <code>fields</code> against an allowlist of safe characters before use. For this internal system, simple regex validation is sufficient:</p>
+      <pre><code>import re
+_SAFE_ID = re.compile(r'^[\w\-./]+$')   # alphanumeric, dash, dot, slash
+
+def _validate_id(value: str, name: str) -> str:
+    if not _SAFE_ID.match(value):
+        raise ValueError(f"Invalid {name}: {value!r}")
+    return value
+
+# In query():
+site     = _validate_id(site, "site")
+instance = _validate_id(instance, "instance")
+if fields:
+    fields = [_validate_id(f, "field") for f in fields]</code></pre>
+      <p>Also validate at the HTTP layer in <code>http_server.py:_query()</code> before passing to the router, so error responses are 400 rather than 500.</p>
+    </div>
+  </div>
+</div>
+
+<!-- C-2 -->
+<div class="finding" id="c2">
+  <div class="finding-header" onclick="toggle('c2')">
+    <span class="sev critical">Critical</span>
+    <div>
+      <div class="finding-title">Flux injection — site, instance, field names, extra_filters unsanitized</div>
+      <div class="finding-file">backends/influxdb2.py:64–88</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Security</span></p>
+    <p>All user-supplied values are interpolated directly into the Flux query string sent to InfluxDB2. A site parameter of <code>x" or 1==1 //</code> would close the string literal and inject arbitrary Flux logic.</p>
+    <pre><code># influxdb2.py — current
+lines = [
+    f'from(bucket: "{self._bucket}")',
+    ...
+    f'  |> filter(fn: (r) => r["{self._site_tag}"] == "{self._site_tag_prefix}{site}")',
+]
+
+for tag, value in self._extra_filters.items():
+    lines.append(f'  |> filter(fn: (r) => r["{tag}"] == "{value}")')</code></pre>
+    <p><code>extra_filters</code> values come from config (lower risk), but <code>site</code> and <code>instance</code> come from the HTTP query string and WebSocket messages. Field names in <code>fields</code> are also injected unescaped.</p>
+    <p>InfluxDB2's Flux has no parameterized query API, but the same allowlist validation from C-1 applies. Config-sourced <code>extra_filters</code> values should also be validated at startup.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># Escape the minimal set of Flux string-breaking characters
+def _flux_escape(value: str) -> str:
+    return value.replace('\\', '\\\\').replace('"', '\\"')
+
+# In _flux():
+f'  |> filter(fn: (r) => r["{self._site_tag}"] == "{_flux_escape(site)}")'</code></pre>
+      <p>Combine with the allowlist validation from C-1 — defence in depth.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ HIGH ═══════════════════════════════════════════ -->
+<h2>High</h2>
+
+<!-- H-1 -->
+<div class="finding" id="h1">
+  <div class="finding-header" onclick="toggle('h1')">
+    <span class="sev high">High</span>
+    <div>
+      <div class="finding-title">No authentication — HTTP and WebSocket endpoints are fully open</div>
+      <div class="finding-file">http_server.py &nbsp;|&nbsp; subscriber.py</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Security</span></p>
+    <p>Both the HTTP server (:8768) and WebSocket server (:8767) accept connections and execute queries from any client on the network without any authentication check. Anyone who can reach fractal-phil can query all historical telemetry, check backend health, and observe live MQTT topics.</p>
+    <p>The current deployment on a private LAN (192.168.86.x) limits real-world exposure. If the host is ever directly exposed to the internet or a broader corporate network, all data is immediately readable.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix (minimal for LAN deployment)</div>
+      <pre><code># http_server.py — add token check in _dispatch()
+_API_TOKEN = os.environ.get("SUBSCRIBER_API_TOKEN", "")
+
+# In _dispatch(), before routing:
+if _API_TOKEN:
+    auth = headers.get("Authorization", "")
+    if auth != f"Bearer {_API_TOKEN}":
+        await _send(writer, 401, {"error": "Unauthorized"})
+        return</code></pre>
+      <p>Set <code>SUBSCRIBER_API_TOKEN</code> in the systemd unit's <code>EnvironmentFile</code>. Same token required in HTTP client headers and WebSocket connection URL param.</p>
+    </div>
+  </div>
+</div>
+
+<!-- H-2 -->
+<div class="finding" id="h2">
+  <div class="finding-header" onclick="toggle('h2')">
+    <span class="sev high">High</span>
+    <div>
+      <div class="finding-title">_parse_csv silently returns empty on InfluxDB2 HTTP errors (4xx/5xx)</div>
+      <div class="finding-file">backends/influxdb2.py:110–160</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Correctness</span></p>
+    <p>InfluxDB2 returns a JSON error body (not CSV) for HTTP 400/500 responses — e.g., malformed Flux, auth errors, or bucket-not-found. <code>urlopen</code> raises <code>HTTPError</code> for 4xx/5xx, which is caught and re-raised as <code>RuntimeError</code> in <code>query()</code> — that part is fine. However, if InfluxDB2 returns HTTP 200 with an error payload embedded in CSV annotations (it sometimes does), <code>_parse_csv</code> will skip the annotation rows and return <code>([], [])</code> as if the query matched zero rows.</p>
+    <p>Concretely: a Flux syntax error can return a 200 response with a CSV annotation row <code>#error,...</code> describing the problem. This is silently treated as "no data found."</p>
+    <pre><code># Example InfluxDB2 error response (HTTP 200):
+#datatype,string,string
+#group,false,false
+#default,,
+,error,reference
+,compilation failed: error at 2:5...,"</code></pre>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code>@staticmethod
+def _parse_csv(raw: str) -> tuple[list, list]:
+    # Check for InfluxDB2 error annotations
+    for line in raw.splitlines()[:10]:
+        if line.startswith("#") and ",error," in line:
+            # Next non-annotation, non-blank line has the message
+            raise RuntimeError(f"InfluxDB2 query error: {raw[:300]}")
+    # ... rest of existing parser</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- H-3 -->
+<div class="finding" id="h3">
+  <div class="finding-header" onclick="toggle('h3')">
+    <span class="sev high">High</span>
+    <div>
+      <div class="finding-title">set_live_status() called from MQTT thread — race condition on _live dict</div>
+      <div class="finding-file">http_server.py:30–31 &nbsp;|&nbsp; subscriber.py:274, 288</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Concurrency / Reliability</span></p>
+    <p><code>set_live_status()</code> is called from paho-mqtt's <code>on_connect</code> and <code>on_disconnect</code> callbacks, which run in a separate daemon thread (<code>mqtt-live</code>). Meanwhile, <code>_live_status()</code> reads <code>_live</code> from asyncio coroutines on the event loop thread.</p>
+    <pre><code># subscriber.py — paho callbacks (mqtt thread)
+def on_connect(client, userdata, flags, rc):
+    _http.set_live_status(True, url, topics)   # writes _live
+
+def on_disconnect(client, userdata, rc):
+    _http.set_live_status(False, url, topics)  # writes _live
+
+# http_server.py — asyncio (event loop thread)
+async def _live_status(writer) -> None:
+    await _send(writer, 200, dict(_live))       # reads _live</code></pre>
+    <p><code>dict.update()</code> is atomic for the GIL in CPython, but <code>dict(_live)</code> (shallow copy) is not atomic with respect to a concurrent <code>update()</code> — the dict could be in a partially-updated state during the copy. This is a low-probability race in practice (CPython GIL) but is undefined behavior per the Python memory model.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># http_server.py
+import threading
+_live_lock = threading.Lock()
+_live: dict = {"connected": False, "broker": "", "topics": []}
+
+def set_live_status(connected: bool, broker: str, topics: list) -> None:
+    with _live_lock:
+        _live.update({"connected": connected, "broker": broker, "topics": list(topics)})
+
+async def _live_status(writer) -> None:
+    with _live_lock:
+        snapshot = dict(_live)
+    await _send(writer, 200, snapshot)</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- H-4 -->
+<div class="finding" id="h4">
+  <div class="finding-header" onclick="toggle('h4')">
+    <span class="sev high">High</span>
+    <div>
+      <div class="finding-title">_parse_csv multi-table column alignment is broken for heterogeneous tables</div>
+      <div class="finding-file">backends/influxdb2.py:120–144</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Correctness</span></p>
+    <p>When InfluxDB2 returns multi-table annotated CSV (one table per series), <code>_parse_csv</code> locks in <code>all_cols</code> from the <em>first</em> table header encountered. For subsequent tables with different column sets, <code>keep_idx</code> is updated to match the new header — but those indices are applied to extract values into a row that will be associated with the original <code>all_cols</code> column names.</p>
+    <p>If table 1 has columns <code>[_time, value, soc]</code> and table 2 has <code>[_time, power, temp]</code>, rows from table 2 will be extracted at the indices of <code>power</code> and <code>temp</code> but stored as if they were <code>value</code> and <code>soc</code>. The data silently mixes up columns.</p>
+    <p>This is currently masked by using <code>pivot()</code> in the Flux query, which collapses all fields into a single table. But if pivot is ever removed or a query returns multiple measurement tables, data will be silently corrupted.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <p>When a new table header is encountered with different columns, either skip rows from that table, or (better) project all tables to the union of all columns, filling missing values with <code>None</code>. At minimum, assert that secondary headers match the first:</p>
+      <pre><code>if all_cols is None:
+    all_cols = new_cols
+    keep_idx = new_idx
+elif new_cols != all_cols:
+    # Skip rows from tables with different schema
+    log.warning("InfluxDB2 CSV: table schema mismatch, skipping table")
+    keep_idx = []   # clear — rows from this table will fail the max(keep_idx) guard</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ MEDIUM ═══════════════════════════════════════════ -->
+<h2>Medium</h2>
+
+<!-- M-1 -->
+<div class="finding" id="m1">
+  <div class="finding-header" onclick="toggle('m1')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">No per-request timeout for the full HTTP exchange — only per-readline timeout</div>
+      <div class="finding-file">http_server.py:125–136</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Reliability / DoS</span></p>
+    <p>Each <code>readline()</code> call has a 5-second timeout, but there is no cap on the total number of header lines a client can send. A slow client sending one header every 4.9 seconds could hold the handler open indefinitely, consuming a coroutine and an OS file descriptor per connection.</p>
+    <p>Additionally, the query execution itself (running in an executor) has no timeout. If InfluxDB2 or DuckDB hangs, the coroutine awaiting the executor future will wait forever.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># Wrap entire dispatch in a single wall-clock timeout
+async def _dispatch(reader, writer, router, executor) -> None:
+    try:
+        await asyncio.wait_for(
+            _dispatch_inner(reader, writer, router, executor),
+            timeout=30.0   # max 30s per request including query execution
+        )
+    except asyncio.TimeoutError:
+        try:
+            await _send(writer, 504, {"error": "request timeout"})
+        except Exception:
+            pass</code></pre>
+      <p>Also set <code>timeout</code> on InfluxDB2 queries (already configurable) and consider a DuckDB query timeout via <code>SET lock_timeout=...</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- M-2 -->
+<div class="finding" id="m2">
+  <div class="finding-header" onclick="toggle('m2')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">_health() accesses router._window_s — private attribute coupling</div>
+      <div class="finding-file">http_server.py:107 &nbsp;|&nbsp; router.py</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Maintainability</span></p>
+    <p><code>http_server._health()</code> reads <code>router._window_s</code> directly — a private attribute by convention. If the attribute is renamed or the window concept changes, this will silently break the health response without a test catching it (the mock in tests sets <code>r._window_s</code> directly).</p>
+    <pre><code># http_server.py — current
+"hot_window_seconds": router._window_s,</code></pre>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <p>Add a public property or method to <code>QueryRouter</code>:</p>
+      <pre><code># router.py
+@property
+def hot_window_seconds(self) -> float:
+    return self._window_s
+
+# http_server.py
+"hot_window_seconds": router.hot_window_seconds,</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- M-3 -->
+<div class="finding" id="m3">
+  <div class="finding-header" onclick="toggle('m3')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">New DuckDB connection per query — no connection reuse</div>
+      <div class="finding-file">backends/duckdb_backend.py:45–60, 102</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Performance</span></p>
+    <p><code>_make_conn()</code> creates a new DuckDB in-memory connection for every <code>query()</code> call, and also for every <code>health()</code> call. For S3 paths this also runs <code>INSTALL httpfs; LOAD httpfs;</code> every time.</p>
+    <p>DuckDB connection creation is fast for local files (sub-millisecond), but each connection has its own buffer pool and metadata cache — warming up the parquet metadata cache is wasted on every query. Under concurrent load (50+ concurrent HTTP /query requests), this creates many parallel DuckDB instances, each competing for memory.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code>class DuckDBBackend:
+    def __init__(self, cfg: dict):
+        self._cfg = cfg
+        self._conn = self._make_conn()   # single shared connection
+
+    def query(self, ...):
+        # Use self._conn directly — DuckDB connections are thread-safe for read queries</code></pre>
+      <p>DuckDB in-memory connections are <em>not</em> safe for concurrent writes, but read-only queries via <code>execute()</code> are safe. If write safety is a concern, use <code>duckdb.connect(read_only=True)</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- M-4 -->
+<div class="finding" id="m4">
+  <div class="finding-header" onclick="toggle('m4')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">Duplicate query implementation — subscriber.py retains old _query_history()</div>
+      <div class="finding-file">subscriber.py:135–179</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Maintainability</span></p>
+    <p><code>subscriber.py</code> still contains a full implementation of <code>_query_history()</code> and <code>_build_globs()</code> / <code>_make_conn()</code> that duplicates what is now in <code>DuckDBBackend</code>. The WebSocket handler calls this legacy path if <code>router is None</code>.</p>
+    <p>Any bug fixed in <code>DuckDBBackend</code> (e.g., the "No files found" empty-return) must be independently fixed in <code>subscriber.py</code>'s copy — which it currently isn't. The two implementations will diverge.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <p>Remove <code>_query_history</code>, <code>_build_globs</code>, <code>_make_conn</code>, and <code>_day_partitions</code> from <code>subscriber.py</code>. In the WebSocket handler's <code>router is None</code> branch, instantiate a <code>DuckDBBackend(cfg)</code> directly:</p>
+      <pre><code># subscriber.py — simplified WebSocket handler
+if router:
+    cols, rows, backend = await loop.run_in_executor(
+        _executor, router.query, site, instance, from_ts, to_ts, limit
+    )
+else:
+    from backends.duckdb_backend import DuckDBBackend
+    _cold = DuckDBBackend(cfg)
+    cols, rows = await loop.run_in_executor(
+        _executor, _cold.query, site, instance, from_ts, to_ts, limit
+    )
+    backend = "duckdb"</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- M-5 -->
+<div class="finding" id="m5">
+  <div class="finding-header" onclick="toggle('m5')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">"No files found" error detection relies on DuckDB error message string</div>
+      <div class="finding-file">backends/duckdb_backend.py:119, 137</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Fragility</span></p>
+    <p>The empty-result handling for missing parquet files is keyed on the substring <code>"No files found"</code> in the exception message:</p>
+    <pre><code>if "No files found" in str(exc):
+    conn.close()
+    return [], []</code></pre>
+    <p>This is fragile: DuckDB could change the wording in a future release (e.g., to "No matching files"), and the fallback would then re-raise as a <code>RuntimeError</code> instead of returning empty. There is no test that pins the exact error wording, so a DuckDB upgrade could silently break this.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># Use a broader heuristic — no parquet = no data, not an application error
+_EMPTY_ERRORS = ("No files found", "No matching files", "Path does not exist")
+
+def _is_empty_result(exc: Exception) -> bool:
+    msg = str(exc)
+    return any(s in msg for s in _EMPTY_ERRORS)
+
+# In query():
+if _is_empty_result(exc):
+    conn.close()
+    return [], []</code></pre>
+      <p>Add a version-pinned comment noting which DuckDB version the message was observed on.</p>
+    </div>
+  </div>
+</div>
+
+<!-- M-6 -->
+<div class="finding" id="m6">
+  <div class="finding-header" onclick="toggle('m6')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">_coerce() converts whole-number floats to int — timestamp type mismatch</div>
+      <div class="finding-file">backends/influxdb2.py:149–158</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Correctness</span></p>
+    <p><code>_coerce()</code> tries <code>int(v)</code> first, then <code>float(v)</code>. InfluxDB2 CSV serializes <code>_time</code> and numeric fields as strings like <code>"1700000000"</code> (a Unix epoch second). These will be parsed as Python <code>int</code> rather than <code>float</code>.</p>
+    <p>The DuckDB path returns timestamps as <code>float</code>. When <code>_merge()</code> sorts a union result by the timestamp column, comparing <code>int</code> from InfluxDB rows against <code>float</code> from DuckDB rows will work in Python (ints and floats compare correctly), but downstream consumers expecting all-float timestamps will receive mixed types. JSON serialization will produce <code>1700000000</code> (int) vs <code>1700000000.0</code> (float) for otherwise identical timestamps.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code>def _coerce(v: str):
+    # Try float first to preserve .0 precision for timestamps
+    try:
+        f = float(v)
+        # Return int only for non-timestamp-shaped integers (small numbers)
+        if f == int(f) and abs(f) < 1e9:
+            return int(f)
+        return f
+    except ValueError:
+        return v</code></pre>
+      <p>Or simply always return <code>float</code> for numeric strings and let callers decide. The test suite should assert that timestamp columns are consistently typed.</p>
+    </div>
+  </div>
+</div>
+
+<!-- M-7 -->
+<div class="finding" id="m7">
+  <div class="finding-header" onclick="toggle('m7')">
+    <span class="sev medium">Medium</span>
+    <div>
+      <div class="finding-title">No limit on response size — router returns unbounded rows to HTTP</div>
+      <div class="finding-file">http_server.py:55–94 &nbsp;|&nbsp; router.py:106</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Reliability</span></p>
+    <p>The HTTP <code>/query</code> endpoint defaults <code>limit=500</code> and passes it to <code>router.query()</code>, which enforces it at the SQL/Flux level. However, the <code>union</code> path slices to <code>rows[:limit]</code> after merging, meaning both cold and hot queries can each return up to <code>limit</code> rows (2× the limit) before the slice. For <code>limit=10000</code> this means up to 20k rows are held in memory during merge.</p>
+    <p>More importantly, there is no server-side cap on the caller-supplied <code>limit</code> parameter. A client requesting <code>limit=1000000</code> will cause DuckDB to try to load 1M rows into memory.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># http_server.py — in _query()
+MAX_LIMIT = 50_000
+limit = min(int(_p("limit", 500)), MAX_LIMIT)</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ LOW ═══════════════════════════════════════════ -->
+<h2>Low</h2>
+
+<!-- L-1 -->
+<div class="finding" id="l1">
+  <div class="finding-header" onclick="toggle('l1')">
+    <span class="sev low">Low</span>
+    <div>
+      <div class="finding-title">router.query() union case runs cold and hot sequentially — added latency</div>
+      <div class="finding-file">router.py:98–106</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Performance</span></p>
+    <p>When a query spans the hot/cold boundary the router runs cold (DuckDB) first, then hot (InfluxDB2) sequentially. Both backends block the executor thread. Total latency is roughly <code>cold_latency + hot_latency</code>.</p>
+    <p>With a 600s hot window, spanning queries only occur when <code>from_ts</code> is in the window and <code>to_ts</code> is after the window, which is relatively uncommon in practice. But for long time ranges that straddle the boundary, parallel execution would halve latency.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix (optional, higher complexity)</div>
+      <pre><code># router.py — parallel union using asyncio (if called from async context)
+import asyncio
+
+async def query_async(self, ...):
+    loop = asyncio.get_running_loop()
+    cold_fut = loop.run_in_executor(executor, self.cold.query, ...)
+    hot_fut  = loop.run_in_executor(executor, self.hot.query, ...)
+    cold_result, hot_result = await asyncio.gather(cold_fut, hot_fut)</code></pre>
+      <p>For the current use pattern (10-min hot window, data mostly in cold), sequential is acceptable.</p>
+    </div>
+  </div>
+</div>
+
+<!-- L-2 -->
+<div class="finding" id="l2">
+  <div class="finding-header" onclick="toggle('l2')">
+    <span class="sev low">Low</span>
+    <div>
+      <div class="finding-title">_merge() silently drops columns present only in hot but not cold</div>
+      <div class="finding-file">router.py:43–58</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Correctness</span></p>
+    <p>In the union case, if cold has columns <code>[ts, soc, kw]</code> and hot has <code>[ts, soc, kw, temp]</code>, the <code>temp</code> column from InfluxDB2 rows is silently dropped because <code>cols = cold_cols</code> and <code>hot_idx[c]</code> is only accessed for columns in <code>cols</code>.</p>
+    <p>Conversely, hot rows that lack a column present in cold get <code>None</code> — that fill is intentional and documented. But the column-drop direction is not documented and may surprise callers.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <p>Use the union of both column sets, filling missing values with <code>None</code>. Or document explicitly that cold's schema is authoritative in the docstring. The current behavior is acceptable for the use case (cold and hot read the same measurement) but should be explicit.</p>
+    </div>
+  </div>
+</div>
+
+<!-- L-3 -->
+<div class="finding" id="l3">
+  <div class="finding-header" onclick="toggle('l3')">
+    <span class="sev low">Low</span>
+    <div>
+      <div class="finding-title">HTTP server sends no CORS headers — browser requests blocked</div>
+      <div class="finding-file">http_server.py:38–48</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Usability</span></p>
+    <p>The HTML UIs (parquet_monitor.html, evelyn_live_compare.html, etc.) are served from <code>http://192.168.86.46:8080</code>. A browser fetch from that origin to <code>http://192.168.86.51:8768/query</code> will be blocked by CORS unless the server sends <code>Access-Control-Allow-Origin</code>.</p>
+    <p>The existing HTML UIs currently use WebSocket (:8767) for queries and may not issue direct HTTP requests. But any future dashboard or debugging tool will hit this immediately.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># http_server.py — in _send(), add CORS header
+f"Access-Control-Allow-Origin: *\r\n"   # restrict to specific origin in production</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- L-4 -->
+<div class="finding" id="l4">
+  <div class="finding-header" onclick="toggle('l4')">
+    <span class="sev low">Low</span>
+    <div>
+      <div class="finding-title">_executor is a module-level global in subscriber.py — hidden coupling</div>
+      <div class="finding-file">subscriber.py:59</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Maintainability / Testability</span></p>
+    <p><code>_executor = ThreadPoolExecutor(max_workers=4)</code> is created at module import time. This means tests that import <code>subscriber</code> start a thread pool even if they don't call <code>run()</code>. It also makes the pool size non-configurable without modifying the source file.</p>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code># Move to run() and thread through
+async def run(cfg: dict) -> None:
+    max_workers = cfg.get("server", {}).get("executor_workers", 4)
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    ...</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- L-5 -->
+<div class="finding" id="l5">
+  <div class="finding-header" onclick="toggle('l5')">
+    <span class="sev low">Low</span>
+    <div>
+      <div class="finding-title">HTTP error on TimeoutError returns no response body — client sees connection reset</div>
+      <div class="finding-file">http_server.py:156–157</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Usability</span></p>
+    <p>When a client sends headers too slowly and the per-readline 5s timeout fires, <code>asyncio.TimeoutError</code> is caught silently and the connection is closed via the <code>finally</code> block with no HTTP response. The client receives a TCP connection reset mid-request.</p>
+    <pre><code>except asyncio.TimeoutError:
+    pass   # ← silent close, no 408 response</code></pre>
+    <div class="fix">
+      <div class="fix-label">Suggested Fix</div>
+      <pre><code>except asyncio.TimeoutError:
+    try:
+        await _send(writer, 408, {"error": "request timeout"})
+    except Exception:
+        pass</code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ INFO ═══════════════════════════════════════════ -->
+<h2>Info / Observations</h2>
+
+<!-- I-1 -->
+<div class="finding" id="i1">
+  <div class="finding-header" onclick="toggle('i1')">
+    <span class="sev info">Info</span>
+    <div>
+      <div class="finding-title">Flux limit(n:) is per-series, not global — known architectural constraint</div>
+      <div class="finding-file">backends/influxdb2.py:85</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Architecture</span></p>
+    <p>The <code>|&gt; limit(n: {limit})</code> call in the generated Flux query applies <em>per table</em> (per series), not globally. With 9984 battery cells × 2 fields = 19968 series, a request for <code>limit=40</code> will read up to 19968 × 40 = 798,720 rows before InfluxDB2 returns a result to the network. This is a known InfluxDB2 limitation.</p>
+    <p>The current architecture mitigates this via:</p>
+    <ul>
+      <li><code>hot_window_seconds: 600</code> — InfluxDB2 only serves the last 10 minutes (data in WAL/cache = fast)</li>
+      <li><code>extra_filters</code> — scope cardinality to 104 series in tests</li>
+    </ul>
+    <p>For production queries without <code>extra_filters</code>, InfluxDB2 queries spanning the full site will remain slow. A <code>|&gt; first()</code> or <code>|&gt; tail()</code> approach won't help. The only real fix is lower cardinality (coarser tags) or moving to InfluxDB3 which has proper SQL with global LIMIT.</p>
+  </div>
+</div>
+
+<!-- I-2 -->
+<div class="finding" id="i2">
+  <div class="finding-header" onclick="toggle('i2')">
+    <span class="sev info">Info</span>
+    <div>
+      <div class="finding-title">json.dumps default=str silently serializes non-JSON types</div>
+      <div class="finding-file">http_server.py:39 &nbsp;|&nbsp; subscriber.py:229</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Observability</span></p>
+    <p>Both the HTTP server and WebSocket handler use <code>json.dumps(..., default=str)</code>. This is intentionally permissive — it allows datetime objects, Decimal types, etc. to serialize as strings without raising. However, it also means type bugs in the data pipeline (e.g., a DuckDB <code>datetime</code> cell ending up in a row) are silently serialized as <code>"2025-01-01 00:00:00"</code> rather than a float. Callers receive plausible-looking data that is actually wrong.</p>
+    <p>This is acceptable for a monitoring/telemetry API where some roughness is tolerable, but worth knowing about when debugging type issues.</p>
+  </div>
+</div>
+
+<!-- I-3 -->
+<div class="finding" id="i3">
+  <div class="finding-header" onclick="toggle('i3')">
+    <span class="sev info">Info</span>
+    <div>
+      <div class="finding-title">No structured logging — all log.info/warning calls use %s formatting</div>
+      <div class="finding-file">All source files</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Observability</span></p>
+    <p>Logging is all <code>basicConfig</code> text format. For a production systemd service, structured JSON logging (via <code>python-json-logger</code> or similar) would allow <code>journald</code>/<code>grep</code>-based querying by field (site, instance, latency_ms, backend, etc.). Currently a slow query appears as a single unindexed log line.</p>
+    <p>Not a defect — just noting that at scale, structured logs would improve observability significantly.</p>
+  </div>
+</div>
+
+<!-- I-4 -->
+<div class="finding" id="i4">
+  <div class="finding-header" onclick="toggle('i4')">
+    <span class="sev info">Info</span>
+    <div>
+      <div class="finding-title">QueryBackend Protocol not enforced at runtime for InfluxDB2Backend</div>
+      <div class="finding-file">backends/base.py &nbsp;|&nbsp; backends/influxdb2.py</div>
+    </div>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="finding-body">
+    <p><span class="category">Design</span></p>
+    <p><code>base.py</code> defines a <code>@runtime_checkable</code> <code>QueryBackend</code> Protocol, but neither <code>InfluxDB2Backend</code> nor <code>DuckDBBackend</code> explicitly inherit from it or are checked against it at instantiation time. The Protocol is unused beyond its definition — <code>isinstance(backend, QueryBackend)</code> is never called in the codebase.</p>
+    <p>The Protocol is still valuable as documentation and for static type checking (<code>mypy</code>), but the <code>@runtime_checkable</code> decorator has no effect without an <code>isinstance</code> check somewhere.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ PRIORITY MATRIX ═══════════════════════════════════════════ -->
+<h2>Fix Priority — Recommended Order</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border);">
+      <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;font-size:12px;">Priority</th>
+      <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;font-size:12px;">Finding</th>
+      <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;font-size:12px;">Effort</th>
+      <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;font-size:12px;">Risk if deferred</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev critical" style="font-size:10px;">1</span></td>
+      <td style="padding:8px 12px;">C-1: SQL injection in DuckDB</td>
+      <td style="padding:8px 12px;color:var(--muted);">Low (regex validation, ~30 lines)</td>
+      <td style="padding:8px 12px;color:var(--red);">Data exfil / SSRF via DuckDB httpfs</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev critical" style="font-size:10px;">2</span></td>
+      <td style="padding:8px 12px;">C-2: Flux injection in InfluxDB2</td>
+      <td style="padding:8px 12px;color:var(--muted);">Low (escape function, ~10 lines)</td>
+      <td style="padding:8px 12px;color:var(--red);">Data exfil / auth bypass</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev high" style="font-size:10px;">3</span></td>
+      <td style="padding:8px 12px;">H-1: No authentication</td>
+      <td style="padding:8px 12px;color:var(--muted);">Low (bearer token in env var)</td>
+      <td style="padding:8px 12px;color:var(--orange);">Open data access if network changes</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev high" style="font-size:10px;">4</span></td>
+      <td style="padding:8px 12px;">H-3: _live dict race condition</td>
+      <td style="padding:8px 12px;color:var(--muted);">Low (add threading.Lock)</td>
+      <td style="padding:8px 12px;color:var(--orange);">Corrupt live status in rare cases</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev high" style="font-size:10px;">5</span></td>
+      <td style="padding:8px 12px;">H-2: _parse_csv silent error on InfluxDB2 400 (CSV 200)</td>
+      <td style="padding:8px 12px;color:var(--muted);">Low (scan for #error annotation)</td>
+      <td style="padding:8px 12px;color:var(--orange);">Silent data loss / wrong empty response</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev medium" style="font-size:10px;">6</span></td>
+      <td style="padding:8px 12px;">M-7: Unbounded limit parameter</td>
+      <td style="padding:8px 12px;color:var(--muted);">Trivial (one line cap)</td>
+      <td style="padding:8px 12px;color:var(--yellow);">OOM on large limit requests</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev medium" style="font-size:10px;">7</span></td>
+      <td style="padding:8px 12px;">M-4: Duplicate _query_history in subscriber.py</td>
+      <td style="padding:8px 12px;color:var(--muted);">Medium (refactor + test)</td>
+      <td style="padding:8px 12px;color:var(--yellow);">Diverging bug fixes, maintenance burden</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><span class="sev medium" style="font-size:10px;">8</span></td>
+      <td style="padding:8px 12px;">M-2: router._window_s private access</td>
+      <td style="padding:8px 12px;color:var(--muted);">Trivial (add property)</td>
+      <td style="padding:8px 12px;color:var(--yellow);">AttributeError on refactor</td>
+    </tr>
+    <tr>
+      <td style="padding:8px 12px;"><span class="sev low" style="font-size:10px;">9+</span></td>
+      <td style="padding:8px 12px;">H-4, M-3, M-5, M-6, L-1…L-5</td>
+      <td style="padding:8px 12px;color:var(--muted);">Various</td>
+      <td style="padding:8px 12px;color:var(--blue);">Operational / quality improvements</td>
+    </tr>
+  </tbody>
+</table>
+
+<script>
+function toggle(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+}
+// Open all critical and high findings by default
+document.querySelectorAll('.finding').forEach(f => {
+  const sev = f.querySelector('.sev');
+  if (sev && (sev.classList.contains('critical') || sev.classList.contains('high'))) {
+    f.classList.add('open');
+  }
+});
+</script>
+
+</body>
+</html>

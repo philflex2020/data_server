@@ -29,3 +29,10 @@ flux_http:
 history:
   default_limit: 1000
   max_limit: 10000
+
+# In-memory ring buffer (gap-fill for recent data, covers parquet flush lag).
+# Uses pre-allocated numpy arrays: ~60 bytes/entry vs ~2 KB for Python dicts.
+# At 24k msg/s: 8_640_000 entries ≈ 520 MB and covers ~6 minutes.
+# At  3k msg/s: 1_080_000 entries ≈  65 MB and covers ~6 minutes (original default).
+buffer:
+  maxlen: 8640000

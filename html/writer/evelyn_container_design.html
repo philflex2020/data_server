@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evelyn — Container Design (Option C)</title>
+<style>
+  :root {
+    --bg:#1a1a2e; --surface:#16213e; --surface2:#0d1117;
+    --border:#2a2a4a; --border2:#30363d;
+    --text:#e0e0e0; --muted:#abb2bf;
+    --h1:#61dafb; --h2:#e5c07b; --h3:#98c379; --h4:#56b6c2;
+    --kw:#56b6c2; --str:#98c379; --fn:#e5c07b; --cm:#5c6370; --num:#d19a66; --tag-c:#e06c75;
+    --green-bg:#1e3a1e; --yellow-bg:#3a3a1e; --red-bg:#3a1e1e;
+  }
+  body.light {
+    --bg:#f5f5f0; --surface:#ffffff; --surface2:#f0f0e8;
+    --border:#d0d0c0; --border2:#c0c0b0;
+    --text:#1a1a2e; --muted:#555566;
+    --h1:#0066aa; --h2:#8a6000; --h3:#2a6e2a; --h4:#006688;
+    --kw:#006688; --str:#2a6e2a; --fn:#8a6000; --cm:#888877; --num:#aa4400; --tag-c:#cc2222;
+    --green-bg:#d4f0d4; --yellow-bg:#f0f0d4; --red-bg:#f0d4d4;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.6; padding:0 0 60px 0; transition:background .2s,color .2s; }
+  h1 { font-size:2em; color:var(--h1); padding:40px 40px 10px; border-bottom:2px solid var(--border); margin-bottom:20px; }
+  h2 { font-size:1.4em; color:var(--h2); margin:40px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.1em; color:var(--h3); margin:24px 0 8px; }
+  h4 { font-size:1em; color:var(--h4); margin:16px 0 6px; }
+  p { margin:10px 0; max-width:860px; }
+  ul,ol { margin:10px 0 10px 24px; max-width:860px; }
+  li { margin:4px 0; }
+  .content { padding:0 40px; }
+  pre { background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:16px; overflow-x:auto; font-family:'Cascadia Code','Fira Code',monospace; font-size:13px; margin:12px 0; max-width:900px; }
+  code { background:var(--surface2); padding:2px 6px; border-radius:3px; font-family:monospace; font-size:13px; color:var(--fn); }
+  .kw{color:var(--kw)} .str{color:var(--str)} .fn{color:var(--fn)} .cm{color:var(--cm);font-style:italic} .num{color:var(--num)} .tag-s{color:var(--tag-c)}
+  table { border-collapse:collapse; margin:16px 0; width:100%; max-width:860px; }
+  th { background:var(--surface); color:var(--h1); padding:8px 14px; text-align:left; border:1px solid var(--border2); font-size:13px; }
+  td { padding:7px 14px; border:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tr:nth-child(even) td { background:var(--surface); }
+  .toc { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 28px; margin:20px 40px 30px; display:inline-block; min-width:320px; }
+  .toc h2 { margin-top:0; border:none; font-size:1.05em; }
+  .toc ol { margin-left:18px; }
+  .toc li { margin:4px 0; }
+  .toc a { color:var(--h1); text-decoration:none; }
+  .toc a:hover { text-decoration:underline; }
+  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
+  .note  { background:var(--green-bg); border-left:3px solid var(--str); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .warn  { background:var(--yellow-bg); border-left:3px solid var(--fn); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .theme-btn { position:fixed; top:14px; right:20px; background:var(--surface); border:1px solid var(--border2); color:var(--muted); border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  .theme-btn:hover { color:var(--text); }
+  .page-nav { padding:14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:var(--muted); text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .page-nav a:hover { color:var(--h1); border-color:var(--h1); }
+  .file-label { display:inline-block; background:var(--surface2); border:1px solid var(--border2); border-radius:4px; padding:2px 10px; font-family:monospace; font-size:12px; color:var(--h4); margin-bottom:4px; }
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="page-nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="evelyn_real_time_data.html">Real-Time Data</a>
+  <a href="evelyn_influx3_analysis.html">InfluxDB 3</a>
+  <a href="evelyn_viz_comparison.html">Viz Comparison</a>
+  <a href="evelyn_kafka_analysis.html">Kafka Analysis</a>
+</div>
+
+<h1>Container Design — Option C</h1>
+<p style="padding:0 40px;color:var(--muted);font-size:14px">Single self-contained Docker container: FlashMQ + parquet_writer + bridge_api + nginx under supervisord.</p>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#arch">Container Architecture</a></li>
+    <li><a href="#dockerfile">Dockerfile</a></li>
+    <li><a href="#supervisord-what">What is supervisord?</a></li>
+    <li><a href="#supervisord">supervisord.conf</a></li>
+    <li><a href="#nginx">nginx.conf</a></li>
+    <li><a href="#bridge-api">bridge_api_container.py</a></li>
+    <li><a href="#entrypoint">entrypoint.sh (config bootstrap)</a></li>
+    <li><a href="#configs">Default Config Files</a></li>
+    <li><a href="#run">docker run Command</a></li>
+    <li><a href="#build-script">Build Script</a></li>
+    <li><a href="#html-pages">HTML Pages to Bake In</a></li>
+    <li><a href="#upgrade">Upgrade Workflow</a></li>
+    <li><a href="#limitations">Limitations &amp; Open Questions</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- 1 -->
+<h2 id="overview">1. Overview</h2>
+<p>Option C bundles all stack components into a single Docker image. Deployment on any Linux box is a single <code>docker run</code> command. No systemd knowledge required. No docker-compose orchestration. No separate service installation.</p>
+
+<table>
+  <tr><th>Component</th><th>Role</th><th>Managed by</th></tr>
+  <tr><td>FlashMQ</td><td>MQTT broker — accepts EMS hardware connections + bridge</td><td>supervisord</td></tr>
+  <tr><td>parquet_writer</td><td>MQTT subscriber → Parquet writer</td><td>supervisord</td></tr>
+  <tr><td>bridge_api_container.py</td><td>REST management API — config, storage, bridge, /query/current</td><td>supervisord</td></tr>
+  <tr><td>nginx</td><td>Serves baked-in HTML dashboard pages</td><td>supervisord</td></tr>
+</table>
+
+<p><strong>External only:</strong> the Parquet data volume (<code>/data/parquet</code>) and the config volume (<code>/etc/evelyn</code>). Everything else lives inside the container — including both C++ binaries, which are compiled from source during <code>docker build</code>. No pre-built binaries required on the host.</p>
+
+<div class="note">The key architectural difference from Options A and B: bridge_api manages processes via <code>supervisorctl</code> instead of <code>docker compose</code> or <code>systemctl</code>. No Docker socket mount required. No systemd on the host required.</div>
+
+<hr>
+
+<!-- 2 -->
+<h2 id="arch">2. Container Architecture</h2>
+<pre>
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  Docker container: evelyn:latest                                    │
+  │                                                                     │
+  │  supervisord (PID 1)                                                │
+  │    │                                                                │
+  │    ├── flashmq  :1883 (MQTT)  :9001 (MQTT/WebSocket)               │
+  │    │       │                                                        │
+  │    ├── parquet_writer  ←── subscribes to flashmq :1883                │
+  │    │       │                                                        │
+  │    │       └──→ /data/parquet/  ← external volume                  │
+  │    │                                                                │
+  │    ├── bridge_api_container.py  :8772                               │
+  │    │       │  supervisorctl restart flashmq / parquet_writer           │
+  │    │       └──→ DuckDB reads /data/parquet/current_state.parquet    │
+  │    │                                                                │
+  │    └── nginx  :8080                                                 │
+  │            └──→ /var/www/html/  (baked-in HTML pages)              │
+  │                                                                     │
+  └─────────────────────────────────────────────────────────────────────┘
+         │        │          │          │
+         :1883    :9001      :8080      :8771  :8772
+         MQTT    MQTT/WS    HTML      health  bridge_api
+
+  External:
+  EMS hardware  →  :1883
+  Browser       →  :8080 (dashboards)  :9001 (live MQTT/WS)  :8772 (API)
+  /data/parquet  (host volume mount)
+</pre>
+
+<hr>
+
+<!-- 3 -->
+<h2 id="dockerfile">3. Dockerfile</h2>
+<p>Three-stage build. Stage 1 compiles FlashMQ from source. Stage 2 compiles parquet_writer from source. Stage 3 assembles the runtime image — no pre-built binaries required on the host.</p>
+
+<div class="file-label">docker/evelyn-container/Dockerfile</div>
+<pre>
+<span class="cm"># ── Stage 1: Build FlashMQ ───────────────────────────────────────────────</span>
+<span class="kw">FROM</span> ubuntu:<span class="num">24.04</span> <span class="kw">AS</span> flashmq-builder
+<span class="kw">ENV</span> DEBIAN_FRONTEND=noninteractive
+
+<span class="kw">RUN</span> apt-get update && apt-get install -y \
+    cmake build-essential git libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+<span class="kw">RUN</span> git clone --branch v1.9.1 --depth <span class="num">1</span> \
+    https://github.com/halfgaar/FlashMQ.git /flashmq  <span class="cm"># latest as of 2026-03-30</span>
+
+<span class="kw">RUN</span> cmake -B /flashmq/build -S /flashmq -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build /flashmq/build --parallel $(nproc)
+
+<span class="cm"># ── Stage 2: Build parquet_writer ───────────────────────────────────────────</span>
+<span class="kw">FROM</span> ubuntu:<span class="num">24.04</span> <span class="kw">AS</span> writer-builder
+<span class="kw">ENV</span> DEBIAN_FRONTEND=noninteractive
+
+<span class="kw">RUN</span> apt-get update && apt-get install -y \
+    build-essential cmake git \
+    libarrow-dev libparquet-dev \
+    libmosquitto-dev libyaml-cpp-dev \
+    libsnappy-dev libzstd-dev liblz4-dev \
+    libssl-dev libsimdjson-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+<span class="kw">WORKDIR</span> /build
+<span class="kw">COPY</span> source/parquet_writer_cpp/ .
+<span class="kw">RUN</span> make parquet_writer
+
+<span class="cm"># ── Stage 3: Runtime image ───────────────────────────────────────────────</span>
+<span class="kw">FROM</span> ubuntu:<span class="num">24.04</span>
+<span class="kw">ENV</span> DEBIAN_FRONTEND=noninteractive
+
+<span class="kw">RUN</span> apt-get update && apt-get install -y \
+    <span class="cm"># parquet_writer runtime deps</span>
+    libarrow1600 libparquet1600 \
+    libsnappy1v5 libzstd1 liblz4-1 libbrotli1 \
+    libmosquitto1 libyaml-cpp0.8 libsimdjson0 \
+    <span class="cm"># FlashMQ runtime dep</span>
+    libssl3 \
+    <span class="cm"># API + management</span>
+    python3 python3-pip supervisor nginx \
+    && pip3 install --no-cache-dir duckdb pyyaml \
+    && rm -rf /var/lib/apt/lists/*
+
+<span class="cm"># Binaries from builder stages</span>
+<span class="kw">COPY</span> --from=flashmq-builder  /flashmq/build/flashmq   /usr/local/bin/flashmq
+<span class="kw">COPY</span> --from=writer-builder   /build/parquet_writer        /usr/local/bin/parquet_writer
+<span class="kw">RUN</span> chmod +x /usr/local/bin/flashmq /usr/local/bin/parquet_writer
+
+<span class="cm"># Default configs — baked in as fallback, NOT the live config path</span>
+<span class="cm"># entrypoint.sh copies these to /etc/evelyn/ on first run if not present</span>
+<span class="kw">COPY</span> configs/flashmq.conf  /etc/evelyn-defaults/flashmq.conf
+<span class="kw">COPY</span> configs/writer.yaml   /etc/evelyn-defaults/writer.yaml
+<span class="kw">COPY</span> configs/nginx.conf    /etc/nginx/nginx.conf
+<span class="kw">COPY</span> supervisord.conf      /etc/supervisor/supervisord.conf
+
+<span class="cm"># bridge_api + entrypoint</span>
+<span class="kw">COPY</span> bridge_api_container.py /opt/evelyn/bridge_api_container.py
+<span class="kw">COPY</span> entrypoint.sh           /entrypoint.sh
+<span class="kw">RUN</span> chmod +x /entrypoint.sh /opt/evelyn/bridge_api_container.py
+
+<span class="cm"># HTML pages (baked into image)</span>
+<span class="kw">COPY</span> html/writer/evelyn_docker_34.html      /var/www/html/index.html
+<span class="kw">COPY</span> html/parquet_monitor.html              /var/www/html/parquet_monitor.html
+<span class="kw">COPY</span> html/writer/parquet_viewer.html        /var/www/html/parquet_viewer.html
+<span class="kw">COPY</span> html/writer/writer_design.html         /var/www/html/writer_design.html
+<span class="kw">COPY</span> html/writer/evelyn_real_time_data.html /var/www/html/evelyn_real_time_data.html
+
+<span class="cm"># Runtime directories (data volume will be mounted over /data/parquet)</span>
+<span class="kw">RUN</span> mkdir -p /data/parquet /var/lib/flashmq /var/log/supervisor
+
+<span class="kw">EXPOSE</span> <span class="num">1883 9001 8080 8771 8772</span>
+
+<span class="cm"># entrypoint bootstraps /etc/evelyn/ on first run, then starts supervisord</span>
+<span class="kw">ENTRYPOINT</span> [<span class="str">"/entrypoint.sh"</span>]
+</pre>
+
+<hr>
+
+<!-- 4 -->
+<h2 id="supervisord-what">4. What is supervisord?</h2>
+<p>supervisord is a <strong>Python process manager</strong> — the container equivalent of systemctl. It runs as PID 1 inside the container and is responsible for starting, watching, and restarting all other processes.</p>
+
+<p>Docker containers expect a single process as PID 1. If that process dies, the container exits. But we need four processes running simultaneously. supervisord owns them all.</p>
+
+<div class="note"><strong>One-line description:</strong> supervisord is like systemctl but for containers — same mental model, no kernel dependency, runs anywhere Python runs.</div>
+
+<table>
+  <tr><th></th><th>systemctl (host)</th><th>supervisord (container)</th></tr>
+  <tr><td>Runs on</td><td>Linux host (systemd)</td><td>Anywhere Python runs</td></tr>
+  <tr><td>PID 1</td><td>systemd is PID 1 of the OS</td><td>supervisord is PID 1 of the container</td></tr>
+  <tr><td>Start/stop</td><td><code>systemctl start foo</code></td><td><code>supervisorctl start foo</code></td></tr>
+  <tr><td>Restart on crash</td><td><code>Restart=always</code> in unit file</td><td><code>autorestart=true</code> in supervisord.conf</td></tr>
+  <tr><td>Check status</td><td><code>systemctl status foo</code></td><td><code>supervisorctl status</code></td></tr>
+  <tr><td>View logs</td><td><code>journalctl -u foo</code></td><td><code>supervisorctl tail foo</code></td></tr>
+  <tr><td>Config lives</td><td><code>/etc/systemd/system/foo.service</code></td><td><code>/etc/supervisor/supervisord.conf</code></td></tr>
+  <tr><td>Implementation</td><td>C, kernel-integrated</td><td>Pure Python — <code>pip install supervisor</code></td></tr>
+</table>
+
+<p>supervisord is not a compiled binary — it installs via apt or pip alongside Python. Since bridge_api already requires Python, supervisord adds no new runtime dependency to the container.</p>
+
+<p>bridge_api uses <code>supervisorctl</code> to restart services when configs change:</p>
+<pre>
+<span class="cm"># bridge config changed → restart FlashMQ</span>
+subprocess.<span class="fn">run</span>([<span class="str">"supervisorctl"</span>, <span class="str">"restart"</span>, <span class="str">"flashmq"</span>])
+
+<span class="cm"># storage path changed → restart parquet_writer</span>
+subprocess.<span class="fn">run</span>([<span class="str">"supervisorctl"</span>, <span class="str">"restart"</span>, <span class="str">"parquet_writer"</span>])
+</pre>
+<p>No Docker socket mount required. No systemd on the host required. supervisord communicates via a Unix socket inside the container (<code>/var/run/supervisor.sock</code>).</p>
+
+<hr>
+
+<h2 id="supervisord">5. supervisord.conf</h2>
+
+<div class="file-label">docker/evelyn-container/supervisord.conf</div>
+<pre>
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisor/supervisord.log
+logfile_maxbytes=10MB
+logfile_backups=3
+pidfile=/var/run/supervisord.pid
+user=root
+
+[unix_http_server]
+file=/var/run/supervisor.sock
+chmod=0700
+
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[program:flashmq]
+command=/usr/local/bin/flashmq -c /etc/evelyn/flashmq.conf
+autostart=true
+autorestart=true
+startretries=5
+stdout_logfile=/var/log/supervisor/flashmq.log
+stderr_logfile=/var/log/supervisor/flashmq.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+priority=10
+
+[program:parquet_writer]
+command=/usr/local/bin/parquet_writer --config /etc/evelyn/writer.yaml
+autostart=true
+autorestart=true
+startretries=5
+startsecs=3
+stdout_logfile=/var/log/supervisor/parquet_writer.log
+stderr_logfile=/var/log/supervisor/parquet_writer.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5
+priority=20
+
+[program:bridge_api]
+command=python3 /opt/evelyn/bridge_api_container.py
+autostart=true
+autorestart=true
+startretries=5
+stdout_logfile=/var/log/supervisor/bridge_api.log
+stderr_logfile=/var/log/supervisor/bridge_api.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+priority=30
+
+[program:nginx]
+command=/usr/sbin/nginx -g "daemon off;"
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/nginx.log
+stderr_logfile=/var/log/supervisor/nginx.log
+stdout_logfile_maxbytes=5MB
+stdout_logfile_backups=3
+priority=40
+</pre>
+
+<hr>
+
+<!-- 5 -->
+<h2 id="nginx">6. nginx.conf</h2>
+
+<div class="file-label">docker/evelyn-container/configs/nginx.conf</div>
+<pre>
+worker_processes auto;
+error_log  /dev/stderr warn;
+pid /var/run/nginx.pid;
+
+events { worker_connections 256; }
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    access_log    /dev/stdout combined;
+    sendfile      on;
+    keepalive_timeout 30;
+
+    server {
+        listen 8080;
+        server_name _;
+        root /var/www/html;
+        index index.html;
+
+        <span class="cm"># Serve HTML pages</span>
+        location / {
+            try_files $uri $uri/ =404;
+            add_header Cache-Control "no-cache";
+        }
+
+        <span class="cm"># Serve parquet files with range request support (for DuckDB-WASM)</span>
+        location /parquet/ {
+            alias /data/parquet/;
+            add_header Accept-Ranges bytes;
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Headers "Range";
+            add_header Access-Control-Expose-Headers "Content-Range, Content-Length";
+        }
+
+        <span class="cm"># Optional: proxy /api/ → bridge_api for single-origin convenience</span>
+        location /api/ {
+            proxy_pass http://127.0.0.1:8772/;
+            proxy_set_header Host $host;
+            add_header Access-Control-Allow-Origin *;
+        }
+    }
+}
+</pre>
+
+<hr>
+
+<!-- 6 -->
+<h2 id="bridge-api">7. bridge_api_container.py</h2>
+<p>Rewrite of <code>bridge_api_native.py</code> replacing all <code>systemctl</code> calls with <code>supervisorctl</code>. Same HTTP API surface — existing HTML dashboards work without changes.</p>
+
+<div class="file-label">docker/evelyn-container/bridge_api_container.py</div>
+<pre>
+<span class="cm">#!/usr/bin/env python3</span>
+<span class="cm">"""
+bridge_api_container.py — stack management API for Option C container.
+
+Same HTTP API as bridge_api_native.py.
+Manages processes via supervisorctl instead of systemctl.
+
+Endpoints
+---------
+GET  /status          supervisorctl status + health summary
+POST /start           supervisorctl start flashmq parquet_writer
+POST /stop            supervisorctl stop flashmq parquet_writer
+GET  /storage         current parquet output path
+POST /storage         {"path":"..."} update writer yaml, mkdir, restart parquet_writer
+GET  /bridge          current FlashMQ bridge config
+POST /bridge          {"address","port","topic"} write conf, restart flashmq
+POST /bridge/clear    remove bridge, restart flashmq
+GET  /query/current   DuckDB query on current_state.parquet → JSON
+"""</span>
+<span class="kw">import</span> asyncio, json, os, re, subprocess, sys
+<span class="kw">try</span>:
+    <span class="kw">import</span> duckdb
+    DUCKDB_AVAILABLE = <span class="kw">True</span>
+<span class="kw">except</span> ImportError:
+    DUCKDB_AVAILABLE = <span class="kw">False</span>
+
+PORT                = <span class="num">8772</span>
+FLASHMQ_CONF        = <span class="str">"/etc/evelyn/flashmq.conf"</span>
+WRITER_YAML         = <span class="str">"/etc/evelyn/writer.yaml"</span>
+CURRENT_STATE_PATH  = <span class="str">"/data/parquet/current_state.parquet"</span>
+DEFAULT_PATH        = <span class="str">"/data/parquet"</span>
+
+CORS = (
+    <span class="str">"Access-Control-Allow-Origin: *\r\n"</span>
+    <span class="str">"Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"</span>
+    <span class="str">"Access-Control-Allow-Headers: Content-Type\r\n"</span>
+)
+
+BASE_CONF = <span class="str">"""\
+listen {
+    port 1883
+    protocol mqtt
+    tcp_nodelay true
+}
+
+listen {
+    port 9001
+    protocol websockets
+}
+
+allow_anonymous true
+log_level warning
+storage_dir /var/lib/flashmq
+client_initial_buffer_size 4194304
+max_packet_size 1048576
+max_qos_msg_pending_per_client 65535
+thread_count 2
+"""</span>
+
+BRIDGE_TEMPLATE = <span class="str">"""\
+
+bridge {{
+    address {address}
+    port {port}
+    topic {topic}  in  0
+    clientid evelyn-bridge
+}}
+"""</span>
+
+<span class="kw">def</span> <span class="fn">run</span>(cmd, timeout=<span class="num">35</span>):
+    r = subprocess.<span class="fn">run</span>(cmd, capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>, timeout=timeout)
+    <span class="kw">return</span> r.returncode == <span class="num">0</span>, (r.stdout + r.stderr).<span class="fn">strip</span>()
+
+<span class="kw">def</span> <span class="fn">supervisorctl</span>(*args):
+    <span class="kw">return</span> <span class="fn">run</span>([<span class="str">"supervisorctl"</span>] + <span class="fn">list</span>(args))
+
+<span class="kw">def</span> <span class="fn">svc_status</span>():
+    <span class="cm">"""Parse 'supervisorctl status' → dict of {name: {state, pid, uptime}}"""</span>
+    ok, out = <span class="fn">supervisorctl</span>(<span class="str">"status"</span>)
+    result = {}
+    <span class="kw">for</span> line <span class="kw">in</span> out.<span class="fn">splitlines</span>():
+        parts = line.<span class="fn">split</span>()
+        <span class="kw">if not</span> parts: <span class="kw">continue</span>
+        name  = parts[<span class="num">0</span>]
+        state = parts[<span class="num">1</span>] <span class="kw">if</span> <span class="fn">len</span>(parts) > <span class="num">1</span> <span class="kw">else</span> <span class="str">"UNKNOWN"</span>
+        extra = <span class="str">" "</span>.<span class="fn">join</span>(parts[<span class="num">2</span>:])
+        result[name] = {<span class="str">"state"</span>: state, <span class="str">"info"</span>: extra}
+    <span class="kw">return</span> result
+
+<span class="kw">def</span> <span class="fn">respond</span>(writer, status, body_dict):
+    body = json.<span class="fn">dumps</span>(body_dict).<span class="fn">encode</span>()
+    writer.<span class="fn">write</span>(
+        <span class="fn">f"HTTP/1.1 {status}\r\n"</span>
+        <span class="fn">f"Content-Type: application/json\r\n"</span>
+        <span class="fn">f"{CORS}"</span>
+        <span class="fn">f"Content-Length: {len(body)}\r\n"</span>
+        <span class="fn">f"Connection: close\r\n\r\n"</span>.<span class="fn">encode</span>()
+        + body
+    )
+
+<span class="kw">async def</span> <span class="fn">handle_request</span>(reader, writer):
+    <span class="kw">try</span>:
+        head = <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(reader.<span class="fn">read</span>(<span class="num">8192</span>), timeout=<span class="num">10</span>)
+        text = head.<span class="fn">decode</span>(<span class="str">"utf-8"</span>, errors=<span class="str">"replace"</span>)
+        lines = text.<span class="fn">split</span>(<span class="str">"\r\n"</span>)
+        method, path, *_ = lines[<span class="num">0</span>].<span class="fn">split</span>() <span class="kw">if</span> lines[<span class="num">0</span>] <span class="kw">else</span> [<span class="str">"GET"</span>, <span class="str">"/"</span>]
+        body_raw = text.<span class="fn">split</span>(<span class="str">"\r\n\r\n"</span>, <span class="num">1</span>)[<span class="num">1</span>] <span class="kw">if</span> <span class="str">"\r\n\r\n"</span> <span class="kw">in</span> text <span class="kw">else</span> <span class="str">""</span>
+
+        <span class="kw">if</span> method == <span class="str">"OPTIONS"</span>:
+            writer.<span class="fn">write</span>(<span class="fn">f"HTTP/1.1 204 No Content\r\n{CORS}Connection: close\r\n\r\n"</span>.<span class="fn">encode</span>())
+
+        <span class="kw">elif</span> path == <span class="str">"/status"</span> <span class="kw">and</span> method == <span class="str">"GET"</span>:
+            svcs = <span class="fn">svc_status</span>()
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"services"</span>: svcs, <span class="str">"ok"</span>: <span class="fn">all</span>(
+                s[<span class="str">"state"</span>] == <span class="str">"RUNNING"</span> <span class="kw">for</span> s <span class="kw">in</span> svcs.<span class="fn">values</span>())})
+
+        <span class="kw">elif</span> path == <span class="str">"/start"</span> <span class="kw">and</span> method == <span class="str">"POST"</span>:
+            ok1, _ = <span class="fn">supervisorctl</span>(<span class="str">"start"</span>, <span class="str">"flashmq"</span>)
+            ok2, _ = <span class="fn">supervisorctl</span>(<span class="str">"start"</span>, <span class="str">"parquet_writer"</span>)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"started"</span>: ok1 <span class="kw">and</span> ok2})
+
+        <span class="kw">elif</span> path == <span class="str">"/stop"</span> <span class="kw">and</span> method == <span class="str">"POST"</span>:
+            <span class="fn">supervisorctl</span>(<span class="str">"stop"</span>, <span class="str">"parquet_writer"</span>)
+            <span class="fn">supervisorctl</span>(<span class="str">"stop"</span>, <span class="str">"flashmq"</span>)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"stopped"</span>: <span class="kw">True</span>})
+
+        <span class="kw">elif</span> path == <span class="str">"/storage"</span> <span class="kw">and</span> method == <span class="str">"GET"</span>:
+            <span class="kw">import</span> yaml
+            <span class="kw">with</span> <span class="fn">open</span>(WRITER_YAML) <span class="kw">as</span> f:
+                cfg = yaml.<span class="fn">safe_load</span>(f)
+            p = cfg.<span class="fn">get</span>(<span class="str">"output"</span>, {}).<span class="fn">get</span>(<span class="str">"base_path"</span>, DEFAULT_PATH)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"path"</span>: p})
+
+        <span class="kw">elif</span> path == <span class="str">"/storage"</span> <span class="kw">and</span> method == <span class="str">"POST"</span>:
+            <span class="kw">import</span> yaml
+            data = json.<span class="fn">loads</span>(body_raw)
+            new_path = data[<span class="str">"path"</span>]
+            os.<span class="fn">makedirs</span>(new_path, exist_ok=<span class="kw">True</span>)
+            <span class="kw">with</span> <span class="fn">open</span>(WRITER_YAML) <span class="kw">as</span> f:
+                cfg = yaml.<span class="fn">safe_load</span>(f)
+            cfg.<span class="fn">setdefault</span>(<span class="str">"output"</span>, {})[<span class="str">"base_path"</span>] = new_path
+            <span class="kw">with</span> <span class="fn">open</span>(WRITER_YAML, <span class="str">"w"</span>) <span class="kw">as</span> f:
+                yaml.<span class="fn">dump</span>(cfg, f)
+            <span class="fn">supervisorctl</span>(<span class="str">"restart"</span>, <span class="str">"parquet_writer"</span>)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"path"</span>: new_path, <span class="str">"restarted"</span>: <span class="kw">True</span>})
+
+        <span class="kw">elif</span> path == <span class="str">"/bridge"</span> <span class="kw">and</span> method == <span class="str">"GET"</span>:
+            <span class="kw">with</span> <span class="fn">open</span>(FLASHMQ_CONF) <span class="kw">as</span> f:
+                conf = f.<span class="fn">read</span>()
+            m = re.<span class="fn">search</span>(<span class="str">r"bridge\s*\{([^}]+)\}"</span>, conf)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"bridge"</span>: m.<span class="fn">group</span>(<span class="num">1</span>).<span class="fn">strip</span>() <span class="kw">if</span> m <span class="kw">else</span> <span class="kw">None</span>})
+
+        <span class="kw">elif</span> path == <span class="str">"/bridge"</span> <span class="kw">and</span> method == <span class="str">"POST"</span>:
+            data = json.<span class="fn">loads</span>(body_raw)
+            new_conf = BASE_CONF + BRIDGE_TEMPLATE.<span class="fn">format</span>(**data)
+            <span class="kw">with</span> <span class="fn">open</span>(FLASHMQ_CONF, <span class="str">"w"</span>) <span class="kw">as</span> f:
+                f.<span class="fn">write</span>(new_conf)
+            <span class="fn">supervisorctl</span>(<span class="str">"restart"</span>, <span class="str">"flashmq"</span>)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"bridge"</span>: data, <span class="str">"restarted"</span>: <span class="kw">True</span>})
+
+        <span class="kw">elif</span> path == <span class="str">"/bridge/clear"</span> <span class="kw">and</span> method == <span class="str">"POST"</span>:
+            <span class="kw">with</span> <span class="fn">open</span>(FLASHMQ_CONF, <span class="str">"w"</span>) <span class="kw">as</span> f:
+                f.<span class="fn">write</span>(BASE_CONF)
+            <span class="fn">supervisorctl</span>(<span class="str">"restart"</span>, <span class="str">"flashmq"</span>)
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"bridge"</span>: <span class="kw">None</span>, <span class="str">"restarted"</span>: <span class="kw">True</span>})
+
+        <span class="kw">elif</span> path == <span class="str">"/query/current"</span> <span class="kw">and</span> method == <span class="str">"GET"</span>:
+            <span class="kw">if not</span> DUCKDB_AVAILABLE:
+                <span class="fn">respond</span>(writer, <span class="str">"503 Service Unavailable"</span>, {<span class="str">"error"</span>: <span class="str">"duckdb not installed"</span>})
+            <span class="kw">elif not</span> os.path.<span class="fn">exists</span>(CURRENT_STATE_PATH):
+                <span class="fn">respond</span>(writer, <span class="str">"404 Not Found"</span>, {<span class="str">"error"</span>: <span class="str">"current_state.parquet not written yet"</span>})
+            <span class="kw">else</span>:
+                con = duckdb.<span class="fn">connect</span>()
+                res = con.<span class="fn">execute</span>(<span class="fn">f"SELECT * FROM parquet_scan('{CURRENT_STATE_PATH}')"</span>)
+                cols = [d[<span class="num">0</span>] <span class="kw">for</span> d <span class="kw">in</span> res.description]
+                rows = [<span class="fn">dict</span>(<span class="fn">zip</span>(cols, r)) <span class="kw">for</span> r <span class="kw">in</span> res.<span class="fn">fetchall</span>()]
+                con.<span class="fn">close</span>()
+                <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"columns"</span>: cols, <span class="str">"rows"</span>: rows})
+
+        <span class="kw">else</span>:
+            <span class="fn">respond</span>(writer, <span class="str">"404 Not Found"</span>, {<span class="str">"error"</span>: <span class="str">"not found"</span>})
+
+    <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        <span class="kw">try</span>: <span class="fn">respond</span>(writer, <span class="str">"500 Internal Server Error"</span>, {<span class="str">"error"</span>: <span class="fn">str</span>(e)})
+        <span class="kw">except</span>: <span class="kw">pass</span>
+    <span class="kw">finally</span>:
+        <span class="kw">try</span>: writer.<span class="fn">close</span>()
+        <span class="kw">except</span>: <span class="kw">pass</span>
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    server = <span class="kw">await</span> asyncio.<span class="fn">start_server</span>(handle_request, <span class="str">"0.0.0.0"</span>, PORT)
+    <span class="fn">print</span>(<span class="fn">f"[bridge_api] listening on :{PORT}"</span>, flush=<span class="kw">True</span>)
+    <span class="kw">async with</span> server:
+        <span class="kw">await</span> server.<span class="fn">serve_forever</span>()
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())
+</pre>
+
+<hr>
+
+<!-- 7 -->
+<h2 id="entrypoint">8. entrypoint.sh — Config Bootstrap</h2>
+<p>On first run, the config volume (<code>/etc/evelyn</code>) is empty. The entrypoint script copies the baked-in defaults there, then hands off to supervisord. On subsequent runs the existing configs are left untouched — edits made via bridge_api persist across container restarts and image upgrades.</p>
+
+<div class="file-label">docker/evelyn-container/entrypoint.sh</div>
+<pre>
+<span class="cm">#!/usr/bin/env bash</span>
+<span class="kw">set</span> -euo pipefail
+
+CONFIG_DIR=<span class="str">"/etc/evelyn"</span>
+DEFAULTS_DIR=<span class="str">"/etc/evelyn-defaults"</span>
+
+<span class="fn">echo</span> <span class="str">"[entrypoint] checking config volume at $CONFIG_DIR"</span>
+
+<span class="cm"># Copy each default file if it doesn't already exist on the volume</span>
+<span class="kw">for</span> f <span class="kw">in</span> "$DEFAULTS_DIR"/*; <span class="kw">do</span>
+    dest="$CONFIG_DIR/$(basename "$f")"
+    <span class="kw">if</span> [[ ! -f "$dest" ]]; <span class="kw">then</span>
+        <span class="fn">echo</span> <span class="str">"[entrypoint] installing default: $(basename "$f")"</span>
+        cp "$f" "$dest"
+    <span class="kw">else</span>
+        <span class="fn">echo</span> <span class="str">"[entrypoint] keeping existing: $(basename "$f")"</span>
+    <span class="kw">fi</span>
+<span class="kw">done</span>
+
+<span class="fn">echo</span> <span class="str">"[entrypoint] starting supervisord"</span>
+<span class="kw">exec</span> /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+</pre>
+
+<div class="note">
+<strong>First run</strong> (empty config volume): copies <code>flashmq.conf</code> and <code>writer.yaml</code> from defaults, starts supervisord.<br>
+<strong>Subsequent runs</strong>: existing configs left in place — bridge changes, storage path edits, and custom bridge configs all survive container restarts and image upgrades.
+</div>
+
+<p>To <strong>reset to defaults</strong> (e.g. factory reset a site):</p>
+<pre>
+<span class="cm"># Remove the config volume and recreate — defaults re-installed on next start</span>
+docker stop evelyn && docker rm evelyn
+sudo rm -rf /etc/evelyn-site/*
+docker run ... <span class="cm">(same command as before)</span>
+</pre>
+
+<hr>
+
+<h2 id="configs">9. Default Config Files</h2>
+
+<div class="file-label">docker/evelyn-container/configs/flashmq.conf</div>
+<pre>
+listen {
+    port 1883
+    protocol mqtt
+    tcp_nodelay true
+}
+
+listen {
+    port 9001
+    protocol websockets
+}
+
+allow_anonymous true
+log_level warning
+storage_dir /var/lib/flashmq
+client_initial_buffer_size 4194304
+max_packet_size 1048576
+max_qos_msg_pending_per_client 65535
+thread_count 4
+
+# Bridge (managed by bridge_api) — uncomment and fill to enable
+# bridge {
+#     address &lt;EMS_IP&gt;
+#     port 1883
+#     topic unit/#  in  0
+#     clientid evelyn-bridge
+# }
+</pre>
+
+<div class="file-label">docker/evelyn-container/configs/writer.yaml</div>
+<pre>
+mqtt:
+  host: localhost           # FlashMQ inside the same container
+  port: 1883
+  client_id: evelyn-writer-container
+  topic: "unit/#"
+  qos: 0
+
+  topic_parser: positional
+  # Segments for: unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}
+  #               0     1          2        3           4            5
+  topic_segments:
+    - "_"          # 0: "unit" (literal, ignored)
+    - unit_id      # 1: hex unit serial
+    - device       # 2: "bms" / "pcs" / "rack"
+    - instance     # 3: "bms_1" / "bms_2" / etc.
+    - point_name   # 4: "Batt1_SBMU1_Current"
+    - dtype_hint   # 5: type hint — drives int vs float storage, not stored
+
+  partition_field: site_id
+  timestamp_field: ts
+  timestamp_format: iso8601
+
+output:
+  base_path: /data/parquet
+  project_id: 0
+  site_id: "EVELYN01"          # ★ set to match the site serial at deployment
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 10
+  max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000
+  current_state_path: /data/parquet/current_state.parquet
+  hot_file_path: /data/parquet/hot.parquet
+
+wal:
+  enabled: true
+  path: /data/parquet/.wal
+
+health:
+  enabled: true
+  port: 8771
+
+compact:
+  enabled: true
+  interval_seconds: 300
+  min_files: 3
+
+guard:
+  min_free_gb: 2.0
+</pre>
+
+<hr>
+
+<!-- 8 -->
+<h2 id="run">9. docker run Command</h2>
+
+<h3>Minimal one-liner</h3>
+<pre>
+docker run -d \
+  --name evelyn \
+  --restart unless-stopped \
+  -p 1883:1883 \
+  -p 9001:9001 \
+  -p 8080:8080 \
+  -p 8771:8771 \
+  -p 8772:8772 \
+  -v /etc/evelyn-site:/etc/evelyn \
+  -v /data/parquet-evelyn:/data/parquet \
+  evelyn:latest
+</pre>
+
+<p style="color:var(--muted);font-size:13px;margin-top:4px">On first run, <code>/etc/evelyn-site/</code> may be empty or missing — entrypoint.sh creates it and installs defaults automatically. Bridge configs and storage path changes written by bridge_api are saved here and survive image upgrades.</p>
+
+<h3>Volume summary</h3>
+<table>
+  <tr><th>Host path</th><th>Container path</th><th>Contents</th><th>Persistence</th></tr>
+  <tr><td><code>/etc/evelyn-site</code></td><td><code>/etc/evelyn</code></td><td>flashmq.conf, writer.yaml</td><td>Config survives restarts &amp; upgrades</td></tr>
+  <tr><td><code>/data/parquet-evelyn</code></td><td><code>/data/parquet</code></td><td>Parquet files, WAL, current_state</td><td>Data survives restarts &amp; upgrades</td></tr>
+</table>
+
+<h3>docker-compose.yml equivalent (single service)</h3>
+<div class="file-label">docker-compose.yml</div>
+<pre>
+<span class="kw">version</span>: <span class="str">"3.9"</span>
+
+<span class="kw">services</span>:
+  <span class="kw">evelyn</span>:
+    <span class="kw">image</span>: evelyn:latest
+    <span class="kw">container_name</span>: evelyn
+    <span class="kw">restart</span>: unless-stopped
+    <span class="kw">ports</span>:
+      - <span class="str">"1883:1883"</span>    <span class="cm"># MQTT</span>
+      - <span class="str">"9001:9001"</span>    <span class="cm"># MQTT-over-WebSocket</span>
+      - <span class="str">"8080:8080"</span>    <span class="cm"># HTML dashboards</span>
+      - <span class="str">"8771:8771"</span>    <span class="cm"># parquet_writer health</span>
+      - <span class="str">"8772:8772"</span>    <span class="cm"># bridge_api</span>
+    <span class="kw">volumes</span>:
+      - <span class="str">${CONFIG_PATH:-/etc/evelyn-site}:/etc/evelyn"</span>
+      - <span class="str">${PARQUET_PATH:-/data/parquet-evelyn}:/data/parquet"</span>
+    <span class="kw">environment</span>:
+      - TZ=UTC
+</pre>
+
+<hr>
+
+<!-- 9 -->
+<h2 id="build-script">10. Build Script</h2>
+
+<div class="file-label">scripts/evelyn-container-build.sh</div>
+<pre>
+<span class="cm">#!/usr/bin/env bash</span>
+<span class="kw">set</span> -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CTX="$REPO_ROOT/docker/evelyn-container"
+
+<span class="cm"># ── Both binaries are built from source inside Docker ────────────────────</span>
+<span class="cm"># No pre-built binaries needed on the host.</span>
+<span class="cm"># parquet_writer: built from source/parquet_writer_cpp/ (Stage 2)</span>
+<span class="cm"># FlashMQ:     cloned from github.com/halfgaar/FlashMQ (Stage 1)</span>
+
+<span class="cm"># ── Copy HTML pages ──────────────────────────────────────────────────────</span>
+HTML_SRC="$REPO_ROOT/html"
+HTML_DST="$CTX/html"
+mkdir -p "$HTML_DST/writer"
+cp "$HTML_SRC/writer/evelyn_docker_34.html"       "$HTML_DST/writer/"
+cp "$HTML_SRC/parquet_monitor.html"               "$HTML_DST/"
+cp "$HTML_SRC/writer/parquet_viewer.html"         "$HTML_DST/writer/"
+cp "$HTML_SRC/writer/writer_design.html"          "$HTML_DST/writer/"
+cp "$HTML_SRC/writer/evelyn_real_time_data.html"  "$HTML_DST/writer/"
+<span class="fn">echo</span> "Copied HTML pages → $HTML_DST"
+
+<span class="cm"># ── Build image ──────────────────────────────────────────────────────────</span>
+TAG="${1:-evelyn:latest}"
+<span class="fn">echo</span> "Building $TAG ..."
+docker build -t "$TAG" "$CTX"
+<span class="fn">echo</span> "Done. Run with:"
+<span class="fn">echo</span> "  docker run -d --name evelyn -p 1883:1883 -p 9001:9001 -p 8080:8080 -p 8771:8771 -p 8772:8772 -v /data/parquet-evelyn:/data/parquet $TAG"
+</pre>
+
+<hr>
+
+<!-- 10 -->
+<h2 id="html-pages">11. HTML Pages to Bake In</h2>
+<table>
+  <tr><th>Source path</th><th>Container path</th><th>URL</th></tr>
+  <tr><td><code>html/writer/evelyn_docker_34.html</code></td><td><code>/var/www/html/index.html</code></td><td><code>http://host:8080/</code> (landing page)</td></tr>
+  <tr><td><code>html/parquet_monitor.html</code></td><td><code>/var/www/html/parquet_monitor.html</code></td><td><code>http://host:8080/parquet_monitor.html</code></td></tr>
+  <tr><td><code>html/writer/parquet_viewer.html</code></td><td><code>/var/www/html/parquet_viewer.html</code></td><td><code>http://host:8080/parquet_viewer.html</code></td></tr>
+  <tr><td><code>html/writer/writer_design.html</code></td><td><code>/var/www/html/writer_design.html</code></td><td><code>http://host:8080/writer_design.html</code></td></tr>
+  <tr><td><code>html/writer/evelyn_real_time_data.html</code></td><td><code>/var/www/html/evelyn_real_time_data.html</code></td><td><code>http://host:8080/evelyn_real_time_data.html</code></td></tr>
+</table>
+
+<p>nginx also serves the Parquet data volume at <code>/parquet/</code> with CORS and range request headers — enabling DuckDB-WASM historical queries directly from the baked-in HTML pages.</p>
+
+<hr>
+
+<!-- 11 -->
+<h2 id="upgrade">12. Upgrade / Update Workflow</h2>
+<table>
+  <tr><th>What changed</th><th>How to update</th></tr>
+  <tr><td>New parquet_writer binary</td><td><code>scripts/evelyn-container-build.sh</code> → <code>docker stop evelyn && docker rm evelyn && docker run …</code></td></tr>
+  <tr><td>Writer config only (flush interval, etc.)</td><td><code>docker exec evelyn supervisorctl restart parquet_writer</code> after editing config inside container, OR use <code>POST /storage</code> via bridge_api</td></tr>
+  <tr><td>Bridge to new EMS hardware</td><td><code>POST http://host:8772/bridge</code> with <code>{"address":"…","port":1883,"topic":"unit/#"}</code> — bridge_api updates config and restarts FlashMQ</td></tr>
+  <tr><td>HTML page update</td><td>Rebuild image — nginx layer is small (~50 KB pages), rebuilds fast from cache</td></tr>
+  <tr><td>bridge_api code change</td><td>Rebuild image (Python layer) or: <code>docker cp bridge_api_container.py evelyn:/opt/evelyn/</code> + <code>docker exec evelyn supervisorctl restart bridge_api</code></td></tr>
+</table>
+
+<hr>
+
+<!-- 12 -->
+<h2 id="limitations">13. Limitations &amp; Open Questions</h2>
+
+<div class="warn"><strong>FlashMQ persistence dir:</strong> <code>/var/lib/flashmq</code> is inside the container — ephemeral by default. Retained QoS-1 messages are lost on container restart unless this is also volume-mounted. For QoS-0 only (our current mode) this is acceptable.</div>
+
+<div class="warn"><strong>Supervisor logs:</strong> <code>/var/log/supervisor/</code> is ephemeral. Use <code>docker logs evelyn</code> (supervisord stdout) or mount a log volume: <code>-v /data/logs/evelyn:/var/log/supervisor</code>. nginx logs are redirected to stdout/stderr so supervisord captures and rotates them — no separate <code>/var/log/nginx/</code> volume needed.</div>
+
+<div class="note"><strong>Config persistence:</strong> resolved — <code>/etc/evelyn</code> is an external volume (<code>-v /etc/evelyn-site:/etc/evelyn</code>). bridge_api edits (bridge config, storage path) persist across restarts and image upgrades. Defaults are re-installed only if a config file is missing.</div>
+
+<div class="note"><strong>WAL files:</strong> WAL lives in <code>/data/parquet/.wal</code> — inside the data volume, so survives container restarts. parquet_writer replays WAL on startup. Crash recovery works correctly.</div>
+
+<div class="note"><strong>current_state.parquet:</strong> written to <code>/data/parquet/current_state.parquet</code> — inside the volume, persistent. <code>GET /query/current</code> works as soon as parquet_writer has completed its first flush.</div>
+
+<table style="margin-top:16px">
+  <tr><th>Open question</th><th>Recommendation</th></tr>
+  <tr><td>bridge_api runs as root inside container</td><td>Acceptable for edge deployment. Add non-root user in future hardening pass.</td></tr>
+  <tr><td>No authentication on :8772</td><td>Same as today. Only expose on trusted LAN. Add HTTP basic auth or token if internet-facing.</td></tr>
+  <tr><td>FlashMQ binary delivery</td><td>Build from source in a 3rd Dockerfile stage, or maintain a pre-built binary alongside the repo. Document the extraction command from <code>flashmq:torture</code> image.</td></tr>
+  <tr><td>Multi-writer (4-sim mode)</td><td>Option C is designed for single-writer. For 4-sim mode, use docker-compose with 4 containers or the existing <code>gx10-evelyn-4sim-start.sh</code> native approach.</td></tr>
+</table>
+
+</div>
+</body>
+</html>

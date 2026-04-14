@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Real Data Analysis (Longbow EMS)</title>
+<style>
+  /* ── dark mode (default) ── */
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --th-bg: #21262d; --tr-hover: #1c2128; --surface2: #0d1117;
+    --badge-new-bg: #0d4429; --badge-def-bg: #2d2000;
+    --badge-risk-bg: #3d0a0a; --badge-info-bg: #0c2d6b;
+    --kw: #ff7b72; --fn: #d2a8ff; --ty: #79c0ff; --str: #a5d6ff;
+  }
+
+  /* ── light / print mode ── */
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --th-bg: #eaeef2; --tr-hover: #eaeef2; --surface2: #f6f8fa;
+    --badge-new-bg: #dcfce7; --badge-def-bg: #fef9c3;
+    --badge-risk-bg: #fee2e2; --badge-info-bg: #dbeafe;
+    --kw: #cf222e; --fn: #8250df; --ty: #0550ae; --str: #0a3069;
+  }
+
+  /* ── auto light on print ── */
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --th-bg: #eaeef2; --tr-hover: #eaeef2; --surface2: #f6f8fa;
+      --badge-new-bg: #dcfce7; --badge-def-bg: #fef9c3;
+      --badge-risk-bg: #fee2e2; --badge-info-bg: #dbeafe;
+      --kw: #cf222e; --fn: #8250df; --ty: #0550ae; --str: #0a3069;
+    }
+    .theme-toggle { display: none; }
+    .nav { display: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 24px; line-height: 1.6; transition: background 0.2s, color 0.2s; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.9rem; margin: 18px 0 6px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: var(--badge-info-bg); opacity: 0.6; }
+  body.light .nav a.here { opacity: 1; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 14px;
+        font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.6;
+        overflow-x: auto; color: var(--code-text); margin: 8px 0; }
+
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 1px 5px;
+         border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: var(--code-text); }
+
+  .kw  { color: var(--kw); }
+  .fn  { color: var(--fn); }
+  .ty  { color: var(--ty); }
+  .str { color: var(--str); }
+  .num { color: var(--ty); }
+  .cmt { color: var(--muted); }
+  .ok  { color: var(--green); }
+  .warn{ color: var(--yellow); }
+  .err { color: var(--red); }
+
+  p  { margin-bottom: 8px; font-size: 0.88rem; }
+  ul, ol { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
+  .badge-new  { background: var(--badge-new-bg);  color: var(--green);  border: 1px solid #1a6e3a; }
+  .badge-fix  { background: var(--badge-new-bg);  color: var(--green);  border: 1px solid #1a6e3a; }
+  .badge-def  { background: var(--badge-def-bg);  color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-risk { background: var(--badge-risk-bg); color: var(--red);    border: 1px solid #7a1515; }
+  .badge-info { background: var(--badge-info-bg); color: var(--accent); border: 1px solid #1a4d9e; }
+  body.light .badge-new, body.light .badge-fix  { border-color: #86efac; }
+  body.light .badge-def  { border-color: #fde047; }
+  body.light .badge-risk { border-color: #fca5a5; }
+  body.light .badge-info { border-color: #93c5fd; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 12px; }
+  th { background: var(--th-bg); color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--tr-hover); }
+  td.num { text-align: right; font-family: 'Consolas', monospace; color: var(--accent); }
+  td.warn { color: var(--red); font-weight: 600; }
+  td.ok   { color: var(--green); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .card-title { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .card-val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .card-sub { color: var(--muted); font-size: 0.75rem; margin-top: 2px; }
+
+  .alert { border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 0.88rem; border-left: 4px solid; }
+  .alert-info { background: #0c2d6b22; border-color: var(--accent); }
+  .alert-ok   { background: #0d442922; border-color: var(--green); }
+  .alert-warn { background: #2d200022; border-color: var(--yellow); }
+  .alert-err  { background: #3d0a0a22; border-color: var(--red); }
+  body.light .alert-info { background: #dbeafe; }
+  body.light .alert-ok   { background: #dcfce7; }
+  body.light .alert-warn { background: #fef9c3; }
+  body.light .alert-err  { background: #fee2e2; }
+
+  .flow { font-family: 'Consolas', monospace; font-size: 0.82rem; color: var(--text);
+          background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+          padding: 16px; line-height: 1.8; margin: 8px 0; }
+  .flow .hi   { color: var(--accent); font-weight: 700; }
+  .flow .ok   { color: var(--green); }
+  .flow .warn { color: var(--yellow); }
+  .flow .err  { color: var(--red); }
+
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; font-size: 0.82rem; }
+  .bar-label { min-width: 120px; color: var(--muted); font-family: 'Consolas', monospace; }
+  .bar-fill { height: 14px; border-radius: 3px; background: var(--accent); opacity: 0.7; }
+  .bar-val { color: var(--text); min-width: 60px; font-family: 'Consolas', monospace; }
+
+  .trunc-row { font-family: 'Consolas', monospace; font-size: 0.75rem; margin: 4px 0; }
+  .trunc-ok   { color: var(--green); }
+  .trunc-cut  { color: var(--red); text-decoration: line-through; }
+  .trunc-miss { color: var(--yellow); font-style: italic; }
+
+  /* ── theme toggle button ── */
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 14px;
+    font-size: 0.8rem; cursor: pointer; z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: background 0.2s, color 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+
+<script>
+  function toggleTheme() {
+    const body = document.body;
+    const btn  = document.getElementById('theme-btn');
+    if (body.classList.toggle('light')) {
+      btn.textContent = '🌙 Dark mode';
+    } else {
+      btn.textContent = '🖨 Print / Light mode';
+    }
+  }
+</script>
+</head>
+<body>
+
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🖨 Print / Light mode</button>
+
+<h1>writer.cpp — Real Data Analysis</h1>
+<p class="subtitle">
+  Longbow EMS production snapshot · <code>ems_topic_template.json</code> ·
+  branch <code>03202026_run_with_real_data</code> · 1,770 unique topics · 46-unit site
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_code_review_3.html">Review 3</a>
+  <a href="writer_critical_fixes_3.html">Fixes 3</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="writer_diff_detector.html">Diff Detector</a>
+  <a href="writer_duck_diff_detector.html">DuckDB Diff</a>
+  <a href="writer_real_data.html" class="here">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Dataset Overview</h2>
+
+<div class="section">
+  <p>
+    The template was extracted from a real Longbow production recording at site
+    <code>0215D1D8</code>. It contains every unique <code>(device, instance, point_name, dtype)</code>
+    combination published by the site's 46 battery/inverter units.
+  </p>
+
+  <div class="grid3" style="margin: 14px 0">
+    <div class="card">
+      <div class="card-title">Unique topics / unit</div>
+      <div class="card-val">1,770</div>
+      <div class="card-sub">bms 1,262 · rack 280 · pcs 228</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Full site msgs/sec</div>
+      <div class="card-val">81,420</div>
+      <div class="card-sub">46 units × 1,770 topics · 1s interval</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Raw MQTT throughput</div>
+      <div class="card-val">~10.8 MB/s</div>
+      <div class="card-sub">avg 132 bytes/msg (topic + payload)</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Parquet output rate</div>
+      <div class="card-val">~0.8 MB/s</div>
+      <div class="card-sub">snappy/zstd compressed rows</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Compression ratio</div>
+      <div class="card-val">~13×</div>
+      <div class="card-sub">vs raw MQTT stream</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Topic length range</div>
+      <div class="card-val">32–136 B</div>
+      <div class="card-sub">avg 84.4 bytes · old cap was 128</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Topic Format</h2>
+
+<div class="section">
+  <p>Every message uses a 6-segment positional topic. The <code>dtype_hint</code> in segment 5
+     is a parse-time type signal — it is not stored as a column, but it drives whether
+     <code>value_i</code> (INT64) or <code>value_f</code> (FLOAT64) is populated in the
+     parquet row.</p>
+
+  <div class="flow">
+unit / {unit_id} / {device} / {instance} / {point_name} / {dtype_hint}
+  0       1           2           3              4               5
+
+<span class="ok">Example (short):</span>
+unit/02281660/pcs/pcs_1/PCS_1PCS_Grid_Frequency/float                          <span class="cmt">(54 bytes)</span>
+
+<span class="warn">Example (long):</span>
+unit/02281660/bms/bms_1/Batt1_MBMS_System_warning_and_fault_SBMU_Big_temperature_difference_between_cells_warning_level_3/integer
+<span class="cmt">                                                                               (129 bytes — was truncated at 128)</span>
+
+<span class="err">Example (longest — 136 bytes, worst truncation):</span>
+unit/02281660/bms/bms_1/Batt1_MBMS_System_warning_and_fault_SBMU_Both_main_positive_relay_and_main_negative_relay_sticking_fault/integer
+  </div>
+
+  <h3>Payload format</h3>
+  <p>Every payload is the same flat JSON structure — a timestamp and a single value:</p>
+<pre>{"ts":"2024-11-15T21:27:52.775Z","value":0.999393}   <span class="cmt">// float</span>
+{"ts":"2024-11-15T21:27:52.775Z","value":1}           <span class="cmt">// integer / boolean_integer</span></pre>
+  <p>Typical payload length: 48–55 bytes. <code>MQRING_PAY_MAX=256</code> is safe for all observed values.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Device and Instance Breakdown</h2>
+
+<div class="section">
+  <div class="grid2">
+    <div>
+      <h3>Topics by device</h3>
+      <div class="bar-row"><span class="bar-label">bms</span>    <div class="bar-fill" style="width:213px"></div><span class="bar-val">1,262</span></div>
+      <div class="bar-row"><span class="bar-label">rack</span>   <div class="bar-fill" style="width:47px;background:var(--orange)"></div><span class="bar-val">280</span></div>
+      <div class="bar-row"><span class="bar-label">pcs</span>    <div class="bar-fill" style="width:38px;background:var(--purple)"></div><span class="bar-val">228</span></div>
+
+      <h3 style="margin-top:16px">Topics by dtype</h3>
+      <div class="bar-row"><span class="bar-label">integer</span>          <div class="bar-fill" style="width:163px"></div><span class="bar-val">962</span></div>
+      <div class="bar-row"><span class="bar-label">float</span>            <div class="bar-fill" style="width:130px;background:var(--orange)"></div><span class="bar-val">766</span></div>
+      <div class="bar-row"><span class="bar-label">boolean_integer</span>  <div class="bar-fill" style="width:7px;background:var(--purple)"></div><span class="bar-val">42</span></div>
+    </div>
+    <div>
+      <h3>Topics by instance</h3>
+      <table>
+        <thead><tr><th>Instance</th><th>Topics</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>bms_2</code></td><td class="num">667</td><td>BMS unit 2 top-level</td></tr>
+          <tr><td><code>bms_1</code></td><td class="num">595</td><td>BMS unit 1 top-level</td></tr>
+          <tr><td><code>pcs_1</code> / <code>pcs_2</code></td><td class="num">228</td><td>Power conversion system</td></tr>
+          <tr><td><code>bms_1_rack_1…5</code></td><td class="num">140</td><td>Per-rack detail (BMS1)</td></tr>
+          <tr><td><code>bms_2_rack_1…5</code></td><td class="num">140</td><td>Per-rack detail (BMS2)</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:.8rem;color:var(--muted);margin-top:6px">
+        Each rack instance contributes 28 topics covering cell voltages, temperatures, SOC,
+        current and fault flags at rack granularity.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Topic Length Distribution</h2>
+
+<div class="section">
+  <p>The old <code>MQRING_TOPIC_MAX = 128</code> cap was set without reference to real data.
+     The actual distribution shows 582 topics over 100 bytes and 8 topics exceeding 128 bytes:</p>
+
+  <table style="margin:12px 0">
+    <thead><tr><th>Length bucket</th><th>Count</th><th>% of topics</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>≤ 64 bytes</td><td class="num">384</td><td class="num">21.7%</td><td class="ok">safe</td></tr>
+      <tr><td>65–96 bytes</td><td class="num">654</td><td class="num">36.9%</td><td class="ok">safe</td></tr>
+      <tr><td>97–128 bytes</td><td class="num">724</td><td class="num">40.9%</td><td class="ok">safe (new cap 256)</td></tr>
+      <tr><td>129–136 bytes</td><td class="num warn">8</td><td class="num warn">0.45%</td>
+          <td class="warn">⚠ were truncated at 127 chars</td></tr>
+      <tr><td>&gt; 136 bytes</td><td class="num">0</td><td class="num">0%</td><td class="ok">none in dataset</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-err">
+    <strong>All 8 truncated topics are BMS MBMS fault/warning flags</strong> — integer 0/1
+    values indicating relay faults and cell temperature anomalies. Truncation caused the
+    <code>dtype_hint</code> segment to be silently corrupted or absent, so these points were
+    stored with the wrong type (float instead of int). No log entry, no counter, no crash.
+  </div>
+
+  <h3>Truncated topics — detail</h3>
+  <table>
+    <thead>
+      <tr><th style="width:8%">Length</th><th style="width:62%">Full topic (unit ID redacted)</th><th style="width:30%">Effect of truncation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num warn">136</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_1/Batt1_MBMS_…Both_main_positive_relay_and_main_negative_relay_sticking_<span style="color:var(--red)">fault/integer</span></td>
+        <td class="warn">Last 9 chars of point_name + entire dtype lost — stored as float, wrong column name</td>
+      </tr>
+      <tr>
+        <td class="num warn">136</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_2/Batt2_MBMS_…Both_main_positive_relay_and_main_negative_relay_sticking_<span style="color:var(--red)">fault/integer</span></td>
+        <td class="warn">Same — bms_2 mirror</td>
+      </tr>
+      <tr>
+        <td class="num warn">129</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_1/Batt1_MBMS_…Big_temperature_difference_between_cells_warning_level_1/<span style="color:var(--red)">integer</span></td>
+        <td class="warn">dtype becomes <code>integ</code> — parsed as unknown, stored as float</td>
+      </tr>
+      <tr>
+        <td class="num warn">129</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_1/Batt1_MBMS_…warning_level_2/<span style="color:var(--red)">integer</span></td>
+        <td class="warn">Same</td>
+      </tr>
+      <tr>
+        <td class="num warn">129</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_1/Batt1_MBMS_…warning_level_3/<span style="color:var(--red)">integer</span></td>
+        <td class="warn">Same</td>
+      </tr>
+      <tr>
+        <td class="num warn">129</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_2/Batt2_MBMS_…warning_level_1/<span style="color:var(--red)">integer</span></td>
+        <td class="warn">Same — bms_2 mirror</td>
+      </tr>
+      <tr>
+        <td class="num warn">129</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_2/Batt2_MBMS_…warning_level_2/<span style="color:var(--red)">integer</span></td>
+        <td class="warn">Same</td>
+      </tr>
+      <tr>
+        <td class="num warn">129</td>
+        <td style="font-family:monospace;font-size:.75rem">unit/XXXXXXXX/bms/bms_2/Batt2_MBMS_…warning_level_3/<span style="color:var(--red)">integer</span></td>
+        <td class="warn">Same</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-ok">
+    <strong>FIXED</strong> — <code>MQRING_TOPIC_MAX</code> raised from 128 → 256 in
+    <code>mqtt_ring.h</code>. Memory cost: +32 MB BSS (lazily paged, never all resident).
+    <code>topic_truncations</code> and <code>payload_truncations</code> atomic counters added
+    to <code>MqttRing</code>, exposed in <code>/health</code> JSON — operator-visible without
+    log diving.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>MQTT System Analysis</h2>
+
+<div class="section">
+
+  <h3>Message flow</h3>
+  <div class="flow">
+46 units × 1,770 topics = <span class="hi">81,420 msgs/sec</span> at 1s publish interval
+
+Each unit publishes:
+  bms_1 / bms_2           595 + 667 = 1,262 topics   <span class="cmt">← MBMS system-level data</span>
+  bms_x_rack_1..5          10 racks × 28  = 280 topics   <span class="cmt">← per-rack cell data</span>
+  pcs_1 / pcs_2            114 + 114 = 228 topics   <span class="cmt">← power conversion</span>
+
+Topic: unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}
+Payload: {"ts":"...ISO8601...","value": N}
+
+MQTT → FlashMQ broker → libmosquitto on_message → MqttRing (lock-free SPSC)
+  → parse_thread_fn → parse_topic_positional() + parse_payload()
+  → g_buffer (partitioned by site_id / year / month / day)
+  → flush_thread_fn (every 60s or on buffer overflow)
+  → WAL + Parquet file
+  </div>
+
+  <h3>Partition structure</h3>
+  <p>
+    Under the <code>real_writer</code> config, each parquet file covers one
+    <code>site_id / year / month / day</code> partition. All 81k rows/sec from all devices,
+    instances, and point names land in the same daily file — distinguished at query time by
+    the <code>device</code>, <code>instance</code>, and <code>point_name</code> columns.
+    <code>site_id</code> is injected from config, not the topic — saving 8 bytes on every
+    single message.
+  </p>
+
+  <h3>Parquet schema</h3>
+  <table>
+    <thead><tr><th>Column</th><th>Type</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>ts</code></td><td>FLOAT64</td><td>Payload <code>ts</code> field</td><td>Unix epoch seconds, parsed from ISO 8601</td></tr>
+      <tr><td><code>project_id</code></td><td>INT64</td><td>Config</td><td>Constant 0 for this site</td></tr>
+      <tr><td><code>site_id</code></td><td>VARCHAR</td><td>Config injection</td><td><code>"0215D1D8"</code> — not in topic</td></tr>
+      <tr><td><code>unit_id</code></td><td>VARCHAR</td><td>Topic segment 1</td><td><code>"02281660"</code> etc. — hex serial</td></tr>
+      <tr><td><code>device</code></td><td>VARCHAR</td><td>Topic segment 2</td><td><code>bms</code> / <code>pcs</code> / <code>rack</code></td></tr>
+      <tr><td><code>instance</code></td><td>VARCHAR</td><td>Topic segment 3</td><td><code>bms_1</code>, <code>bms_2_rack_3</code>, etc.</td></tr>
+      <tr><td><code>point_name</code></td><td>VARCHAR</td><td>Topic segment 4</td><td>Up to 104 chars — high cardinality, benefits from dictionary encoding</td></tr>
+      <tr><td><code>value_f</code></td><td>FLOAT64</td><td>Payload <code>value</code></td><td>Populated for <code>float</code> dtype</td></tr>
+      <tr><td><code>value_i</code></td><td>INT64</td><td>Payload <code>value</code></td><td>Populated for <code>integer</code> / <code>boolean_integer</code> dtype</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Why split value_f / value_i?</strong> A single FLOAT64 column loses integer precision
+    for large counters and boolean flags (which should be exactly 0 or 1). Keeping them separate
+    costs one null per row but preserves type fidelity. At the query layer, a
+    <code>COALESCE(value_i, CAST(value_f AS INT64))</code> covers both when needed.
+  </div>
+
+  <h3>Throughput headroom</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th><th>KPI headroom</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>parse_topic (writer.cpp KPI)</td>
+        <td>2,672,549 ops/s</td>
+        <td class="ok">33× above 81,420 msg/s fleet rate</td>
+      </tr>
+      <tr>
+        <td>parse + payload (writer.cpp KPI)</td>
+        <td>491,121 ops/s</td>
+        <td class="ok">6× headroom — comfortable</td>
+      </tr>
+      <tr>
+        <td>Flush throughput</td>
+        <td>~900k rows/s</td>
+        <td class="ok">11× above 81,420 rows/s</td>
+      </tr>
+      <tr>
+        <td>MqttRing capacity</td>
+        <td>262,144 slots</td>
+        <td class="ok">3.2 seconds of burst at 81,420 msg/s</td>
+      </tr>
+      <tr>
+        <td>MqttRing memory</td>
+        <td>129 MB BSS</td>
+        <td class="ok">lazily paged; fine on all targets</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Recording Gap Analysis</h2>
+
+<div class="section">
+  <p>
+    The Longbow recording spans <strong>459 seconds</strong> (21:27:52 → 21:35:31 UTC, 2024-11-15).
+    A timestamp-gap analysis reveals that the data is <em>not continuous</em> — it is a sparse capture
+    of a live site with many individual polling cycles:
+  </p>
+
+  <h3>Top-level numbers</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Total messages</td><td>1,302,603</td><td>1 bad row skipped</td></tr>
+      <tr><td>Recording span</td><td>459 s (7.65 min)</td><td>recv_ts first → last</td></tr>
+      <tr><td>Gaps &gt; 0.5 s</td><td>123</td><td>Spread evenly across all 8 minutes</td></tr>
+      <tr><td>Gaps &gt; 1 s</td><td>114</td><td>~14 per minute; avg interval 1.9 s</td></tr>
+      <tr><td>Longest gap</td><td>12.3 s</td><td>21:30:40 UTC</td></tr>
+      <tr><td>Active seconds (any msgs)</td><td>~188 / 459</td><td>41% of wall-clock time has traffic</td></tr>
+      <tr><td>Msg rate (active seconds only)</td><td>~6,913 msg/s</td><td>vs 81,420 expected at full rate</td></tr>
+      <tr><td>Coverage fraction</td><td>8.5%</td><td>Only ~4 of 47 units reporting at any moment</td></tr>
+    </tbody>
+  </table>
+
+  <h3>First-10s burst (retained messages)</h3>
+  <p>
+    The first 10 seconds contain <strong>183,847 messages</strong> — roughly 6× the typical 10-second
+    window rate. Of these, <strong>26,590 (14.5%) have the MQTT retained flag set</strong>. After t=10s,
+    retained count drops to exactly zero. This pattern is characteristic of a subscriber connecting to a
+    broker that has retained the last known value for each topic: the broker immediately replays all
+    retained messages before the live stream begins.
+  </p>
+  <p>
+    The remaining 1,118,756 messages are all live (retained=False), spread across the rest of the
+    recording at ~3,000–43,000 per 10-second bucket depending on how many units happen to be in their
+    polling window.
+  </p>
+
+  <h3>Gap character — per-device polling, not broker outage</h3>
+  <p>
+    During the largest gap (12.3 s), <strong>only 20 of 47 units were active in the 5 s before</strong>
+    and only 14 resumed in the 5 s after. The overlap is 12 units. This rules out a broker restart or
+    network-wide outage — if the broker had crashed, all 47 units would have dropped simultaneously and
+    all would resume together. Instead, each unit EMS device publishes on its own independent polling
+    schedule. The "gaps" are windows where no unit happened to push a batch.
+  </p>
+  <p>
+    Gap distribution is uniform: 9–20 gaps &gt; 1 s per minute across all 8 minutes of recording.
+    There is no "dead zone" — the gaps are a structural property of the per-device polling cadence,
+    not a recording artifact or connectivity issue.
+  </p>
+
+  <h3>Per-unit rate variation (4× spread)</h3>
+  <table>
+    <thead><tr><th>Unit ID</th><th>Messages</th><th>Rate (msg/s)</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>0215F734</code></td><td>55,426</td><td class="ok">121.1</td><td>Fastest unit — likely fastest polling EMS</td></tr>
+      <tr><td><code>0215F5D6</code></td><td>54,584</td><td class="ok">119.2</td><td></td></tr>
+      <tr><td><code>02285B20</code></td><td>48,310</td><td class="ok">110.6</td><td></td></tr>
+      <tr><td><code>0215F662</code></td><td>46,538</td><td>106.5</td><td></td></tr>
+      <tr><td><code>02281663</code></td><td>48,389</td><td>106.3</td><td></td></tr>
+      <tr><td colspan="4" style="text-align:center;color:var(--muted)">… 37 more units …</td></tr>
+      <tr><td><code>0227C82A</code></td><td>16,466</td><td class="warn">35.9</td><td>Slower EMS or more dropped polls</td></tr>
+      <tr><td><code>0215F5CF</code></td><td>15,813</td><td class="warn">35.5</td><td></td></tr>
+      <tr><td><code>0215F5BF</code></td><td>16,042</td><td class="warn">35.0</td><td></td></tr>
+      <tr><td><code>0215F5F5</code></td><td>14,826</td><td class="warn">33.3</td><td></td></tr>
+      <tr><td><code>0215F5E7</code></td><td>13,530</td><td class="warn">29.6</td><td>Slowest unit — 4× behind fastest</td></tr>
+    </tbody>
+  </table>
+  <p>
+    If each unit has 1,770 topics and should publish every point on some cycle, the expected rate at
+    full coverage would be 81,420 / 47 ≈ <strong>1,732 msg/s per unit</strong>. The observed
+    30–120 msg/s per unit means each unit is publishing roughly <strong>1 topic per 15–60 seconds</strong>
+    on average — consistent with a slow Modbus polling loop querying each register in sequence.
+  </p>
+
+  <h3><code>Fractal/</code> topic schema (18,770 messages)</h3>
+  <p>
+    The 35,930 "other-format" rows break down as:
+  </p>
+  <ul>
+    <li><strong>18,770 <code>Fractal/{unit_id}/{dtype}/{point_name}/{ip}/{uuid}</code></strong> — Modbus/OPC-UA
+      connection-status topics published by the Fractal SCADA layer. All 47 unit IDs appear here. These
+      are connection diagnostics (<code>CONNECTION-PQ_1</code>, <code>CONNECTION-PCS_1</code>, etc.),
+      not battery-cell measurements. 77 distinct <code>Fractal/{unit}/{dtype}</code> prefixes observed.</li>
+    <li><strong>~17,160 site-level topics</strong> — <code>ems/site/{SiteSN}/unit/{unit}/…</code> with an
+      extra leading <code>ems/site/…</code> prefix before the <code>unit/</code> segment, breaking the
+      6-segment positional parse. These are site-aggregation topics, not per-cell data.</li>
+  </ul>
+  <p>
+    Neither of these schemas matches the <code>unit/{id}/{device}/{instance}/{point_name}/{dtype_hint}</code>
+    format that <code>parse_topic()</code> handles. Both will parse as <em>unknown topic</em> and be
+    dropped (or stored in a catch-all bucket). This is expected behavior — <code>parse_topic()</code>
+    should remain strict.
+  </p>
+
+  <div class="alert alert-info">
+    <strong>Conclusion:</strong> There is no systemic data loss in the recording. The gaps are an artifact
+    of the site's slow Modbus polling cadence — each EMS polls its 1,770 registers sequentially, producing
+    30–120 msg/s per unit rather than the sustained 1,732/s that would be needed for full coverage.
+    The recording captures a real production site operating normally. The <code>Fractal/</code> topics
+    are a second topic namespace (connection telemetry) that writer.cpp correctly ignores.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Issues Found and Status</h2>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr><th style="width:12%">ID</th><th style="width:38%">Issue</th><th style="width:12%">Status</th><th style="width:38%">Fix</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>RD-1</strong></td>
+        <td><code>MQRING_TOPIC_MAX = 128</code> — 8 of 1,770 real topics exceed this; silently truncated in <code>push()</code>; dtype_hint corrupted → wrong storage type for BMS fault flags</td>
+        <td><span class="badge badge-fix">FIXED</span></td>
+        <td>Raised to 256 in <code>mqtt_ring.h</code>. Added <code>topic_truncations</code> counter exposed in <code>/health</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>RD-2</strong></td>
+        <td><code>parse_thread_fn</code> sleeps 50µs when ring empty — 20k wakeups/sec at idle; up to 50µs first-message latency on bursty deployments</td>
+        <td><span class="badge badge-def">PENDING (SHM-7)</span></td>
+        <td>Replace sleep with <code>futex(FUTEX_WAIT)</code> on <code>MqttRing::wake_seq</code>. See <a href="writer_shm_ring.html" style="color:var(--accent)">SHM Ring page</a>.</td>
+      </tr>
+      <tr>
+        <td><strong>RD-3</strong></td>
+        <td><code>real_writer.cpp</code> uses <code>std::string topic</code> (unbounded) but parses inside <code>on_message</code> — holds <code>g_mutex</code> during JSON parse, blocking the flush thread</td>
+        <td><span class="badge badge-def">KNOWN</span></td>
+        <td>Not a problem at 81k msg/s (parse is fast), but will matter if rate scales. Long-term fix: adopt <code>MqttRing</code> from <code>writer.cpp</code> to decouple MQTT callback from parse.</td>
+      </tr>
+      <tr>
+        <td><strong>RD-4</strong></td>
+        <td>Point name max observed: 104 chars. <code>ShmSlot::ShmField::name[16]</code> in the SHM ring design would truncate all EMS point names if the SHM path were used for the EMS stream.</td>
+        <td><span class="badge badge-info">DESIGN NOTE</span></td>
+        <td>SHM ring is for new_bms / Gumby targets with short field names (AvgCellV etc.). If EMS stream ever uses SHM path, bump <code>name[16]</code> → <code>name[128]</code> and update <code>static_assert</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Real Data vs Torture Test Topology Comparison</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Dimension</th><th>Torture test (stress_runner_cpp)</th><th>Real Longbow site</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Topic format</td>
+        <td><code>batteries/site=0/rack=3/module=2/cell=51/voltage</code><br><span style="font-size:.78rem;color:var(--muted)">kv-style segments</span></td>
+        <td><code>unit/02281660/bms/bms_1/Batt1_SBMU1_Current/float</code><br><span style="font-size:.78rem;color:var(--muted)">positional segments</span></td>
+      </tr>
+      <tr>
+        <td>Max topic length</td>
+        <td>~60 bytes</td>
+        <td>136 bytes</td>
+      </tr>
+      <tr>
+        <td>Msgs/sec</td>
+        <td>79,872 (12 racks × 8 modules × 52 cells × 2 sites)</td>
+        <td>81,420 (46 units × 1,770 topics)</td>
+      </tr>
+      <tr>
+        <td>Unique topics</td>
+        <td>9,984</td>
+        <td>81,420 (1,770 × 46 units)</td>
+      </tr>
+      <tr>
+        <td>Payload</td>
+        <td><code>{"value":3.71,"unit":"V"}</code> — nested format</td>
+        <td><code>{"ts":"…","value":0.999}</code> — flat with ISO timestamp</td>
+      </tr>
+      <tr>
+        <td>Partition key</td>
+        <td>source_type + kv (rack/module/cell)</td>
+        <td>site_id + year/month/day</td>
+      </tr>
+      <tr>
+        <td>Writer config</td>
+        <td><code>writer_config.yaml</code> — kv topic parser</td>
+        <td><code>real_writer_config.yaml</code> — positional parser</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    The two topologies are close in raw message rate (~80k msg/s both) but differ significantly
+    in topic format, payload structure, and partition strategy. The torture test exercises the
+    writer's fault-tolerance at production rate; real data exercises the full topic/payload
+    parsing path and the positional parser. Both should be run against a production-ready build.
+  </div>
+</div>
+
+</body>
+</html>

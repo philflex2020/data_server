@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>UPS Controller — Heltec LoRa32</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --orange:#e3b341;
+    --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; max-width:860px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .btn-row { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+  .btn { display:inline-block; padding:8px 16px; border-radius:6px; font-size:.85rem;
+         font-weight:600; text-decoration:none; }
+  .btn-primary { background:#1f6feb; color:#fff; }
+  .btn-primary:hover { background:#388bfd; }
+  .btn-dl { background:var(--surface); color:var(--accent);
+             border:1px solid var(--accent); }
+  .btn-dl:hover { background:#0c2d6b44; }
+
+  table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:6px 10px;
+       border-bottom:1px solid var(--border); }
+  td { padding:6px 10px; border-bottom:1px solid #21262d; }
+  td:first-child { color:var(--accent); font-family:monospace; white-space:nowrap; }
+
+  .tag { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:3px;
+         border:1px solid var(--border); color:var(--muted); margin-right:4px; }
+  .tag-ws { border-color:var(--green); color:var(--green); }
+
+  pre { background:var(--code-bg); padding:12px; border-radius:6px; font-size:.78rem;
+        overflow-x:auto; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Controller Projects</a>
+</div>
+
+<h1>UPS Controller — Heltec LoRa32</h1>
+<p class="subtitle">Uninterruptible Power Supply simulator/controller with normal, bypass, battery, and test modes</p>
+<span class="tag tag-ws">ws :81</span>
+<span class="tag">Heltec LoRa32 V2/V3</span>
+<span class="tag">LILYGO T-Display</span>
+
+<div class="btn-row">
+  <a class="btn btn-primary" href="ups_ctrl.html">Open Control UI</a>
+  <a class="btn btn-dl" href="arduino/ups_control/ups_control.ino" download>Download ups_control.ino</a>
+</div>
+
+<h2>Overview</h2>
+<p style="font-size:.85rem;line-height:1.6;color:var(--muted)">
+  Simulates or controls a UPS. Drives output voltage reference and battery current sense via DAC,
+  controls mains bypass contactor and inverter enable via GPIO. Supports normal, bypass, battery, test,
+  and fault modes with a battery test command.
+</p>
+
+<h2>Hardware</h2>
+<table>
+  <tr><th>Pin</th><th>Function</th><th>Notes</th></tr>
+  <tr><td>GPIO25 / DAC1</td><td>Output voltage reference</td><td>0–3.3 V = 0–240 V AC</td></tr>
+  <tr><td>GPIO26 / DAC2</td><td>Battery current sense</td><td>0–3.3 V = 0–100 A</td></tr>
+  <tr><td>GPIO OUT[0]</td><td>Mains contactor (bypass)</td><td>Digital output</td></tr>
+  <tr><td>GPIO OUT[1]</td><td>Inverter enable</td><td>Digital output</td></tr>
+  <tr><td>GPIO OUT[2]</td><td>Alarm relay</td><td>Digital output</td></tr>
+</table>
+
+<h2>WebSocket Commands (JSON, port 81)</h2>
+<pre>{"cmd": "get_status"}
+{"cmd": "set_mode",           "mode": "normal"}  // normal | bypass | battery | test | fault
+{"cmd": "battery_test"}                           // initiate battery test
+{"cmd": "set_output_voltage", "value": 230.0}    // V AC
+{"cmd": "set_load",           "value": 60.0}     // % (sim only)
+{"cmd": "clear_fault"}
+{"cmd": "ping",               "t": 0}</pre>
+
+<h2>Library Requirements</h2>
+<p style="font-size:.82rem;color:var(--muted)">ArduinoJson · WebSocketsServer · ArduinoOTA · Preferences · U8g2 (V2) or TFT_eSPI (T-Display)</p>
+
+</body>
+</html>

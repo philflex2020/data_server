@@ -250,7 +250,7 @@ The edge architecture is a pure extension of the current proof-of-concept:
 |------|---------|
 | `source/parquet_writer_cpp/writer.cpp` | C++ parquet writer — runs on edge and AWS |
 | `source/parquet_writer_cpp/Makefile` | Build with `make` |
-| `source/parquet_writer_cpp/config.yaml` | Writer config — set `flush_interval_seconds`, `current_state_path` |
+| `source/parquet_writer_cpp/writer_config.yaml` | Writer config — set `flush_interval_seconds`, `current_state_path` |
 | `source/bridge/bridge.yaml` | FlashMQ bridge config — topic group selection |
 | `source/bridge/gen_bridge_conf.py` | Generates FlashMQ bridge conf from bridge.yaml |
 | `subscriber/api/server.py` | Subscriber API — runs on AWS, queries S3 + current_state.parquet |

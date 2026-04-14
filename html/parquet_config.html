@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Config — test_aws / test_host</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+a { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Top bar ── */
+.topbar {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 10px 20px; display: flex; align-items: center; gap: 14px; flex-shrink: 0; flex-wrap: wrap;
+}
+.topbar h1 { color: #58a6ff; font-size: 1.1em; white-space: nowrap; }
+.topbar .sep { color: #30363d; }
+.topbar label { font-size: 0.78em; color: #8b949e; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.topbar input[type=text] {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  color: #e6edf3; font-size: 0.82em; padding: 3px 8px; width: 150px; font-family: monospace;
+}
+.topbar input:focus { outline: none; border-color: #58a6ff; }
+/* host group: label + dot + input */
+.host-group { display: flex; align-items: center; gap: 6px; }
+.host-group .hg-label {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #6e7681; white-space: nowrap;
+}
+.host-group .hg-sublabel { font-size: 0.70em; color: #30363d; white-space: nowrap; }
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #30363d; flex-shrink: 0; cursor: default;
+  transition: background 0.3s;
+}
+.conn-dot.ok   { background: #3fb950; box-shadow: 0 0 5px #3fb95066; }
+.conn-dot.fail { background: #f85149; }
+.conn-dot.busy { background: #f0883e; }
+.nav { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.nav a {
+  padding: 4px 10px; border-radius: 4px; font-size: 0.76em;
+  background: #0d1117; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+
+/* ── Layout ── */
+.layout {
+  display: flex; flex: 1; overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 230px; flex-shrink: 0; background: #0d1117;
+  border-right: 1px solid #30363d; overflow-y: auto; padding: 10px 0;
+}
+.group-label {
+  font-size: 0.68em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #6e7681; padding: 10px 14px 4px;
+}
+.comp-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 14px;
+  cursor: pointer; font-size: 0.82em; color: #8b949e; transition: background 0.15s;
+  border-left: 2px solid transparent;
+}
+.comp-item:hover  { background: #161b22; color: #e6edf3; }
+.comp-item.active { background: #161b22; color: #58a6ff; border-left-color: #58a6ff; }
+.comp-item .ci-port {
+  font-size: 0.72em; color: #f39c12; font-family: monospace;
+  background: #161b22; padding: 1px 5px; border-radius: 3px; margin-left: auto;
+}
+.comp-item.active .ci-port { background: #0d1117; }
+.comp-dot { width: 7px; height: 7px; border-radius: 50%; background: #30363d; flex-shrink: 0; }
+.comp-dot.edge { background: #3fb950; }
+.comp-dot.aws  { background: #58a6ff; }
+.comp-dot.old  { background: #f0883e; }
+.comp-dot.load { background: #a371f7; }
+.comp-dot.mgmt { background: #6e7681; }
+
+/* ── Main panel ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.comp-header {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.comp-header .comp-name { font-size: 1.0em; font-weight: 600; color: #e6edf3; }
+.comp-header .comp-desc { font-size: 0.8em; color: #8b949e; }
+.comp-header .comp-port {
+  font-size: 0.76em; color: #f39c12; font-family: monospace;
+  background: #0d1117; padding: 2px 8px; border-radius: 3px; margin-left: auto;
+}
+.comp-header .comp-host {
+  font-size: 0.76em; color: #8b949e; font-family: monospace;
+  background: #0d1117; border: 1px solid #30363d; padding: 2px 8px; border-radius: 3px;
+}
+
+/* ── Tabs ── */
+.tabs {
+  display: flex; gap: 0; background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 0 20px; flex-shrink: 0;
+}
+.tab-btn {
+  background: none; border: none; color: #8b949e; cursor: pointer;
+  font-size: 0.82em; padding: 9px 16px; border-bottom: 2px solid transparent;
+  transition: color 0.15s;
+}
+.tab-btn:hover { color: #e6edf3; }
+.tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+.tab-pane { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+.tab-pane.active { display: flex; }
+
+/* ── Code viewer ── */
+.code-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 20px; background: #161b22; border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+}
+.code-toolbar .file-path { font-size: 0.76em; color: #8b949e; font-family: monospace; }
+.copy-btn {
+  background: #21262d; border: 1px solid #30363d; border-radius: 5px;
+  color: #8b949e; font-size: 0.74em; padding: 3px 10px; cursor: pointer;
+}
+.copy-btn:hover { color: #e6edf3; border-color: #58a6ff; }
+.copy-btn.copied { color: #3fb950; border-color: #3fb950; }
+
+.code-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+pre.code-block {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+  padding: 16px 18px; font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.80em; line-height: 1.65; overflow-x: auto; white-space: pre;
+  tab-size: 2;
+}
+/* Syntax highlight classes */
+.sh-comment  { color: #6e7681; font-style: italic; }
+.sh-key      { color: #79c0ff; }
+.sh-string   { color: #a5d6ff; }
+.sh-value    { color: #3fb950; }
+.sh-section  { color: #f0883e; font-weight: 600; }
+.sh-keyword  { color: #ff7b72; }
+.sh-punct    { color: #6e7681; }
+.sh-number   { color: #f0883e; }
+
+/* ── Startup pane ── */
+.startup-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.start-step {
+  background: #0d1a2a; border: 1px solid #1d3a5c; border-radius: 6px;
+  margin-bottom: 14px;
+}
+.start-step-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; border-bottom: 1px solid #1d3a5c;
+}
+.start-step-title { font-size: 0.82em; color: #79c0ff; font-weight: 600; }
+.start-step-cmd { font-size: 0.78em; color: #6e7681; }
+pre.start-cmd {
+  padding: 12px 16px; font-family: monospace; font-size: 0.80em;
+  line-height: 1.6; color: #e6edf3; overflow-x: auto;
+}
+.log-path { font-size: 0.76em; color: #6e7681; padding: 4px 16px 10px; }
+.log-path span { color: #8b949e; font-family: monospace; }
+
+/* ── API Test pane ── */
+.api-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+.api-no-api {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 20px; text-align: center; color: #6e7681; font-size: 0.85em;
+}
+.api-no-api .port-check {
+  display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px;
+}
+
+.api-section { margin-bottom: 20px; }
+.api-section-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #6e7681; margin-bottom: 10px; border-bottom: 1px solid #21262d; padding-bottom: 5px;
+}
+
+/* WS connection bar */
+.ws-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 10px 14px; margin-bottom: 14px;
+}
+.ws-url { font-family: monospace; font-size: 0.80em; color: #8b949e; flex: 1; }
+.ws-dot { width: 8px; height: 8px; border-radius: 50%; background: #30363d; }
+.ws-dot.connected { background: #3fb950; box-shadow: 0 0 6px #3fb950; }
+.ws-dot.error     { background: #f85149; }
+.ws-status { font-size: 0.75em; color: #8b949e; }
+
+/* Buttons */
+.btn {
+  border: none; border-radius: 5px; cursor: pointer;
+  font-size: 0.80em; padding: 6px 14px; font-family: inherit;
+}
+.btn-blue  { background: #1f6feb; color: #fff; }
+.btn-blue:hover  { background: #388bfd; }
+.btn-green { background: #1a3a1a; border: 1px solid #3fb950; color: #3fb950; }
+.btn-green:hover { background: #1f5c1f; }
+.btn-red   { background: #3a1a1a; border: 1px solid #f85149; color: #f85149; }
+.btn-red:hover   { background: #5c1f1f; }
+.btn-grey  { background: #21262d; border: 1px solid #30363d; color: #8b949e; }
+.btn-grey:hover  { background: #30363d; color: #e6edf3; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Endpoint dropdown row */
+.endpoint-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.endpoint-row select, .api-select {
+  background: #161b22; border: 1px solid #30363d; border-radius: 5px;
+  color: #e6edf3; font-size: 0.82em; padding: 5px 10px; cursor: pointer;
+  font-family: monospace;
+}
+.endpoint-row select:focus, .api-select:focus { outline: none; border-color: #58a6ff; }
+.method-badge {
+  font-size: 0.72em; font-weight: 700; padding: 2px 8px; border-radius: 3px;
+  font-family: monospace; letter-spacing: 0.05em;
+}
+.method-get  { background: #0e2d1a; color: #3fb950; border: 1px solid #3fb95044; }
+.method-post { background: #1f2d0e; color: #f0883e; border: 1px solid #f0883e44; }
+.method-ws   { background: #0e1d2d; color: #58a6ff; border: 1px solid #58a6ff44; }
+
+/* Dynamic fields */
+.dynamic-fields {
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 12px 14px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.field-row { display: flex; align-items: center; gap: 8px; }
+.field-row label { font-size: 0.76em; color: #8b949e; width: 110px; flex-shrink: 0; text-align: right; }
+.field-row input, .field-row select, .field-row textarea {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  color: #e6edf3; font-size: 0.82em; padding: 4px 8px; flex: 1;
+  font-family: monospace;
+}
+.field-row input:focus, .field-row select:focus, .field-row textarea:focus {
+  outline: none; border-color: #58a6ff;
+}
+.field-row textarea { resize: vertical; min-height: 60px; }
+
+/* Response display */
+.response-box {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+  padding: 12px 14px; font-family: monospace; font-size: 0.78em; line-height: 1.6;
+  color: #8b949e; min-height: 60px; max-height: 300px; overflow-y: auto; white-space: pre-wrap;
+  word-break: break-all;
+}
+.response-box.ok    { border-color: #3fb95044; color: #c9d1d9; }
+.response-box.error { border-color: #f8514944; color: #f85149; }
+
+/* WS message stream */
+.ws-stream {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+  padding: 10px 12px; font-family: monospace; font-size: 0.76em; line-height: 1.7;
+  min-height: 80px; max-height: 320px; overflow-y: auto;
+}
+.ws-msg { padding: 2px 0; border-bottom: 1px solid #161b22; }
+.ws-msg.in  { color: #79c0ff; }
+.ws-msg.out { color: #f0883e; }
+.ws-msg.sys { color: #6e7681; font-style: italic; }
+.ws-msg.err { color: #f85149; }
+.ws-time { color: #30363d; margin-right: 6px; }
+
+/* Stream toolbar */
+.stream-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.stream-toolbar span { font-size: 0.72em; color: #6e7681; }
+
+/* Port test */
+.port-test-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.port-result { font-size: 0.78em; }
+.port-result.ok   { color: #3fb950; }
+.port-result.fail { color: #f85149; }
+
+/* callout */
+.callout {
+  border-radius: 6px; padding: 10px 14px; font-size: 0.82em; line-height: 1.6; margin-bottom: 12px;
+}
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <h1>⚙ Parquet Config</h1>
+  <span class="sep">|</span>
+
+  <!-- Host (edge) -->
+  <div class="host-group">
+    <span class="hg-label">Host</span>
+    <span class="conn-dot" id="dot-phildev" title="test_host connectivity"></span>
+    <input type="text" id="host-phildev" value="192.168.86.46" oninput="resetDot('phildev')" style="width:120px">
+    <span class="hg-sublabel">test_host</span>
+  </div>
+
+  <!-- AWS / sim -->
+  <div class="host-group">
+    <span class="hg-label">AWS&nbsp;/&nbsp;sim</span>
+    <span class="conn-dot" id="dot-fractal" title="test_aws connectivity"></span>
+    <input type="text" id="host-fractal" value="192.168.86.51" oninput="resetDot('fractal')" style="width:130px">
+    <span class="hg-sublabel">test_aws</span>
+  </div>
+
+  <button class="btn btn-grey" style="font-size:0.76em;padding:4px 12px" onclick="testConnections()">Test</button>
+
+  <label style="margin-left:4px">InfluxDB token
+    <input type="text" id="influx-token" value="battery-token-secret" style="width:170px;margin-left:4px">
+  </label>
+
+  <div class="nav">
+    <a href="parquet_monitor.html">Monitor</a>
+  </div>
+</div>
+
+<!-- ── Layout ── -->
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar" id="sidebar"></div>
+
+  <!-- ── Main panel ── -->
+  <div class="main">
+    <div class="comp-header" id="comp-header">
+      <span class="comp-name" id="hdr-name">Select a component</span>
+      <span class="comp-desc" id="hdr-desc"></span>
+      <span class="comp-host" id="hdr-host" style="display:none"></span>
+      <span class="comp-port" id="hdr-port" style="display:none"></span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="config">Config File</button>
+      <button class="tab-btn" data-tab="startup">Startup</button>
+      <button class="tab-btn" data-tab="api">API Test</button>
+    </div>
+
+    <!-- Config tab -->
+    <div class="tab-pane active" id="pane-config">
+      <div class="code-toolbar">
+        <span class="file-path" id="config-filepath">—</span>
+        <button class="copy-btn" id="copy-config-btn" onclick="copyCode('config-block','copy-config-btn')">Copy</button>
+      </div>
+      <div class="code-scroll">
+        <pre class="code-block" id="config-block"><span style="color:#6e7681">← Select a component</span></pre>
+      </div>
+    </div>
+
+    <!-- Startup tab -->
+    <div class="tab-pane" id="pane-startup">
+      <div class="startup-scroll" id="startup-content">
+        <div style="color:#6e7681;font-size:0.85em;padding:20px">← Select a component</div>
+      </div>
+    </div>
+
+    <!-- API Test tab -->
+    <div class="tab-pane" id="pane-api">
+      <div class="api-scroll" id="api-content">
+        <div style="color:#6e7681;font-size:0.85em;padding:20px">← Select a component</div>
+      </div>
+    </div>
+
+  </div><!-- .main -->
+</div><!-- .layout -->
+
+<script>
+// ── Hosts ──────────────────────────────────────────────────────────────────
+const h = (key) => {
+  if (key === 'fractal') return document.getElementById('host-fractal').value.trim();
+  if (key === 'phildev') return document.getElementById('host-phildev').value.trim();
+  return key;
+};
+
+function resetDot(key) {
+  const dot = document.getElementById('dot-' + key);
+  if (dot) { dot.className = 'conn-dot'; dot.title = 'untested'; }
+}
+
+async function testConnections() {
+  // [key, url, label]
+  // Any HTTP response (including 404, 426) means the server is reachable.
+  // Only a network error (connection refused, timeout) means it's down.
+  for (const [key, url, label] of [
+    ['phildev', `http://${h('phildev')}:8770/ping`,  'push_agent :8770/ping'],
+    ['fractal', `http://${h('fractal')}:8767/`,      'subscriber API :8767'],
+  ]) {
+    const dot = document.getElementById('dot-' + key);
+    dot.className = 'conn-dot busy'; dot.title = 'testing…';
+    try {
+      const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      // Any HTTP response = server is up (426 = WS-only, 404 = wrong path, 2xx = fine)
+      dot.className = 'conn-dot ok';
+      dot.title = `${label} — HTTP ${r.status}`;
+    } catch (e) {
+      // Network error = unreachable (connection refused, timeout, CORS preflight fail)
+      dot.className = 'conn-dot fail';
+      dot.title = `${label} — ${e.message}`;
+    }
+  }
+}
+
+// ── Component data ─────────────────────────────────────────────────────────
+const COMPS = [
+  // ── Brokers ───────────────────────────────────────────────────────────────
+  {
+    id: 'flashmq_host', group: 'brokers', label: 'FlashMQ Host',
+    desc: 'Edge MQTT broker — generators publish here',
+    dot: 'edge', host: 'fractal', port: 1883,
+    configFile: '/etc/flashmq/flashmq.conf',
+    configLang: 'conf',
+    config: `# FlashMQ configuration — local x86 test broker
+# Replaces AWS IoT Core for the Telegraf pipeline test
+# Syntax: https://www.flashmq.org/man/flashmq.conf.5
+
+log_file /tmp/flashmq.log
+log_level info
+
+allow_anonymous true
+
+thread_count 4
+
+listen {
+    port 1883
+    protocol mqtt
+}
+
+# Bridge config — generated by source/bridge/gen_bridge_conf.py
+# Bridges data to fractal-phil FlashMQ aws-sim on :1884
+include_dir /etc/flashmq/bridge-conf.d`,
+    startup: [
+      { title: 'Via systemd (primary)', cmd: 'sudo systemctl start flashmq\nsudo systemctl status flashmq', log: null },
+      { title: 'Direct (debug)', cmd: 'flashmq --config /etc/flashmq/flashmq.conf', log: '/tmp/flashmq.log' },
+    ],
+    api: { type: 'tcp', desc: 'MQTT broker — no HTTP API. TCP port check only.' },
+  },
+  {
+    id: 'flashmq_aws', group: 'brokers', label: 'FlashMQ aws-sim',
+    desc: 'AWS-simulated broker — receives bridged data from host',
+    dot: 'aws', host: 'fractal', port: 1884,
+    configFile: 'source/telegraf/flashmq-aws-sim.conf',
+    configLang: 'conf',
+    config: `# FlashMQ — AWS-sim broker
+# Second FlashMQ instance simulating the AWS-side MQTT broker.
+# Receives data bridged from the host FlashMQ (:1883) via the FlashMQ bridge.
+# Telegraf and subscriber_api connect here (not to the host broker).
+#
+# Start:  flashmq --config-file source/telegraf/flashmq-aws-sim.conf
+# (managed by the manager as component flashmq_aws in config.fractal.yaml)
+
+log_file /tmp/flashmq-aws-sim.log
+log_level info
+
+allow_anonymous true
+
+thread_count 2
+
+listen {
+    port 1884
+    protocol mqtt
+}`,
+    startup: [
+      { title: 'Via manager (config.fractal.yaml)', cmd: '# Manager starts this as managed process\npython manager/manager.py --config manager/config.fractal.yaml', log: null },
+      { title: 'Direct', cmd: 'flashmq --config-file source/telegraf/flashmq-aws-sim.conf', log: '/tmp/flashmq-aws-sim.log' },
+    ],
+    api: { type: 'tcp', desc: 'MQTT broker — no HTTP API. TCP port check only.' },
+  },
+  {
+    id: 'bridge', group: 'brokers', label: 'FlashMQ Bridge',
+    desc: 'Bridges test_host → test_aws :1884 (batteries + solar)',
+    dot: 'edge', host: 'phildev', port: null,
+    configFile: 'source/bridge/bridge.yaml',
+    configLang: 'yaml',
+    config: `# FlashMQ bridge configuration
+# Run gen_bridge_conf.py to generate /etc/flashmq/bridge-conf.d/bridge.conf
+
+groups:
+  batteries_all:
+    description: "All battery cell telemetry"
+    topics:
+      - "batteries/#"
+
+  solar_all:
+    description: "All solar panel telemetry"
+    topics:
+      - "solar/#"
+
+  all_sources:
+    description: "Everything (full mirror)"
+    topics:
+      - "#"
+
+bridges:
+  aws_live:
+    description: "Forward live data to fractal-phil FlashMQ aws-sim (192.168.86.51:1884)"
+    host: 192.168.86.51
+    port: 1884
+    qos: 0
+    protocol_version: mqtt3.1.1
+    tls: off
+    clientid_prefix: pd-bridge
+    groups:
+      - batteries_all
+      - solar_all`,
+    startup: [
+      {
+        title: 'Generate bridge config + reload FlashMQ',
+        cmd: `python3 source/bridge/gen_bridge_conf.py source/bridge/bridge.yaml \\
+  --output /etc/flashmq/bridge-conf.d/bridge.conf
+flashmq --reload-config`,
+        log: null,
+      },
+    ],
+    api: { type: 'none', desc: 'Bridge is a FlashMQ config fragment — no direct API.' },
+  },
+
+  // ── Old Path ──────────────────────────────────────────────────────────────
+  {
+    id: 'telegraf', group: 'old_path', label: 'Telegraf',
+    desc: 'FlashMQ aws-sim :1884 → InfluxDB2 :8086',
+    dot: 'old', host: 'fractal', port: null,
+    configFile: 'source/telegraf/telegraf-aws-sim.conf',
+    configLang: 'toml',
+    config: `# Telegraf — FlashMQ aws-sim (MQTT) → InfluxDB2
+# AWS-sim:  FlashMQ aws-sim on localhost:1884, InfluxDB2 on localhost:8086
+
+[agent]
+  interval            = "1s"
+  round_interval      = true
+  metric_batch_size   = 1000
+  metric_buffer_limit = 100000
+  flush_interval      = "10s"
+  flush_jitter        = "2s"
+  precision           = "1s"
+  hostname            = "data-server"
+
+[[inputs.mqtt_consumer]]
+  servers   = ["tcp://localhost:1884"]
+  topics    = ["batteries/#", "solar/#"]
+  qos       = 0
+  client_id = "telegraf-aws-sim"
+  data_format = "json_v2"
+
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "batteries/+/+/+/+/+/+"
+    tags  = "_/project_id/site_id/rack_id/module_id/cell_id/field_name"
+
+  [[inputs.mqtt_consumer.json_v2]]
+    measurement_name = "battery_cell"
+
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "project_id"  optional = true
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "site_id"     optional = true
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "rack_id"     optional = true
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "module_id"   optional = true
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "cell_id"     optional = true
+
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "voltage"     type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "current"     type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "temperature" type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "soc"         type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "soh"         type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "resistance"  type = "float"  optional = true
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "capacity"    type = "float"  optional = true
+
+[[outputs.influxdb_v2]]
+  urls         = ["http://localhost:8086"]
+  token        = "battery-token-secret"
+  organization = "battery-org"
+  bucket       = "battery-data"
+  timeout      = "5s"
+
+[[inputs.internal]]
+  collect_memstats = false`,
+    startup: [
+      { title: 'Via systemd', cmd: 'sudo systemctl start telegraf\nsudo systemctl status telegraf', log: null },
+      { title: 'Direct (debug)', cmd: 'telegraf --config source/telegraf/telegraf-aws-sim.conf', log: '/tmp/telegraf.log' },
+    ],
+    api: { type: 'none', desc: 'Telegraf exposes no user-facing API in this stack.' },
+  },
+  {
+    id: 'influxdb', group: 'old_path', label: 'InfluxDB2',
+    desc: 'Time-series store for old path (reference)',
+    dot: 'old', host: 'fractal', port: 8086,
+    configFile: '/etc/influxdb/config.toml  (system defaults)',
+    configLang: 'yaml',
+    config: `# InfluxDB2 — system defaults + bootstrap credentials
+# Managed by systemd: sudo systemctl start influxdb
+
+org:    battery-org
+bucket: battery-data
+token:  battery-token-secret
+
+# Data path:  /var/lib/influxdb2/
+# Config:     /etc/influxdb/config.toml
+# HTTP API:   http://localhost:8086
+#
+# Useful queries:
+#   influx query -o battery-org --token battery-token-secret \\
+#     'from(bucket:"battery-data") |> range(start:-5m)'`,
+    startup: [
+      { title: 'Via systemd', cmd: 'sudo systemctl start influxdb\nsudo systemctl status influxdb', log: null },
+    ],
+    api: {
+      type: 'http',
+      baseUrl: (host) => `http://${host}:8086`,
+      endpoints: [
+        { id: 'ping',   label: '/ping',   method: 'GET', path: '/ping',   fields: [] },
+        { id: 'health', label: '/health', method: 'GET', path: '/health', fields: [] },
+        {
+          id: 'flux', label: '/api/v2/query (Flux)', method: 'POST',
+          path: '/api/v2/query?org=battery-org',
+          bodyType: 'flux',
+          fields: [
+            { id: 'flux_query', label: 'Flux query', type: 'textarea',
+              default: 'from(bucket:"battery-data")\n  |> range(start:-5m)\n  |> limit(n:10)' },
+          ],
+          headers: () => ({
+            'Authorization': `Token ${document.getElementById('influx-token').value}`,
+            'Content-Type': 'application/vnd.flux',
+            'Accept': 'application/csv',
+          }),
+        },
+      ],
+    },
+  },
+
+  // ── Edge Path ─────────────────────────────────────────────────────────────
+  {
+    id: 'writer_cpp', group: 'edge_path', label: 'writer.cpp',
+    desc: 'MQTT → Parquet writer (edge, /srv/data/parquet)',
+    dot: 'edge', host: 'fractal', port: null,
+    configFile: 'source/parquet_writer_cpp/writer_config.yaml',
+    configLang: 'yaml',
+    config: `mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer
+  topic: "#"
+  qos: 1
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+  partition_field: site_id
+
+output:
+  base_path: /srv/data/parquet
+  project_id: 0
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 50000
+  current_state_path: ""
+  hot_file_path: ""`,
+    startup: [
+      {
+        title: 'Build + run',
+        cmd: `# Build (if needed)
+cd source/parquet_writer_cpp && make
+
+# Run
+cd source/parquet_writer_cpp
+./parquet_writer --config writer_config.yaml`,
+        log: '/tmp/writer-host.log',
+      },
+    ],
+    api: { type: 'none', desc: 'Process-only — no HTTP or WebSocket API.' },
+  },
+  {
+    id: 'rsync_sim', group: 'edge_path', label: 'rsync-sim',
+    desc: '/srv/data/parquet → /srv/data/parquet-aws-sim  (5s loop)',
+    dot: 'aws', host: 'fractal', port: null,
+    configFile: '(inline bash loop — no separate config)',
+    configLang: 'bash',
+    config: `#!/usr/bin/env bash
+# rsync-sim — simulates S3 upload by syncing local parquet files
+# every 5 seconds from the edge writer output to the aws-sim store.
+
+mkdir -p /srv/data/parquet-aws-sim
+while true; do
+  rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/
+  sleep 5
+done`,
+    startup: [
+      {
+        title: 'Start loop (background)',
+        cmd: `(while true; do
+  rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/
+  sleep 5
+done) > /tmp/rsync-sim.log 2>&1 &
+echo "rsync-sim PID: $!"`,
+        log: '/tmp/rsync-sim.log',
+      },
+    ],
+    api: { type: 'none', desc: 'Shell loop — no API.' },
+  },
+  {
+    id: 'push_agent', group: 'edge_path', label: 'Push Agent',
+    desc: 'HTTP rsync control — phil-dev → fractal-phil',
+    dot: 'edge', host: 'phildev', port: 8770,
+    configFile: 'source/rsync_push/config.yaml',
+    configLang: 'yaml',
+    config: `# rsync push agent — runs on phil-dev
+# Pushes local Parquet files to fractal-phil (aws-sim)
+
+rsync:
+  src:      /srv/data/parquet/
+  dst:      phil@192.168.86.51:/srv/data/parquet-aws-sim/
+  interval: 5          # seconds between pushes
+  retain_hours: 4      # delete host files older than this (0 = keep forever)
+
+http:
+  port: 8770`,
+    startup: [
+      {
+        title: 'Start push agent (test_host)',
+        cmd: `cd source/rsync_push
+python push_agent.py  # or .venv/bin/python push_agent.py`,
+        log: null,
+      },
+    ],
+    api: {
+      type: 'http',
+      baseUrl: (host) => `http://${host}:8770`,
+      endpoints: [
+        { id: 'ping',    label: '/ping',           method: 'GET',  path: '/ping',          fields: [] },
+        { id: 'status',  label: '/rsync/status',   method: 'GET',  path: '/rsync/status',  fields: [] },
+        { id: 'stats',   label: '/parquet_stats',  method: 'GET',  path: '/parquet_stats', fields: [] },
+        { id: 'start',   label: '/rsync/start',    method: 'POST', path: '/rsync/start',   fields: [] },
+        { id: 'stop',    label: '/rsync/stop',     method: 'POST', path: '/rsync/stop',    fields: [] },
+      ],
+    },
+  },
+
+  // ── Query Layer ───────────────────────────────────────────────────────────
+  {
+    id: 'subscriber_api', group: 'query', label: 'Subscriber API',
+    desc: 'Live MQTT + DuckDB query layer',
+    dot: 'aws', host: 'fractal', port: 8767,
+    configFile: 'subscriber/api/config.fractal.yaml',
+    configLang: 'yaml',
+    config: `# Subscriber API — fractal-phil sim (aws-sim side)
+# Real-time:  aiomqtt → FlashMQ aws-sim :1884
+# Historical: DuckDB → /srv/data/parquet-aws-sim
+
+mqtt:
+  host: localhost
+  port: 1884                    # FlashMQ aws-sim
+  client_id: subscriber-api
+
+local:
+  path: /srv/data/parquet-aws-sim/batteries
+
+websocket:
+  host: 0.0.0.0
+  port: 8767
+
+flux_http:
+  port: 8768
+  default_route: both           # influx | duckdb | both
+
+influx:
+  host:        localhost
+  port:        8086
+  passthrough: true
+  token:       battery-token-secret
+  org:         battery-org
+  bucket:      battery-data
+
+s3:
+  endpoint_url: "http://localhost:9000"
+  bucket:       battery-data
+  region:       us-east-1
+  access_key:   minioadmin
+  secret_key:   minioadmin
+
+rsync:
+  src:      /srv/data/parquet-aws-sim/
+  dst:      /srv/data/parquet-aws-sim/
+  interval: 5
+
+history:
+  default_limit: 1000
+  max_limit: 10000
+
+# Live-state gap fill — merge in-memory buffer into parquet query results,
+# covering the flush-interval window (~60 s) not yet written to disk.
+# Can also be toggled at runtime: {"type": "set_live_state", "enabled": true}
+live_state:
+  enabled: true`,
+    startup: [
+      {
+        title: 'Start subscriber API',
+        cmd: `cd subscriber/api
+.venv/bin/python server.py --config config.fractal.yaml`,
+        log: '/tmp/subscriber-api.log',
+      },
+    ],
+    api: {
+      type: 'ws',
+      urlFn: (host) => `ws://${host}:8767`,
+      presets: [
+        {
+          id: 'get_status', label: 'get_status', badgeColor: 'method-ws',
+          msg: () => ({ type: 'get_status' }),
+          fields: [],
+        },
+        {
+          id: 'subscribe', label: 'subscribe', badgeColor: 'method-ws',
+          msg: (f) => ({ type: 'subscribe', subject: f.topic || 'batteries/#' }),
+          fields: [
+            { id: 'topic', label: 'Topic', type: 'text', default: 'batteries/#' },
+          ],
+        },
+        {
+          id: 'unsubscribe', label: 'unsubscribe', badgeColor: 'method-ws',
+          msg: () => ({ type: 'unsubscribe' }),
+          fields: [],
+        },
+        {
+          id: 'query_history', label: 'query_history', badgeColor: 'method-ws',
+          msg: (f) => ({
+            type: 'query_history',
+            query_id: 'q' + Date.now(),
+            proj_id: f.proj_id || '0',
+            site_id: f.site_id || '0',
+            from_ts: f.from_dt ? new Date(f.from_dt).getTime() / 1000 : (Date.now() / 1000 - 3600),
+            to_ts:   f.to_dt   ? new Date(f.to_dt).getTime()   / 1000 : Date.now() / 1000,
+            limit: parseInt(f.limit) || 100,
+          }),
+          fields: [
+            { id: 'proj_id',  label: 'Project ID', type: 'text',           default: '0' },
+            { id: 'site_id',  label: 'Site ID',    type: 'text',           default: '0' },
+            { id: 'from_dt',  label: 'From',       type: 'datetime-local', default: '' },
+            { id: 'to_dt',    label: 'To',         type: 'datetime-local', default: '' },
+            { id: 'limit',    label: 'Limit',      type: 'number',         default: '100' },
+          ],
+        },
+        {
+          id: 'get_logs', label: 'get_logs', badgeColor: 'method-ws',
+          msg: (f) => ({ type: 'get_logs', lines: parseInt(f.lines) || 50 }),
+          fields: [
+            { id: 'lines', label: 'Lines', type: 'number', default: '50' },
+          ],
+        },
+        {
+          id: 'set_live_state', label: 'set_live_state', badgeColor: 'method-ws',
+          msg: (f) => ({ type: 'set_live_state', enabled: f.enabled === 'true' || f.enabled === true }),
+          fields: [
+            { id: 'enabled', label: 'Enabled', type: 'select', options: ['true', 'false'], default: 'true' },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ── Load Generation (HOST side — publishes to host broker :1883) ──────────
+  {
+    id: 'stress_runner', group: 'load', label: 'Stress Runner',
+    desc: 'Publishes to host FlashMQ :1883 — data bridges to aws-sim',
+    dot: 'load', host: 'phildev', port: 8769,
+    hostSide: true,
+    configFile: 'source/stress_runner/config.yaml',
+    configLang: 'yaml',
+    config: `# Stress runner — publishes to host FlashMQ :1883, bridged to fractal-phil :1884
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: stress-runner
+  username: ""
+  password: ""
+
+websocket:
+  host: 0.0.0.0
+  port: 8769
+
+topic_prefix: batteries
+topic_mode: per_cell_item
+sample_interval_seconds: 1
+
+cell_data:
+  voltage:     {min: 3.0,   max: 4.2,   nominal: 3.7,   drift: 0.005}
+  current:     {min: -10.0, max: 10.0,  nominal: 0.0,   drift: 0.2}
+  temperature: {min: 15.0,  max: 45.0,  nominal: 28.0,  drift: 0.1}
+  soc:         {min: 10.0,  max: 95.0,  nominal: 70.0,  drift: 0.05}
+  soh:         {min: 80.0,  max: 100.0, nominal: 98.0,  drift: 0.01}
+  resistance:  {min: 0.001, max: 0.01,  nominal: 0.003, drift: 0.00005}
+  capacity:    {min: 80.0,  max: 105.0, nominal: 100.0, drift: 0.01}
+
+projects:
+  - project_id: 1
+    sites:
+      - site_id: 10
+        racks: 12
+        modules_per_rack: 8
+        cells_per_module: 52
+      - site_id: 11
+        racks: 12
+        modules_per_rack: 8
+        cells_per_module: 52`,
+    startup: [
+      {
+        title: 'Start stress runner',
+        cmd: `cd source/stress_runner
+.venv/bin/python stress_runner.py --config writer_config.yaml`,
+        log: '/tmp/stress_runner.log',
+      },
+    ],
+    api: {
+      type: 'ws_ro',   // read-only — server pushes stats, no send needed
+      urlFn: (host) => `ws://${host}:8769`,
+      desc: 'Server pushes stats messages every second. Connect to stream live metrics.',
+    },
+  },
+  {
+    id: 'generator', group: 'load', label: 'Generator',
+    desc: 'Publishes to host FlashMQ :1883 — data bridges to aws-sim',
+    dot: 'load', host: 'phildev', port: 8765,
+    hostSide: true,
+    configFile: 'source/generator/config.yaml',
+    configLang: 'yaml',
+    config: `broker:
+  host: localhost
+  port: 1883
+  client_id: data-generator
+
+websocket:
+  host: 0.0.0.0
+  port: 8765
+
+sample_interval_seconds: 1
+topic_mode: per_cell
+payload_format: nested
+
+sources:
+  - id: battery
+    type: battery
+    enabled: true
+    topic_prefix: batteries
+    sites: 2
+    racks_per_site: 3
+    modules_per_rack: 4
+    cells_per_module: 6
+    cell_data:
+      voltage:     {min: 3.0,   max: 4.2,   nominal: 3.7,   unit: V,   drift: 0.005}
+      current:     {min: -50.0, max: 50.0,  nominal: 0.0,   unit: A,   drift: 0.5}
+      temperature: {min: 20.0,  max: 45.0,  nominal: 25.0,  unit: C,   drift: 0.1}
+      soc:         {min: 0.0,   max: 100.0, nominal: 80.0,  unit: "%", drift: 0.05}
+      soh:         {min: 80.0,  max: 100.0, nominal: 98.0,  unit: "%", drift: 0.01}
+
+  - id: solar
+    type: solar
+    enabled: true
+    topic_prefix: solar
+    sites: 2
+    racks_per_site: 4
+    modules_per_rack: 6
+    cells_per_module: 10
+    cell_data:
+      irradiance: {min: 0,    max: 1200, nominal: 800,  unit: "W/m2", drift: 5.0}
+      dc_voltage: {min: 250,  max: 1000, nominal: 600,  unit: V,      drift: 2.0}
+      ac_power:   {min: 0,    max: 250,  nominal: 180,  unit: W,      drift: 2.0}
+      efficiency: {min: 10,   max: 25,   nominal: 20,   unit: "%",    drift: 0.05}`,
+    startup: [
+      {
+        title: 'Start generator',
+        cmd: `cd source/generator
+.venv/bin/python generator.py --config writer_config.yaml`,
+        log: null,
+      },
+    ],
+    api: {
+      type: 'ws',
+      urlFn: (host) => `ws://${host}:8765`,
+      presets: [
+        {
+          id: 'get_status', label: 'get_status', badgeColor: 'method-ws',
+          msg: () => ({ type: 'get_status' }),
+          fields: [],
+        },
+        {
+          id: 'start', label: 'start', badgeColor: 'method-ws',
+          msg: () => ({ type: 'start' }),
+          fields: [],
+        },
+        {
+          id: 'stop', label: 'stop', badgeColor: 'method-ws',
+          msg: () => ({ type: 'stop' }),
+          fields: [],
+        },
+        {
+          id: 'set_interval', label: 'set sample_interval', badgeColor: 'method-ws',
+          msg: (f) => ({ type: 'update_config', config: { sample_interval_seconds: parseFloat(f.interval) || 1 } }),
+          fields: [
+            { id: 'interval', label: 'Interval (s)', type: 'number', default: '1' },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ── Stack Management ──────────────────────────────────────────────────────
+  {
+    id: 'manager', group: 'mgmt', label: 'Manager',
+    desc: 'Process orchestrator + log streamer',
+    dot: 'mgmt', host: 'fractal', port: 8761,
+    configFile: 'manager/config.fractal.yaml',
+    configLang: 'yaml',
+    config: `websocket:
+  host: 0.0.0.0
+  port: 8761
+
+order:
+  - flashmq_host
+  - flashmq_aws
+  - influxdb
+  - telegraf
+  - writer_cpp
+  - rsync_sim
+  - subscriber_api
+  - stress_runner
+  - generator
+
+components:
+  flashmq_host:
+    label: "FlashMQ host :1883 (edge broker) [systemd log]"
+    cmd: ["journalctl", "-fu", "flashmq", "--no-pager", "--output=short"]
+    cwd: "."
+
+  flashmq_aws:
+    label: "FlashMQ aws-sim :1884 (dummy AWS broker)"
+    cmd: ["flashmq", "--config-file", "source/telegraf/flashmq-aws-sim.conf"]
+    cwd: "."
+    ports: [1884]
+
+  influxdb:
+    label: "InfluxDB2 :8086 [systemd log]"
+    cmd: ["journalctl", "-fu", "influxdb", "--no-pager", "--output=short"]
+    cwd: "."
+
+  telegraf:
+    label: "Telegraf — FlashMQ aws-sim → InfluxDB2 [systemd log]"
+    cmd: ["journalctl", "-fu", "telegraf", "--no-pager", "--output=short"]
+    cwd: "."
+
+  writer_cpp:
+    label: "writer.cpp — FlashMQ host → /srv/data/parquet"
+    cmd: ["./parquet_writer", "--config", "config.yaml"]
+    cwd: "source/parquet_writer_cpp"
+
+  rsync_sim:
+    label: "rsync-sim  /srv/data/parquet → parquet-aws-sim  [5 s loop]"
+    cmd: ["bash", "-c", "while true; do rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/; sleep 5; done"]
+    cwd: "."
+
+  subscriber_api:
+    label: "Subscriber API (MQTT live + DuckDB → parquet-aws-sim) :8767"
+    cmd: [".venv/bin/python", "server.py", "--config", "config.fractal.yaml"]
+    cwd: "subscriber/api"
+    ports: [8767]
+
+  stress_runner:
+    label: "Stress Runner (sustained MQTT load) :8769"
+    cmd: [".venv/bin/python", "stress_runner.py", "--config", "config.yaml"]
+    cwd: "source/stress_runner"
+    ports: [8769]
+
+  generator:
+    label: "Data Generator :8765"
+    cmd: [".venv/bin/python", "generator.py", "--config", "config.yaml"]
+    cwd: "source/generator"
+    ports: [8765]`,
+    startup: [
+      {
+        title: 'Start manager',
+        cmd: `cd /home/phil/data_server
+python manager/manager.py --config manager/config.fractal.yaml`,
+        log: null,
+      },
+    ],
+    api: { type: 'none', desc: 'Manager exposes a WebSocket on :8761 for the monitor UI — open monitor.html to control the stack.' },
+  },
+  {
+    id: 'start_script', group: 'mgmt', label: 'start_aws_sim.sh',
+    desc: 'Full stack startup script',
+    dot: 'mgmt', host: 'fractal', port: null,
+    configFile: 'start_aws_sim.sh',
+    configLang: 'bash',
+    config: `#!/usr/bin/env bash
+# Start the full fractal-phil simulation stack.
+# Run from the data_server root:
+#   bash start_aws_sim.sh [--no-gap-writer] [--no-telegraf]
+
+set -euo pipefail
+cd "$(dirname "$0")"
+
+GAP_WRITER=true
+TELEGRAF=true
+for arg in "$@"; do
+  case "$arg" in
+    --no-gap-writer) GAP_WRITER=false ;;
+    --no-telegraf)   TELEGRAF=false ;;
+  esac
+done
+
+WRITER_BIN="source/parquet_writer_cpp/parquet_writer"
+if [[ ! -x "$WRITER_BIN" ]]; then
+  echo "ERROR: $WRITER_BIN not found — build it first"
+  echo "  cd source/parquet_writer_cpp && make"
+  exit 1
+fi
+
+echo "=== Starting FlashMQ host :1883 ==="
+flashmq --config /etc/flashmq/flashmq.conf &
+sleep 0.5
+
+echo "=== Starting FlashMQ aws-sim :1884 ==="
+flashmq --config /etc/flashmq/flashmq-aws-sim.conf &
+sleep 0.5
+
+echo "=== Starting host writer.cpp → /srv/data/parquet ==="
+(cd source/parquet_writer_cpp && nohup ./parquet_writer --config writer_config.yaml \
+  > /tmp/writer-host.log 2>&1) &
+
+echo "=== Starting rsync-sim loop (5 s) ==="
+(while true; do
+  rsync -a /srv/data/parquet/ /srv/data/parquet-aws-sim/
+  sleep 5
+done) > /tmp/rsync-sim.log 2>&1 &
+
+if $GAP_WRITER; then
+  echo "=== Starting gap writer → current_state.parquet ==="
+  (cd source/parquet_writer_cpp && nohup ./parquet_writer \
+    --config ../../aws/gap_fill/config.yaml > /tmp/writer-gap.log 2>&1) &
+fi
+
+if $TELEGRAF; then
+  echo "=== Starting Telegraf → InfluxDB2 ==="
+  telegraf --config source/telegraf/telegraf-aws-sim.conf > /tmp/telegraf.log 2>&1 &
+fi
+
+echo "=== Starting stress_runner ==="
+(cd source/stress_runner && nohup python stress_runner.py --config writer_config.yaml \
+  > /tmp/stress_runner.log 2>&1) &
+
+echo "=== Starting subscriber_api ==="
+(cd subscriber/api && nohup python server.py --config config.fractal.yaml \
+  > /tmp/subscriber-api.log 2>&1) &
+
+echo ""
+echo "Stack started. Logs:"
+echo "  /tmp/writer-host.log      host writer.cpp"
+echo "  /tmp/writer-gap.log       gap writer"
+echo "  /tmp/rsync-sim.log        rsync-sim"
+echo "  /tmp/telegraf.log         telegraf"
+echo "  /tmp/stress_runner.log    stress_runner"
+echo "  /tmp/subscriber-api.log   subscriber API  ws://localhost:8767"`,
+    startup: [
+      {
+        title: 'Run full stack',
+        cmd: `cd /home/phil/data_server
+bash start_aws_sim.sh
+
+# Optional flags:
+bash start_aws_sim.sh --no-telegraf    # skip Telegraf/InfluxDB old path
+bash start_aws_sim.sh --no-gap-writer  # skip gap writer`,
+        log: null,
+      },
+      {
+        title: 'Check logs',
+        cmd: `tail -f /tmp/writer-host.log
+tail -f /tmp/rsync-sim.log
+tail -f /tmp/subscriber-api.log
+tail -f /tmp/telegraf.log`,
+        log: null,
+      },
+    ],
+    api: { type: 'none', desc: 'Startup script — no API.' },
+  },
+];
+
+// ── Group metadata ─────────────────────────────────────────────────────────
+const GROUPS = {
+  brokers:   { label: 'Brokers' },
+  old_path:  { label: 'Old Path  (InfluxDB)' },
+  edge_path: { label: 'Edge Path  (Parquet)' },
+  query:     { label: 'Query Layer' },
+  load:      { label: 'Load Generation  (host :1883)' },
+  mgmt:      { label: 'Stack Management' },
+};
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentComp = null;
+const wsConns = {};  // id → WebSocket
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function buildSidebar() {
+  const sb = document.getElementById('sidebar');
+  const byGroup = {};
+  COMPS.forEach(c => { (byGroup[c.group] = byGroup[c.group] || []).push(c); });
+  let html = '';
+  Object.entries(GROUPS).forEach(([gid, g]) => {
+    if (!byGroup[gid]) return;
+    html += `<div class="group-label">${g.label}</div>`;
+    byGroup[gid].forEach(c => {
+      html += `<div class="comp-item" id="si-${c.id}" onclick="selectComp('${c.id}')">
+        <span class="comp-dot ${c.dot}"></span>
+        <span>${c.label}</span>
+        ${c.port ? `<span class="ci-port">:${c.port}</span>` : ''}
+      </div>`;
+    });
+  });
+  sb.innerHTML = html;
+}
+
+// ── Select component ───────────────────────────────────────────────────────
+function selectComp(id) {
+  const comp = COMPS.find(c => c.id === id);
+  if (!comp) return;
+  currentComp = comp;
+
+  // Sidebar highlight
+  document.querySelectorAll('.comp-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('si-' + id)?.classList.add('active');
+
+  // Header
+  document.getElementById('hdr-name').textContent = comp.label;
+  document.getElementById('hdr-desc').textContent = comp.desc;
+  const hPort = document.getElementById('hdr-port');
+  const hHost = document.getElementById('hdr-host');
+  if (comp.port) { hPort.textContent = ':' + comp.port; hPort.style.display = ''; }
+  else           { hPort.style.display = 'none'; }
+  hHost.textContent = (comp.host === 'fractal' ? 'test_aws  ' : 'test_host  ') + (comp.host === 'fractal' ? h('fractal') : h('phildev'));
+  hHost.style.display = '';
+
+  renderConfig(comp);
+  renderStartup(comp);
+  renderApi(comp);
+}
+
+// ── Config tab ─────────────────────────────────────────────────────────────
+function renderConfig(comp) {
+  document.getElementById('config-filepath').textContent = comp.configFile;
+  document.getElementById('config-block').innerHTML = highlight(comp.config, comp.configLang);
+}
+
+function highlight(code, lang) {
+  const esc = code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = esc.split('\n');
+  return lines.map(line => {
+    if (/^\s*#/.test(line)) return `<span class="sh-comment">${line}</span>`;
+    if (lang === 'yaml') {
+      return line
+        .replace(/^(\s*)([\w_-]+)(\s*:\s*)(.*)$/, (_, ind, key, sep, val) => {
+          const vspan = val.startsWith('"') || val.startsWith("'")
+            ? `<span class="sh-string">${val}</span>`
+            : /^[\d.-]+$/.test(val.trim()) && val.trim()
+            ? `<span class="sh-number">${val}</span>`
+            : val ? `<span class="sh-value">${val}</span>` : '';
+          return `${ind}<span class="sh-key">${key}</span><span class="sh-punct">${sep}</span>${vspan}`;
+        })
+        .replace(/^(\s*- )(.*)$/, (_, bullet, rest) =>
+          `<span class="sh-punct">${bullet}</span><span class="sh-string">${rest}</span>`
+        );
+    }
+    if (lang === 'toml') {
+      if (/^\[/.test(line.trim())) return `<span class="sh-section">${line}</span>`;
+      return line.replace(/^(\s*)([\w_]+)(\s*=\s*)(.*)$/, (_, ind, key, sep, val) =>
+        `${ind}<span class="sh-key">${key}</span><span class="sh-punct">${sep}</span><span class="sh-value">${val}</span>`
+      );
+    }
+    if (lang === 'bash' || lang === 'conf') {
+      return line
+        .replace(/\b(if|then|fi|for|do|done|while|case|esac|echo|set|cd|sleep|mkdir|exit)\b/g,
+          '<span class="sh-keyword">$1</span>')
+        .replace(/(["'])([^"']*)\1/g,
+          '<span class="sh-string">$1$2$1</span>');
+    }
+    return line;
+  }).join('\n');
+}
+
+function copyCode(blockId, btnId) {
+  const text = document.getElementById(blockId).innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById(btnId);
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// ── Startup tab ────────────────────────────────────────────────────────────
+function renderStartup(comp) {
+  const el = document.getElementById('startup-content');
+  if (!comp.startup?.length) {
+    el.innerHTML = '<div style="color:#6e7681;font-size:0.85em;padding:10px">No startup info.</div>';
+    return;
+  }
+  el.innerHTML = comp.startup.map((s, i) => `
+    <div class="start-step">
+      <div class="start-step-hdr">
+        <span class="start-step-title">${s.title}</span>
+        <button class="copy-btn" onclick="copyCode('sc-${comp.id}-${i}', 'scb-${comp.id}-${i}')" id="scb-${comp.id}-${i}">Copy</button>
+      </div>
+      <pre class="start-cmd" id="sc-${comp.id}-${i}">${s.cmd}</pre>
+      ${s.log ? `<div class="log-path">Log: <span>${s.log}</span></div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ── API Test tab ───────────────────────────────────────────────────────────
+function renderApi(comp) {
+  const el = document.getElementById('api-content');
+  const api = comp.api;
+
+  if (api.type === 'none') {
+    el.innerHTML = `<div class="api-no-api">
+      <div>${api.desc}</div>
+    </div>`;
+    return;
+  }
+
+  // Host-side note for load generators
+  const hostNote = comp.hostSide
+    ? `<div class="callout warn" style="margin-bottom:14px">
+        Publishes to <strong>host FlashMQ :1883</strong> — not directly to aws-sim :1884.
+        Data reaches aws-sim via the FlashMQ bridge. The WebSocket API below is on the
+        <strong>${h(comp.host)}</strong> machine.
+       </div>` : '';
+
+  if (api.type === 'tcp') {
+    el.innerHTML = hostNote + `
+      <div class="callout info">${api.desc}</div>
+      <div class="api-section">
+        <div class="api-section-title">Port Reachability</div>
+        <div class="port-test-row">
+          <button class="btn btn-blue" onclick="testTcp('${comp.id}','${comp.host}',${comp.port})">
+            Test :${comp.port}</button>
+          <span id="tcp-result-${comp.id}" class="port-result"></span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  if (api.type === 'http') {
+    renderHttpApi(comp, el, hostNote);
+    return;
+  }
+
+  if (api.type === 'ws' || api.type === 'ws_ro') {
+    renderWsApi(comp, el, hostNote);
+    return;
+  }
+}
+
+// ── HTTP API tester ────────────────────────────────────────────────────────
+function renderHttpApi(comp, el, hostNote = '') {
+  const api = comp.api;
+  const endpointOptions = api.endpoints.map(ep =>
+    `<option value="${ep.id}">${ep.method}  ${ep.label}</option>`
+  ).join('');
+
+  el.innerHTML = hostNote + `
+    <div class="api-section">
+      <div class="api-section-title">HTTP Endpoint</div>
+      <div class="endpoint-row">
+        <select id="http-ep-${comp.id}" onchange="onHttpEpChange('${comp.id}')">
+          ${endpointOptions}
+        </select>
+        <button class="btn btn-blue" onclick="sendHttp('${comp.id}')">Send</button>
+      </div>
+      <div id="http-fields-${comp.id}"></div>
+    </div>
+    <div class="api-section">
+      <div class="api-section-title">Response</div>
+      <div class="response-box" id="http-resp-${comp.id}">—</div>
+    </div>`;
+
+  onHttpEpChange(comp.id);
+}
+
+function onHttpEpChange(compId) {
+  const comp = COMPS.find(c => c.id === compId);
+  const sel = document.getElementById(`http-ep-${compId}`);
+  const ep = comp.api.endpoints.find(e => e.id === sel.value);
+  const fieldsEl = document.getElementById(`http-fields-${compId}`);
+
+  if (!ep || !ep.fields?.length) { fieldsEl.innerHTML = ''; return; }
+
+  fieldsEl.innerHTML = `<div class="dynamic-fields">
+    ${ep.fields.map(f => `
+      <div class="field-row">
+        <label>${f.label}</label>
+        ${f.type === 'textarea'
+          ? `<textarea id="hf-${compId}-${f.id}" rows="4">${f.default||''}</textarea>`
+          : `<input type="${f.type}" id="hf-${compId}-${f.id}" value="${f.default||''}">`
+        }
+      </div>`).join('')}
+  </div>`;
+}
+
+async function sendHttp(compId) {
+  const comp = COMPS.find(c => c.id === compId);
+  const sel = document.getElementById(`http-ep-${compId}`);
+  const ep = comp.api.endpoints.find(e => e.id === sel.value);
+  const respEl = document.getElementById(`http-resp-${compId}`);
+  const host = h(comp.host);
+  const base = comp.api.baseUrl(host);
+  const url = base + ep.path;
+
+  respEl.textContent = '…'; respEl.className = 'response-box';
+
+  try {
+    const opts = { method: ep.method };
+    if (ep.headers) opts.headers = ep.headers();
+    if (ep.bodyType === 'flux' && ep.fields) {
+      const q = document.getElementById(`hf-${compId}-flux_query`)?.value || '';
+      opts.body = q;
+    }
+
+    const t0 = Date.now();
+    const r = await fetch(url, opts);
+    const ms = Date.now() - t0;
+    const text = await r.text();
+
+    let display = text;
+    try { display = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+    respEl.textContent = `HTTP ${r.status}  ${ms}ms\n\n${display}`;
+    respEl.className = `response-box ${r.ok ? 'ok' : 'error'}`;
+  } catch (e) {
+    respEl.textContent = `Error: ${e.message}`;
+    respEl.className = 'response-box error';
+  }
+}
+
+// ── WebSocket API tester ───────────────────────────────────────────────────
+function renderWsApi(comp, el, hostNote = '') {
+  const api = comp.api;
+  const isRo = api.type === 'ws_ro';
+  const wsUrl = api.urlFn(h(comp.host));
+
+  const presetsHtml = !isRo && api.presets ? `
+    <div class="api-section">
+      <div class="api-section-title">Send Message</div>
+      <div class="endpoint-row">
+        <select id="ws-preset-${comp.id}" onchange="onWsPresetChange('${comp.id}')">
+          ${api.presets.map(p => `<option value="${p.id}">${p.label}</option>`).join('')}
+        </select>
+        <button class="btn btn-blue" onclick="sendWs('${comp.id}')" id="ws-send-${comp.id}">Send</button>
+      </div>
+      <div id="ws-fields-${comp.id}"></div>
+      <div class="api-section-title" style="margin-top:10px">Raw JSON</div>
+      <textarea id="ws-raw-${comp.id}" class="response-box" style="min-height:56px;max-height:120px;color:#e6edf3;resize:vertical;font-family:monospace"></textarea>
+    </div>` : `<div class="callout info">${api.desc || 'Server streams stats every second.'}</div>`;
+
+  el.innerHTML = hostNote + `
+    <div class="api-section">
+      <div class="api-section-title">Connection</div>
+      <div class="ws-bar">
+        <span class="ws-dot" id="ws-dot-${comp.id}"></span>
+        <span class="ws-url" id="ws-url-${comp.id}">${wsUrl}</span>
+        <span class="ws-status" id="ws-st-${comp.id}">disconnected</span>
+        <button class="btn btn-green" id="ws-conn-${comp.id}" onclick="toggleWs('${comp.id}')">Connect</button>
+        <button class="btn btn-grey" onclick="clearWsStream('${comp.id}')">Clear</button>
+      </div>
+    </div>
+    ${presetsHtml}
+    <div class="api-section">
+      <div class="stream-toolbar">
+        <span class="api-section-title" style="margin:0">Message Stream</span>
+        <span id="ws-count-${comp.id}" style="font-size:0.72em;color:#6e7681">0 messages</span>
+      </div>
+      <div class="ws-stream" id="ws-stream-${comp.id}"><span style="color:#30363d">— awaiting connection —</span></div>
+    </div>`;
+
+  if (!isRo && api.presets) onWsPresetChange(comp.id);
+}
+
+function onWsPresetChange(compId) {
+  const comp = COMPS.find(c => c.id === compId);
+  const sel = document.getElementById(`ws-preset-${compId}`);
+  const preset = comp.api.presets?.find(p => p.id === sel?.value);
+  const fieldsEl = document.getElementById(`ws-fields-${compId}`);
+  const rawEl = document.getElementById(`ws-raw-${compId}`);
+
+  if (!preset) return;
+
+  if (preset.fields?.length) {
+    fieldsEl.innerHTML = `<div class="dynamic-fields">
+      ${preset.fields.map(f => `
+        <div class="field-row">
+          <label>${f.label}</label>
+          ${f.type === 'datetime-local'
+            ? `<input type="datetime-local" id="wf-${compId}-${f.id}" value="${f.default||''}">`
+            : f.type === 'select'
+            ? `<select id="wf-${compId}-${f.id}" onchange="updateWsRaw('${compId}')">
+                ${(f.options||[]).map(o => `<option value="${o}"${o===f.default?' selected':''}>${o}</option>`).join('')}
+               </select>`
+            : `<input type="${f.type}" id="wf-${compId}-${f.id}" value="${f.default||''}" oninput="updateWsRaw('${compId}')">`
+          }
+        </div>`).join('')}
+    </div>`;
+  } else {
+    fieldsEl.innerHTML = '';
+  }
+
+  updateWsRaw(compId);
+}
+
+function updateWsRaw(compId) {
+  const comp = COMPS.find(c => c.id === compId);
+  const sel = document.getElementById(`ws-preset-${compId}`);
+  const preset = comp.api.presets?.find(p => p.id === sel?.value);
+  const rawEl = document.getElementById(`ws-raw-${compId}`);
+  if (!preset || !rawEl) return;
+
+  const fields = {};
+  preset.fields?.forEach(f => {
+    const el = document.getElementById(`wf-${compId}-${f.id}`);
+    if (el) fields[f.id] = el.value;
+  });
+  try {
+    rawEl.value = JSON.stringify(preset.msg(fields), null, 2);
+  } catch {}
+}
+
+let wsMessageCounts = {};
+
+function toggleWs(compId) {
+  if (wsConns[compId] && wsConns[compId].readyState < 2) {
+    wsConns[compId].close();
+  } else {
+    connectWs(compId);
+  }
+}
+
+function connectWs(compId) {
+  const comp = COMPS.find(c => c.id === compId);
+  const url = comp.api.urlFn(h(comp.host));
+  document.getElementById(`ws-url-${compId}`).textContent = url;
+  wsMessageCounts[compId] = 0;
+
+  wsLog(compId, 'sys', `Connecting to ${url}…`);
+  const ws = new WebSocket(url);
+  wsConns[compId] = ws;
+  setWsState(compId, 'connecting');
+
+  ws.onopen = () => {
+    setWsState(compId, 'connected');
+    wsLog(compId, 'sys', 'Connected');
+  };
+  ws.onmessage = (e) => {
+    wsMessageCounts[compId] = (wsMessageCounts[compId] || 0) + 1;
+    document.getElementById(`ws-count-${compId}`).textContent =
+      wsMessageCounts[compId] + ' messages';
+    let display = e.data;
+    try { display = JSON.stringify(JSON.parse(e.data), null, 2); } catch {}
+    wsLog(compId, 'in', display);
+  };
+  ws.onclose = () => {
+    setWsState(compId, 'disconnected');
+    wsLog(compId, 'sys', 'Disconnected');
+  };
+  ws.onerror = () => {
+    setWsState(compId, 'error');
+    wsLog(compId, 'err', 'Connection error');
+  };
+}
+
+function setWsState(compId, state) {
+  const dot  = document.getElementById(`ws-dot-${compId}`);
+  const st   = document.getElementById(`ws-st-${compId}`);
+  const btn  = document.getElementById(`ws-conn-${compId}`);
+  if (!dot) return;
+  dot.className = 'ws-dot' + (state === 'connected' ? ' connected' : state === 'error' ? ' error' : '');
+  st.textContent = state;
+  if (btn) {
+    btn.textContent = state === 'connected' ? 'Disconnect' : 'Connect';
+    btn.className = `btn ${state === 'connected' ? 'btn-red' : 'btn-green'}`;
+  }
+}
+
+function wsLog(compId, type, text) {
+  const stream = document.getElementById(`ws-stream-${compId}`);
+  if (!stream) return;
+  const now = new Date().toLocaleTimeString('en-GB', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const div = document.createElement('div');
+  div.className = `ws-msg ${type}`;
+  const lines = text.split('\n');
+  const first = lines[0];
+  const rest = lines.slice(1).join('\n');
+  div.innerHTML = `<span class="ws-time">${now}</span>${escHtml(first)}${rest ? `\n<span style="padding-left:46px;display:block;white-space:pre;color:#6e7681;font-size:0.92em">${escHtml(rest)}</span>` : ''}`;
+  // keep last 200 messages
+  if (stream.children.length > 200) stream.removeChild(stream.firstChild);
+  stream.appendChild(div);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function sendWs(compId) {
+  const ws = wsConns[compId];
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    wsLog(compId, 'err', 'Not connected'); return;
+  }
+  const rawEl = document.getElementById(`ws-raw-${compId}`);
+  const msg = rawEl?.value || '{}';
+  try {
+    JSON.parse(msg);  // validate
+    ws.send(msg);
+    wsLog(compId, 'out', msg);
+  } catch (e) {
+    wsLog(compId, 'err', 'Invalid JSON: ' + e.message);
+  }
+}
+
+function clearWsStream(compId) {
+  const s = document.getElementById(`ws-stream-${compId}`);
+  if (s) s.innerHTML = '<span style="color:#30363d">— cleared —</span>';
+  wsMessageCounts[compId] = 0;
+  const c = document.getElementById(`ws-count-${compId}`);
+  if (c) c.textContent = '0 messages';
+}
+
+// ── TCP test ───────────────────────────────────────────────────────────────
+async function testTcp(compId, hostKey, port) {
+  const el = document.getElementById(`tcp-result-${compId}`);
+  const host = h(hostKey);
+  el.textContent = '…'; el.className = 'port-result';
+  try {
+    const r = await fetch(`http://${host}:${port}/`, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
+    el.textContent = `:${port} reachable (HTTP ${r.status})`;
+    el.className = 'port-result ok';
+  } catch (e) {
+    // TCP open but no HTTP = likely MQTT, still counts as reachable if it's a network error vs timeout
+    if (e.name === 'TypeError' || e.name === 'AbortError') {
+      el.textContent = e.name === 'AbortError' ? `:${port} timed out` : `:${port} TCP open (non-HTTP)`;
+      el.className = e.name === 'AbortError' ? 'port-result fail' : 'port-result ok';
+    } else {
+      el.textContent = `Error: ${e.message}`;
+      el.className = 'port-result fail';
+    }
+  }
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Utility ────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+buildSidebar();
+selectComp('flashmq_host');
+</script>
+</body>
+</html>

@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evelyn — Kubernetes Build &amp; Package</title>
+<style>
+  :root {
+    --bg:#1a1a2e; --surface:#16213e; --surface2:#0d1117;
+    --border:#2a2a4a; --border2:#30363d;
+    --text:#e0e0e0; --muted:#abb2bf;
+    --h1:#61dafb; --h2:#e5c07b; --h3:#98c379; --h4:#56b6c2;
+    --kw:#56b6c2; --str:#98c379; --fn:#e5c07b; --cm:#5c6370; --num:#d19a66; --tag-c:#e06c75;
+    --green-bg:#1e3a1e; --yellow-bg:#3a3a1e; --red-bg:#3a1e1e;
+  }
+  body.light {
+    --bg:#f5f5f0; --surface:#ffffff; --surface2:#f0f0e8;
+    --border:#d0d0c0; --border2:#c0c0b0;
+    --text:#1a1a2e; --muted:#555566;
+    --h1:#0066aa; --h2:#8a6000; --h3:#2a6e2a; --h4:#006688;
+    --kw:#006688; --str:#2a6e2a; --fn:#8a6000; --cm:#888877; --num:#aa4400; --tag-c:#cc2222;
+    --green-bg:#d4f0d4; --yellow-bg:#f0f0d4; --red-bg:#f0d4d4;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; font-size:15px; line-height:1.6; padding:0 0 60px 0; transition:background .2s,color .2s; }
+  h1 { font-size:2em; color:var(--h1); padding:40px 40px 10px; border-bottom:2px solid var(--border); margin-bottom:20px; }
+  h2 { font-size:1.4em; color:var(--h2); margin:40px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.1em; color:var(--h3); margin:24px 0 8px; }
+  h4 { font-size:1em; color:var(--h4); margin:16px 0 6px; }
+  p { margin:10px 0; max-width:860px; }
+  ul,ol { margin:10px 0 10px 24px; max-width:860px; }
+  li { margin:4px 0; }
+  .content { padding:0 40px; }
+  pre { background:var(--surface2); border:1px solid var(--border2); border-radius:6px; padding:16px; overflow-x:auto; font-family:'Cascadia Code','Fira Code',monospace; font-size:13px; margin:12px 0; max-width:960px; }
+  code { background:var(--surface2); padding:2px 6px; border-radius:3px; font-family:monospace; font-size:13px; color:var(--fn); }
+  .kw{color:var(--kw)} .str{color:var(--str)} .fn{color:var(--fn)} .cm{color:var(--cm);font-style:italic} .num{color:var(--num)} .tag-s{color:var(--tag-c)}
+  table { border-collapse:collapse; margin:16px 0; width:100%; max-width:860px; }
+  th { background:var(--surface); color:var(--h1); padding:8px 14px; text-align:left; border:1px solid var(--border2); font-size:13px; }
+  td { padding:7px 14px; border:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tr:nth-child(even) td { background:var(--surface); }
+  .toc { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px 28px; margin:20px 40px 30px; display:inline-block; min-width:320px; }
+  .toc h2 { margin-top:0; border:none; font-size:1.05em; }
+  .toc ol { margin-left:18px; }
+  .toc li { margin:4px 0; }
+  .toc a { color:var(--h1); text-decoration:none; }
+  .toc a:hover { text-decoration:underline; }
+  hr { border:none; border-top:1px solid var(--border); margin:36px 0; }
+  .note  { background:var(--green-bg); border-left:3px solid var(--str); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .warn  { background:var(--yellow-bg); border-left:3px solid var(--fn); padding:12px 16px; border-radius:0 4px 4px 0; margin:12px 0; max-width:860px; font-size:14px; }
+  .theme-btn { position:fixed; top:14px; right:20px; background:var(--surface); border:1px solid var(--border2); color:var(--muted); border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  .theme-btn:hover { color:var(--text); }
+  .page-nav { padding:14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:var(--muted); text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .page-nav a:hover { color:var(--h1); border-color:var(--h1); }
+  .file-label { display:inline-block; background:var(--surface2); border:1px solid var(--border2); border-radius:4px; padding:2px 10px; font-family:monospace; font-size:12px; color:var(--h4); margin-bottom:4px; }
+  .step-num { display:inline-block; background:var(--h2); color:#1a1a2e; border-radius:50%; width:24px; height:24px; text-align:center; line-height:24px; font-weight:bold; font-size:13px; margin-right:8px; flex-shrink:0; }
+  .step { display:flex; align-items:flex-start; margin:10px 0; }
+  .step-body { flex:1; }
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="page-nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="evelyn_container_design.html">Container Design</a>
+  <a href="evelyn_real_time_data.html">Real-Time Data</a>
+  <a href="evelyn_docker_34.html">Docker Stack</a>
+</div>
+
+<h1>Evelyn — Build &amp; Package</h1>
+<p style="padding:0 40px;color:var(--muted);font-size:14px">Two-phase build: Phase 1 extracts source files from the data_server repo into a source tar. Phase 2 runs on any Docker host (no repo access needed) to compile binaries and produce a deployable tar archive.</p>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">Overview — Two-Phase Build</a></li>
+    <li><a href="#extract-script">Phase 1 — Source Extract Script</a></li>
+    <li><a href="#src-layout">Source Tar Layout</a></li>
+    <li><a href="#tar-layout">Deploy Tar Layout</a></li>
+    <li><a href="#build-script">Phase 2 — Build Script: evelyn-k8s-build.sh</a></li>
+    <li><a href="#step1">Step 1 — Build parquet_writer (Docker)</a></li>
+    <li><a href="#step2">Step 2 — Build FlashMQ (Docker, cached)</a></li>
+    <li><a href="#step3">Step 3 — Collect files</a></li>
+    <li><a href="#step4">Step 4 — Write Kubernetes manifests</a></li>
+    <li><a href="#step5">Step 5 — Package tar.gz</a></li>
+    <li><a href="#k8s-manifests">Kubernetes Manifests</a></li>
+    <li><a href="#using-tar">Using the Tar</a></li>
+    <li><a href="#notes">Notes &amp; Caveats</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- 1 -->
+<h2 id="overview">1. Overview — Two-Phase Build</h2>
+<p>The build is split into two phases so that the compilation step has no dependency on the data_server git repo:</p>
+
+<table>
+  <tr><th>Phase</th><th>Script</th><th>Runs on</th><th>Input</th><th>Output</th></tr>
+  <tr><td><strong>1 — Extract</strong></td><td><code>scripts/evelyn-src-extract.sh</code></td><td>build-dev (has repo)</td><td>data_server repo</td><td><code>dist/evelyn-src-YYYYMMDD.tar.gz</code></td></tr>
+  <tr><td><strong>2 — Build</strong></td><td><code>scripts/evelyn-k8s-build.sh</code></td><td>any Docker host</td><td><code>evelyn-src-YYYYMMDD.tar.gz</code></td><td><code>dist/evelyn-deploy-YYYYMMDD.tar.gz</code></td></tr>
+</table>
+
+<p>Phase 2 does all the heavy work:</p>
+<table>
+  <tr><th>What</th><th>Tool</th><th>Output</th></tr>
+  <tr><td>Compile <code>parquet_writer</code> + extract runtime libs</td><td>Docker (ubuntu:24.04)</td><td><code>bin/parquet_writer</code>, <code>lib/*.so</code></td></tr>
+  <tr><td>Compile <code>flashmq</code> (skipped if cached)</td><td>Docker (ubuntu:24.04)</td><td><code>bin/flashmq</code></td></tr>
+  <tr><td>Collect HTML, Python, configs, scripts from source tar</td><td>cp</td><td><code>html/</code>, <code>bridge_api*.py</code>, <code>configs/</code></td></tr>
+  <tr><td>Generate <code>requirements.txt</code> + logrotate config</td><td>heredoc</td><td><code>requirements.txt</code>, <code>logrotate/evelyn</code></td></tr>
+  <tr><td>Write Kubernetes manifests</td><td>heredoc</td><td><code>k8s/*.yaml</code></td></tr>
+  <tr><td>Bundle everything</td><td>tar -czf</td><td><code>dist/evelyn-deploy-YYYYMMDD.tar.gz</code></td></tr>
+</table>
+
+<div class="note">No Arrow/Parquet, mosquitto, or simdjson dev headers are required on either machine. Phase 2 only needs Docker. The repo is never accessed during Phase 2.</div>
+
+<hr>
+
+<!-- 2 -->
+<h2 id="extract-script">2. Phase 1 — Source Extract Script</h2>
+<p>Run once on build-dev from the data_server repo root. Collects only the files needed by Phase 2 — no build tools, no Docker required.</p>
+
+<div class="file-label">scripts/evelyn-src-extract.sh</div>
+<pre>
+<span class="cm">#!/usr/bin/env bash</span>
+<span class="cm"># evelyn-src-extract.sh — package source files from the data_server repo</span>
+<span class="cm">#</span>
+<span class="cm"># Run from the data_server repo root on build-dev.</span>
+<span class="cm"># Output: dist/evelyn-src-YYYYMMDD.tar.gz</span>
+<span class="cm">#</span>
+<span class="cm"># Transfer the tar to the build machine, then:</span>
+<span class="cm">#   tar -xzf evelyn-src-YYYYMMDD.tar.gz</span>
+<span class="cm">#   bash evelyn-src/scripts/evelyn-k8s-build.sh</span>
+<span class="kw">set</span> -euo pipefail
+
+REPO_ROOT=<span class="str">"$(cd "$(dirname "$0")/.." && pwd)"</span>
+DATE=<span class="str">"$(date +%Y%m%d)"</span>
+OUT_NAME=<span class="str">"evelyn-src-${DATE}.tar.gz"</span>
+OUT=<span class="str">"$REPO_ROOT/dist/$OUT_NAME"</span>
+BUILD_DIR=<span class="str">"$(mktemp -d /tmp/evelyn-src-XXXXXX)"</span>
+STAGE=<span class="str">"$BUILD_DIR/evelyn-src"</span>
+
+<span class="kw">trap</span> <span class="str">'rm -rf "$BUILD_DIR"'</span> EXIT
+
+<span class="fn">echo</span> <span class="str">"=== Evelyn source extract ==="</span>
+<span class="fn">echo</span> <span class="str">"    repo:   $REPO_ROOT"</span>
+<span class="fn">echo</span> <span class="str">"    output: $OUT"</span>
+<span class="fn">echo</span>
+
+mkdir -p <span class="str">"$REPO_ROOT/dist"</span>
+mkdir -p \
+    <span class="str">"$STAGE/source"</span> \
+    <span class="str">"$STAGE/html/writer"</span> \
+    <span class="str">"$STAGE/docker/evelyn-native/configs"</span> \
+    <span class="str">"$STAGE/scripts"</span>
+
+<span class="cm"># ── C++ source ────────────────────────────────────────────────────────────────</span>
+cp -r <span class="str">"$REPO_ROOT/source/parquet_writer"</span>  <span class="str">"$STAGE/source/"</span>
+
+<span class="cm"># ── HTML pages ────────────────────────────────────────────────────────────────</span>
+cp <span class="str">"$REPO_ROOT/html/writer/evelyn_docker_34.html"</span>           <span class="str">"$STAGE/html/writer/"</span>
+cp <span class="str">"$REPO_ROOT/html/parquet_monitor.html"</span>                    <span class="str">"$STAGE/html/"</span>
+cp <span class="str">"$REPO_ROOT/html/writer/parquet_viewer.html"</span>              <span class="str">"$STAGE/html/writer/"</span>
+cp <span class="str">"$REPO_ROOT/html/writer/writer_design.html"</span>               <span class="str">"$STAGE/html/writer/"</span>
+cp <span class="str">"$REPO_ROOT/html/writer/evelyn_real_time_data.html"</span>       <span class="str">"$STAGE/html/writer/"</span>
+cp <span class="str">"$REPO_ROOT/html/writer/evelyn_container_design.html"</span>     <span class="str">"$STAGE/html/writer/"</span>
+cp <span class="str">"$REPO_ROOT/html/writer/evelyn_writer_project_build.html"</span> <span class="str">"$STAGE/html/writer/"</span>
+
+<span class="cm"># ── Native install files ──────────────────────────────────────────────────────</span>
+cp <span class="str">"$REPO_ROOT/docker/evelyn-native/bridge_api_native.py"</span>          <span class="str">"$STAGE/docker/evelyn-native/"</span>
+cp <span class="str">"$REPO_ROOT/docker/evelyn-native/install.sh"</span>                     <span class="str">"$STAGE/docker/evelyn-native/"</span>
+cp <span class="str">"$REPO_ROOT/docker/evelyn-native/configs/flashmq.conf"</span>          <span class="str">"$STAGE/docker/evelyn-native/configs/"</span>
+cp <span class="str">"$REPO_ROOT/docker/evelyn-native/configs/writer-native.yaml"</span>    <span class="str">"$STAGE/docker/evelyn-native/configs/"</span>
+
+<span class="cm"># ── Build script (self-contained in the tar) ──────────────────────────────────</span>
+cp <span class="str">"$REPO_ROOT/scripts/evelyn-k8s-build.sh"</span>  <span class="str">"$STAGE/scripts/"</span>
+
+chmod +x \
+    <span class="str">"$STAGE/scripts/"</span>*.sh \
+    <span class="str">"$STAGE/docker/evelyn-native/install.sh"</span>
+
+tar -czf <span class="str">"$OUT"</span> -C <span class="str">"$BUILD_DIR"</span> evelyn-src/
+
+<span class="fn">echo</span> <span class="str">"=== Done ==="</span>
+<span class="fn">echo</span> <span class="str">"    $OUT"</span>
+<span class="fn">echo</span> <span class="str">"    $(du -sh "$OUT" | cut -f1)  $(tar -tzf "$OUT" | wc -l) files"</span>
+<span class="fn">echo</span>
+<span class="fn">echo</span> <span class="str">"  Transfer to build machine, then:"</span>
+<span class="fn">echo</span> <span class="str">"    tar -xzf $OUT_NAME"</span>
+<span class="fn">echo</span> <span class="str">"    bash evelyn-src/scripts/evelyn-k8s-build.sh [--tag evelyn:1.2.3]"</span>
+</pre>
+
+<hr>
+
+<!-- 3 -->
+<h2 id="src-layout">3. Source Tar Layout</h2>
+<p>Everything Phase 2 needs — no object files, no build output, no repo history.</p>
+<pre>
+evelyn-src/
+├── source/
+│   └── parquet_writer/          # C++ source (Makefile, *.cpp, *.h)
+│
+├── html/
+│   ├── parquet_monitor.html
+│   └── writer/
+│       ├── evelyn_docker_34.html
+│       ├── parquet_viewer.html
+│       ├── writer_design.html
+│       ├── evelyn_real_time_data.html
+│       ├── evelyn_container_design.html
+│       └── evelyn_writer_project_build.html
+│
+├── docker/
+│   └── evelyn-native/
+│       ├── bridge_api_native.py
+│       ├── install.sh
+│       └── configs/
+│           ├── flashmq.conf
+│           └── writer-native.yaml
+│
+└── scripts/
+    └── evelyn-k8s-build.sh      # Phase 2 build script
+</pre>
+
+<hr>
+
+<!-- 4 -->
+<h2 id="tar-layout">4. Deploy Tar Layout</h2>
+<pre>
+evelyn-deploy/
+├── bin/
+│   ├── parquet_writer          # compiled from source/parquet_writer/
+│   └── flashmq                 # compiled from github.com/halfgaar/FlashMQ v1.9.1
+│
+├── lib/
+│   ├── libarrow.so.1600        # runtime .so files extracted from build container
+│   ├── libparquet.so.1600      # — needed for native (non-Docker) install
+│   ├── libmosquitto.so.1        # install.sh adds /etc/ld.so.conf.d/evelyn.conf
+│   └── ...                     # (libyaml-cpp, libsnappy, libzstd, liblz4, libsimdjson)
+│
+├── html/
+│   ├── index.html              # ← evelyn_docker_34.html (landing dashboard)
+│   ├── parquet_monitor.html
+│   └── writer/
+│       ├── parquet_viewer.html
+│       ├── writer_design.html
+│       ├── evelyn_real_time_data.html
+│       ├── evelyn_container_design.html
+│       └── evelyn_writer_project_build.html  # this document
+│
+├── configs/
+│   ├── flashmq.conf            # default FlashMQ config (MQTT :1883, WS :9001)
+│   └── writer.yaml             # default parquet_writer config (EMS positional schema)
+│
+├── scripts/
+│   └── install.sh              # native (non-k8s) install — systemd units + ldconfig + pip
+│
+├── logrotate/
+│   └── evelyn                  # logrotate.d config — install to /etc/logrotate.d/evelyn
+│
+├── bridge_api_container.py     # supervisord-aware management API (:8772)
+├── bridge_api_native.py        # systemd-aware version for bare-metal
+├── requirements.txt            # Python deps: duckdb, pyyaml  (pip install -r)
+├── supervisord.conf            # supervisord config (PID 1 for Option C container)
+├── entrypoint.sh               # container bootstrap script
+├── Dockerfile                  # Option C three-stage image build
+│
+└── k8s/
+    ├── namespace.yaml
+    ├── configmap.yaml          # flashmq.conf + writer.yaml as ConfigMap keys
+    ├── pvc.yaml                # PersistentVolumeClaim for /data/parquet
+    ├── deployment.yaml         # evelyn Deployment (single pod)
+    └── service.yaml            # NodePort: 1883, 9001, 8080, 8771, 8772
+</pre>
+
+<hr>
+
+<!-- 5 -->
+<h2 id="build-script">5. Phase 2 — Build Script: evelyn-k8s-build.sh</h2>
+<p>Runs on any machine with Docker. Does not need the data_server repo — reads everything from the extracted source tar (<code>SRC_DIR</code>). The script is included inside the source tar at <code>evelyn-src/scripts/evelyn-k8s-build.sh</code> so no separate checkout is needed.</p>
+
+<div class="file-label">scripts/evelyn-k8s-build.sh</div>
+<pre>
+<span class="cm">#!/usr/bin/env bash</span>
+<span class="cm"># evelyn-k8s-build.sh — compile binaries and produce the deployment tar</span>
+<span class="cm">#</span>
+<span class="cm"># Usage:  bash evelyn-src/scripts/evelyn-k8s-build.sh [--tag evelyn:1.2.3]</span>
+<span class="cm">#</span>
+<span class="cm"># SRC_DIR defaults to the parent of this script (works when run from extracted</span>
+<span class="cm"># evelyn-src tar). Override with: SRC_DIR=/path/to/evelyn-src bash ...</span>
+<span class="cm">#</span>
+<span class="cm"># Requires: docker (running)</span>
+<span class="cm"># Output:   dist/evelyn-deploy-YYYYMMDD.tar.gz  (in SRC_DIR/dist/)</span>
+<span class="kw">set</span> -euo pipefail
+
+<span class="cm"># SRC_DIR = extracted evelyn-src directory (contains source/, html/, docker/, scripts/)</span>
+SRC_DIR=<span class="str">"${EVELYN_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"</span>
+DATE=<span class="str">"$(date +%Y%m%d)"</span>
+OUT_NAME=<span class="str">"evelyn-deploy-${DATE}.tar.gz"</span>
+OUT=<span class="str">"$SRC_DIR/dist/$OUT_NAME"</span>
+BUILD_DIR=<span class="str">"$(mktemp -d /tmp/evelyn-build-XXXXXX)"</span>
+STAGE=<span class="str">"$BUILD_DIR/evelyn-deploy"</span>
+FLASHMQ_TAG=<span class="str">"v1.9.1"</span>
+FLASHMQ_CACHE=<span class="str">"$SRC_DIR/.cache/flashmq-${FLASHMQ_TAG}"</span>
+UBUNTU_IMAGE=<span class="str">"ubuntu:24.04"</span>
+
+<span class="kw">trap</span> <span class="str">'echo "[build] cleaning up $BUILD_DIR"; rm -rf "$BUILD_DIR"'</span> EXIT
+
+<span class="fn">echo</span> <span class="str">"=== Evelyn build ==="</span>
+<span class="fn">echo</span> <span class="str">"    src:    $SRC_DIR"</span>
+<span class="fn">echo</span> <span class="str">"    output: $OUT"</span>
+<span class="fn">echo</span> <span class="str">"    stage:  $STAGE"</span>
+<span class="fn">echo</span>
+
+<span class="cm"># ── Prerequisite checks ───────────────────────────────────────────────────────</span>
+<span class="kw">if</span> ! command -v docker &>/dev/null; <span class="kw">then</span>
+    <span class="fn">echo</span> <span class="str">"ERROR: docker not found — install Docker and ensure the daemon is running"</span>
+    exit 1
+<span class="kw">fi</span>
+<span class="kw">if</span> ! docker info &>/dev/null; <span class="kw">then</span>
+    <span class="fn">echo</span> <span class="str">"ERROR: Docker daemon not running or permission denied"</span>
+    exit 1
+<span class="kw">fi</span>
+<span class="kw">if</span> [[ ! -d <span class="str">"$SRC_DIR/source/parquet_writer"</span> ]]; <span class="kw">then</span>
+    <span class="fn">echo</span> <span class="str">"ERROR: $SRC_DIR/source/parquet_writer not found"</span>
+    <span class="fn">echo</span> <span class="str">"       Run evelyn-src-extract.sh on build-dev first, then:"</span>
+    <span class="fn">echo</span> <span class="str">"       tar -xzf evelyn-src-YYYYMMDD.tar.gz"</span>
+    exit 1
+<span class="kw">fi</span>
+
+mkdir -p <span class="str">"$SRC_DIR/dist"</span>
+mkdir -p \
+    <span class="str">"$STAGE/bin"</span> \
+    <span class="str">"$STAGE/lib"</span> \
+    <span class="str">"$STAGE/html/writer"</span> \
+    <span class="str">"$STAGE/configs"</span> \
+    <span class="str">"$STAGE/scripts"</span> \
+    <span class="str">"$STAGE/logrotate"</span> \
+    <span class="str">"$STAGE/k8s"</span>
+
+<span class="cm"># ── Step 1: build parquet_writer ─────────────────────────────────────────────</span>
+<span class="cm"># (defined in its own section below)</span>
+build_parquet_writer
+
+<span class="cm"># ── Step 2: build FlashMQ ────────────────────────────────────────────────────</span>
+build_flashmq
+
+<span class="cm"># ── Step 3: collect repo files ────────────────────────────────────────────────</span>
+collect_files
+
+<span class="cm"># ── Step 4: write Kubernetes manifests ────────────────────────────────────────</span>
+write_k8s_manifests
+
+<span class="cm"># ── Step 5: package ───────────────────────────────────────────────────────────</span>
+tar -czf <span class="str">"$OUT"</span> -C <span class="str">"$BUILD_DIR"</span> evelyn-deploy/
+<span class="fn">echo</span>
+<span class="fn">echo</span> <span class="str">"=== Done ==="</span>
+<span class="fn">echo</span> <span class="str">"    $OUT"</span>
+<span class="fn">echo</span> <span class="str">"    $(du -sh "$OUT" | cut -f1)  $(tar -tzf "$OUT" | wc -l) files"</span>
+</pre>
+
+<p>The five build functions are defined below. They are all in the same script file — split here for clarity.</p>
+
+<hr>
+
+<!-- 6 -->
+<h2 id="step1">6. Step 1 — Build parquet_writer (Docker)</h2>
+<p>Mounts <code>source/parquet_writer/</code> read-only into an Ubuntu 24.04 container, installs dev headers, runs <code>make parquet_writer</code>, and then extracts the runtime <code>.so</code> files needed for bare-metal installs. Both the binary and libs are written to the host via an <code>/out</code> mount.</p>
+
+<pre>
+<span class="fn">build_parquet_writer</span>() {
+    <span class="fn">echo</span> <span class="str">"[step 1] building parquet_writer..."</span>
+
+    <span class="cm"># /src is read-only so the container cannot dirty the repo.</span>
+    <span class="cm"># /out is writable — binary + runtime .so files land in $BUILD_DIR.</span>
+    docker run --rm \
+        -v <span class="str">"$SRC_DIR/source/parquet_writer"</span>:/src:ro \
+        -v <span class="str">"$BUILD_DIR"</span>:/out \
+        <span class="str">"$UBUNTU_IMAGE"</span> bash -c <span class="str">"
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -q
+            apt-get install -y -q --no-install-recommends \
+                build-essential \
+                libarrow-dev libparquet-dev \
+                libmosquitto-dev libyaml-cpp-dev \
+                libsnappy-dev libzstd-dev liblz4-dev \
+                libssl-dev libsimdjson-dev
+            cp -r /src /build && cd /build
+            make parquet_writer
+            cp parquet_writer /out/parquet_writer
+            # Extract runtime .so files for native (non-Docker) deployment.
+            # ldd gives the resolved path (e.g. /usr/lib/x86_64-linux-gnu/libarrow.so.1600).
+            # We also copy all versioned siblings (libarrow.so, libarrow.so.1600, etc.)
+            # so the binary's DT_NEEDED soname is satisfied without ldconfig on the target.
+            mkdir -p /out/lib
+            ldd /out/parquet_writer \
+                | awk '/=> \// { print \$3 }' \
+                | grep -E 'libarrow|libparquet|libmosquitto|libyaml-cpp|libsnappy|libzstd|liblz4|libsimdjson' \
+                | sort -u \
+                | while IFS= read -r sopath; do
+                    libdir=\$(dirname "\$sopath")
+                    libstem=\$(basename "\$sopath" | cut -d. -f1)  # e.g. libarrow
+                    # copy .so symlinks and real versioned files
+                    find "\$libdir" -maxdepth 1 -name "\${libstem}.so*" \
+                        | xargs -I@ cp -P @ /out/lib/
+                  done
+        "</span>
+
+    cp <span class="str">"$BUILD_DIR/parquet_writer"</span> <span class="str">"$STAGE/bin/parquet_writer"</span>
+    chmod +x <span class="str">"$STAGE/bin/parquet_writer"</span>
+    <span class="fn">echo</span> <span class="str">"    → bin/parquet_writer  ($(du -sh "$STAGE/bin/parquet_writer" | cut -f1))"</span>
+
+    mkdir -p <span class="str">"$STAGE/lib"</span>
+    cp <span class="str">"$BUILD_DIR/lib/"</span>* <span class="str">"$STAGE/lib/"</span>
+    <span class="fn">echo</span> <span class="str">"    → lib/  ($(ls "$STAGE/lib/" | wc -l) runtime .so files)"</span>
+}
+</pre>
+
+<div class="note"><strong>Why copy /src to /build?</strong> Arrow's pkg-config sometimes resolves relative paths. Copying to <code>/build</code> inside the container avoids any path issues with the read-only mount and keeps the host repo clean.</div>
+<div class="note"><strong>Runtime libs:</strong> The build copies the full symlink chain for each dependency (e.g. <code>libarrow.so</code> → <code>libarrow.so.1600</code> → <code>libarrow.so.1600.0.0</code>) using <code>cp -P</code> (preserve symlinks) plus the real file. This ensures the binary's embedded <code>DT_NEEDED</code> soname resolves correctly without relying on the target's package manager. For native installs, <code>install.sh</code> copies <code>lib/</code> to <code>/opt/evelyn/lib/</code>, writes <code>/etc/ld.so.conf.d/evelyn.conf</code>, and runs <code>ldconfig</code>. In the Docker container (Option C) <code>apt-get install libarrow1600 libparquet1600 ...</code> provides the libs instead.</div>
+
+<hr>
+
+<!-- 7 -->
+<h2 id="step2">7. Step 2 — Build FlashMQ (Docker, cached)</h2>
+<p>Clones the tagged FlashMQ release inside an Ubuntu 24.04 container and builds with CMake. The compiled binary is cached at <code>.cache/flashmq-&lt;tag&gt;</code> in the repo root — subsequent builds skip the Docker step entirely if the cached binary exists.</p>
+
+<pre>
+<span class="fn">build_flashmq</span>() {
+    <span class="cm"># Use cached binary if already built for this tag — saves ~2-3 min</span>
+    <span class="kw">if</span> [[ -f <span class="str">"$FLASHMQ_CACHE"</span> ]]; <span class="kw">then</span>
+        <span class="fn">echo</span> <span class="str">"[step 2] FlashMQ $FLASHMQ_TAG already cached — skipping Docker build"</span>
+        cp <span class="str">"$FLASHMQ_CACHE"</span> <span class="str">"$STAGE/bin/flashmq"</span>
+        chmod +x <span class="str">"$STAGE/bin/flashmq"</span>
+        <span class="fn">echo</span> <span class="str">"    → bin/flashmq  ($(du -sh "$STAGE/bin/flashmq" | cut -f1))  [from cache]"</span>
+        <span class="kw">return</span>
+    <span class="kw">fi</span>
+
+    <span class="fn">echo</span> <span class="str">"[step 2] building FlashMQ $FLASHMQ_TAG (not cached)..."</span>
+
+    <span class="kw">if</span> [[ -d <span class="str">"$SRC_DIR/flashmq-src"</span> ]]; <span class="kw">then</span>
+        <span class="fn">echo</span> <span class="str">"    → using local source at $SRC_DIR/flashmq-src (air-gapped)"</span>
+        docker run --rm \
+            -v <span class="str">"$BUILD_DIR"</span>:/out \
+            -v <span class="str">"$SRC_DIR/flashmq-src"</span>:/flashmq:ro \
+            <span class="str">"$UBUNTU_IMAGE"</span> bash -c <span class="str">"
+                set -e
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -q
+                apt-get install -y -q --no-install-recommends \
+                    cmake build-essential libssl-dev
+                cmake -B /flashmq/build -S /flashmq \
+                      -DCMAKE_BUILD_TYPE=Release
+                cmake --build /flashmq/build --parallel \$(nproc)
+                cp /flashmq/build/flashmq /out/flashmq
+            "</span>
+    <span class="kw">else</span>
+        docker run --rm \
+            -v <span class="str">"$BUILD_DIR"</span>:/out \
+            <span class="str">"$UBUNTU_IMAGE"</span> bash -c <span class="str">"
+                set -e
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -q
+                apt-get install -y -q --no-install-recommends \
+                    cmake build-essential git libssl-dev
+                git clone --branch $FLASHMQ_TAG --depth 1 \
+                    https://github.com/halfgaar/FlashMQ.git /flashmq
+                cmake -B /flashmq/build -S /flashmq \
+                      -DCMAKE_BUILD_TYPE=Release
+                cmake --build /flashmq/build --parallel \$(nproc)
+                cp /flashmq/build/flashmq /out/flashmq
+            "</span>
+    <span class="kw">fi</span>
+
+    <span class="cm"># Save to cache so next build skips this step</span>
+    mkdir -p <span class="str">"$SRC_DIR/.cache"</span>
+    cp <span class="str">"$BUILD_DIR/flashmq"</span> <span class="str">"$FLASHMQ_CACHE"</span>
+
+    cp <span class="str">"$BUILD_DIR/flashmq"</span> <span class="str">"$STAGE/bin/flashmq"</span>
+    chmod +x <span class="str">"$STAGE/bin/flashmq"</span>
+    <span class="fn">echo</span> <span class="str">"    → bin/flashmq  ($(du -sh "$STAGE/bin/flashmq" | cut -f1))  [built + cached]"</span>
+}
+</pre>
+
+<div class="warn"><strong>Internet required on first build</strong> unless running air-gapped. Pre-clone FlashMQ into <code>flashmq-src/</code> inside the extracted source tar (i.e. place it at <code>$SRC_DIR/flashmq-src/</code>). When that directory exists the build script mounts it read-only and skips the <code>git clone</code> entirely — no internet needed. Add <code>.cache/</code> to <code>.gitignore</code>.</div>
+<div class="note"><strong>Cache invalidation:</strong> Changing <code>FLASHMQ_TAG</code> (e.g. to <code>v2.0.0</code>) automatically misses the cache because the path includes the tag. To force a rebuild without changing the tag: <code>rm .cache/flashmq-v1.9.1</code>.</div>
+
+<hr>
+
+<!-- 8 -->
+<h2 id="step3">8. Step 3 — Collect files</h2>
+<p>All HTML pages, Python scripts, shell scripts, and config files are copied from the extracted source tar (<code>SRC_DIR</code>) into the staging directory. No repo access needed.</p>
+
+<pre>
+<span class="fn">collect_files</span>() {
+    <span class="fn">echo</span> <span class="str">"[step 3] collecting files from source tar..."</span>
+    R=<span class="str">"$SRC_DIR"</span>
+    S=<span class="str">"$STAGE"</span>
+
+    <span class="cm"># ── HTML pages ────────────────────────────────────────────────────────────</span>
+    cp <span class="str">"$R/html/writer/evelyn_docker_34.html"</span>         <span class="str">"$S/html/index.html"</span>
+    cp <span class="str">"$R/html/parquet_monitor.html"</span>                  <span class="str">"$S/html/"</span>
+    cp <span class="str">"$R/html/writer/parquet_viewer.html"</span>            <span class="str">"$S/html/writer/"</span>
+    cp <span class="str">"$R/html/writer/writer_design.html"</span>             <span class="str">"$S/html/writer/"</span>
+    cp <span class="str">"$R/html/writer/evelyn_real_time_data.html"</span>     <span class="str">"$S/html/writer/"</span>
+    cp <span class="str">"$R/html/writer/evelyn_container_design.html"</span>   <span class="str">"$S/html/writer/"</span>
+    cp <span class="str">"$R/html/writer/evelyn_writer_project_build.html"</span> <span class="str">"$S/html/writer/"</span>
+
+    <span class="cm"># ── Python scripts + requirements ─────────────────────────────────────────</span>
+    <span class="cm"># bridge_api_native.py    — systemd-aware management API for bare-metal installs</span>
+    cp <span class="str">"$R/docker/evelyn-native/bridge_api_native.py"</span>        <span class="str">"$S/"</span>
+
+    <span class="cm"># requirements.txt — installed by install.sh (native) or pip layer in Dockerfile</span>
+    cat > <span class="str">"$S/requirements.txt"</span> &lt;&lt;'REQEOF'
+duckdb>=0.10
+PyYAML>=6.0
+REQEOF
+
+    <span class="cm"># ── Shell scripts ─────────────────────────────────────────────────────────</span>
+    cp <span class="str">"$R/docker/evelyn-native/install.sh"</span>           <span class="str">"$S/scripts/"</span>
+    cp <span class="str">"$R/scripts/evelyn-k8s-build.sh"</span>               <span class="str">"$S/scripts/"</span>  <span class="cm"># include build script in deploy tar</span>
+    chmod +x <span class="str">"$S/scripts/"</span>*.sh
+
+    <span class="cm"># ── Logrotate config (native install) ─────────────────────────────────────</span>
+    <span class="cm"># install.sh copies this to /etc/logrotate.d/evelyn</span>
+    mkdir -p <span class="str">"$S/logrotate"</span>
+    cat > <span class="str">"$S/logrotate/evelyn"</span> &lt;&lt;'LOGROTATEOF'
+/var/log/supervisor/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+LOGROTATEOF
+
+    <span class="cm"># ── Configs ───────────────────────────────────────────────────────────────</span>
+    <span class="cm"># Default configs installed to /etc/evelyn/ by install.sh on first run.</span>
+    cp <span class="str">"$R/docker/evelyn-native/configs/flashmq.conf"</span>        <span class="str">"$S/configs/flashmq.conf"</span>
+    cp <span class="str">"$R/docker/evelyn-native/configs/writer-native.yaml"</span>   <span class="str">"$S/configs/writer-native.yaml"</span>
+
+    <span class="fn">echo</span> <span class="str">"    → $(find "$S" -type f | wc -l) files staged"</span>
+}
+</pre>
+
+<div class="note">All shell scripts are <code>chmod +x</code> in the staging directory so they are executable when extracted on the target machine without needing a separate <code>chmod</code> step.</div>
+
+<hr>
+
+<!-- 9 -->
+<h2 id="step4">9. Step 4 — Write Kubernetes manifests</h2>
+<p>The K8s manifests are written as heredocs inside the build script — no separate template files to maintain. They are generated fresh each build so the image tag embedded in <code>deployment.yaml</code> is always current.</p>
+
+<pre>
+<span class="fn">write_k8s_manifests</span>() {
+    <span class="fn">echo</span> <span class="str">"[step 4] writing Kubernetes manifests..."</span>
+    K=<span class="str">"$STAGE/k8s"</span>
+    IMAGE_TAG=<span class="str">"${EVELYN_IMAGE:-evelyn:latest}"</span>
+
+    <span class="cm"># namespace.yaml</span>
+    cat > <span class="str">"$K/namespace.yaml"</span> &lt;&lt;'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: evelyn
+EOF
+
+    <span class="cm"># configmap.yaml  — default configs; override with site-specific values</span>
+    cat > <span class="str">"$K/configmap.yaml"</span> &lt;&lt;EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evelyn-config
+  namespace: evelyn
+data:
+  flashmq.conf: |
+$(sed 's/^/    /' <span class="str">"$STAGE/configs/flashmq.conf"</span>)
+  writer.yaml: |
+$(sed 's/^/    /' <span class="str">"$STAGE/configs/writer.yaml"</span>)
+EOF
+
+    <span class="cm"># pvc.yaml</span>
+    cat > <span class="str">"$K/pvc.yaml"</span> &lt;&lt;'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: evelyn-parquet-pvc
+  namespace: evelyn
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  # storageClassName: ""   # uncomment and set for a specific StorageClass
+EOF
+
+    <span class="cm"># deployment.yaml</span>
+    cat > <span class="str">"$K/deployment.yaml"</span> &lt;&lt;EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evelyn
+  namespace: evelyn
+  labels:
+    app: evelyn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: evelyn
+  template:
+    metadata:
+      labels:
+        app: evelyn
+    spec:
+      containers:
+        - name: evelyn
+          image: ${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: mqtt
+              containerPort: 1883
+              protocol: TCP
+            - name: mqtt-ws
+              containerPort: 9001
+              protocol: TCP
+            - name: http-ui
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8771
+              protocol: TCP
+            - name: bridge-api
+              containerPort: 8772
+              protocol: TCP
+          volumeMounts:
+            - name: parquet-data
+              mountPath: /data/parquet
+            - name: evelyn-config
+              mountPath: /etc/evelyn
+              readOnly: false
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8771
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8771
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "4"
+              memory: "4Gi"
+      initContainers:
+        - name: init-config
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -f /etc/evelyn/writer.yaml ]; then
+                echo "[init] installing default writer.yaml"
+                cp /etc/evelyn-defaults/writer.yaml /etc/evelyn/writer.yaml
+              fi
+              if [ ! -f /etc/evelyn/flashmq.conf ]; then
+                echo "[init] installing default flashmq.conf"
+                cp /etc/evelyn-defaults/flashmq.conf /etc/evelyn/flashmq.conf
+              fi
+          volumeMounts:
+            - name: evelyn-config
+              mountPath: /etc/evelyn
+            - name: evelyn-defaults
+              mountPath: /etc/evelyn-defaults
+              readOnly: true
+      volumes:
+        - name: parquet-data
+          persistentVolumeClaim:
+            claimName: evelyn-parquet-pvc
+        - name: evelyn-config
+          emptyDir: {}
+        - name: evelyn-defaults
+          configMap:
+            name: evelyn-config
+EOF
+
+    <span class="cm"># service.yaml</span>
+    cat > <span class="str">"$K/service.yaml"</span> &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: evelyn
+  namespace: evelyn
+spec:
+  type: NodePort
+  selector:
+    app: evelyn
+  ports:
+    - name: mqtt
+      port: 1883
+      targetPort: 1883
+      nodePort: 31883
+      protocol: TCP
+    - name: mqtt-ws
+      port: 9001
+      targetPort: 9001
+      nodePort: 31901
+      protocol: TCP
+    - name: http-ui
+      port: 8080
+      targetPort: 8080
+      nodePort: 30880
+      protocol: TCP
+    - name: health
+      port: 8771
+      targetPort: 8771
+      nodePort: 30871
+      protocol: TCP
+    - name: bridge-api
+      port: 8772
+      targetPort: 8772
+      nodePort: 30872
+      protocol: TCP
+EOF
+
+    <span class="fn">echo</span> <span class="str">"    → k8s/namespace.yaml"</span>
+    <span class="fn">echo</span> <span class="str">"    → k8s/configmap.yaml  (flashmq.conf + writer.yaml embedded)"</span>
+    <span class="fn">echo</span> <span class="str">"    → k8s/pvc.yaml"</span>
+    <span class="fn">echo</span> <span class="str">"    → k8s/deployment.yaml  (image: ${IMAGE_TAG})"</span>
+    <span class="fn">echo</span> <span class="str">"    → k8s/service.yaml    (NodePort 31883/31901/30880/30871/30872)"</span>
+}
+</pre>
+
+<hr>
+
+<!-- 10 -->
+<h2 id="step5">10. Step 5 — Package tar.gz</h2>
+<pre>
+<span class="cm"># Final packaging — $BUILD_DIR is cleaned by the EXIT trap</span>
+tar -czf <span class="str">"$OUT"</span> -C <span class="str">"$BUILD_DIR"</span> evelyn-deploy/
+
+<span class="fn">echo</span>
+<span class="fn">echo</span> <span class="str">"=== Done ==="</span>
+<span class="fn">echo</span> <span class="str">"    $OUT"</span>
+<span class="fn">echo</span> <span class="str">"    $(du -sh "$OUT" | cut -f1)  $(tar -tzf "$OUT" | wc -l) files"</span>
+<span class="fn">echo</span>
+<span class="fn">echo</span> <span class="str">"  Inspect:  tar -tzf $OUT_NAME"</span>
+<span class="fn">echo</span> <span class="str">"  Extract:  tar -xzf $OUT_NAME"</span>
+<span class="fn">echo</span> <span class="str">"  Deploy:   see evelyn-deploy/k8s/ and evelyn-deploy/html/writer/evelyn_writer_project_build.html"</span>
+</pre>
+
+<p>The <code>trap ... EXIT</code> at the top of the script deletes <code>$BUILD_DIR</code> automatically on exit — whether the build succeeds or fails.</p>
+
+<hr>
+
+<!-- 11 -->
+<h2 id="k8s-manifests">11. Kubernetes Manifests (detail)</h2>
+
+<h3>Apply order</h3>
+<p>Apply in this order — namespace must exist before other resources reference it:</p>
+<pre>
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/pvc.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+</pre>
+<p>Or all at once:</p>
+<pre>
+kubectl apply -f k8s/
+</pre>
+
+<h3>Port map (NodePort)</h3>
+<table>
+  <tr><th>Service name</th><th>Container port</th><th>NodePort</th><th>Protocol / Use</th></tr>
+  <tr><td>mqtt</td><td>1883</td><td>31883</td><td>TCP — MQTT (EMS hardware, bridge)</td></tr>
+  <tr><td>mqtt-ws</td><td>9001</td><td>31901</td><td>TCP — MQTT over WebSocket (browser dashboards)</td></tr>
+  <tr><td>http-ui</td><td>8080</td><td>30880</td><td>TCP — nginx HTML dashboards</td></tr>
+  <tr><td>health</td><td>8771</td><td>30871</td><td>TCP — parquet_writer health endpoint</td></tr>
+  <tr><td>bridge-api</td><td>8772</td><td>30872</td><td>TCP — bridge_api_container.py management REST</td></tr>
+</table>
+
+<h3>ConfigMap strategy</h3>
+<p>The <code>evelyn-config</code> ConfigMap is used two ways:</p>
+<ul>
+  <li>As the <strong>defaults source</strong>: the <code>init-config</code> init container copies from <code>/etc/evelyn-defaults/</code> (mounted from ConfigMap) into <code>/etc/evelyn/</code> (emptyDir) only when the files are absent.</li>
+  <li>As the <strong>bootstrap values</strong>: once a site-specific bridge has been configured via <code>POST /bridge</code>, the live config in <code>/etc/evelyn/</code> diverges from the ConfigMap — this is intentional. The ConfigMap represents factory defaults.</li>
+</ul>
+
+<div class="warn"><strong>Config persistence caveat:</strong> The <code>evelyn-config</code> volume is <code>emptyDir</code> — it is lost when the pod restarts. For production, replace the emptyDir with a second PVC or a ConfigMap + mutation webhook so bridge changes survive pod restarts. The parquet data PVC is persistent.</div>
+
+<h3>Resource tuning</h3>
+<table>
+  <tr><th>Resource</th><th>Request</th><th>Limit</th><th>Notes</th></tr>
+  <tr><td>CPU</td><td>500m</td><td>4 cores</td><td>parquet_writer peaks on flush; FlashMQ is I/O-bound</td></tr>
+  <tr><td>Memory</td><td>512 Mi</td><td>4 Gi</td><td>max_total_buffer_rows=2M ≈ ~400 MB at peak; WAL replay on restart adds a brief spike</td></tr>
+  <tr><td>Storage (PVC)</td><td>—</td><td>100 Gi</td><td>adjust to site data volume; parquet is ~9-10 bytes/row after snappy compression</td></tr>
+</table>
+
+<hr>
+
+<!-- 12 -->
+<h2 id="using-tar">12. Using the Tar</h2>
+
+<h3>Phase 1 — on build-dev (has repo)</h3>
+<pre>
+<span class="cm"># Extract source files from the repo</span>
+bash scripts/evelyn-src-extract.sh
+<span class="cm"># → dist/evelyn-src-YYYYMMDD.tar.gz</span>
+
+<span class="cm"># Transfer to build machine (or CI artifact)</span>
+scp dist/evelyn-src-YYYYMMDD.tar.gz build-machine:~/
+</pre>
+
+<h3>Phase 2 — on build machine (Docker only, no repo needed)</h3>
+<pre>
+tar -xzf evelyn-src-YYYYMMDD.tar.gz
+<span class="cm"># Optionally specify image tag embedded in deployment.yaml</span>
+bash evelyn-src/scripts/evelyn-k8s-build.sh
+EVELYN_IMAGE=registry.example.com/evelyn:1.2.3 bash evelyn-src/scripts/evelyn-k8s-build.sh
+<span class="cm"># → evelyn-src/dist/evelyn-deploy-YYYYMMDD.tar.gz</span>
+</pre>
+
+<h3>Build the container image from the tar</h3>
+<p>The tar includes the full Dockerfile (Option C three-stage build). Extract and run:</p>
+<pre>
+tar -xzf dist/evelyn-deploy-YYYYMMDD.tar.gz
+cd evelyn-deploy/
+
+<span class="cm"># Build the image — Docker will compile FlashMQ and parquet_writer inside the build</span>
+docker build -t evelyn:latest .
+
+<span class="cm"># Or use the pre-compiled binaries from bin/ to speed up CI (skip Stage 1 & 2)</span>
+<span class="cm"># by providing them as build args — see Dockerfile COPY --from=writer-builder notes</span>
+</pre>
+
+<h3>Push to a registry</h3>
+<pre>
+docker tag evelyn:latest registry.example.com/evelyn:1.2.3
+docker push registry.example.com/evelyn:1.2.3
+<span class="cm"># Then update image: in k8s/deployment.yaml and re-apply</span>
+</pre>
+
+<h3>Deploy to Kubernetes</h3>
+<pre>
+<span class="cm"># First deploy</span>
+kubectl apply -f evelyn-deploy/k8s/
+
+<span class="cm"># Check rollout</span>
+kubectl -n evelyn rollout status deployment/evelyn
+
+<span class="cm"># Check logs</span>
+kubectl -n evelyn logs -f deployment/evelyn
+
+<span class="cm"># Health check</span>
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+curl http://${NODE_IP}:30871/health
+</pre>
+
+<h3>Set bridge to EMS hardware</h3>
+<pre>
+<span class="cm"># Replace &lt;NODE_IP&gt; with the Kubernetes node address</span>
+curl -X POST http://&lt;NODE_IP&gt;:30872/bridge \
+     -H 'Content-Type: application/json' \
+     -d '{"address":"&lt;EMS_IP&gt;","port":1883,"topic":"unit/#"}'
+</pre>
+
+<h3>Native (non-k8s) deploy from the same tar</h3>
+<p>For a bare-metal or VM install without Kubernetes, the tar also includes <code>scripts/install.sh</code> which sets up systemd units:</p>
+<pre>
+tar -xzf evelyn-deploy-YYYYMMDD.tar.gz
+cd evelyn-deploy/
+sudo bash scripts/install.sh --parquet-path /data/parquet-evelyn
+</pre>
+
+<hr>
+
+<!-- 13 -->
+<h2 id="notes">13. Notes &amp; Caveats</h2>
+
+<table>
+  <tr><th>Topic</th><th>Detail</th></tr>
+  <tr>
+    <td>FlashMQ binary size</td>
+    <td>~8–12 MB stripped. Building from source takes ~2–3 min on a 4-core machine. To cache across builds, push the FlashMQ binary to a separate Docker layer or store it in <code>bin/flashmq-cache</code> in the repo and skip Step 2 if already present.</td>
+  </tr>
+  <tr>
+    <td>parquet_writer binary size</td>
+    <td>~15–20 MB. Arrow/Parquet libs are linked dynamically. The build step extracts the full <code>.so</code> symlink chain from the build container (e.g. <code>libarrow.so → libarrow.so.1600 → libarrow.so.1600.0.0</code>) into <code>lib/</code>. <code>install.sh</code> copies these to <code>/opt/evelyn/lib/</code> and drops <code>/etc/ld.so.conf.d/evelyn.conf</code> + runs <code>ldconfig</code>. In the Docker container the runtime image's <code>apt-get install libarrow1600</code> handles this instead.</td>
+  </tr>
+  <tr>
+    <td>Python dependencies</td>
+    <td><code>bridge_api_container.py</code> and <code>bridge_api_native.py</code> require <code>duckdb</code> and <code>PyYAML</code>. Both are in <code>requirements.txt</code>. In the container the Dockerfile runs <code>pip install -r requirements.txt</code>. For native installs, <code>install.sh</code> runs <code>pip3 install -r requirements.txt</code> (requires python3-pip on the target — Ubuntu: <code>apt-get install python3-pip</code>). All other imports (<code>asyncio</code>, <code>json</code>, <code>subprocess</code>, <code>os</code>, <code>re</code>) are Python stdlib.</td>
+  </tr>
+  <tr>
+    <td>K8s config persistence</td>
+    <td>Config volume is <code>emptyDir</code> by default — lost on pod restart. For production, use a second PVC (<code>evelyn-config-pvc</code>) or bake the site config into the image at CI time.</td>
+  </tr>
+  <tr>
+    <td>Single-writer design</td>
+    <td>This deployment pattern is for one <code>parquet_writer</code> instance per container / host. For multi-writer topologies, deploy separate containers with different <code>site_id</code>, MQTT topic prefix, and data path.</td>
+  </tr>
+  <tr>
+    <td>nginx — when needed</td>
+    <td>nginx is only required if you want the HTML dashboards served from the container itself (Option C). For bare-metal installs where a host web server already exists, nginx can be omitted — remove the <code>[program:nginx]</code> block from <code>supervisord.conf</code> and skip the nginx apt install. The parquet_writer, FlashMQ, and bridge_api work independently of it.</td>
+  </tr>
+  <tr>
+    <td>Log files</td>
+    <td>In the container, supervisord rotates logs via <code>stdout_logfile_maxbytes</code>/<code>stdout_logfile_backups</code> (nginx redirected to stdout). For native installs, <code>install.sh</code> copies <code>logrotate/evelyn</code> to <code>/etc/logrotate.d/evelyn</code> — rotates <code>/var/log/supervisor/*.log</code> daily, 7-day retention. Force a test with <code>logrotate -d /etc/logrotate.d/evelyn</code>.</td>
+  </tr>
+  <tr>
+    <td>Air-gapped build</td>
+    <td>Step 2 (FlashMQ) requires internet access to clone from GitHub. For air-gapped environments, pre-clone FlashMQ into <code>docker/evelyn-container/flashmq-src/</code> and modify the build step to mount and build from that path instead.</td>
+  </tr>
+  <tr>
+    <td>Arrow APT repo</td>
+    <td>Ubuntu 24.04 ships Arrow 14 in the default apt repo. If a newer Arrow is required, add the Apache Arrow APT source inside the Docker build container before <code>apt-get install</code>.</td>
+  </tr>
+  <tr>
+    <td>bridge_api_container.py</td>
+    <td>This file is generated / defined in <code>evelyn_container_design.html</code> and must be written to <code>docker/evelyn-container/bridge_api_container.py</code> in the repo before running the build script. The build script will fail with a clear error if it is absent.</td>
+  </tr>
+</table>
+
+<div class="note"><strong>Verifying the binary works before packaging:</strong>
+<pre style="margin:6px 0">
+<span class="cm"># Quick sanity check after Step 1 — should print usage/version and exit cleanly</span>
+docker run --rm \
+  -v "$STAGE/bin/parquet_writer":/bin/parquet_writer:ro \
+  ubuntu:24.04 bash -c "
+    apt-get install -y -q libmosquitto1 libyaml-cpp0.8 libsimdjson0 \
+      libarrow1600 libparquet1600 libsnappy1v5 libzstd1 liblz4-1
+    /bin/parquet_writer --help
+  "
+</pre>
+</div>
+
+</div>
+</body>
+</html>

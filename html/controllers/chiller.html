@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chiller Controller — Heltec LoRa32</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --orange:#e3b341;
+    --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; max-width:860px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .btn-row { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+  .btn { display:inline-block; padding:8px 16px; border-radius:6px; font-size:.85rem;
+         font-weight:600; text-decoration:none; }
+  .btn-primary { background:#1f6feb; color:#fff; }
+  .btn-primary:hover { background:#388bfd; }
+  .btn-dl { background:var(--surface); color:var(--accent);
+             border:1px solid var(--accent); }
+  .btn-dl:hover { background:#0c2d6b44; }
+
+  table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:6px 10px;
+       border-bottom:1px solid var(--border); }
+  td { padding:6px 10px; border-bottom:1px solid #21262d; }
+  td:first-child { color:var(--accent); font-family:monospace; white-space:nowrap; }
+
+  .tag { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:3px;
+         border:1px solid var(--border); color:var(--muted); margin-right:4px; }
+  .tag-ws { border-color:var(--green); color:var(--green); }
+
+  pre { background:var(--code-bg); padding:12px; border-radius:6px; font-size:.78rem;
+        overflow-x:auto; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Controller Projects</a>
+</div>
+
+<h1>Chiller Controller — Heltec LoRa32</h1>
+<p class="subtitle">Liquid cooling chiller simulator/controller with auto temp control loop and WebSocket interface</p>
+<span class="tag tag-ws">ws :81</span>
+<span class="tag">Heltec LoRa32 V2/V3</span>
+<span class="tag">LILYGO T-Display</span>
+
+<div class="btn-row">
+  <a class="btn btn-primary" href="chiller_ctrl.html">Open Control UI</a>
+  <a class="btn btn-dl" href="arduino/chiller_control/chiller_control.ino" download>Download chiller_control.ino</a>
+</div>
+
+<h2>Overview</h2>
+<p style="font-size:.85rem;line-height:1.6;color:var(--muted)">
+  Simulates or controls a liquid cooling chiller. Drives compressor speed and fan speed via DAC,
+  controls pump and compressor contactors via GPIO, and reads inlet/outlet temperatures from 4–20 mA ADC inputs.
+  Runs an automatic temperature control loop to maintain a configurable outlet setpoint.
+</p>
+
+<h2>Hardware</h2>
+<table>
+  <tr><th>Pin</th><th>Function</th><th>Notes</th></tr>
+  <tr><td>GPIO25 / DAC1</td><td>Compressor speed reference</td><td>0–3.3 V = 0–100%</td></tr>
+  <tr><td>GPIO26 / DAC2</td><td>Fan speed reference</td><td>0–3.3 V = 0–100%</td></tr>
+  <tr><td>GPIO OUT[0]</td><td>Pump relay</td><td>Digital output</td></tr>
+  <tr><td>GPIO OUT[1]</td><td>Compressor contactor</td><td>Digital output</td></tr>
+  <tr><td>GPIO36 / ADC1</td><td>Inlet temp (4–20 mA)</td><td>Optional</td></tr>
+  <tr><td>GPIO39 / ADC2</td><td>Outlet temp (4–20 mA)</td><td>Optional</td></tr>
+</table>
+
+<h2>WebSocket Commands (JSON, port 81)</h2>
+<pre>{"cmd": "get_status"}
+{"cmd": "set_setpoint",   "value": 18.0}       // outlet temp °C
+{"cmd": "set_compressor", "value": 75.0}       // % (overrides auto)
+{"cmd": "set_fan",        "value": 60.0}       // %
+{"cmd": "set_mode",       "mode": "cooling"}   // cooling | standby | manual
+{"cmd": "set_pump",       "state": true}
+{"cmd": "clear_fault"}
+{"cmd": "ping",           "t": 0}</pre>
+
+<h2>Library Requirements</h2>
+<p style="font-size:.82rem;color:var(--muted)">ArduinoJson · WebSocketsServer · ArduinoOTA · Preferences · U8g2 (V2) or TFT_eSPI (T-Display)</p>
+
+</body>
+</html>

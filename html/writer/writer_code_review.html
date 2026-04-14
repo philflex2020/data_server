@@ -1,0 +1,507 @@
+<!D
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>OCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>writer.cpp — Code Review</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --critical: #f85149;
+    --major:    #e3b341;
+    --minor:    #58a6ff;
+    --green:    #3fb950;
+    --tag-crit: rgba(248,81,73,0.15);
+    --tag-maj:  rgba(227,179,65,0.15);
+    --tag-min:  rgba(88,166,255,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 2rem 1rem;
+  }
+  .page { max-width: 960px; margin: 0 auto; }
+
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: .25rem; }
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 2rem 0 .75rem; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid var(--border);
+       padding-bottom: .4rem; }
+
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: .9rem; }
+
+  /* summary bar */
+  .summary {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .3rem .75rem; border-radius: 2em; font-weight: 700;
+    font-size: .85rem;
+  }
+  .pill.crit { background: var(--tag-crit); color: var(--critical); border: 1px solid var(--critical); }
+  .pill.maj  { background: var(--tag-maj);  color: var(--major);    border: 1px solid var(--major);   }
+  .pill.min  { background: var(--tag-min);  color: var(--minor);    border: 1px solid var(--minor);   }
+
+  /* finding cards */
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: .75rem;
+    overflow: hidden;
+  }
+  .finding-header {
+    display: flex; align-items: flex-start; gap: .75rem;
+    padding: .75rem 1rem; cursor: pointer; user-select: none;
+  }
+  .finding-header:hover { background: rgba(255,255,255,.03); }
+  .badge {
+    flex-shrink: 0; font-size: .7rem; font-weight: 800;
+    padding: .2rem .5rem; border-radius: 4px; margin-top: .15rem;
+    letter-spacing: .05em;
+  }
+  .badge.crit { background: var(--tag-crit); color: var(--critical); border: 1px solid var(--critical); }
+  .badge.maj  { background: var(--tag-maj);  color: var(--major);    border: 1px solid var(--major);   }
+  .badge.min  { background: var(--tag-min);  color: var(--minor);    border: 1px solid var(--minor);   }
+
+  .finding-title { font-weight: 600; flex: 1; }
+  .finding-title .lines { color: var(--muted); font-size: .8rem; font-weight: 400; margin-left: .5rem; }
+  .chevron { color: var(--muted); flex-shrink: 0; transition: transform .2s; margin-top: .1rem; }
+  .finding.open .chevron { transform: rotate(90deg); }
+
+  .finding-body {
+    display: none; padding: 0 1rem 1rem 1rem;
+    color: var(--text); font-size: .9rem; line-height: 1.7;
+    border-top: 1px solid var(--border);
+  }
+  .finding.open .finding-body { display: block; }
+  .finding-body p { margin-top: .6rem; }
+  code {
+    background: rgba(255,255,255,.06); border-radius: 4px;
+    padding: .1em .35em; font-family: "SF Mono", Consolas, monospace; font-size: .85em;
+  }
+
+  /* verdict */
+  .verdict {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.25rem; margin-top: 2rem;
+  }
+  .verdict h3 { margin-bottom: .75rem; font-size: 1rem; color: var(--text); }
+  .verdict p  { color: var(--text); margin-bottom: .5rem; font-size: .9rem; }
+  .priority   { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+  .priority-item {
+    background: rgba(255,255,255,.05); border: 1px solid var(--border);
+    border-radius: 4px; padding: .2rem .6rem; font-size: .8rem;
+    font-family: "SF Mono", Consolas, monospace; color: var(--text);
+  }
+  .priority-item.crit { border-color: var(--critical); color: var(--critical); }
+  .priority-item.maj  { border-color: var(--major);    color: var(--major);    }
+
+  .toggle-all {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 6px; padding: .3rem .8rem; cursor: pointer; font-size: .8rem;
+    margin-bottom: .75rem;
+  }
+  .toggle-all:hover { border-color: var(--text); color: var(--text); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>writer.cpp — Code Review</h1>
+  <p class="subtitle">Automated review · source/parquet_writer_cpp/writer.cpp · 2026-03-21</p>
+
+  <div class="summary">
+    <span class="pill crit">6 Critical</span>
+    <span class="pill maj">14 Major</span>
+    <span class="pill min">11 Minor</span>
+  </div>
+
+  <!-- ── CRITICAL ─────────────────────────────────────────────────────────── -->
+  <h2>Critical</h2>
+  <button class="toggle-all" onclick="toggleSection('crit')">expand / collapse all</button>
+
+  <div class="finding" id="C1">
+    <div class="finding-header" onclick="toggle('C1')">
+      <span class="badge crit">C1</span>
+      <span class="finding-title">Signal handler calls <code>notify_all</code> on <code>condition_variable</code> — undefined behaviour <span class="lines">lines 917–920</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p><code>std::condition_variable::notify_all()</code> is not async-signal-safe. If the signal fires while <code>g_mutex</code> is held by another thread, the notify path may deadlock. Only async-signal-safe operations (setting an <code>atomic_flag</code>, writing to a self-pipe or <code>eventfd</code>) are legal inside a signal handler.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="C2">
+    <div class="finding-header" onclick="toggle('C2')">
+      <span class="badge crit">C2</span>
+      <span class="finding-title">WAL write failure silently proceeds with the Parquet write — crash safety guarantee is void <span class="lines">lines 672–678</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>When <code>write_wal_ipc</code> fails, the code logs a warning and continues flushing Parquet. If the Parquet write then crashes, the data is permanently lost with no WAL to recover from. The flush for that partition should abort if the WAL cannot be written.</p>
+      <p>Additionally, <code>writer->Close()</code> failure on line 510 is checked but <code>out->Close()</code> on line 511 has its return value discarded — the WAL file may be silently corrupt.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="C3">
+    <div class="finding-header" onclick="toggle('C3')">
+      <span class="badge crit">C3</span>
+      <span class="finding-title">WAL replay hard-codes <code>source_type = "batteries"</code> — silent data misrouting <span class="lines">line 577</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>The WAL filename encodes the source type (<code>{source_type}_{pval}_{ts}.wal.arrow</code>) but the replay loop never parses it back out. All replayed data, regardless of the original source type, is written into a <code>batteries/</code> directory tree.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="C4">
+    <div class="finding-header" onclick="toggle('C4')">
+      <span class="badge crit">C4</span>
+      <span class="finding-title"><code>on_message</code> holds <code>g_mutex</code> for every message at ~80k msg/sec — blocks MQTT network thread <span class="lines">lines 878–900</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>The flush thread copies <code>g_current_state</code> (up to 10k <code>std::map</code> entries with heap-allocated keys) while holding the same lock. During that copy the MQTT thread blocks and mosquitto's receive buffer fills. This is both a throughput bottleneck and a risk of missed keepalives causing spurious reconnects.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="C5">
+    <div class="finding-header" onclick="toggle('C5')">
+      <span class="badge crit">C5</span>
+      <span class="finding-title"><code>g_health_buffer_rows</code> not updated when buffer is flushed — health endpoint reports stale count <span class="lines">lines 597, 761–763, 897</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p><code>g_total_buffered</code> is reset to 0 inside <code>flush_thread_fn</code> but <code>g_health_buffer_rows</code> is only updated in <code>on_message</code>. Between a flush completing and the next incoming message, the health endpoint reports the pre-flush (inflated) buffer row count.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="C6">
+    <div class="finding-header" onclick="toggle('C6')">
+      <span class="badge crit">C6</span>
+      <span class="finding-title">WAL replay only reads <code>chunk(0)</code> — silently drops rows in multi-chunk tables <span class="lines">lines 537–541</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>If the WAL IPC file contains multiple record batches, <code>arrow::ChunkedArray::chunk(0)</code> gives only the first chunk. All remaining rows are silently discarded. Any WAL file written by a modified write path (or externally created) would lose data on replay with no error.</p>
+    </div>
+  </div>
+
+  <!-- ── MAJOR ─────────────────────────────────────────────────────────────── -->
+  <h2>Major</h2>
+  <button class="toggle-all" onclick="toggleSection('maj')">expand / collapse all</button>
+
+  <div class="finding" id="M1">
+    <div class="finding-header" onclick="toggle('M1')">
+      <span class="badge maj">M1</span>
+      <span class="finding-title"><code>parse_payload</code> default-constructs <code>Config{}</code> as fallback — wrong config silently used <span class="lines">line 241</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>If the <code>cfg</code> argument is omitted, a default-constructed <code>Config</code> is used silently instead of asserting or returning an error. All partition field lookups and output settings will be wrong.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M2">
+    <div class="finding-header" onclick="toggle('M2')">
+      <span class="badge maj">M2</span>
+      <span class="finding-title"><code>g_received_since_sync</code> cast to <code>int64_t</code> can produce misleading "OK" sync logs <span class="lines">lines 823–824</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>When a large number of messages has been received before the first <code>_sync</code> arrives in a new session, the delta calculation can wrap or produce an incorrect "loss=0" result, masking real message loss.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M3">
+    <div class="finding-header" onclick="toggle('M3')">
+      <span class="badge maj">M3</span>
+      <span class="finding-title"><code>flush_partition</code> and <code>write_wal_ipc</code> duplicate schema-building logic — already diverged <span class="lines">lines 356–414 vs 472–512</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>Both functions iterate over rows and build Arrow arrays in ~60 lines of nearly identical code. They have already diverged in variable naming. A future schema change will need to be made in two places and the mismatch may not be caught until a WAL replay produces malformed Parquet.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M4">
+    <div class="finding-header" onclick="toggle('M4')">
+      <span class="badge maj">M4</span>
+      <span class="finding-title"><code>make_output_path</code> uses flush time not collection time — replayed WAL rows land in wrong date partition <span class="lines">lines 314–343</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>Partition directories use <code>year/month/day</code> derived from <code>system_clock::now()</code> at flush time. Data collected on Tuesday that is WAL-replayed on Wednesday will be written into Wednesday's partition. This silently corrupts time-based queries.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M5">
+    <div class="finding-header" onclick="toggle('M5')">
+      <span class="badge maj">M5</span>
+      <span class="finding-title"><code>g_current_state</code> copied under <code>g_mutex</code> at flush time — O(N) heap allocations while MQTT thread is blocked <span class="lines">lines 762–763</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>At every flush, the entire current-state map is deep-copied while holding the global mutex. At 10k sensor keys this is thousands of heap allocations. The MQTT receive thread is blocked for the full duration of this copy.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M6">
+    <div class="finding-header" onclick="toggle('M6')">
+      <span class="badge maj">M6</span>
+      <span class="finding-title">Health thread ignores <code>recv</code> return value; buffer uninitialised on error; fragmented HTTP not handled <span class="lines">line 617</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>If <code>recv</code> returns -1 or 0, the uninitialized contents of <code>buf</code> are used as the HTTP request. A slow or fragmented client (e.g. high-latency connection) will get a garbled response or crash.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M7">
+    <div class="finding-header" onclick="toggle('M7')">
+      <span class="badge maj">M7</span>
+      <span class="finding-title">Health endpoint responds HTTP 200 JSON to any TCP connection — no path or method check <span class="lines">lines 617–633</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>Any TCP connection gets a full JSON response regardless of HTTP method or path. Port scanners, load balancer probes, and random connections will receive the metrics payload, potentially leaking operational data.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M8">
+    <div class="finding-header" onclick="toggle('M8')">
+      <span class="badge maj">M8</span>
+      <span class="finding-title"><code>check_disk_space</code> skips updating <code>g_disk_free_gb_x10</code> when guard is disabled — health always shows 0.0 GB <span class="lines">lines 440–452</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>When <code>min_free_gb</code> is 0 (guard disabled), the function returns early without sampling disk space. The health endpoint always reports <code>disk_free_gb: 0.0</code>, making it useless for monitoring disk capacity.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M9">
+    <div class="finding-header" onclick="toggle('M9')">
+      <span class="badge maj">M9</span>
+      <span class="finding-title"><code>mosquitto_disconnect</code> called after <code>loop_stop(force=true)</code> — DISCONNECT never sent <span class="lines">lines 1044–1046</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>The correct shutdown order is: <code>disconnect()</code> → wait for <code>on_disconnect</code> → <code>loop_stop()</code>. With <code>force=true</code> the network thread is killed before the DISCONNECT packet can be sent. The broker retains the session and may redeliver queued messages on reconnect.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M10">
+    <div class="finding-header" onclick="toggle('M10')">
+      <span class="badge maj">M10</span>
+      <span class="finding-title"><code>g_mosq</code> plain pointer — data race between main-thread write and network-thread reads <span class="lines">lines 1005, 1038</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>Under the C++ memory model, writing <code>g_mosq</code> in main and reading it in the network thread (via callbacks) is a data race without synchronisation. In practice the assignment happens before <code>loop_start</code>, but there is no memory fence to guarantee visibility.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M11">
+    <div class="finding-header" onclick="toggle('M11')">
+      <span class="badge maj">M11</span>
+      <span class="finding-title">Final flush runs before <code>mosquitto_loop_stop</code> — guaranteed message loss window on every graceful shutdown <span class="lines">lines 1041–1044</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>The flush thread exits (and does a final flush) before <code>mosquitto_loop_stop</code> is called. Any messages delivered by mosquitto in that window are added to the buffer but never flushed. On every clean SIGTERM shutdown there is a window of data loss.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M12">
+    <div class="finding-header" onclick="toggle('M12')">
+      <span class="badge maj">M12</span>
+      <span class="finding-title">No config validation — bad values cause spin-flush, drop-everything, or silent wrong compression <span class="lines">lines 117–168</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p><code>flush_interval_seconds &lt;= 0</code> creates a spin-flush loop consuming 100% CPU. <code>max_total_buffer_rows &lt;= 0</code> drops every incoming message immediately. An invalid <code>compression</code> string silently falls through to Snappy with no warning.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M13">
+    <div class="finding-header" onclick="toggle('M13')">
+      <span class="badge maj">M13</span>
+      <span class="finding-title"><code>source_type</code> from MQTT topic injected into filesystem paths without sanitisation — path traversal <span class="lines">line 334</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>A rogue publisher with a topic like <code>../../etc/cron.d/evil</code> can write files to arbitrary paths writable by the process. <code>source_type</code> must be validated against a allowlist or sanitised (strip <code>/</code>, <code>..</code>, null bytes) before use in <code>fs::path</code> construction.</p>
+    </div>
+  </div>
+
+  <div class="finding" id="M14">
+    <div class="finding-header" onclick="toggle('M14')">
+      <span class="badge maj">M14</span>
+      <span class="finding-title">Integer scalars not in <code>int_cols</code> silently promoted to <code>double</code> — precision loss above 2^53 <span class="lines">lines 289–292</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body">
+      <p>Large integers (e.g. Unix timestamps in nanoseconds, serial numbers) stored as <code>double</code> lose precision above 2^53. Additionally, if a JSON payload field name matches a topic-derived int column name, the same value appears in both <code>row.ints</code> and <code>row.floats</code>, producing duplicate Parquet columns with undefined merge behaviour.</p>
+    </div>
+  </div>
+
+  <!-- ── MINOR ─────────────────────────────────────────────────────────────── -->
+  <h2>Minor</h2>
+  <button class="toggle-all" onclick="toggleSection('min')">expand / collapse all</button>
+
+  <div class="finding" id="m1">
+    <div class="finding-header" onclick="toggle('m1')">
+      <span class="badge min">m1</span>
+      <span class="finding-title">Magic numbers throughout — backlog, retries, backoff delays, keepalive — none configurable <span class="lines">lines 609, 683, 687, 1011–1018</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>Listen backlog 4, MAX_RETRIES 3, backoff 1/2/4s, reconnect delay 2/30s, keepalive 60s, retry sleep 5s are all hardcoded. At minimum these should be named constants; ideally configurable.</p></div>
+  </div>
+
+  <div class="finding" id="m2">
+    <div class="finding-header" onclick="toggle('m2')">
+      <span class="badge min">m2</span>
+      <span class="finding-title">Overflow <code>notify_one</code> only wakes flush thread if sleeping — drops continue during active flush <span class="lines">lines 880–887</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>If the flush thread is actively writing Parquet when the buffer overflows, <code>notify_one</code> is a no-op and drops continue for the full flush duration with no additional action taken.</p></div>
+  </div>
+
+  <div class="finding" id="m3">
+    <div class="finding-header" onclick="toggle('m3')">
+      <span class="badge min">m3</span>
+      <span class="finding-title">Parquet column order is non-deterministic — determined by first-seen order per flush cycle <span class="lines">lines 362–368</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>Column order varies depending on which message arrived first in each flush window. DuckDB handles this correctly but it makes manual inspection and schema diffs confusing.</p></div>
+  </div>
+
+  <div class="finding" id="m4">
+    <div class="finding-header" onclick="toggle('m4')">
+      <span class="badge min">m4</span>
+      <span class="finding-title"><code>g_cfg</code> is a raw pointer to a stack <code>Config</code> in <code>main</code> — null dereference in tests <span class="lines">line 992</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>Any unit test that exercises a function referencing <code>g_cfg</code> before <code>main</code> sets it will null-dereference. Should be initialised to a default or use a reference.</p></div>
+  </div>
+
+  <div class="finding" id="m5">
+    <div class="finding-header" onclick="toggle('m5')">
+      <span class="badge min">m5</span>
+      <span class="finding-title"><code>wal_path_for</code> calls <code>fs::create_directories</code> on every flush per partition <span class="lines">line 468</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>Directory creation is a syscall. It should happen once at startup (or first WAL write), not on every flush of every partition.</p></div>
+  </div>
+
+  <div class="finding" id="m6">
+    <div class="finding-header" onclick="toggle('m6')">
+      <span class="badge min">m6</span>
+      <span class="finding-title">WAL filename and Parquet filename use independent <code>now()</code> calls — can differ across a second boundary <span class="lines">lines 458–464, 316–325</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>If <code>time_suffix()</code> and <code>make_output_path</code> are called at the boundary of a second, the WAL file name will reference a different timestamp than the Parquet file it corresponds to. Makes post-crash matching harder.</p></div>
+  </div>
+
+  <div class="finding" id="m7">
+    <div class="finding-header" onclick="toggle('m7')">
+      <span class="badge min">m7</span>
+      <span class="finding-title">First sync always reports OK even if messages dropped before first <code>_sync</code> arrived <span class="lines">line 820</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>The initial baseline is set from the first received sync message. Any drops that occurred before that point are invisible to the loss counter.</p></div>
+  </div>
+
+  <div class="finding" id="m8">
+    <div class="finding-header" onclick="toggle('m8')">
+      <span class="badge min">m8</span>
+      <span class="finding-title"><code>parse_topic</code> silently overwrites duplicate key-value segments <span class="lines">lines 227–234</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>If a topic contains the same key twice (e.g. <code>site/1/site/2/...</code>), the second value silently replaces the first with no warning.</p></div>
+  </div>
+
+  <div class="finding" id="m9">
+    <div class="finding-header" onclick="toggle('m9')">
+      <span class="badge min">m9</span>
+      <span class="finding-title"><code>mosquitto_subscribe</code> failure in <code>on_connect</code> is logged but not retried — writer silently receives zero messages <span class="lines">lines 789–793</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>If the initial subscribe fails (e.g. transient broker issue), the writer runs indefinitely with an empty buffer, flushing empty Parquet files, with no recovery path.</p></div>
+  </div>
+
+  <div class="finding" id="m10">
+    <div class="finding-header" onclick="toggle('m10')">
+      <span class="badge min">m10</span>
+      <span class="finding-title"><code>recv</code> buffer 255 bytes — too small for modern browser HTTP headers <span class="lines">line 617</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>Chrome and Firefox send 600–800 byte GET headers including <code>Accept</code>, <code>User-Agent</code>, cookies etc. A 255-byte buffer will truncate the request; the partial read is then silently treated as a valid HTTP request.</p></div>
+  </div>
+
+  <div class="finding" id="m11">
+    <div class="finding-header" onclick="toggle('m11')">
+      <span class="badge min">m11</span>
+      <span class="finding-title"><code>mosquitto_lib_init()</code> return value unchecked; <code>lib_cleanup()</code> called unconditionally <span class="lines">lines 997, 1047</span></span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="finding-body"><p>If <code>mosquitto_lib_init()</code> fails, execution continues and subsequent mosquitto calls have undefined behaviour. <code>lib_cleanup()</code> is then called on an uninitialised library.</p></div>
+  </div>
+
+  <!-- ── VERDICT ────────────────────────────────────────────────────────────── -->
+  <div class="verdict">
+    <h3>Overall Verdict</h3>
+    <p>The code is a <strong>solid functional prototype</strong> that works reliably under normal conditions but is <strong>not production-hardened</strong>. The core data path (MQTT → buffer → Parquet flush) is architecturally sound. The serious problems are concentrated in the robustness features (WAL, signal handling, shutdown):</p>
+    <ul style="margin: .5rem 0 .5rem 1.5rem; font-size:.9rem; color:var(--text);">
+      <li>Any SIGTERM during a flush invokes undefined behaviour (C1)</li>
+      <li>The WAL can silently mis-route recovered data (C3) and does not abort on write failure (C2)</li>
+      <li>Every graceful shutdown discards a window of messages (M11)</li>
+      <li>Health endpoint <code>buffer_rows</code> and <code>disk_free_gb</code> are wrong in default config (C5, M8)</li>
+      <li>Path traversal via MQTT <code>source_type</code> is a real attack surface (M13)</li>
+    </ul>
+    <p style="margin-top:.75rem; font-size:.85rem; color:var(--muted);">Recommended fix priority:</p>
+    <div class="priority">
+      <span class="priority-item crit">C1</span>
+      <span class="priority-item maj">M11</span>
+      <span class="priority-item crit">C3</span>
+      <span class="priority-item crit">C2</span>
+      <span class="priority-item maj">M9</span>
+      <span class="priority-item crit">C5</span>
+      <span class="priority-item maj">M8</span>
+      <span class="priority-item maj">M12</span>
+      <span class="priority-item crit">C4</span>
+      <span class="priority-item crit">C6</span>
+      <span class="priority-item maj">M13</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggle(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+}
+function toggleSection(cls) {
+  const badges = document.querySelectorAll(`.badge.${cls}`);
+  const findings = [...badges].map(b => b.closest('.finding'));
+  const anyOpen = findings.some(f => f.classList.contains('open'));
+  findings.forEach(f => anyOpen ? f.classList.remove('open') : f.classList.add('open'));
+}
+</script>
+</body>
+</html>

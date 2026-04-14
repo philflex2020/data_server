@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Projects</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+          padding:14px 16px; text-decoration:none; display:block;
+          transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .card-title { color:var(--accent); font-size:.95rem; font-weight:600; margin-bottom:4px; }
+  .card-desc  { color:var(--muted); font-size:.8rem; line-height:1.4; }
+  .card-tag   { display:inline-block; margin-top:8px; font-size:.7rem;
+                padding:1px 6px; border-radius:3px; border:1px solid var(--border);
+                color:var(--muted); }
+  .tag-live   { border-color:var(--green); color:var(--green); }
+  .tag-tool   { border-color:var(--purple); color:var(--purple); }
+  .tag-demo   { border-color:var(--yellow); color:var(--yellow); }
+</style>
+</head>
+<body>
+
+<h1>Projects</h1>
+<p class="subtitle">gen-ai / data_server — served from phil-dev :8080</p>
+
+<h2>EMS Ingest &amp; Writer</h2>
+<div class="card-grid">
+
+  <a class="card" href="writer/projects.html">
+    <div class="card-title">Writer Projects</div>
+    <div class="card-desc">EMS ingest tools — Evelyn .34 live demo, MQTT viewer, parquet viewer, simulator control, cost analysis.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">writer/projects.html</span>
+  </a>
+
+  <a class="card" href="parquet_monitor.html">
+    <div class="card-title">Parquet Monitor</div>
+    <div class="card-desc">Live parquet store monitor — writer status, file counts, store size, push agent stats.</div>
+    <span class="card-tag tag-live">live</span>
+  </a>
+
+  <a class="card" href="parquet_demo.html">
+    <div class="card-title">Parquet Demo</div>
+    <div class="card-desc">Edge parquet ingest demo — compression ratio, data reduction story.</div>
+    <span class="card-tag tag-demo">demo</span>
+  </a>
+
+</div>
+
+<h2>AWS Cost Reduction</h2>
+<div class="card-grid">
+
+  <a class="card" href="aws_data_reduction_proposal.html">
+    <div class="card-title">AWS Data Reduction Proposal</div>
+    <div class="card-desc">Full cost reduction proposal — FlashMQ bridge, parquet edge ingest, filter scenarios, projected savings.</div>
+    <span class="card-tag tag-demo">demo</span>
+  </a>
+
+  <a class="card" href="costs.html">
+    <div class="card-title">Costs</div>
+    <div class="card-desc">AWS cost breakdown and reduction targets.</div>
+    <span class="card-tag">analysis</span>
+  </a>
+
+</div>
+
+<h2>Arduino Controllers</h2>
+<div class="card-grid">
+
+  <a class="card" href="controllers/projects.html">
+    <div class="card-title">Controller Projects</div>
+    <div class="card-desc">Arduino / ESP32 hardware controllers — Heltec LoRa32 load controller, fast DAC, chiller, PCS, UPS. Browser UIs and sketch source.</div>
+    <span class="card-tag">ESP32</span>
+    <span class="card-tag">ws :81</span>
+  </a>
+
+</div>
+
+<h2>System</h2>
+<div class="card-grid">
+
+  <a class="card" href="dashboard.html">
+    <div class="card-title">Dashboard</div>
+    <div class="card-desc">System overview dashboard.</div>
+    <span class="card-tag tag-live">live</span>
+  </a>
+
+  <a class="card" href="architecture.html">
+    <div class="card-title">Architecture</div>
+    <div class="card-desc">System architecture documentation.</div>
+    <span class="card-tag">docs</span>
+  </a>
+
+  <a class="card" href="manager_api.html">
+    <div class="card-title">Manager API</div>
+    <div class="card-desc">Manager API reference.</div>
+    <span class="card-tag">docs</span>
+  </a>
+
+</div>
+
+</body>
+</html>

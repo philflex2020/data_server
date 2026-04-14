@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Shared Memory Ring Buffer</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; line-height: 1.6; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.9rem; margin: 18px 0 6px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+
+  pre  { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; color: #e6edf3; margin: 8px 0; }
+  pre.shell { background: #0d0d1a; border-color: #1a1a4a; }
+  pre.ok    { background: #0d1a0d; border-color: #1a4a1a; }
+
+  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: #e6edf3; }
+
+  .kw  { color: #ff7b72; }
+  .fn  { color: #d2a8ff; }
+  .ty  { color: #79c0ff; }
+  .str { color: #a5d6ff; }
+  .num { color: #79c0ff; }
+  .cmt { color: #8b949e; }
+  .ok  { color: #3fb950; }
+  .warn{ color: #d29922; }
+  .err { color: #f85149; }
+
+  p  { margin-bottom: 8px; font-size: 0.88rem; }
+  ul { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
+  .badge-new  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .badge-def  { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-risk { background: #3d0a0a; color: var(--red);    border: 1px solid #7a1515; }
+  .badge-info { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 12px; }
+  th { background: #21262d; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+
+  .alert { border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 0.88rem; border-left: 4px solid; }
+  .alert-info { background: #0c2d6b22; border-color: var(--accent); }
+  .alert-ok   { background: #0d442922; border-color: var(--green); }
+  .alert-warn { background: #2d200022; border-color: var(--yellow); }
+
+  .flow { font-family: 'Consolas', monospace; font-size: 0.82rem; color: var(--text);
+          background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+          padding: 16px; line-height: 1.8; margin: 8px 0; }
+  .flow .hi { color: var(--accent); font-weight: 700; }
+  .flow .ok { color: var(--green); }
+  .flow .warn { color: var(--yellow); }
+
+  .field-row { display: flex; gap: 12px; align-items: baseline; margin: 3px 0; font-size: 0.85rem; font-family: 'Consolas', monospace; }
+  .field-type { color: var(--purple); min-width: 100px; }
+  .field-name { color: var(--accent); min-width: 160px; }
+  .field-desc { color: var(--muted); font-size: 0.8rem; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<h1>writer.cpp — Shared Memory Ring Buffer</h1>
+<p class="subtitle">
+  Persistent input queue in <code>/dev/shm</code> · survives writer.cpp restarts ·
+  lossless ownership takeover via PID + heartbeat · zero-copy producer path
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_diff_detector.html">Diff Detector (Python)</a>
+  <a href="writer_duck_diff_detector.html">DuckDB Diff</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html" class="here">SHM Ring</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  <a href="writer_code_review_3.html">Review 3</a>
+  <a href="writer_critical_fixes_3.html">Fixes 3</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Motivation</h2>
+
+<div class="section">
+  <div class="grid2">
+    <div class="card">
+      <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Current MQTT input path — 4 hops</div>
+      <div class="flow">
+stress_runner (Python)
+  <span class="warn">→ JSON serialise</span>
+  → paho-mqtt TCP publish
+  → mosquitto/FlashMQ broker
+  → libmosquitto callback
+writer.cpp
+  <span class="warn">→ simdjson parse</span>
+  → g_buffer
+      </div>
+      <ul style="margin-top:8px">
+        <li>Rate ceiling: ~80–100k msg/sec (broker throughput limit)</li>
+        <li>Broker crash = all in-flight messages lost</li>
+        <li>writer.cpp crash = WAL replay covers flushed batches, but rows received-not-yet-flushed are gone</li>
+        <li>Restart window: ~5s × 80k/s = ~400k rows at risk</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div style="color:var(--accent);font-weight:600;margin-bottom:8px">SHM ring input path — 1 hop</div>
+      <div class="flow">
+Producer (C/C++ or Python/ctypes)
+  <span class="ok">→ memcpy Row into slot</span>
+  → atomic write_cursor++
+  → eventfd notify
+writer.cpp shm_reader thread
+  <span class="ok">→ read from read_cursor</span>
+  → g_buffer (same path as MQTT)
+      </div>
+      <ul style="margin-top:8px">
+        <li>Rate ceiling: memory bandwidth (~5–10M rows/sec)</li>
+        <li>Ring lives in <code>/dev/shm</code> — <strong>survives writer.cpp restart</strong></li>
+        <li>Producer keeps writing during crash; new owner resumes from <code>read_cursor</code></li>
+        <li>Zero rows lost during restart window (ring sized to cover it)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="alert alert-info" style="margin-top:12px">
+    The ring buffer is an <strong>additional input path</strong> alongside MQTT, not a replacement.
+    MQTT remains for remote/bridged producers. SHM ring is for same-host producers that need
+    lossless restart semantics or throughput above the broker ceiling.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Input Path Overview</h2>
+
+<div class="section">
+  <p>After this work the writer will have three independent input paths, all feeding the same <code>g_buffer</code>:</p>
+  <table>
+    <thead><tr><th>Path</th><th>Transport</th><th>State</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>MQTT</strong></td>
+        <td>libmosquitto → <code>on_message</code> callback</td>
+        <td><span class="badge badge-info">DONE</span></td>
+        <td>Remote producers; remote/bridged; rate ceiling ~100k msg/s (broker)</td>
+      </tr>
+      <tr>
+        <td><strong>SHM ring</strong></td>
+        <td><code>shm_reader_fn()</code> thread draining <code>/dev/shm/parquet_writer_in</code></td>
+        <td><span class="badge badge-def">THIS WORK</span></td>
+        <td>Same-host C++ producers; lossless across writer restart; rate ceiling ~memory bandwidth</td>
+      </tr>
+      <tr>
+        <td><strong>WS client</strong></td>
+        <td>libwebsockets client → JSON parse → <code>g_buffer</code></td>
+        <td><span class="badge badge-def">FUTURE (Gumby stage 1)</span></td>
+        <td>Connects to <code>fractal_esmu_ws</code> / <code>new_bms</code> on Gumby targets (.26/.209); rack-aggregate JSON rows</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="alert alert-info">
+    All three paths share <code>g_buf_mutex</code>, the overflow guard, and the WAL/flush pipeline.
+    They are independently enabled in <code>writer_config.yaml</code>.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Ring Header Layout</h2>
+
+<div class="section">
+  <p>The entire shared region is a single <code>mmap</code> of a <code>shm_open</code> descriptor.
+     The header occupies the first cache-line-aligned block; slots follow immediately after.</p>
+
+<pre><span class="kw">struct</span> <span class="ty">ShmRingHeader</span> {
+    <span class="cmt">// ── Identity ─────────────────────────────────────────────────────</span>
+    <span class="ty">uint64_t</span> magic;          <span class="cmt">// 0x50415251 57524954 ("PARQWRIT") — sanity on attach</span>
+    <span class="ty">uint32_t</span> version;        <span class="cmt">// ABI version — mismatch → unlink and recreate</span>
+    <span class="ty">uint32_t</span> capacity;       <span class="cmt">// number of slots, must be power of 2</span>
+    <span class="ty">uint32_t</span> slot_bytes;     <span class="cmt">// sizeof(ShmSlot) — fixed at ring creation</span>
+    <span class="ty">uint32_t</span> _pad0;
+
+    <span class="cmt">// ── Ownership ────────────────────────────────────────────────────</span>
+    <span class="ty">pid_t</span>    owner_pid;      <span class="cmt">// current reader PID (writer.cpp); 0 = unclaimed</span>
+    <span class="ty">uint64_t</span> heartbeat_ns;   <span class="cmt">// CLOCK_MONOTONIC ns, updated every ~1s by owner</span>
+                             <span class="cmt">// stale (> 5s) → owner considered dead even if PID alive</span>
+
+    <span class="cmt">// ── Cursors ──────────────────────────────────────────────────────</span>
+    <span class="ty">std::atomic</span>&lt;<span class="ty">uint64_t</span>&gt; write_cursor; <span class="cmt">// producer advances with fetch_add</span>
+    <span class="ty">std::atomic</span>&lt;<span class="ty">uint64_t</span>&gt; read_cursor;  <span class="cmt">// owner advances after committing to g_buffer</span>
+                                         <span class="cmt">// this is the lossless takeover point</span>
+
+    <span class="cmt">// ── Wake word (polling fallback) ─────────────────────────────────</span>
+    <span class="ty">std::atomic</span>&lt;<span class="ty">uint64_t</span>&gt; wake_seq;     <span class="cmt">// producer increments; reader wakes on change</span>
+                                         <span class="cmt">// used with futex(FUTEX_WAIT/WAKE) for low latency</span>
+                                         <span class="cmt">// fallback: reader polls with 1ms nanosleep when futex unavailable</span>
+    <span class="ty">char</span>     _pad1[<span class="num">64</span>];  <span class="cmt">// pad to cache-line boundary before slots</span>
+};</pre>
+
+  <div class="alert alert-warn">
+    <strong>No eventfd in the header.</strong> File descriptors are process-local — storing an
+    eventfd in shared memory doesn't work across restarts (the new owner can't use the old fd).
+    Instead, the reader wakes via <code>futex(FUTEX_WAIT)</code> on <code>wake_seq</code>, with a
+    1 ms nanosleep fallback. The producer increments <code>wake_seq</code> after writing each slot
+    and calls <code>futex(FUTEX_WAKE, 1)</code>. This is purely in-kernel — no fd involved.
+  </div>
+  <div class="alert alert-info">
+    <code>read_cursor</code> is the ownership boundary. It is only advanced by the current owner
+    <em>after</em> a row has been committed to <code>g_buffer</code> (and thus covered by the WAL
+    before the next flush). A new owner that starts from <code>read_cursor</code> will never
+    process a row twice and will never skip a row the old owner hadn't yet committed.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Slot Layout</h2>
+
+<div class="section">
+  <p><code>Row</code> uses <code>std::unordered_map</code> (F3-6) and is not trivially copyable.
+     The ring uses a <strong>fixed binary slot</strong> — no heap pointers, safe to <code>memcpy</code>
+     across process boundaries. The reader converts a slot back into a <code>Row</code> before
+     inserting into <code>g_buffer</code>.</p>
+
+<pre><span class="cmt">// shm_ring.h — fixed-layout slot: 256 bytes, no heap pointers</span>
+
+<span class="kw">static constexpr</span> <span class="ty">int</span> SHM_MAX_TOPIC  = <span class="num">128</span>;
+<span class="kw">static constexpr</span> <span class="ty">int</span> SHM_MAX_FLOATS = <span class="num">20</span>;  <span class="cmt">// float64 fields per row</span>
+<span class="kw">static constexpr</span> <span class="ty">int</span> SHM_MAX_INTS   = <span class="num">12</span>;  <span class="cmt">// int64 fields per row</span>
+<span class="kw">static constexpr</span> <span class="ty">int</span> SHM_MAX_KV     = <span class="num">8</span>;   <span class="cmt">// topic kv pairs (rack=3, module=2, etc.)</span>
+
+<span class="kw">struct</span> <span class="ty">ShmKV</span> {
+    <span class="ty">char</span>    key[<span class="num">16</span>];
+    <span class="ty">int32_t</span> val;
+};
+
+<span class="kw">struct</span> <span class="ty">ShmField</span> {
+    <span class="ty">char</span>    name[<span class="num">16</span>];
+    <span class="kw">union</span> { <span class="ty">double</span> f; <span class="ty">int64_t</span> i; } val;
+};
+
+<span class="kw">struct</span> <span class="ty">ShmSlot</span> {
+    <span class="ty">uint8_t</span>  ready;              <span class="cmt">// set to 1 by producer AFTER memcpy (multi-producer fence)</span>
+    <span class="ty">uint8_t</span>  n_floats;           <span class="cmt">// number of valid float fields</span>
+    <span class="ty">uint8_t</span>  n_ints;             <span class="cmt">// number of valid int fields</span>
+    <span class="ty">uint8_t</span>  n_kv;               <span class="cmt">// number of topic kv pairs</span>
+    <span class="ty">char</span>     source_type[<span class="num">32</span>];   <span class="cmt">// e.g. "batteries", "solar"</span>
+    <span class="ty">uint64_t</span> ts_ns;              <span class="cmt">// CLOCK_REALTIME ns (0 = let writer use its own clock)</span>
+    <span class="ty">ShmKV</span>    kv[SHM_MAX_KV];    <span class="cmt">// rack=3, module=2, cell=5, etc.</span>
+    <span class="ty">ShmField</span> floats[SHM_MAX_FLOATS];
+    <span class="ty">ShmField</span> ints[SHM_MAX_INTS];
+    <span class="ty">uint8_t</span>  _pad[<span class="num">6</span>];            <span class="cmt">// total = 256 bytes</span>
+};
+<span class="kw">static_assert</span>(<span class="kw">sizeof</span>(<span class="ty">ShmSlot</span>) == <span class="num">256</span>, <span class="str">"ShmSlot must be 256 bytes"</span>);
+
+<span class="cmt">// Portable spin hint — used in reader's ready-flag spin loop</span>
+<span class="cmt">// x86: PAUSE reduces speculative load pressure in spin loops</span>
+<span class="cmt">// ARM64: yield hints the CPU to prefer another thread/hyperthread</span>
+<span class="cmt">// Other: no-op — correctness unaffected, slight efficiency loss</span>
+<span class="kw">#if</span> defined(__x86_64__) || defined(__i386__)
+#  <span class="kw">define</span> CPU_PAUSE() <span class="fn">__builtin_ia32_pause</span>()
+<span class="kw">#elif</span> defined(__aarch64__) || defined(__arm__)
+#  <span class="kw">define</span> CPU_PAUSE() <span class="fn">__asm__</span> <span class="kw">volatile</span>(<span class="str">"yield"</span> ::: <span class="str">"memory"</span>)
+<span class="kw">#else</span>
+#  <span class="kw">define</span> CPU_PAUSE() <span class="kw">do</span> {} <span class="kw">while</span>(<span class="num">0</span>)
+<span class="kw">#endif</span></pre>
+
+  <p style="margin-top:10px">Serialize/deserialize helpers used by producer and <code>shm_reader_fn()</code>:</p>
+
+<pre><span class="cmt">// Producer side — fill a slot from a TopicInfo + Row</span>
+<span class="kw">inline void</span> <span class="fn">row_to_slot</span>(<span class="ty">ShmSlot</span>&amp; s, <span class="kw">const</span> <span class="ty">TopicInfo</span>&amp; ti, <span class="kw">const</span> <span class="ty">Row</span>&amp; r, <span class="ty">uint64_t</span> ts_ns = <span class="num">0</span>) {
+    s.ready    = <span class="num">0</span>;  <span class="cmt">// cleared first — producer sets last</span>
+    s.ts_ns    = ts_ns;
+    <span class="fn">strncpy</span>(s.source_type, ti.source_type.c_str(), <span class="kw">sizeof</span>(s.source_type) - <span class="num">1</span>);
+    s.n_kv = <span class="num">0</span>;
+    <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : ti.kv) {
+        <span class="kw">if</span> (s.n_kv &gt;= SHM_MAX_KV) <span class="kw">break</span>;
+        <span class="fn">strncpy</span>(s.kv[s.n_kv].key, k.c_str(), <span class="num">15</span>);
+        s.kv[s.n_kv++].val = v;
+    }
+    s.n_floats = <span class="num">0</span>;
+    <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : r.floats) {
+        <span class="kw">if</span> (s.n_floats &gt;= SHM_MAX_FLOATS) <span class="kw">break</span>;
+        <span class="fn">strncpy</span>(s.floats[s.n_floats].name, k.c_str(), <span class="num">15</span>);
+        s.floats[s.n_floats++].val.f = v;
+    }
+    s.n_ints = <span class="num">0</span>;
+    <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : r.ints) {
+        <span class="kw">if</span> (s.n_ints &gt;= SHM_MAX_INTS) <span class="kw">break</span>;
+        <span class="fn">strncpy</span>(s.ints[s.n_ints].name, k.c_str(), <span class="num">15</span>);
+        s.ints[s.n_ints++].val.i = v;
+    }
+    std::atomic_thread_fence(std::memory_order_release);
+    s.ready = <span class="num">1</span>;  <span class="cmt">// published last — reader polls this</span>
+}
+
+<span class="cmt">// Reader side — reconstruct TopicInfo + Row from a slot</span>
+<span class="kw">inline void</span> <span class="fn">slot_to_row</span>(<span class="kw">const</span> <span class="ty">ShmSlot</span>&amp; s, <span class="ty">TopicInfo</span>&amp; ti, <span class="ty">Row</span>&amp; r) {
+    ti.source_type = s.source_type;
+    <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i &lt; s.n_kv;    ++i) ti.kv[s.kv[i].key]       = s.kv[i].val;
+    <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i &lt; s.n_floats; ++i) r.floats[s.floats[i].name] = s.floats[i].val.f;
+    <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i &lt; s.n_ints;   ++i) r.ints[s.ints[i].name]    = s.ints[i].val.i;
+    r.ts_ns = s.ts_ns ? s.ts_ns : <span class="fn">clock_realtime_ns</span>();
+}</pre>
+
+  <!-- ready flag / spin loop explanation -->
+  <h3>The <code>ready</code> flag and <code>CPU_PAUSE</code> spin</h3>
+  <p>
+    <code>fetch_add</code> on <code>write_cursor</code> is atomic — the producer claims a slot
+    index instantly. But then it still has to copy data into that slot. There is a window
+    between claiming the index and finishing the write where the reader could arrive at that
+    slot and read garbage. The <code>ready</code> byte closes that window:
+  </p>
+  <div class="flow" style="margin:8px 0">
+producer:  slot_idx = write_cursor.<span class="hi">fetch_add</span>(1)   <span class="ok">← atomic, returns instantly</span>
+           row_to_slot(*slot, ti, r)                <span class="warn">← non-atomic, takes real time</span>
+             slot-&gt;ready = 0   <span class="cmt">(first line in row_to_slot)</span>
+             ... memcpy fields ...
+             fence(release)
+             slot-&gt;ready = 1   <span class="ok">← written last; all field writes visible before this</span>
+
+reader:    rc catches up to slot_idx
+           <span class="hi">while (!slot-&gt;ready) CPU_PAUSE()</span>   <span class="warn">← spins until data is actually there</span>
+           fence(acquire)                          <span class="ok">← all slot fields now visible</span>
+           slot_to_row(*slot, ti, r)               <span class="ok">← safe to read</span>
+           slot-&gt;ready = 0                         <span class="cmt">← cleared for reuse on next lap</span>
+  </div>
+  <p>
+    Without <code>ready</code> the reader would read whatever bytes happened to be in the slot
+    from the previous lap — a silent data corruption, not a crash.
+  </p>
+  <p>
+    The spin is <strong>deadline-bounded at 1 ms</strong>. In normal operation the producer sets
+    <code>ready = 1</code> within nanoseconds and the deadline never fires. If the producer is
+    killed (SIGKILL, OOM, container stop) between <code>fetch_add</code> and the
+    <code>ready = 1</code> write, the slot will never become ready. Without a deadline the
+    reader would spin forever: <code>read_cursor</code> stalls, the ring fills, the writer stops
+    ingesting. With the deadline the stuck slot is skipped after 1 ms, <code>read_cursor</code>
+    advances, and the ring drains normally. The skipped slot is counted in
+    <code>g_shm_slot_timeouts</code> and exposed in the <code>/health</code> endpoint.
+  </p>
+  <p>
+    <strong><code>CPU_PAUSE()</code></strong> is a portable spin hint. On x86 the <code>PAUSE</code>
+    instruction prevents the CPU from speculating aggressively on the spin condition, reducing
+    power consumption and avoiding memory-order violations that cause pipeline flushes. On
+    ARM64 the <code>yield</code> instruction has the same effect. It does not sleep or yield the
+    thread — it is purely a pipeline hint taking ~1–14 ns. Correctness is unchanged without it;
+    it just makes tight spin loops cheaper on out-of-order CPUs.
+  </p>
+  <div class="alert alert-info">
+    <strong>SPSC vs MPSC:</strong> for the torture test each writer container has exactly one
+    producer (its stress container) — strictly SPSC. The <code>ready</code> flag is still
+    correct in that case (the window exists even with one producer if it is preempted), and it
+    makes the ring safe to extend to multiple producers later without any reader-side changes.
+  </div>
+
+  <div class="alert alert-warn">
+    <strong>Slot size budget:</strong> 256 B gives 1M slots = 256 MB — fits comfortably in
+    <code>/dev/shm</code> on any target. At 20 float + 12 int fields this covers the full
+    battery cell topology (17 float + 7 int measured). If a future source needs more fields,
+    bump <code>SHM_MAX_FLOATS</code>/<code>SHM_MAX_INTS</code> and increment <code>version</code>
+    in the header — the mismatch check forces a ring recreate on next open.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Ownership Takeover Protocol</h2>
+
+<div class="section">
+  <p>Run once at writer.cpp startup, before the MQTT connection is established and before
+     WAL replay begins.</p>
+
+<pre><span class="cmt">// Pseudocode — see ShmRing::claim_ownership() in shm_ring.cpp</span>
+
+<span class="ty">int</span> fd = <span class="fn">shm_open</span>(path, O_RDWR | O_CREAT, <span class="num">0600</span>);
+<span class="kw">auto</span>* hdr = <span class="kw">static_cast</span>&lt;<span class="ty">ShmRingHeader</span>*&gt;(<span class="fn">mmap</span>(...));
+
+<span class="kw">if</span> (hdr-&gt;magic != <span class="num">MAGIC</span> || hdr-&gt;version != <span class="num">VERSION</span>) {
+    <span class="cmt">// New or incompatible ring — initialise from scratch</span>
+    <span class="fn">shm_unlink</span>(path);
+    <span class="fn">init_ring</span>(hdr, capacity, slot_bytes, schema);
+    hdr-&gt;owner_pid = <span class="fn">getpid</span>();
+    hdr-&gt;heartbeat_ns = <span class="fn">clock_now_ns</span>();
+    <span class="kw">return</span>;
+}
+
+<span class="kw">while</span> (<span class="kw">true</span>) {
+    <span class="ty">pid_t</span> old_pid = hdr-&gt;owner_pid;
+
+    <span class="kw">if</span> (old_pid == <span class="num">0</span>) {
+        <span class="cmt">// Unclaimed — simple CAS</span>
+        <span class="kw">if</span> (<span class="fn">__atomic_compare_exchange_n</span>(&amp;hdr-&gt;owner_pid,
+                &amp;old_pid, <span class="fn">getpid</span>(), <span class="kw">false</span>,
+                __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) <span class="kw">break</span>;
+        <span class="kw">continue</span>;  <span class="cmt">// lost race — retry</span>
+    }
+
+    <span class="ty">bool</span> pid_dead = (<span class="fn">kill</span>(old_pid, <span class="num">0</span>) != <span class="num">0</span> &amp;&amp; errno == ESRCH);
+    <span class="ty">bool</span> hb_stale = (<span class="fn">clock_now_ns</span>() - hdr-&gt;heartbeat_ns &gt; <span class="num">5'000'000'000ULL</span>);
+
+    <span class="kw">if</span> (pid_dead || hb_stale) {
+        <span class="cmt">// Previous owner dead or frozen — take over</span>
+        <span class="cmt">// read_cursor already at the correct lossless handover point</span>
+        <span class="kw">if</span> (<span class="fn">__atomic_compare_exchange_n</span>(&amp;hdr-&gt;owner_pid,
+                &amp;old_pid, <span class="fn">getpid</span>(), <span class="kw">false</span>,
+                __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) <span class="kw">break</span>;
+        <span class="kw">continue</span>;  <span class="cmt">// lost race to another restarting instance — retry</span>
+    }
+
+    <span class="cmt">// Another live instance owns the ring — error or wait</span>
+    <span class="fn">log_error</span>(<span class="str">"shm ring already owned by pid=%d — is another writer running?"</span>, old_pid);
+    <span class="kw">return</span> <span class="kw">false</span>;
+}</pre>
+
+  <div class="alert alert-info">
+    The CAS loop handles the race between two restarting writers (e.g., Docker
+    <code>restart: unless-stopped</code> racing with a manual restart). Exactly one wins;
+    the other retries and sees either the winner's PID with a fresh heartbeat (→ error/exit)
+    or 0 if the winner already crashed again (→ rare but safe).
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Producer Path — Writing to the Ring</h2>
+
+<div class="section">
+  <p>The producer acquires a slot with a single <code>fetch_add</code> on
+     <code>write_cursor</code>. No locks. No broker. Suitable for C/C++ producers on the
+     same host; Python producers can use <code>ctypes</code> against <code>shm_producer.h</code>.</p>
+
+<pre><span class="cmt">// shm_producer.h — header-only, no new link deps</span>
+<span class="cmt">// Uses ShmSlot (fixed layout) — not Row (heap maps).</span>
+
+<span class="kw">void</span> <span class="fn">ShmProducer::publish</span>(<span class="kw">const</span> <span class="ty">TopicInfo</span>&amp; ti, <span class="kw">const</span> <span class="ty">Row</span>&amp; r) {
+    <span class="ty">uint64_t</span> wc = hdr_-&gt;write_cursor.<span class="fn">fetch_add</span>(<span class="num">1</span>, std::memory_order_acq_rel);
+
+    <span class="kw">if</span> (wc - hdr_-&gt;read_cursor.<span class="fn">load</span>(std::memory_order_acquire) &gt;= hdr_-&gt;capacity) {
+        <span class="cmt">// Ring full — drop (QoS-0 semantics)</span>
+        ++overflow_drops_;
+        <span class="kw">return</span>;
+    }
+
+    <span class="ty">ShmSlot</span>* slot = <span class="kw">reinterpret_cast</span>&lt;<span class="ty">ShmSlot</span>*&gt;(slots_base_ + (wc % hdr_-&gt;capacity) * <span class="kw">sizeof</span>(<span class="ty">ShmSlot</span>));
+    <span class="fn">row_to_slot</span>(*slot, ti, r);   <span class="cmt">// sets slot-&gt;ready = 1 last (release fence inside)</span>
+
+    <span class="cmt">// Wake reader via futex on wake_seq</span>
+    hdr_-&gt;wake_seq.<span class="fn">fetch_add</span>(<span class="num">1</span>, std::memory_order_release);
+    <span class="fn">syscall</span>(SYS_futex, &amp;hdr_-&gt;wake_seq, FUTEX_WAKE, <span class="num">1</span>, <span class="kw">nullptr</span>, <span class="kw">nullptr</span>, <span class="num">0</span>);
+}</pre>
+
+  <div class="alert alert-info">
+    <strong>SPSC for torture test.</strong> Each writer container has its own ring and one
+    dedicated stress/producer container — single producer, single consumer.
+    The <code>ready</code> flag in <code>ShmSlot</code> is still set, which makes the design
+    safe to extend to multiple producers later without changing the reader.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Reader Path — writer.cpp shm_reader Thread</h2>
+
+<div class="section">
+  <p>A new thread started in <code>main()</code> alongside the MQTT thread.
+     Drains the ring into <code>g_buffer</code> via the same path as <code>on_message</code>,
+     including the overflow guard and pipe-wake for NC4. Wakes via futex; no fd needed.</p>
+
+<pre><span class="kw">static void</span> <span class="fn">shm_reader_fn</span>() {
+    <span class="kw">auto</span>* hdr   = g_shm_ring-&gt;hdr;
+    <span class="ty">uint64_t</span> last_wake = hdr-&gt;wake_seq.<span class="fn">load</span>(std::memory_order_acquire);
+
+    <span class="kw">while</span> (!g_stop) {
+        <span class="cmt">// Wait for producer wake (1s timeout so we notice g_stop)</span>
+        <span class="ty">struct timespec</span> ts = { <span class="num">1</span>, <span class="num">0</span> };
+        <span class="fn">syscall</span>(SYS_futex, &amp;hdr-&gt;wake_seq, FUTEX_WAIT, last_wake, &amp;ts, <span class="kw">nullptr</span>, <span class="num">0</span>);
+        last_wake = hdr-&gt;wake_seq.<span class="fn">load</span>(std::memory_order_acquire);
+
+        <span class="ty">uint64_t</span> wc = hdr-&gt;write_cursor.<span class="fn">load</span>(std::memory_order_acquire);
+        <span class="ty">uint64_t</span> rc = hdr-&gt;read_cursor.<span class="fn">load</span>(std::memory_order_relaxed);
+
+        <span class="kw">while</span> (rc != wc) {
+            <span class="kw">auto</span>* slot = <span class="fn">slot_at</span>(hdr, rc);
+
+            <span class="cmt">// Bounded spin — producer may have died after fetch_add but before ready=1</span>
+            <span class="cmt">// Deadline: 1ms. Normal write takes nanoseconds, so this never fires in steady state.</span>
+            <span class="cmt">// If deadline fires: producer crashed mid-slot. Skip and advance read_cursor.</span>
+            {
+                <span class="kw">const</span> <span class="ty">uint64_t</span> deadline = <span class="fn">clock_now_ns</span>() + <span class="num">1'000'000ULL</span>;  <span class="cmt">// 1 ms</span>
+                <span class="kw">while</span> (!slot-&gt;ready) {
+                    CPU_PAUSE();
+                    <span class="kw">if</span> (<span class="fn">clock_now_ns</span>() &gt; deadline) {
+                        ++g_shm_slot_timeouts;
+                        slot-&gt;ready = <span class="num">0</span>;  <span class="cmt">// clear for safety on next lap</span>
+                        <span class="kw">goto</span> advance_cursor;  <span class="cmt">// skip this slot, do not call slot_to_row</span>
+                    }
+                }
+            }
+            std::atomic_thread_fence(std::memory_order_acquire);
+
+            <span class="ty">TopicInfo</span> ti; <span class="ty">Row</span> r;
+            <span class="fn">slot_to_row</span>(*slot, ti, r);  <span class="cmt">// deserialise fixed slot → heap Row</span>
+            slot-&gt;ready = <span class="num">0</span>;            <span class="cmt">// clear for reuse</span>
+
+            <span class="cmt">// Same path as on_message — acquire buffer lock, push row</span>
+            {
+                std::lock_guard&lt;std::mutex&gt; lk(g_buf_mutex);
+                <span class="kw">if</span> (g_total_buffered_rows &gt;= g_cfg-&gt;max_total_buffer_rows) {
+                    ++g_overflow_drops;
+                    <span class="ty">char</span> b = <span class="num">1</span>;
+                    <span class="kw">if</span> (::<span class="fn">write</span>(g_signal_pipe[<span class="num">1</span>], &amp;b, <span class="num">1</span>) &lt; <span class="num">0</span>) {}
+                } <span class="kw">else</span> {
+                    g_buffer[<span class="fn">partition_key</span>(ti, r)].<span class="fn">push_back</span>(std::move(r));
+                    ++g_total_buffered_rows;
+                }
+            }
+
+            advance_cursor:  <span class="cmt">// goto target from bounded spin timeout (slot skipped)</span>
+            <span class="cmt">// Advance read_cursor — lossless handover point for ownership takeover</span>
+            hdr-&gt;read_cursor.<span class="fn">store</span>(++rc, std::memory_order_release);
+        }
+
+        <span class="cmt">// Update heartbeat (health_thread also updates every 1s)</span>
+        hdr-&gt;heartbeat_ns = <span class="fn">clock_now_ns</span>();
+    }
+
+    <span class="cmt">// Clean shutdown — release ownership so next instance can claim immediately</span>
+    hdr-&gt;owner_pid = <span class="num">0</span>;
+}</pre>
+
+  <div class="alert alert-warn">
+    <strong>Why the spin must be bounded.</strong>
+    The producer does <code>write_cursor.fetch_add(1)</code> (advancing the cursor atomically)
+    and <em>then</em> writes the slot data. If the producer is killed (SIGKILL, OOM, container
+    stop) in that gap, <code>ready</code> will never become 1. Without a deadline the reader
+    spins forever on that slot — <code>read_cursor</code> stalls, the ring appears full to new
+    producers, and the writer stops ingesting entirely even though it is still alive.
+    <br><br>
+    The 1 ms deadline means:
+    <ul style="margin-top:6px">
+      <li>A normal write (nanoseconds) never triggers it.</li>
+      <li>A hung producer is detected and the slot is skipped within 1 ms.</li>
+      <li>At 80k msg/s, 1 ms = 80 rows — acceptable loss for a producer crash mid-write.</li>
+      <li><code>g_shm_slot_timeouts</code> is exposed in the health endpoint so the condition
+          is visible in the monitor without checking logs.</li>
+    </ul>
+  </div>
+  <div class="alert alert-info">
+    <strong>partition_key signature change:</strong> currently <code>partition_key(const Row&amp;)</code>
+    reads source_type from the Row. With the SHM path, source_type lives in <code>TopicInfo</code>.
+    SHM-2 will add a <code>partition_key(const TopicInfo&amp;, const Row&amp;)</code> overload, or
+    move source_type into Row. Easiest fix: add <code>std::string source_type</code> to <code>Row</code>
+    and populate it in both <code>on_message</code> and <code>slot_to_row</code>.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>WAL Interaction — Two Layers of Durability</h2>
+
+<div class="section">
+  <div class="flow">
+<span class="hi">On normal operation:</span>
+
+  producer → SHM ring → shm_reader → g_buffer
+                                         │
+                              flush_thread (every 10s or on NC4 pipe-wake)
+                                         │
+                              [WAL write: rows → .wal.arrow]
+                                         │
+                              [Parquet flush → .parquet.tmp → rename]
+                                         │
+                              [WAL delete on success]
+
+<span class="hi">On writer.cpp crash (kill -9, SIGKILL):</span>
+
+  producer keeps writing to SHM ring ──────────────────────────────► ring fills
+  read_cursor stays at last committed position
+
+  new writer.cpp starts:
+    1. claim_ownership() — CAS owner_pid, resume from read_cursor  <span class="ok">← zero rows lost</span>
+    2. replay any surviving .wal.arrow files (existing NC1-fixed logic) <span class="ok">← no duplicates</span>
+    3. shm_reader_fn() drains ring from read_cursor onward
+
+<span class="hi">Invariant:</span>
+  WAL covers: rows flushed to WAL but not yet written to parquet
+  SHM ring covers: rows received but not yet committed to g_buffer
+  Together: complete lossless coverage of any crash at any point
+  </div>
+
+  <div class="alert alert-ok">
+    The WAL and SHM ring are complementary, not redundant.
+    WAL protects the flush-in-progress window (already extracted from the ring, not yet in parquet).
+    The ring protects the receive window (in the ring, not yet extracted by writer.cpp).
+    A crash at any point loses zero rows as long as the ring hasn't overflowed.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Ring Sizing</h2>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th>Host</th>
+        <th>Rate</th>
+        <th>Restart window</th>
+        <th>Rows at risk</th>
+        <th>Recommended capacity</th>
+        <th>Ring size</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>phil-256g (torture)</td>
+        <td>80k msg/sec</td>
+        <td>~5s</td>
+        <td>~400k</td>
+        <td>1M slots (next power of 2, 2.5× margin)</td>
+        <td>~256 MB at 256 B/slot</td>
+      </tr>
+      <tr>
+        <td>lp3 (LattePanda, edge)</td>
+        <td>80k msg/sec</td>
+        <td>~5s</td>
+        <td>~400k</td>
+        <td>512k slots</td>
+        <td>~128 MB</td>
+      </tr>
+      <tr>
+        <td>High-rate (real EMS, 81k/sec)</td>
+        <td>81k msg/sec</td>
+        <td>~5s</td>
+        <td>~405k</td>
+        <td>1M slots</td>
+        <td>~256 MB</td>
+      </tr>
+      <tr>
+        <td>Soak test (S8, 24h, 60s flush)</td>
+        <td>80k msg/sec</td>
+        <td>~5s + 60s flush</td>
+        <td>~5.2M max</td>
+        <td>8M slots (covers worst-case flush stall)</td>
+        <td>~2 GB — fine on phil-256g</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Ring full means the owner is alive but behind — not dead.
+     The heartbeat distinguishes the two cases: a full ring with a fresh heartbeat
+     is a throughput problem (increase ring or reduce rate); a full ring with a stale
+     heartbeat is a crash — take over.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Torture Test Integration</h2>
+
+<div class="section">
+  <p>Each writer container maps a <code>/dev/shm</code> segment. The stress container (or a
+     dedicated injector) writes to the ring. The fault injector tests the ownership
+     takeover path by killing writer containers and verifying zero row loss.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:20%">Scenario</th>
+        <th style="width:40%">Current (MQTT only)</th>
+        <th style="width:40%">With SHM ring</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>S1 Broker kill</strong></td>
+        <td>WAL accumulates during outage; rows replay on reconnect</td>
+        <td>Ring keeps filling independently of broker; no gap in row flow to g_buffer</td>
+      </tr>
+      <tr>
+        <td><strong>S4 Overflow/pause</strong></td>
+        <td>MQTT buffer fills in broker; writer sees burst on unpause</td>
+        <td>Ring absorbs the pause window; rows drained at memory speed on resume. No broker queue involved.</td>
+      </tr>
+      <tr>
+        <td><strong>S5 kill -9</strong></td>
+        <td>WAL replay covers flushed-not-parquet'd rows; receive window (~5s) is lost</td>
+        <td>Ring covers receive window: new owner resumes from <code>read_cursor</code>; zero rows lost</td>
+      </tr>
+      <tr>
+        <td><strong>S8 24h soak</strong></td>
+        <td>Each kill -9 loses up to 400k rows from receive window</td>
+        <td>Zero row loss across any number of restarts as long as ring doesn't overflow during restart</td>
+      </tr>
+      <tr>
+        <td><strong>New: ownership race</strong></td>
+        <td>N/A</td>
+        <td>Two restarting containers both attempt <code>claim_ownership()</code>; CAS ensures exactly one wins; other logs error and exits. Validate with <code>docker compose restart writer-a writer-b</code> simultaneously.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    In the Docker torture stack, mount a <code>tmpfs</code> at <code>/dev/shm</code> with
+    sufficient size for each writer container:
+    <code>shm_size: '512m'</code> in docker-compose.yml.
+    The ring path (<code>/dev/shm/parquet_writer_in</code>) is local to the container — no cross-container sharing needed.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Config Keys</h2>
+
+<div class="section">
+<pre><span class="cmt"># writer_config.yaml — shm_input section (proposed)</span>
+
+shm_input:
+  enabled: <span class="kw">false</span>           <span class="cmt"># default off — MQTT path unchanged</span>
+  path: <span class="str">"/dev/shm/parquet_writer_in"</span>
+  capacity: <span class="num">1048576</span>        <span class="cmt"># 1M slots — power of 2</span>
+  heartbeat_interval_ms: <span class="num">1000</span>
+  stale_heartbeat_ms:    <span class="num">5000</span>   <span class="cmt"># take over if owner silent for this long</span>
+  overflow_policy: <span class="str">"drop"</span>  <span class="cmt"># drop | block (block not recommended at high rates)</span></pre>
+
+  <div class="alert alert-warn">
+    <strong>MQTT and SHM ring can run simultaneously.</strong>
+    Both feed into the same <code>g_buffer</code> under <code>g_buf_mutex</code>.
+    The overflow counter and pipe-wake (NC4) apply equally to both paths.
+    For the torture test, disable MQTT (<code>mqtt.enabled: false</code>) to isolate
+    the SHM path and remove the broker as a dependency.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Implementation Plan</h2>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr><th style="width:10%">Step</th><th style="width:42%">What</th><th style="width:12%">Status</th><th style="width:36%">Key details / constraints</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>SHM-0</strong></td>
+        <td>Add <code>std::string source_type</code> to <code>struct Row</code> in <code>writer.cpp</code>; populate in <code>on_message</code> from <code>TopicInfo</code>; update <code>partition_key()</code> to read it from Row</td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>Prerequisite for SHM-2: <code>shm_reader_fn</code> reconstructs a Row (no separate TopicInfo) and calls <code>partition_key(row)</code> like <code>on_message</code> does. Also fixes the conceptual split of source_type living in two places.</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-1</strong></td>
+        <td>New file <code>shm_ring.h</code>: <code>ShmRingHeader</code>, <code>ShmSlot</code>, <code>row_to_slot()</code>, <code>slot_to_row()</code>, <code>shm_open_or_create()</code>, <code>claim_ownership()</code>, <code>slot_at()</code></td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>Pure C++17 header-only. Deps: <code>shm_open</code>, <code>mmap</code>, <code>futex</code> syscall — all in glibc. No <code>eventfd</code>. Include <code>static_assert(sizeof(ShmSlot)==256)</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-2</strong></td>
+        <td>Add <code>shm_reader_fn()</code> to <code>writer.cpp</code>; start thread in <code>main()</code> when <code>shm_input.enabled</code>; wire into <code>g_buffer</code> with overflow guard and NC4 pipe-wake</td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>Runs alongside MQTT thread. Call <code>claim_ownership()</code> before MQTT connect and before WAL replay. Add <code>shm_rows_read</code> / <code>shm_overflow_drops</code> counters to health endpoint.</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-3</strong></td>
+        <td>Heartbeat: update <code>hdr-&gt;heartbeat_ns</code> every 1s in <code>health_thread_fn</code>; set <code>owner_pid = 0</code> in SIGTERM handler and at end of <code>shm_reader_fn</code></td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>SIGTERM handler already sets <code>g_stop = true</code>; <code>shm_reader_fn</code> exits its loop and releases ownership. Clean shutdown → immediate re-claim by new instance (no 5s wait).</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-4</strong></td>
+        <td>New file <code>shm_producer.h</code>: header-only <code>ShmProducer</code> class for C++ producers; small Python <code>ctypes</code> wrapper <code>shm_producer.py</code> for stress container</td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>Producer is independent of writer.cpp — only needs <code>shm_ring.h</code>. Python wrapper uses <code>ctypes.Structure</code> to map <code>ShmSlot</code> and <code>ShmRingHeader</code>; calls futex via <code>ctypes.cdll.LoadLibrary("libc.so.6")</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-5</strong></td>
+        <td>New file <code>tests/test_shm_ring.cpp</code>: unit tests for ownership race, lossless takeover, ring full/drop, heartbeat expiry, clean shutdown → re-claim</td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>Simulate crash with <code>fork()</code> + <code>kill(child, SIGKILL)</code>. Use <code>PARQUET_WRITER_NO_MAIN</code> guard. Add to <code>make test</code> Makefile target.</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-6</strong></td>
+        <td>Docker torture integration: <code>shm_size: '512m'</code> in compose for each writer; new S9 fault scenario (simultaneous restart race); update <code>fault_inject.sh</code></td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>S9: <code>docker compose restart writer-a writer-b</code> simultaneously → exactly one wins CAS, other logs and exits. Monitor with <code>torture_api /writers</code> to verify both recover within 5s.</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-7</strong></td>
+        <td>Fix <code>parse_thread_fn</code> 50µs sleep-poll: add <code>wake_seq</code> atomic + <code>wait_for_data()</code> to <code>mqtt_ring.h</code>; update <code>parse_thread_fn</code> to block on futex instead of sleeping</td>
+        <td><span class="badge badge-def">PENDING</span></td>
+        <td>Independent of SHM-1…6 — can be applied any time. No behaviour change at full rate (ring never empty). Eliminates 20k idle wakeups/sec and ≤50µs first-message latency on bursty deployments (lp3, Gumby).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn" style="margin-top:12px">
+    <strong>Apply order:</strong> SHM-0 first (Row change touches many call sites in writer.cpp).
+    SHM-1 is self-contained (new file, no writer.cpp changes). SHM-2 depends on both.
+    SHM-3 is a small addition to SHM-2. SHM-4 and SHM-5 are parallel to SHM-2/3.
+    SHM-6 last (torture stack changes depend on working implementation).
+    SHM-7 is fully independent — apply whenever convenient.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Related Fix — MqttRing 50µs Sleep-Poll (SHM-7)</h2>
+
+<div class="section">
+  <p>
+    While auditing spins in the system, one other busy-wait was found:
+    <code>parse_thread_fn()</code> in <code>writer.cpp</code> polls
+    <code>g_mqtt_ring</code> with a 50µs sleep when the ring is empty:
+  </p>
+
+<pre><span class="cmt">// writer.cpp — parse_thread_fn() today</span>
+<span class="kw">while</span> (<span class="kw">true</span>) {
+    <span class="kw">if</span> (g_mqtt_ring.<span class="fn">pop</span>(slot)) {
+        <span class="fn">process_raw_message</span>(slot.topic, slot.payload);
+    } <span class="kw">else if</span> (g_mqtt_stopped.<span class="fn">load</span>(...) &amp;&amp; g_mqtt_ring.<span class="fn">empty</span>()) {
+        <span class="kw">break</span>;
+    } <span class="kw">else</span> {
+        std::this_thread::<span class="fn">sleep_for</span>(std::chrono::microseconds(<span class="num">50</span>));  <span class="err">← 20 000 wakeups/sec at idle</span>
+    }
+}</pre>
+
+  <p>
+    At 80k msg/s the ring is never empty so the sleep never fires — but on lp3, Gumby targets,
+    or any deployment with bursty data there are genuine quiet periods.  During those periods the
+    thread wakes 20,000 times per second, burns a CPU timeslice, and goes back to sleep.
+    It also adds up to 50µs latency to the first message that arrives after any quiet period.
+  </p>
+
+  <h3>Root cause</h3>
+  <p>
+    <code>MqttRing</code> is a pure lock-free SPSC ring with no blocking mechanism — it has no
+    way to park the consumer.  The 50µs sleep was the simplest workaround at the time.
+    The correct fix is the same pattern used for the SHM ring: add a <code>wake_seq</code>
+    atomic to <code>MqttRing</code> and use <code>futex(FUTEX_WAIT/WAKE)</code> so the
+    consumer blocks in the kernel rather than spinning.
+  </p>
+
+  <h3>Fix — add <code>wake_seq</code> to <code>mqtt_ring.h</code></h3>
+
+<pre><span class="cmt">// mqtt_ring.h — add alongside write_pos / read_pos</span>
+<span class="kw">alignas</span>(<span class="num">64</span>) std::atomic&lt;<span class="ty">uint64_t</span>&gt; wake_seq{<span class="num">0</span>};
+
+<span class="cmt">// push() — one new line after write_pos.store():</span>
+wake_seq.<span class="fn">fetch_add</span>(<span class="num">1</span>, std::memory_order_release);
+<span class="fn">syscall</span>(SYS_futex, &amp;wake_seq, FUTEX_WAKE, <span class="num">1</span>, <span class="kw">nullptr</span>, <span class="kw">nullptr</span>, <span class="num">0</span>);
+
+<span class="cmt">// New method — consumer calls this when pop() returns false:</span>
+<span class="kw">void</span> <span class="fn">wait_for_data</span>(<span class="ty">uint64_t</span> last_wake, <span class="ty">int</span> timeout_ms = <span class="num">1000</span>) <span class="kw">noexcept</span> {
+    <span class="ty">struct timespec</span> ts = { timeout_ms / <span class="num">1000</span>, (timeout_ms % <span class="num">1000</span>) * <span class="num">1'000'000L</span> };
+    <span class="fn">syscall</span>(SYS_futex, &amp;wake_seq, FUTEX_WAIT, last_wake, &amp;ts, <span class="kw">nullptr</span>, <span class="num">0</span>);
+}</pre>
+
+  <h3>Fix — update <code>parse_thread_fn()</code> in <code>writer.cpp</code></h3>
+
+<pre><span class="kw">static void</span> <span class="fn">parse_thread_fn</span>() {
+    <span class="ty">MqSlot</span>   slot;
+    <span class="ty">uint64_t</span> last_wake = g_mqtt_ring.wake_seq.<span class="fn">load</span>(std::memory_order_acquire);
+
+    <span class="kw">while</span> (<span class="kw">true</span>) {
+        <span class="kw">if</span> (g_mqtt_ring.<span class="fn">pop</span>(slot)) {
+            last_wake = g_mqtt_ring.wake_seq.<span class="fn">load</span>(std::memory_order_relaxed);
+            <span class="fn">process_raw_message</span>(slot.topic, slot.payload);
+        } <span class="kw">else if</span> (g_mqtt_stopped.<span class="fn">load</span>(std::memory_order_acquire) &amp;&amp; g_mqtt_ring.<span class="fn">empty</span>()) {
+            <span class="kw">break</span>;
+        } <span class="kw">else</span> {
+            g_mqtt_ring.<span class="fn">wait_for_data</span>(last_wake);    <span class="ok">← blocks in kernel; 0 wakeups at idle</span>
+            last_wake = g_mqtt_ring.wake_seq.<span class="fn">load</span>(std::memory_order_acquire);
+        }
+    }
+}</pre>
+
+  <div class="alert alert-ok">
+    <strong>Effect:</strong>
+    <ul style="margin-top:6px">
+      <li>Idle CPU load from parse thread: <strong>~0</strong> (was ~20k wakeups/sec)</li>
+      <li>First-message latency after quiet period: <strong>&lt; 1µs</strong> (was up to 50µs)</li>
+      <li>Throughput at 80k msg/s: <strong>unchanged</strong> — at full rate the ring is never
+          empty so <code>wait_for_data</code> is never called</li>
+      <li>Shutdown: the 1s futex timeout ensures <code>g_mqtt_stopped</code> is checked
+          within 1s — same behaviour as before</li>
+    </ul>
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Why the same futex pattern works here.</strong>
+    Both <code>MqttRing</code> and <code>ShmRingHeader</code> use an atomic counter
+    (<code>wake_seq</code>) as the futex word.  The producer increments it and calls
+    <code>FUTEX_WAKE</code>; the consumer records the last seen value and calls
+    <code>FUTEX_WAIT</code> with that value.  If the producer increments between the
+    consumer's <code>pop()</code> returning empty and the <code>FUTEX_WAIT</code> call,
+    the futex value has already changed — the kernel returns immediately without blocking,
+    so no message is ever delayed.  This is the standard notification idiom; no mutex needed.
+  </div>
+
+  <table style="margin-top:12px">
+    <thead><tr><th style="width:25%">Spin</th><th style="width:35%">Problem</th><th style="width:40%">Fix</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>parse_thread_fn</code> 50µs sleep</td>
+        <td>20k wakeups/sec at idle; up to 50µs first-message latency</td>
+        <td>futex <code>wait_for_data()</code> on <code>MqttRing::wake_seq</code> (SHM-7)</td>
+      </tr>
+      <tr>
+        <td><code>shm_reader_fn</code> ready-flag spin</td>
+        <td>Unbounded if producer dies after <code>fetch_add</code></td>
+        <td>1ms deadline → skip slot, increment <code>g_shm_slot_timeouts</code> (this doc)</td>
+      </tr>
+      <tr>
+        <td><code>flush_max_ms</code> CAS loop</td>
+        <td>Technically a spin</td>
+        <td>Benign — flush is serialized, loop body executes exactly once in practice</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Writer.cpp Changes Summary</h2>
+
+<div class="section">
+  <p>Concise list of all changes to <code>writer.cpp</code> required by this work:</p>
+  <table>
+    <thead><tr><th style="width:20%">Location</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>struct Row</code></td>
+        <td>Add <code>std::string source_type;</code> field (SHM-0)</td>
+      </tr>
+      <tr>
+        <td><code>on_message()</code></td>
+        <td>Populate <code>row.source_type = ti.source_type</code> before inserting to g_buffer (SHM-0)</td>
+      </tr>
+      <tr>
+        <td><code>partition_key()</code></td>
+        <td>Read source_type from Row instead of TopicInfo (SHM-0)</td>
+      </tr>
+      <tr>
+        <td><code>writer_config.yaml</code> + config struct</td>
+        <td>Add <code>shm_input</code> section: enabled, path, capacity, heartbeat_interval_ms, stale_heartbeat_ms, overflow_policy (SHM-2)</td>
+      </tr>
+      <tr>
+        <td><code>main()</code></td>
+        <td>After config load: if <code>shm_input.enabled</code>, call <code>claim_ownership()</code>, then launch <code>shm_reader_fn</code> thread (SHM-2)</td>
+      </tr>
+      <tr>
+        <td><code>health_thread_fn()</code></td>
+        <td>Update <code>hdr-&gt;heartbeat_ns</code> every 1s; add <code>shm_rows_read</code> / <code>shm_overflow_drops</code> to JSON response (SHM-3)</td>
+      </tr>
+      <tr>
+        <td>SIGTERM handler / shutdown</td>
+        <td>Set <code>hdr-&gt;owner_pid = 0</code> after <code>g_stop = true</code> (SHM-3)</td>
+      </tr>
+      <tr>
+        <td><code>mqtt_ring.h</code></td>
+        <td>Add <code>alignas(64) std::atomic&lt;uint64_t&gt; wake_seq{0}</code>; increment in <code>push()</code> + <code>FUTEX_WAKE</code>; add <code>wait_for_data()</code> method (SHM-7)</td>
+      </tr>
+      <tr>
+        <td><code>parse_thread_fn()</code></td>
+        <td>Track <code>last_wake</code>; replace <code>sleep_for(50µs)</code> with <code>g_mqtt_ring.wait_for_data(last_wake)</code> (SHM-7)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>MqttRing Topic Length Cap (Fixed)</h2>
+
+<div class="section">
+  <h3>The Problem</h3>
+  <p>
+    <code>MQRING_TOPIC_MAX</code> was defined as <strong>128 bytes</strong>.
+    Real EMS (Longbow) topics reach <strong>136 bytes</strong>. The
+    <code>push()</code> method silently capped the copy via
+    <code>std::min(topic_len, MQRING_TOPIC_MAX - 1)</code> — no counter
+    was incremented, nothing was logged. Of the 1,770 unique topics published
+    per unit, <strong>8 were silently truncated on every message</strong>.
+  </p>
+
+  <h3>What Truncation Does in Practice</h3>
+  <p>
+    EMS topics follow the positional format:
+  </p>
+  <pre><span class="str">unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}</span></pre>
+  <p>
+    The <code>real_writer</code> dtype parser reads the last path segment to
+    decide storage type. Truncation corrupts that segment in two ways:
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Raw length</th>
+        <th>Count</th>
+        <th>Truncation effect</th>
+        <th>Storage outcome</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>129 bytes</td>
+        <td>6 topics</td>
+        <td><code>dtype_hint</code> segment cut from <span class="str">"integer"</span> → <span class="err">"integ"</span></td>
+        <td>dtype lookup fails → values stored as <span class="warn">float</span> instead of <span class="ok">int</span></td>
+      </tr>
+      <tr>
+        <td>136 bytes</td>
+        <td>2 topics</td>
+        <td><code>point_name</code> cut 9 chars short <em>and</em> <code>dtype_hint</code> segment missing entirely</td>
+        <td>Wrong point name recorded + dtype defaults to <span class="warn">float</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Affected Topics — BMS MBMS Fault/Warning Flags</h3>
+  <p>
+    All 8 affected topics are BMS MBMS fault/warning flags that carry integer
+    0/1 values. The two worst cases (136 bytes, <code>bms_1</code> and
+    <code>bms_2</code>):
+  </p>
+  <pre><span class="cmt">-- 136 bytes, bms_1 --</span>
+<span class="str">unit/XXXXXXXX/bms/bms_1/Batt1_MBMS_System_warning_and_fault_SBMU_Both_main_positive_relay_and_main_negative_relay_sticking_fault/integer</span>
+
+<span class="cmt">-- 136 bytes, bms_2 --</span>
+<span class="str">unit/XXXXXXXX/bms/bms_2/Batt1_MBMS_System_warning_and_fault_SBMU_Both_main_positive_relay_and_main_negative_relay_sticking_fault/integer</span>
+
+<span class="cmt">-- what the parser received before fix (128-byte cap, NUL at [127]) --</span>
+<span class="err">unit/XXXXXXXX/bms/bms_2/Batt1_MBMS_System_warning_and_fault_SBMU_Both_main_positive_relay_and_main_negative_relay_stickin</span> <span class="warn">← 9 chars cut, no dtype segment</span></pre>
+
+  <h3>The Fix</h3>
+  <p>
+    <code>MQRING_TOPIC_MAX</code> bumped <strong>128 → 256</strong>.
+    All 1,770 topics now fit with margin. Two atomic counters added to
+    <code>MqttRing</code> and incremented in <code>push()</code>:
+  </p>
+<pre><span class="kw">struct</span> <span class="ty">MqttRing</span> {
+    <span class="cmt">// …</span>
+    <span class="kw">alignas</span>(<span class="num">64</span>) std::atomic&lt;<span class="ty">uint64_t</span>&gt; topic_truncations{<span class="num">0</span>};
+    <span class="kw">alignas</span>(<span class="num">64</span>) std::atomic&lt;<span class="ty">uint64_t</span>&gt; payload_truncations{<span class="num">0</span>};
+
+    <span class="kw">void</span> <span class="fn">push</span>(<span class="kw">const</span> <span class="ty">char</span>* topic, <span class="ty">size_t</span> tlen,
+              <span class="kw">const</span> <span class="ty">uint8_t</span>* payload, <span class="ty">size_t</span> plen) {
+        <span class="kw">if</span> (tlen &gt;= MQRING_TOPIC_MAX) {
+            tlen = MQRING_TOPIC_MAX - <span class="num">1</span>;
+            topic_truncations.fetch_add(<span class="num">1</span>, std::memory_order_relaxed);
+        }
+        <span class="kw">if</span> (plen &gt; MQRING_PAYLOAD_MAX) {
+            plen = MQRING_PAYLOAD_MAX;
+            payload_truncations.fetch_add(<span class="num">1</span>, std::memory_order_relaxed);
+        }
+        <span class="cmt">// … rest of push …</span>
+    }
+};</pre>
+  <p>
+    Both counters are exposed in the <code>/health</code> JSON response so the
+    parquet monitor and push_agent can surface any future overflow immediately.
+  </p>
+  <pre><span class="cmt">// health_thread_fn() JSON snippet</span>
+<span class="str">"topic_truncations"</span>:   <span class="fn">g_mqtt_ring</span>.topic_truncations.load(),
+<span class="str">"payload_truncations"</span>: <span class="fn">g_mqtt_ring</span>.payload_truncations.load()</pre>
+
+  <p style="margin-top:12px">
+    <strong>Memory cost:</strong> each slot grows by 128 bytes (256 − 128).
+    With the default ring capacity of 262,144 slots that is
+    <strong>+32 MB BSS</strong>, lazily paged by the kernel — no impact at
+    startup, pages faulted in as slots are first written.
+  </p>
+
+  <div class="alert alert-ok">
+    <strong>Status: FIXED.</strong>
+    <code>MQRING_TOPIC_MAX</code> is now 256. All 1,770 Longbow topics fit
+    without truncation. <code>topic_truncations</code> and
+    <code>payload_truncations</code> counters are live in
+    <code>/health</code> JSON — any regression will be immediately visible.
+  </div>
+
+  <h3>Related: ShmSlot Field Names</h3>
+  <p>
+    <code>ShmSlot.ShmField.name[16]</code> is fine for the current SHM input
+    path. The <em>new_bms</em> field names fed into SHM slots are short
+    aggregates (<code>AvgCellV</code>, <code>MaxCellT</code>,
+    <code>SoC</code>, etc.) that comfortably fit in 16 bytes.
+  </p>
+  <div class="alert alert-warn">
+    <strong>Future risk:</strong> if any path is added that feeds raw EMS
+    <code>point_name</code> strings (up to ~110 chars) directly into
+    <code>ShmField.name</code>, the 16-byte cap would cause the same
+    silent-truncation bug. Use <code>name[64]</code> for any such path.
+  </div>
+</div>
+
+</body>
+</html>

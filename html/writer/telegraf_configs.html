@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Telegraf Config Versions</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:16px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:20px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  /* ── comparison table ── */
+  .cmp-table { width:100%; border-collapse:collapse; font-size:.78rem; margin-bottom:20px; }
+  .cmp-table th { background:var(--surface); color:var(--accent); padding:7px 10px;
+                  text-align:left; border:1px solid var(--border); font-size:.72rem;
+                  text-transform:uppercase; letter-spacing:.05em; }
+  .cmp-table td { padding:6px 10px; border:1px solid var(--border); vertical-align:top; }
+  .cmp-table tr:nth-child(even) td { background:#0d111788; }
+  .yes  { color:var(--green);  font-weight:700; }
+  .no   { color:var(--muted); }
+  .new  { color:var(--purple); font-weight:700; }
+  .warn { color:var(--yellow); }
+  .fname { font-family:'Consolas',monospace; font-size:.72rem; color:var(--accent); }
+
+  /* ── config panels ── */
+  .cfg-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+  @media (max-width:1100px) { .cfg-grid { grid-template-columns:1fr; } }
+  details { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+            overflow:hidden; margin-bottom:10px; }
+  summary { cursor:pointer; padding:9px 14px; font-size:.82rem; font-weight:700;
+            color:var(--accent); list-style:none; user-select:none;
+            display:flex; align-items:center; gap:10px; }
+  summary::-webkit-details-marker { display:none; }
+  summary .arr { font-size:.7rem; color:var(--muted); transition:transform .15s; }
+  details[open] summary .arr { transform:rotate(90deg); }
+  summary .tag { font-size:.68rem; padding:2px 6px; border-radius:3px; font-weight:400; }
+  .tag-v2   { background:#0c2d6b44; border:1px solid var(--accent); color:var(--accent); }
+  .tag-v3   { background:#1a0f2e44; border:1px solid var(--purple); color:var(--purple); }
+  .tag-cloud{ background:#0d442944; border:1px solid var(--green);  color:var(--green); }
+  .tag-nc   { background:#2d200044; border:1px solid var(--yellow); color:var(--yellow); }
+  .tag-demo { background:#2d0d0044; border:1px solid var(--red);    color:var(--red); }
+  .tag-filt { background:#1a200044; border:1px solid var(--orange); color:var(--orange); }
+  .desc-box { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+              padding:12px 16px; margin-bottom:16px; font-size:.8rem; line-height:1.7; }
+  .desc-box h3 { color:var(--orange); font-size:.82rem; margin-bottom:6px; }
+  .desc-box ul { padding-left:18px; }
+  .desc-box li { margin-bottom:3px; }
+  .desc-box .hl { color:var(--accent); font-family:'Consolas',monospace; font-size:.75rem; }
+  .desc-box .hlg { color:var(--green); }
+  .desc-box .hlr { color:var(--red); }
+  .desc-box .hly { color:var(--yellow); }
+  .desc-box .hlp { color:var(--purple); }
+  pre.cfg { font-family:'Consolas',monospace; font-size:.72rem; line-height:1.6;
+            padding:12px 14px; overflow-x:auto; color:var(--text); background:none;
+            max-height:500px; overflow-y:auto; margin:0; }
+  /* syntax colours */
+  .s-section { color:var(--purple); }
+  .s-key     { color:var(--orange); }
+  .s-val     { color:var(--green); }
+  .s-str     { color:#a5d6ff; }
+  .s-comment { color:#444c57; }
+  .s-diff    { background:#0d442944; border-left:3px solid var(--green);
+               display:block; margin-left:-14px; padding-left:11px; }
+  .s-diff-y  { background:#2d200044; border-left:3px solid var(--yellow);
+               display:block; margin-left:-14px; padding-left:11px; }
+  .s-diff-p  { background:#1a0f2e44; border-left:3px solid var(--purple);
+               display:block; margin-left:-14px; padding-left:11px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="evelyn_live_compare.html">Live Compare</a>
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="ems_simulator_control.html">Sim Control</a>
+  <a href="influx_viewer.html">InfluxDB Viewer</a>
+  <a href="telegraf_configs.html" class="here">Telegraf Configs</a>
+</div>
+
+<h1>Telegraf Config Versions</h1>
+<p class="subtitle">7 configs — 5 from versions.zip (production Longbow) + 2 from the Evelyn cost-comparison demo (gx10)</p>
+
+<!-- ── What each config group is doing ─────────────────────────────────── -->
+<div class="desc-box">
+  <h3>Production configs (versions.zip) — <span class="hl">telegraf-conf-v2*.conf</span> / <span class="hlp">telegraf-conf-v3.conf</span></h3>
+  <ul>
+    <li><span class="hlg">v2 baseline</span> — The current Longbow production pipeline. MQTT → <span class="hl">processors.pivot</span> (collapses the <span class="hl">data_type</span> tag into a typed field: <span class="hl">float</span>, <span class="hl">integer</span>, <span class="hl">boolean_integer</span>, <span class="hl">string</span>) → InfluxDB. Uses a <span class="hl">$share/telegrafs-v2/</span> shared MQTT subscription so multiple Telegraf replicas can load-balance without duplicating data. <span class="hl">concurrent_writes=2</span> for parallel InfluxDB batching.</li>
+    <li><span class="hlg">v2 + cloud</span> — Same as v2 baseline but with a second <span class="hl">[[outputs.influxdb_v2]]</span> block writing to a cloud-hosted InfluxDB (separate URL/token/org/bucket). Both outputs use <span class="hl">concurrent_writes=2</span>. Used when data must land in both local and cloud stores simultaneously.</li>
+    <li><span class="hly">v2 no-concurrency</span> — v2 baseline with <span class="hl">concurrent_writes</span> removed (defaults to 1 thread). Also changes pivot order to 2. Used for benchmarking/debugging write-thread contention at high ingestion rates.</li>
+    <li><span class="hly">v2 no-concurrency + cloud</span> — Dual InfluxDB output (local + cloud) with no concurrent_writes on either. Worst-case throughput configuration; useful for isolating cloud write latency without parallelism masking it.</li>
+    <li><span class="hlp">v3</span> — Adds explicit <span class="hl">processors.converter</span> blocks <em>before</em> pivot to pre-cast the generic JSON <span class="hl">value</span> field to the correct native Go type (float64/int64/string). This prevents Telegraf from guessing the type, which can cause silent schema drift in InfluxDB IOx (serverless). Uses a separate <span class="hl">$share/telegrafs-v3/</span> group so v2 and v3 can coexist on the same broker. Sets <span class="hl">organization=""</span> for InfluxDB 3.x / IOx compatibility.</li>
+  </ul>
+</div>
+
+<div class="desc-box">
+  <h3>Demo configs (evelyn-compare-native-start.sh) — <span class="hlr">compare-base</span> / <span class="hly">compare-filt</span></h3>
+  <ul>
+    <li>Both subscribe to <span class="hl">tcp://localhost:11888</span> (single FlashMQ on gx10) with a plain <span class="hl">ems/#</span> topic — no shared subscription needed since there is only one Telegraf per path.</li>
+    <li>Both use the same 3-tier topic-parsing schema as production (9-seg unit, 7-seg meter/rtac, 6-seg root) so the InfluxDB schema is identical to what Longbow writes today.</li>
+    <li><span class="hlr">compare-base</span> — No filtering at all. Every message that arrives is pivoted and written to <span class="hl">ems-baseline</span> on InfluxDB :8096. This mirrors the current Longbow production pipeline cost.</li>
+    <li><span class="hly">compare-filt</span> — Applies two filters before writing to <span class="hl">ems-filtered</span> on InfluxDB :8097:
+      <ul>
+        <li><strong>Filter A</strong> — <span class="hl">tagdrop = {data_type = ["string"]}</span> on the MQTT input. String-typed signals (status labels, firmware version strings, etc.) are dropped before they enter the pipeline. ~4% row reduction.</li>
+        <li><strong>Filter B</strong> — <span class="hl">[[processors.dedup]] dedup_interval="60s"</span> with <span class="hl">tagpass data_type=[integer, boolean_integer]</span>. Integer and boolean signals are suppressed if their value has not changed within the last 60 seconds. ~23% row reduction.</li>
+        <li>Combined: ~26.8% fewer rows written — the <em>Conservative</em> scenario from the cost analysis.</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<h2>Version Comparison</h2>
+<table class="cmp-table">
+  <thead>
+    <tr>
+      <th>Config file</th>
+      <th>Label</th>
+      <th>Pipeline</th>
+      <th>InfluxDB outputs</th>
+      <th>concurrent_writes</th>
+      <th>Type casting</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="fname">telegraf-conf-v2.conf</td>
+      <td><strong>v2 baseline</strong></td>
+      <td>v2</td>
+      <td>1 (local)</td>
+      <td class="yes">2</td>
+      <td class="no">pivot only</td>
+      <td>Production baseline</td>
+    </tr>
+    <tr>
+      <td class="fname">telegraf-conf-v2-cloud.conf</td>
+      <td><strong>v2 + cloud</strong></td>
+      <td>v2</td>
+      <td class="yes">2 (local + cloud)</td>
+      <td class="yes">2 on both</td>
+      <td class="no">pivot only</td>
+      <td>Dual-write to cloud InfluxDB</td>
+    </tr>
+    <tr>
+      <td class="fname">telegraf-conf-v2-noconcurrency.conf</td>
+      <td><strong>v2 no-concurrency</strong></td>
+      <td>v2</td>
+      <td>1 (local)</td>
+      <td class="warn">default (1)</td>
+      <td class="no">pivot only</td>
+      <td>Single-threaded writes; pivot order=2</td>
+    </tr>
+    <tr>
+      <td class="fname">telegraf-conf-v2-noconcurrencycloud.conf</td>
+      <td><strong>v2 no-concurrency + cloud</strong></td>
+      <td>v2</td>
+      <td class="yes">2 (local + cloud)</td>
+      <td class="warn">default (1)</td>
+      <td class="no">pivot only</td>
+      <td>Dual-write, no concurrent_writes</td>
+    </tr>
+    <tr>
+      <td class="fname">telegraf-conf-v3.conf</td>
+      <td><strong>v3</strong></td>
+      <td class="new">v3</td>
+      <td>1 (local)</td>
+      <td class="yes">2</td>
+      <td class="new">converter + pivot</td>
+      <td>Explicit type cast before pivot; org="" ; v3 share group</td>
+    </tr>
+    <tr>
+      <td class="fname">telegraf-native-base.conf</td>
+      <td><strong>demo baseline</strong></td>
+      <td>demo</td>
+      <td>1 (:8096 ems-baseline)</td>
+      <td class="no">default (1)</td>
+      <td class="no">pivot only</td>
+      <td>No filters — mirrors current Longbow production cost; hardcoded localhost</td>
+    </tr>
+    <tr>
+      <td class="fname">telegraf-native-filt.conf</td>
+      <td><strong>demo filtered</strong></td>
+      <td>demo</td>
+      <td>1 (:8097 ems-filtered)</td>
+      <td class="no">default (1)</td>
+      <td class="no">pivot only</td>
+      <td><span class="yes">Filter A</span> (drop strings) + <span class="yes">Filter B</span> (dedup int/bool 60s) → ~26.8% fewer rows</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Key Differences</h2>
+<table class="cmp-table">
+  <thead>
+    <tr><th>Feature</th><th>v2 baseline</th><th>v2-cloud</th><th>v2-noconcurrency</th><th>v2-noconcurrencycloud</th><th>v3</th><th>demo-base</th><th>demo-filt</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MQTT topic</td>
+      <td colspan="4" style="color:var(--accent);font-family:'Consolas',monospace">$share/telegrafs-v2/ems/#</td>
+      <td style="color:var(--purple);font-family:'Consolas',monospace">$share/telegrafs-v3/ems/#</td>
+      <td colspan="2" style="color:var(--red);font-family:'Consolas',monospace">ems/#  (no share group)</td>
+    </tr>
+    <tr>
+      <td>MQTT broker</td>
+      <td colspan="5" style="font-family:'Consolas',monospace">$MQTT_HOST</td>
+      <td colspan="2" style="color:var(--red);font-family:'Consolas',monospace">localhost:11888</td>
+    </tr>
+    <tr>
+      <td>client_id</td>
+      <td colspan="4" style="font-family:'Consolas',monospace">telegraf-v2-${HOSTNAME}</td>
+      <td style="color:var(--purple);font-family:'Consolas',monospace">telegraf-v3-${HOSTNAME}</td>
+      <td style="color:var(--red);font-family:'Consolas',monospace">telegraf-compare-base</td>
+      <td style="color:var(--red);font-family:'Consolas',monospace">telegraf-compare-filt</td>
+    </tr>
+    <tr>
+      <td>Filter A (drop strings)</td>
+      <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+      <td class="no">—</td>
+      <td class="yes">✓ tagdrop on data_type=string</td>
+    </tr>
+    <tr>
+      <td>Filter B (dedup int/bool)</td>
+      <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+      <td class="no">—</td>
+      <td class="yes">✓ dedup 60s on integer / boolean_integer</td>
+    </tr>
+    <tr>
+      <td>processors.converter</td>
+      <td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td>
+      <td class="new">float / integer / string</td>
+      <td class="no">—</td><td class="no">—</td>
+    </tr>
+    <tr>
+      <td>processors.pivot order</td>
+      <td>1</td><td>1</td><td>2</td><td>2</td><td class="new">2 (after converter)</td>
+      <td>1</td><td>1 (after dedup)</td>
+    </tr>
+    <tr>
+      <td>concurrent_writes</td>
+      <td class="yes">2</td><td class="yes">2</td><td class="no">—</td><td class="no">—</td><td class="yes">2</td>
+      <td class="no">—</td><td class="no">—</td>
+    </tr>
+    <tr>
+      <td>Dual InfluxDB output</td>
+      <td class="no">—</td><td class="yes">✓</td><td class="no">—</td><td class="yes">✓</td><td class="no">—</td>
+      <td class="no">—</td><td class="no">—</td>
+    </tr>
+    <tr>
+      <td>InfluxDB target</td>
+      <td colspan="5" style="font-family:'Consolas',monospace">$INFLUX_HOST / $INFLUX_ORG / $INFLUX_BUCKET</td>
+      <td style="color:var(--red);font-family:'Consolas',monospace">:8096 ems-org / ems-baseline</td>
+      <td style="color:var(--orange);font-family:'Consolas',monospace">:8097 ems-org / ems-filtered</td>
+    </tr>
+    <tr>
+      <td>content_encoding gzip</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+      <td class="no">—</td><td class="no">—</td>
+    </tr>
+    <tr>
+      <td>Prometheus output</td>
+      <td colspan="5" class="yes">✓ all prod configs — :9273/metrics</td>
+      <td class="no">—</td><td class="no">—</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Config Files</h2>
+
+<details open>
+<summary><span class="arr">▶</span> telegraf-conf-v2.conf <span class="tag tag-v2">v2</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— baseline · single InfluxDB · concurrent_writes=2</span></summary>
+<pre class="cfg"><span class="s-section">[agent]</span>
+  <span class="s-key">omit_hostname</span> = <span class="s-val">true</span>
+  <span class="s-key">precision</span>     = <span class="s-str">"1ms"</span>
+  <span class="s-key">debug</span>         = <span class="s-str">{{ .Values.telegraf.debug }}</span>
+  <span class="s-key">flush_interval</span>      = <span class="s-str">"5s"</span>
+  <span class="s-key">metric_batch_size</span>   = <span class="s-val">50000</span>
+  <span class="s-key">metric_buffer_limit</span> = <span class="s-val">200000</span>
+
+<span class="s-section">[[inputs.internal]]</span>
+  <span class="s-key">collect_memstats</span> = <span class="s-val">false</span>
+
+<span class="s-section">[[inputs.mqtt_consumer]]</span>
+  <span class="s-key">servers</span>  = [<span class="s-str">"$MQTT_HOST"</span>]
+  <span class="s-key">topics</span>   = [<span class="s-str">"$share/telegrafs-v2/ems/#"</span>]
+  <span class="s-key">client_id</span> = <span class="s-str">"telegraf-v2-${HOSTNAME}"</span>
+  <span class="s-key">qos</span> = <span class="s-val">0</span>
+  <span class="s-key">max_undelivered_messages</span> = <span class="s-val">1000000</span>
+  <span class="s-key">data_format</span> = <span class="s-str">"json_v2"</span>
+
+  <span class="s-section">[[inputs.mqtt_consumer.json_v2]]</span>
+    <span class="s-key">timestamp_path</span>     = <span class="s-str">"ts"</span>
+    <span class="s-key">timestamp_format</span>   = <span class="s-str">"2006-01-02T15:04:05Z"</span>
+    <span class="s-key">timestamp_timezone</span> = <span class="s-str">"UTC"</span>
+    <span class="s-comment">  # 6/7/8/9-segment topic parsing (same in all configs — omitted for brevity)</span>
+
+<span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span>     = <span class="s-val">1</span>
+  <span class="s-key">tag_key</span>   = <span class="s-str">"data_type"</span>
+  <span class="s-key">value_key</span> = <span class="s-str">"value"</span>
+
+<span class="s-section">[[outputs.prometheus_client]]</span>
+  <span class="s-key">listen</span> = <span class="s-str">":9273"</span>
+  <span class="s-key">path</span>   = <span class="s-str">"/metrics"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_HOST"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"$INFLUX_ORG"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span>
+<span class="s-diff">  <span class="s-key">concurrent_writes</span> = <span class="s-val">2</span></span></pre>
+</details>
+
+<details>
+<summary><span class="arr">▶</span> telegraf-conf-v2-cloud.conf <span class="tag tag-v2">v2</span> <span class="tag tag-cloud">+cloud</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— dual InfluxDB output · concurrent_writes=2 on both</span></summary>
+<pre class="cfg"><span class="s-comment"># Same agent + inputs as v2 baseline.</span>
+<span class="s-comment"># Difference: TWO influxdb_v2 outputs — local and cloud.</span>
+
+<span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span> = <span class="s-val">1</span>  <span class="s-comment"># unchanged</span>
+
+<span class="s-section">[[outputs.prometheus_client]]</span>
+  <span class="s-key">listen</span> = <span class="s-str">":9273"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>  <span class="s-comment"># local</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_HOST"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"$INFLUX_ORG"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span>
+<span class="s-diff">  <span class="s-key">concurrent_writes</span> = <span class="s-val">2</span></span>
+
+<span class="s-diff"><span class="s-section">[[outputs.influxdb_v2]]</span>  <span class="s-comment"># cloud — ADDED</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_URL_CLOUD"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN_CLOUD"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"$INFLUX_ORG_CLOUD"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET_CLOUD"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span>
+  <span class="s-key">concurrent_writes</span> = <span class="s-val">2</span></span></pre>
+</details>
+
+<details>
+<summary><span class="arr">▶</span> telegraf-conf-v2-noconcurrency.conf <span class="tag tag-v2">v2</span> <span class="tag tag-nc">no-concurrency</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— single InfluxDB · default (1) write thread · pivot order=2</span></summary>
+<pre class="cfg"><span class="s-comment"># Same agent + inputs as v2 baseline.</span>
+<span class="s-comment"># Differences: pivot order=2, no concurrent_writes.</span>
+
+<span class="s-diff-y"><span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span>     = <span class="s-val">2</span>  <span class="s-comment"># changed from 1</span>
+  <span class="s-key">tag_key</span>   = <span class="s-str">"data_type"</span>
+  <span class="s-key">value_key</span> = <span class="s-str">"value"</span></span>
+
+<span class="s-section">[[outputs.prometheus_client]]</span>
+  <span class="s-key">listen</span> = <span class="s-str">":9273"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_HOST"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"$INFLUX_ORG"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span>
+<span class="s-diff-y">  <span class="s-comment"># concurrent_writes removed → default single-threaded writes</span></span></pre>
+</details>
+
+<details>
+<summary><span class="arr">▶</span> telegraf-conf-v2-noconcurrencycloud.conf <span class="tag tag-v2">v2</span> <span class="tag tag-cloud">+cloud</span> <span class="tag tag-nc">no-concurrency</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— dual InfluxDB · default write thread</span></summary>
+<pre class="cfg"><span class="s-comment"># Same agent + inputs as v2 baseline.</span>
+<span class="s-comment"># Combination of -cloud and -noconcurrency: dual output, no concurrent_writes, pivot order=2.</span>
+
+<span class="s-diff-y"><span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span> = <span class="s-val">2</span>  <span class="s-comment"># changed from 1</span></span>
+
+<span class="s-section">[[outputs.prometheus_client]]</span>
+  <span class="s-key">listen</span> = <span class="s-str">":9273"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>  <span class="s-comment"># local — no concurrent_writes</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_HOST"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"$INFLUX_ORG"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span>
+
+<span class="s-diff"><span class="s-section">[[outputs.influxdb_v2]]</span>  <span class="s-comment"># cloud — ADDED, also no concurrent_writes</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_URL_CLOUD"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN_CLOUD"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"$INFLUX_ORG_CLOUD"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET_CLOUD"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span></span></pre>
+</details>
+
+<details>
+<summary><span class="arr">▶</span> telegraf-conf-v3.conf <span class="tag tag-v3">v3</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— explicit type casting · converter before pivot · concurrent_writes=2 · org=""</span></summary>
+<pre class="cfg"><span class="s-section">[agent]</span>
+  <span class="s-key">omit_hostname</span> = <span class="s-val">true</span>
+  <span class="s-key">precision</span>     = <span class="s-str">"1ms"</span>
+  <span class="s-key">debug</span>         = <span class="s-str">{{ .Values.telegrafV3.debug | default false }}</span>  <span class="s-comment"># v3 key</span>
+  <span class="s-key">flush_interval</span>      = <span class="s-str">"5s"</span>
+  <span class="s-key">metric_batch_size</span>   = <span class="s-val">50000</span>
+  <span class="s-key">metric_buffer_limit</span> = <span class="s-val">200000</span>
+
+<span class="s-section">[[inputs.mqtt_consumer]]</span>
+  <span class="s-key">servers</span>   = [<span class="s-str">"$MQTT_HOST"</span>]
+<span class="s-diff-p">  <span class="s-key">topics</span>    = [<span class="s-str">"$share/telegrafs-v3/ems/#"</span>]   <span class="s-comment"># v3 share group</span>
+  <span class="s-key">client_id</span> = <span class="s-str">"telegraf-v3-${HOSTNAME}"</span></span>
+  <span class="s-key">qos</span> = <span class="s-val">0</span>
+  <span class="s-key">max_undelivered_messages</span> = <span class="s-val">1000000</span>
+  <span class="s-key">data_format</span> = <span class="s-str">"json_v2"</span>
+  <span class="s-comment">  # topic parsing identical to v2 — omitted for brevity</span>
+
+<span class="s-comment">################################################################################</span>
+<span class="s-comment"># PROCESSORS — v3 adds converters BEFORE pivot</span>
+<span class="s-comment">################################################################################</span>
+
+<span class="s-diff-p"><span class="s-section">[[processors.converter]]</span>  <span class="s-comment"># float cast</span>
+  <span class="s-key">order</span> = <span class="s-val">1</span>
+  [<span class="s-key">processors.converter.tagpass</span>]
+    <span class="s-key">data_type</span> = [<span class="s-str">"float"</span>]
+  [<span class="s-key">processors.converter.fields</span>]
+    <span class="s-key">float</span> = [<span class="s-str">"value"</span>]
+
+<span class="s-section">[[processors.converter]]</span>  <span class="s-comment"># integer + boolean_integer cast</span>
+  <span class="s-key">order</span> = <span class="s-val">1</span>
+  [<span class="s-key">processors.converter.tagpass</span>]
+    <span class="s-key">data_type</span> = [<span class="s-str">"integer"</span>, <span class="s-str">"boolean_integer"</span>]
+  [<span class="s-key">processors.converter.fields</span>]
+    <span class="s-key">integer</span> = [<span class="s-str">"value"</span>]
+
+<span class="s-section">[[processors.converter]]</span>  <span class="s-comment"># string cast</span>
+  <span class="s-key">order</span> = <span class="s-val">1</span>
+  [<span class="s-key">processors.converter.tagpass</span>]
+    <span class="s-key">data_type</span> = [<span class="s-str">"string"</span>]
+  [<span class="s-key">processors.converter.fields</span>]
+    <span class="s-key">string</span> = [<span class="s-str">"value"</span>]</span>
+
+<span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span>     = <span class="s-val">2</span>  <span class="s-comment"># runs AFTER converters</span>
+  <span class="s-key">tag_key</span>   = <span class="s-str">"data_type"</span>
+  <span class="s-key">value_key</span> = <span class="s-str">"value"</span>
+
+<span class="s-section">[[outputs.prometheus_client]]</span>
+  <span class="s-key">listen</span> = <span class="s-str">":9273"</span>
+  <span class="s-key">path</span>   = <span class="s-str">"/metrics"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"$INFLUX_HOST"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"$INFLUX_TOKEN"</span>
+<span class="s-diff-p">  <span class="s-key">organization</span> = <span class="s-str">""</span>  <span class="s-comment"># empty — IOx / serverless InfluxDB (no org concept)</span></span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"$INFLUX_BUCKET"</span>
+  <span class="s-key">namedrop</span>         = [<span class="s-str">"internal_*"</span>]
+  <span class="s-key">content_encoding</span> = <span class="s-str">"gzip"</span>
+  <span class="s-key">timeout</span>          = <span class="s-str">"10s"</span>
+<span class="s-diff">  <span class="s-key">concurrent_writes</span> = <span class="s-val">2</span></span></pre>
+</details>
+
+<details>
+<summary><span class="arr">▶</span> telegraf-native-base.conf <span class="tag tag-demo">demo</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— no filters · localhost:11888 → InfluxDB :8096 ems-baseline · mirrors Longbow production cost</span></summary>
+<pre class="cfg"><span class="s-comment"># Written to /tmp/telegraf-native-base.conf by evelyn-compare-native-start.sh</span>
+<span class="s-comment"># Purpose: baseline path — every signal written unchanged, no dedup, no drops.</span>
+<span class="s-comment"># Measures: what Longbow is paying today in InfluxDB rows/s.</span>
+
+<span class="s-section">[agent]</span>
+  <span class="s-key">interval</span>              = <span class="s-str">"1s"</span>
+  <span class="s-key">round_interval</span>        = <span class="s-val">true</span>
+  <span class="s-key">metric_batch_size</span>     = <span class="s-val">5000</span>
+  <span class="s-key">metric_buffer_limit</span>   = <span class="s-val">500000</span>
+  <span class="s-key">flush_interval</span>        = <span class="s-str">"5s"</span>
+  <span class="s-key">flush_jitter</span>          = <span class="s-str">"1s"</span>
+  <span class="s-key">precision</span>             = <span class="s-str">"1ms"</span>
+  <span class="s-key">omit_hostname</span>         = <span class="s-val">true</span>
+
+<span class="s-section">[[inputs.mqtt_consumer]]</span>
+  <span class="s-key">servers</span>            = [<span class="s-str">"tcp://localhost:11888"</span>]
+  <span class="s-key">topics</span>             = [<span class="s-str">"ems/#"</span>]          <span class="s-comment"># plain topic — single consumer, no share group needed</span>
+  <span class="s-key">qos</span>                = <span class="s-val">0</span>
+  <span class="s-key">client_id</span>          = <span class="s-str">"telegraf-compare-base"</span>
+  <span class="s-key">connection_timeout</span> = <span class="s-str">"30s"</span>
+  <span class="s-key">data_format</span>        = <span class="s-str">"json_v2"</span>
+
+  <span class="s-section">[[inputs.mqtt_consumer.json_v2]]</span>
+    <span class="s-key">timestamp_path</span>     = <span class="s-str">"ts"</span>
+    <span class="s-key">timestamp_format</span>   = <span class="s-str">"2006-01-02T15:04:05.000Z"</span>
+    <span class="s-key">timestamp_timezone</span> = <span class="s-str">"UTC"</span>
+
+    <span class="s-section">[[inputs.mqtt_consumer.json_v2.field]]</span>
+      <span class="s-key">path</span> = <span class="s-str">"value"</span>
+
+    <span class="s-comment">  # 9-seg: ems/site/{site}/unit/{uid}/{device}/{instance}/{point}/{dtype}</span>
+    <span class="s-section">[[inputs.mqtt_consumer.topic_parsing]]</span>
+      <span class="s-key">topic</span>       = <span class="s-str">"ems/site/+/unit/+/+/+/+/+"</span>
+      <span class="s-key">tags</span>        = <span class="s-str">"_/_/site_id/_/unit_id/device/instance/point_name/data_type"</span>
+      <span class="s-key">measurement</span> = <span class="s-str">"_/_/_/measurement/_/_/_/_/_"</span>
+
+    <span class="s-comment">  # 7-seg: ems/site/{site}/{meas}/{dev}/{point}/{dtype}  (meter/rtac)</span>
+    <span class="s-section">[[inputs.mqtt_consumer.topic_parsing]]</span>
+      <span class="s-key">topic</span>       = <span class="s-str">"ems/site/+/+/+/+/+"</span>
+      <span class="s-key">tags</span>        = <span class="s-str">"_/_/site_id/_/device/point_name/data_type"</span>
+      <span class="s-key">measurement</span> = <span class="s-str">"_/_/_/measurement/_/_/_"</span>
+
+    <span class="s-comment">  # 6-seg: ems/site/{site}/root/{point}/{dtype}</span>
+    <span class="s-section">[[inputs.mqtt_consumer.topic_parsing]]</span>
+      <span class="s-key">topic</span>       = <span class="s-str">"ems/site/+/root/+/+"</span>
+      <span class="s-key">tags</span>        = <span class="s-str">"_/_/site_id/_/point_name/data_type"</span>
+      <span class="s-key">measurement</span> = <span class="s-str">"_/measurement/_/_/_/_"</span>
+
+<span class="s-section">[[inputs.internal]]</span>
+  <span class="s-key">collect_memstats</span> = <span class="s-val">false</span>
+
+<span class="s-comment"># No filters — pivot only, same as Longbow today</span>
+<span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span>     = <span class="s-val">1</span>
+  <span class="s-key">tag_key</span>   = <span class="s-str">"data_type"</span>
+  <span class="s-key">value_key</span> = <span class="s-str">"value"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"http://localhost:8096"</span>]
+  <span class="s-key">token</span>        = <span class="s-str">"ems-token-secret"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"ems-org"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"ems-baseline"</span>
+  <span class="s-key">timeout</span>      = <span class="s-str">"10s"</span>
+  <span class="s-key">namedrop</span>     = [<span class="s-str">"internal_*"</span>]</pre>
+</details>
+
+<details>
+<summary><span class="arr">▶</span> telegraf-native-filt.conf <span class="tag tag-demo">demo</span> <span class="tag tag-filt">filtered</span> <span style="font-size:.72rem;color:var(--muted);font-weight:400">— Filter A + Filter B · localhost:11888 → InfluxDB :8097 ems-filtered · ~26.8% fewer rows</span></summary>
+<pre class="cfg"><span class="s-comment"># Written to /tmp/telegraf-native-filt.conf by evelyn-compare-native-start.sh</span>
+<span class="s-comment"># Purpose: filtered path — applies Conservative scenario filters before writing.</span>
+<span class="s-comment"># Measures: what Longbow could save by enabling Filter A + Filter B.</span>
+<span class="s-comment">#</span>
+<span class="s-comment"># Filter A: drop string dtype at input  → ~4% fewer rows</span>
+<span class="s-comment"># Filter B: dedup integer/boolean 60s   → ~23% fewer rows</span>
+<span class="s-comment"># Combined: Conservative scenario       → ~26.8% fewer rows</span>
+
+<span class="s-section">[agent]</span>
+  <span class="s-comment"># identical to demo-base agent block</span>
+  <span class="s-key">interval</span>              = <span class="s-str">"1s"</span>
+  <span class="s-key">round_interval</span>        = <span class="s-val">true</span>
+  <span class="s-key">metric_batch_size</span>     = <span class="s-val">5000</span>
+  <span class="s-key">metric_buffer_limit</span>   = <span class="s-val">500000</span>
+  <span class="s-key">flush_interval</span>        = <span class="s-str">"5s"</span>
+  <span class="s-key">flush_jitter</span>          = <span class="s-str">"1s"</span>
+  <span class="s-key">precision</span>             = <span class="s-str">"1ms"</span>
+  <span class="s-key">omit_hostname</span>         = <span class="s-val">true</span>
+
+<span class="s-section">[[inputs.mqtt_consumer]]</span>
+  <span class="s-key">servers</span>            = [<span class="s-str">"tcp://localhost:11888"</span>]   <span class="s-comment"># same broker as demo-base</span>
+  <span class="s-key">topics</span>             = [<span class="s-str">"ems/#"</span>]
+  <span class="s-key">qos</span>                = <span class="s-val">0</span>
+  <span class="s-key">client_id</span>          = <span class="s-str">"telegraf-compare-filt"</span>
+  <span class="s-key">connection_timeout</span> = <span class="s-str">"30s"</span>
+  <span class="s-key">data_format</span>        = <span class="s-str">"json_v2"</span>
+
+<span class="s-diff">  <span class="s-comment">  # ── Filter A: drop string signals before any processing ─────────────────</span>
+  [<span class="s-key">inputs.mqtt_consumer.tagdrop</span>]
+    <span class="s-key">data_type</span> = [<span class="s-str">"string"</span>]      <span class="s-comment"># status labels, firmware strings, etc. — ~4% of rows</span></span>
+
+  <span class="s-section">[[inputs.mqtt_consumer.json_v2]]</span>
+    <span class="s-key">timestamp_path</span>     = <span class="s-str">"ts"</span>
+    <span class="s-key">timestamp_format</span>   = <span class="s-str">"2006-01-02T15:04:05.000Z"</span>
+    <span class="s-key">timestamp_timezone</span> = <span class="s-str">"UTC"</span>
+
+    <span class="s-section">[[inputs.mqtt_consumer.json_v2.field]]</span>
+      <span class="s-key">path</span> = <span class="s-str">"value"</span>
+
+    <span class="s-comment">  # Same 3-tier topic parsing as demo-base (9-seg / 7-seg / 6-seg) — omitted for brevity</span>
+
+<span class="s-section">[[inputs.internal]]</span>
+  <span class="s-key">collect_memstats</span> = <span class="s-val">false</span>
+
+<span class="s-diff"><span class="s-comment"># ── Filter B: suppress integer + boolean signals that haven't changed in 60s ──</span>
+<span class="s-section">[[processors.dedup]]</span>
+  <span class="s-key">order</span>          = <span class="s-val">0</span>              <span class="s-comment"># runs BEFORE pivot</span>
+  <span class="s-key">dedup_interval</span> = <span class="s-str">"60s"</span>
+  [<span class="s-key">processors.dedup.tagpass</span>]
+    <span class="s-key">data_type</span> = [<span class="s-str">"integer"</span>, <span class="s-str">"boolean_integer"</span>]  <span class="s-comment"># floats pass through unchanged</span></span>
+
+<span class="s-comment"># Pivot runs after dedup — collapses data_type tag into typed field columns</span>
+<span class="s-section">[[processors.pivot]]</span>
+  <span class="s-key">order</span>     = <span class="s-val">1</span>
+  <span class="s-key">tag_key</span>   = <span class="s-str">"data_type"</span>
+  <span class="s-key">value_key</span> = <span class="s-str">"value"</span>
+
+<span class="s-section">[[outputs.influxdb_v2]]</span>
+  <span class="s-key">urls</span>         = [<span class="s-str">"http://localhost:8097"</span>]   <span class="s-comment"># separate InfluxDB from baseline</span>
+  <span class="s-key">token</span>        = <span class="s-str">"ems-token-secret"</span>
+  <span class="s-key">organization</span> = <span class="s-str">"ems-org"</span>
+  <span class="s-key">bucket</span>       = <span class="s-str">"ems-filtered"</span>
+  <span class="s-key">timeout</span>      = <span class="s-str">"10s"</span>
+  <span class="s-key">namedrop</span>     = [<span class="s-str">"internal_*"</span>]</pre>
+</details>
+
+<script>
+document.querySelectorAll('details').forEach(d => {
+  d.addEventListener('toggle', () => {
+    const arr = d.querySelector('.arr');
+    if (arr) arr.textContent = d.open ? '▼' : '▶';
+  });
+});
+</script>
+</body>
+</html>

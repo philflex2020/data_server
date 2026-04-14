@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>parquet_writer — Unit Test Documentation</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #f8f9fa; color: #212529; }
+  .sidebar { position: fixed; top: 0; left: 0; width: 230px; height: 100vh; overflow-y: auto;
+             background: #1e2a38; color: #c9d6e3; padding: 18px 0; box-sizing: border-box; }
+  .sidebar h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px;
+                color: #6c8ebf; padding: 0 16px; margin: 18px 0 6px; }
+  .sidebar a  { display: block; padding: 5px 16px; color: #c9d6e3; text-decoration: none;
+                font-size: 0.84rem; }
+  .sidebar a:hover { background: #2d3e52; color: #fff; }
+  .sidebar a.sub { padding-left: 28px; font-size: 0.8rem; color: #8ba3bf; }
+  .content { margin-left: 238px; padding: 32px 40px; max-width: 1020px; }
+  h1 { color: #1e2a38; border-bottom: 3px solid #4a90d9; padding-bottom: 10px; margin-top: 0; }
+  h2 { color: #1e2a38; border-bottom: 1px solid #dee2e6; padding-bottom: 6px; margin-top: 2em; }
+  h3 { color: #2c4a6e; margin-top: 1.5em; }
+  h4 { color: #3a5f85; margin-top: 1.2em; margin-bottom: 4px; }
+  pre { background: #1e2a38; color: #cfe2ff; padding: 14px 18px; border-radius: 6px;
+        overflow-x: auto; font-size: 0.83rem; line-height: 1.55; }
+  code { background: #e9ecef; padding: 1px 5px; border-radius: 3px; font-size: 0.88em; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th { background: #1e2a38; color: #cfe2ff; padding: 8px 12px; text-align: left; font-size: 0.85rem; }
+  td { border: 1px solid #dee2e6; padding: 7px 12px; font-size: 0.87rem; vertical-align: top; }
+  tr:nth-child(even) td { background: #f4f6f8; }
+  .pass  { color: #1a7f3c; font-weight: 600; }
+  .fail  { color: #c0392b; font-weight: 600; }
+  .badge-pass  { background: #d4edda; color: #155724; border: 1px solid #c3e6cb;
+                 border-radius: 10px; padding: 2px 10px; font-size: 0.78rem; font-weight: 600; }
+  .badge-fail  { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;
+                 border-radius: 10px; padding: 2px 10px; font-size: 0.78rem; font-weight: 600; }
+  .badge-todo  { background: #fff3cd; color: #856404; border: 1px solid #ffc107;
+                 border-radius: 10px; padding: 2px 10px; font-size: 0.78rem; }
+  .kw  { color: #79c0ff; }
+  .fn  { color: #d2a679; }
+  .cm  { color: #6a9955; font-style: italic; }
+  .str { color: #a8d8a8; }
+  .tp  { color: #e0b97e; }
+  .num { color: #b5cea8; }
+  .note { background: #e8f4fd; border-left: 4px solid #4a90d9; padding: 10px 14px;
+          margin: 12px 0; border-radius: 0 4px 4px 0; font-size: 0.9rem; }
+  .warn { background: #fff8e1; border-left: 4px solid #f0a500; padding: 10px 14px;
+          margin: 12px 0; border-radius: 0 4px 4px 0; font-size: 0.9rem; }
+  .result-box { background: #1e2a38; border-radius: 8px; padding: 16px 20px;
+                font-family: monospace; font-size: 0.82rem; color: #cfe2ff; margin: 14px 0; }
+  .result-pass { color: #56d364; }
+  .result-fail { color: #ff7b72; }
+  .result-hdr  { color: #79c0ff; font-weight: bold; margin-bottom: 8px; }
+  .result-summary { margin-top: 10px; border-top: 1px solid #2d3e52; padding-top: 8px;
+                    font-weight: bold; color: #56d364; }
+  .api-table td:first-child { font-family: monospace; white-space: nowrap; }
+  .kpi-row { display: flex; gap: 14px; flex-wrap: wrap; margin: 12px 0; }
+  .kpi { background: #1e2a38; color: #cfe2ff; border-radius: 8px; padding: 12px 18px;
+         min-width: 120px; text-align: center; }
+  .kpi-val { font-size: 1.8rem; font-weight: bold; color: #56d364; }
+  .kpi-lbl { font-size: 0.78rem; color: #8ba3bf; margin-top: 2px; }
+  hr { border: none; border-top: 1px solid #dee2e6; margin: 2em 0; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div style="padding:14px 16px 8px;font-size:1rem;font-weight:700;color:#79c0ff;">
+    parquet_writer<br><span style="font-size:0.75rem;color:#6c8ebf;font-weight:400;">unit test docs</span>
+  </div>
+  <h2>Overview</h2>
+  <a href="#overview">Architecture</a>
+  <a href="#build">Build &amp; Run</a>
+  <a href="#results">Test Results</a>
+  <h2>Test Suites</h2>
+  <a href="#suite-positional">parse_topic_positional</a>
+  <a href="#suite-kv">parse_topic_kv</a>
+  <a href="#suite-iso">parse_iso8601</a>
+  <a href="#suite-payload">parse_payload</a>
+  <a href="#suite-flush">flush_partition</a>
+  <a href="#suite-wal">WAL round-trip</a>
+  <a href="#suite-compact">compact_directory</a>
+  <h2>Reference</h2>
+  <a href="#arrow-api">Arrow API used</a>
+  <a href="#parquet-api">Parquet API used</a>
+  <a href="#ipc-api">Arrow IPC API used</a>
+  <a href="#framework">test_runner.h</a>
+</nav>
+
+<div class="content">
+
+<h1>parquet_writer — Unit Test Documentation</h1>
+
+<p>Coverage, design notes, and live test results for
+<code>source/parquet_writer/tests/test_parquet_writer.cpp</code>.<br>
+Last run: <strong>2026-04-12</strong> &nbsp;·&nbsp;
+Machine: <strong>192.168.86.34 (phil-dev)</strong> &nbsp;·&nbsp;
+<span class="badge-pass">32 / 32 PASS</span></p>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="overview">1. Architecture</h2>
+
+<p>The test binary includes <code>parquet_writer.cpp</code> directly via a
+<code>#include</code>. The macro <code>PARQUET_WRITER_NO_MAIN</code> suppresses
+<code>main()</code> so the test's own entry point can run instead. No linking trick, no
+test-only library — the same translation unit that runs in production is compiled into
+the test binary.</p>
+
+<pre><span class="cm">// tests/test_parquet_writer.cpp — top of file</span>
+<span class="kw">#pragma GCC diagnostic push</span>
+<span class="kw">#pragma GCC diagnostic ignored</span> <span class="str">"-Wunused-function"</span>
+<span class="kw">#include</span> <span class="str">"../parquet_writer.cpp"</span>    <span class="cm">// full TU — compiled with PARQUET_WRITER_NO_MAIN</span>
+<span class="kw">#pragma GCC diagnostic pop</span>
+<span class="kw">#include</span> <span class="str">"test_runner.h"</span>           <span class="cm">// zero-dependency TEST / EXPECT macros</span></pre>
+
+<p>This approach ensures the tested code is <em>identical</em> to production — no header
+extraction, no mock abstraction layer. The compiler flag is set in the Makefile:</p>
+
+<pre><span class="cm"># Makefile TEST_FLAGS</span>
+$(CXX) $(TEST_FLAGS) -I. tests/test_parquet_writer.cpp -o tests/test_parquet_writer $(ALL_LIBS)
+<span class="cm"># TEST_FLAGS includes: -DPARQUET_WRITER_NO_MAIN -std=c++20 -O2 -Wall -Wextra</span></pre>
+
+<h3>Functions under test</h3>
+<table>
+  <tr><th>Function</th><th>File location</th><th>Description</th><th>Arrow/Parquet?</th></tr>
+  <tr><td><code>parse_topic_positional()</code></td><td>~line 370</td>
+      <td>EMS positional topic string → <code>TopicInfo</code></td><td>No</td></tr>
+  <tr><td><code>parse_topic_kv()</code></td><td>~line 410</td>
+      <td>KV-format topic → <code>TopicInfo</code></td><td>No</td></tr>
+  <tr><td><code>parse_iso8601()</code></td><td>~line 468</td>
+      <td>ISO 8601 string → int64_t epoch µs</td><td>No</td></tr>
+  <tr><td><code>parse_payload()</code></td><td>~line 495</td>
+      <td>JSON payload + TopicInfo → <code>Row</code> (simdjson)</td><td>No (simdjson)</td></tr>
+  <tr><td><code>flush_partition()</code></td><td>~line 758</td>
+      <td>Row vector → Parquet file on disk</td><td><strong>Arrow + Parquet</strong></td></tr>
+  <tr><td><code>write_wal_ipc()</code></td><td>~line 886</td>
+      <td>Row vector → Arrow IPC file (WAL)</td><td><strong>Arrow IPC</strong></td></tr>
+  <tr><td><code>wal_replay_file()</code></td><td>~line 897</td>
+      <td>Arrow IPC file → Row vector (crash recovery)</td><td><strong>Arrow IPC</strong></td></tr>
+  <tr><td><code>compact_directory()</code></td><td>~line 968</td>
+      <td>Merge N flush files → one compact parquet file</td><td><strong>Arrow + Parquet</strong></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="build">2. Build &amp; Run</h2>
+
+<pre><span class="cm"># From source/parquet_writer/</span>
+make test
+
+<span class="cm"># Or build only, without running:</span>
+make tests/test_parquet_writer
+
+<span class="cm"># Run directly with verbose output:</span>
+./tests/test_parquet_writer</pre>
+
+<h4>Prerequisites</h4>
+<table>
+  <tr><th>Package</th><th>Provides</th><th>Install</th></tr>
+  <tr><td><code>libarrow-dev</code></td><td>Arrow C++ — builders, tables, IPC, IO</td>
+      <td><code>sudo apt install libarrow-dev libparquet-dev</code></td></tr>
+  <tr><td><code>libparquet-dev</code></td><td>Parquet read/write on top of Arrow</td>
+      <td>installed with libarrow-dev</td></tr>
+  <tr><td><code>libmosquitto-dev</code></td><td>MQTT (linked but not tested here)</td>
+      <td><code>sudo apt install libmosquitto-dev</code></td></tr>
+  <tr><td><code>libyaml-cpp-dev</code></td><td>Config parsing (linked)</td>
+      <td><code>sudo apt install libyaml-cpp-dev</code></td></tr>
+  <tr><td><code>libsimdjson-dev</code></td><td>Fast JSON (used in parse_payload)</td>
+      <td><code>sudo apt install libsimdjson-dev</code></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="results">3. Test Results — 2026-04-12</h2>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-val">32</div><div class="kpi-lbl">Total tests</div></div>
+  <div class="kpi"><div class="kpi-val">32</div><div class="kpi-lbl">Passing</div></div>
+  <div class="kpi"><div class="kpi-val" style="color:#ff7b72">0</div><div class="kpi-lbl">Failing</div></div>
+  <div class="kpi"><div class="kpi-val">7</div><div class="kpi-lbl">Test suites</div></div>
+</div>
+
+<div class="result-box">
+<div class="result-hdr">=== parquet_writer unit tests ===</div>
+<div class="result-pass">  PASS  parse_topic_positional: EMS unit topic extracts all string fields</div>
+<div class="result-pass">  PASS  parse_topic_positional: dtype_hint not stored in strings map</div>
+<div class="result-pass">  PASS  parse_topic_positional: underscore slots are skipped</div>
+<div class="result-pass">  PASS  parse_topic_positional: short topic — missing trailing segments ok</div>
+<div class="result-pass">  PASS  parse_topic_positional: empty topic returns nullopt</div>
+<div class="result-pass">  PASS  parse_topic_positional: single-segment topic sets source_type only</div>
+<div class="result-pass">  PASS  parse_topic_kv: basic kv parsing</div>
+<div class="result-pass">  PASS  parse_topic_kv: non-kv trailing segment becomes field_name</div>
+<div class="result-pass">  PASS  parse_topic_kv: empty topic returns nullopt</div>
+<div class="result-pass">  PASS  parse_iso8601: basic datetime no fractional seconds</div>
+<div class="result-pass">  PASS  parse_iso8601: datetime with milliseconds</div>
+<div class="result-pass">  PASS  parse_iso8601: too-short string returns -1</div>
+<div class="result-pass">  PASS  parse_iso8601: empty string returns -1</div>
+<div class="result-pass">  PASS  parse_iso8601: non-datetime garbage returns -1</div>
+<div class="result-pass">  PASS  parse_payload: EMS iso8601 timestamp stored as int64 microseconds in ints[ts]</div>
+<div class="result-pass">  PASS  parse_payload: value field stored as float</div>
+<div class="result-pass">  PASS  parse_payload: string columns from topic copied to row</div>
+<div class="result-pass">  PASS  parse_payload: integer JSON value for non-ts field stored as double in floats</div>
+<div class="result-pass">  PASS  parse_payload: bad JSON returns row with topic strings intact</div>
+<div class="result-pass">  PASS  parse_payload: field_name renames value column</div>
+<div class="result-pass">  PASS  flush_partition: EMS rows with string columns produce valid parquet</div>
+<div class="result-pass">  PASS  flush_partition: empty rows writes no file</div>
+<div class="result-pass">  PASS  wal: empty rows — no file written</div>
+<div class="result-pass">  PASS  wal: single EMS row round-trips int, float, and string columns</div>
+<div class="result-pass">  PASS  wal: N rows round-trip — count preserved</div>
+<div class="result-pass">  PASS  wal: replay nonexistent file returns empty</div>
+<div class="result-pass">  PASS  wal: replay corrupt file returns empty</div>
+<div class="result-pass">  PASS  compact_directory: merges N files into one, deletes sources</div>
+<div class="result-pass">  PASS  compact_directory: compacted file has sum of source row counts</div>
+<div class="result-pass">  PASS  compact_directory: empty files list returns 0</div>
+<div class="result-pass">  PASS  compact_directory: bad source file — bails, no partial output, sources intact</div>
+<div class="result-pass">  PASS  compact_directory: no .tmp file left on success</div>
+<div class="result-summary">32 passed, 0 failed</div>
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-positional">4. Suite: parse_topic_positional (6 tests)</h2>
+
+<h3>Function under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 370</span>
+<span class="cm">// Splits an MQTT topic by '/' and maps segments to named fields
+// via a config-supplied segment list.
+// Returns std::optional&lt;TopicInfo&gt; — nullopt on empty topic.</span>
+std::optional&lt;TopicInfo&gt; <span class="fn">parse_topic_positional</span>(
+    <span class="kw">const</span> std::string&amp; topic,
+    <span class="kw">const</span> std::vector&lt;std::string&gt;&amp; segments);</pre>
+
+<h3>Segment config used in tests</h3>
+<pre><span class="cm">// EMS topic:  unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}</span>
+<span class="kw">static const</span> std::vector&lt;std::string&gt; g_ems_segments {
+    <span class="str">"_"</span>,          <span class="cm">// [0] source_type prefix — skipped in strings map</span>
+    <span class="str">"unit_id"</span>,    <span class="cm">// [1]</span>
+    <span class="str">"device"</span>,     <span class="cm">// [2]</span>
+    <span class="str">"instance"</span>,   <span class="cm">// [3]</span>
+    <span class="str">"point_name"</span>, <span class="cm">// [4]</span>
+    <span class="str">"dtype_hint"</span>, <span class="cm">// [5] — consumed as type hint, NOT stored in strings map</span>
+};</pre>
+
+<h3>Key behaviours verified</h3>
+<table>
+  <tr><th>Test</th><th>Input</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>All string fields extracted</td>
+      <td><code>unit/u001/ems/0/voltage/float</code></td>
+      <td>source_type=unit, unit_id=u001, device=ems, instance=0, point_name=voltage</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>dtype_hint not in strings map</td>
+      <td><code>…/voltage/float</code></td>
+      <td><code>r.dtype_hint == "float"</code>; strings.count("dtype_hint") == 0</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Underscore slots skipped</td>
+      <td>segment[0] = "_"</td>
+      <td>First segment sets source_type, not added to strings map</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Short topic (trailing segs missing)</td>
+      <td><code>unit/u002/ems</code></td>
+      <td>unit_id and device present; instance absent (count==0)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Empty topic</td>
+      <td><code>""</code></td>
+      <td><code>nullopt</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Single segment</td>
+      <td><code>"unit"</code></td>
+      <td>source_type="unit"; strings empty</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-kv">5. Suite: parse_topic_kv (3 tests)</h2>
+
+<h3>Function under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 410
+// Parses topics of the form:  source_type/key=val/key=val/.../field_name
+// KV pairs go to TopicInfo::kv (map&lt;string,int&gt;).
+// A trailing non-kv segment becomes TopicInfo::field_name.</span>
+std::optional&lt;TopicInfo&gt; <span class="fn">parse_topic_kv</span>(<span class="kw">const</span> std::string&amp; topic);</pre>
+
+<table>
+  <tr><th>Test</th><th>Input</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>Basic KV parsing</td>
+      <td><code>batteries/site=2/rack=1/module=3/cell=5</code></td>
+      <td>source_type=batteries; kv: site=2, rack=1, module=3, cell=5</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Trailing non-KV → field_name</td>
+      <td><code>batteries/site=0/rack=0/voltage</code></td>
+      <td><code>field_name == "voltage"</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Empty topic</td>
+      <td><code>""</code></td>
+      <td><code>nullopt</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-iso">6. Suite: parse_iso8601 (5 tests)</h2>
+
+<h3>Function under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 468
+// Parses ISO 8601 UTC timestamps.
+// Returns int64_t microseconds since epoch, or -1 on failure.</span>
+<span class="kw">static</span> int64_t <span class="fn">parse_iso8601</span>(std::string_view sv);</pre>
+
+<h3>Implementation notes</h3>
+<p>Uses <code>strptime()</code> for the <code>%Y-%m-%dT%H:%M:%S</code> base, then
+<code>timegm()</code> to convert to epoch seconds without local timezone interference.
+Fractional seconds are parsed manually — up to 6 decimal digits, zero-padded to microseconds.</p>
+
+<pre><span class="cm">// Internal logic (simplified)</span>
+<span class="kw">int64_t</span> epoch_us = <span class="kw">static_cast</span>&lt;<span class="kw">int64_t</span>&gt;(<span class="fn">timegm</span>(&amp;t)) * <span class="num">1'000'000LL</span>;
+<span class="kw">if</span> (*p == <span class="str">'.'</span>) {
+    <span class="cm">// parse fractional: "775" → 775000 µs,  "7" → 700000 µs</span>
+    <span class="kw">while</span> (digits++ &lt; <span class="num">6</span>) frac *= <span class="num">10</span>;
+    epoch_us += frac;
+}
+<span class="kw">return</span> epoch_us;</pre>
+
+<table>
+  <tr><th>Test</th><th>Input</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>No fractional seconds</td>
+      <td><code>2024-11-15T21:27:52Z</code></td>
+      <td>Returns positive int64 µs</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Millisecond precision</td>
+      <td><code>2024-11-15T21:27:52.775Z</code></td>
+      <td>Difference from base = 775000 µs (±1000)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Too-short string</td>
+      <td><code>2024-11</code> (len &lt; 20)</td>
+      <td>Returns -1</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Empty string</td>
+      <td><code>""</code></td>
+      <td>Returns -1</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Garbage input</td>
+      <td><code>not-a-timestamp-at-all!!</code></td>
+      <td>Returns -1</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<div class="note">
+  <strong>Return unit is microseconds.</strong> The result is stored directly into
+  <code>row.ints["ts"]</code> and later written as an Arrow
+  <code>timestamp(TimeUnit::MICRO, "UTC")</code> column. DuckDB reads this as
+  <code>TIMESTAMP WITH TIME ZONE</code> automatically.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-payload">7. Suite: parse_payload (6 tests)</h2>
+
+<h3>Function under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 495
+// Parses EMS JSON payload {"ts":"...","value":...} into a Row struct.
+// Uses simdjson for zero-copy DOM parsing.
+// topic.strings are pre-copied to row.strings (unit_id, device, etc.).</span>
+Row <span class="fn">parse_payload</span>(<span class="kw">const</span> std::string&amp; payload_str,
+                  <span class="kw">const</span> TopicInfo&amp; topic,
+                  <span class="kw">const</span> Config&amp; cfg);</pre>
+
+<h3>Value routing logic</h3>
+<p>The JSON object is iterated with simdjson. Each key is routed based on the config:</p>
+<pre><span class="cm">// Timestamp field (configured via cfg.timestamp_field = "ts"):</span>
+<span class="kw">if</span> (cfg.timestamp_format == <span class="str">"iso8601"</span>)
+    row.ints[<span class="str">"ts"</span>] = <span class="fn">parse_iso8601</span>(sv);   <span class="cm">// → ints["ts"] as µs epoch</span>
+<span class="kw">else</span>
+    row.ints[<span class="str">"ts"</span>] = numeric_epoch_us;      <span class="cm">// int or float×1e6</span>
+
+<span class="cm">// Non-timestamp scalar fields:</span>
+<span class="cm">// Try double first, then int64 (cast to double), then string.</span>
+<span class="cm">// Integer JSON values (e.g. "value":7) are stored as double.</span>
+row.floats[k] = d;        <span class="cm">// double parse succeeded</span>
+row.floats[k] = (double)iv; <span class="cm">// int64 fallback — cast to double</span>
+row.strings[k] = sv;      <span class="cm">// string fallback</span></pre>
+
+<div class="note">
+  <strong>dtype_hint drives Arrow column type at flush time, not parse time.</strong>
+  All non-ts scalar values are stored as <code>double</code> in <code>row.floats</code>
+  during parsing. At <code>flush_partition()</code>, the dtype_hint can influence which
+  Arrow builder is used per column. This is by design — the parse path stays simple and
+  uniform.
+</div>
+
+<table>
+  <tr><th>Test</th><th>Input JSON</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>ISO ts → ints["ts"]</td>
+      <td><code>{"ts":"2024-11-15T21:27:52.775Z","value":0.999}</code></td>
+      <td><code>r.ints["ts"] &gt; 0</code>; <code>r.floats["value"] ≈ 0.999</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Float value → floats["value"]</td>
+      <td><code>{"ts":"...","value":42.5}</code></td>
+      <td><code>r.floats["value"] ≈ 42.5</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Topic strings copied to row</td>
+      <td>TopicInfo with unit_id=u007, device=ems, point_name=current</td>
+      <td>All three appear in <code>r.strings</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Integer JSON value → stored as double</td>
+      <td><code>{"ts":"...","value":7}</code></td>
+      <td><code>r.floats["value"] ≈ 7.0</code> (not in ints)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Bad JSON — topic strings intact</td>
+      <td><code>{not valid json!!}</code></td>
+      <td><code>r.strings["unit_id"] == "u001"</code>; floats empty</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>field_name renames value column</td>
+      <td><code>topic.field_name = "voltage"</code></td>
+      <td>floats has "voltage", not "value"</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-flush">8. Suite: flush_partition (2 tests)</h2>
+
+<h3>Function under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 758
+// Serialises a vector of Rows to a Parquet file using Arrow builders.</span>
+arrow::Status <span class="fn">flush_partition</span>(<span class="kw">const</span> std::string&amp; path,
+                               <span class="kw">const</span> std::vector&lt;Row&gt;&amp; rows,
+                               <span class="kw">const</span> std::string&amp; compression,
+                               <span class="kw">bool</span>   merge_wide = <span class="kw">false</span>,
+                               <span class="kw">const</span> std::string&amp; partition_key = <span class="str">""</span>,
+                               <span class="kw">bool</span>   null_fill = <span class="kw">false</span>,
+                               <span class="kw">int</span>    null_fill_reset_interval = <span class="num">3600</span>);</pre>
+
+<h3>Arrow/Parquet path inside flush_partition</h3>
+<pre><span class="cm">// 1. Collect all column names across rows (sorted for schema stability)</span>
+std::set&lt;std::string&gt; si, sf, ss;
+<span class="cm">// ... populate from row.ints / row.floats / row.strings ...</span>
+
+<span class="cm">// 2. Build Arrow arrays with typed builders</span>
+arrow::TimestampBuilder  b(ts_type, pool);   <span class="cm">// for "ts" column — MICRO/UTC</span>
+arrow::Int64Builder      b;                  <span class="cm">// all other int columns</span>
+arrow::DoubleBuilder     b;                  <span class="cm">// all float columns</span>
+arrow::StringBuilder     b;                  <span class="cm">// all string columns</span>
+<span class="cm">// Each builder: b.Append(value) or b.AppendNull() per row</span>
+<span class="cm">// b.Finish(&amp;arr) → shared_ptr&lt;arrow::Array&gt;</span>
+
+<span class="cm">// 3. Build schema + table</span>
+arrow::schema(fields)        <span class="cm">// vector&lt;shared_ptr&lt;Field&gt;&gt;</span>
+arrow::Table::Make(schema, arrays)
+
+<span class="cm">// 4. Write to Parquet file via write_parquet_table()</span>
+parquet::WriterProperties::Builder()
+    .compression(parquet::Compression::SNAPPY)
+    -&gt;build()
+parquet::arrow::WriteTable(*table, pool, out, num_rows, props)
+<span class="cm">// out = arrow::io::FileOutputStream::Open(path)</span></pre>
+
+<h4>PAR1 magic check helper</h4>
+<pre><span class="cm">// tests verify the file is a valid Parquet file by checking magic bytes</span>
+<span class="kw">static bool</span> <span class="fn">is_valid_parquet</span>(<span class="kw">const</span> std::string&amp; path) {
+    <span class="cm">// reads first 4 bytes and last 4 bytes</span>
+    <span class="kw">return</span> std::string(head, <span class="num">4</span>) == <span class="str">"PAR1"</span> &amp;&amp; std::string(tail, <span class="num">4</span>) == <span class="str">"PAR1"</span>;
+}</pre>
+
+<table>
+  <tr><th>Test</th><th>Input</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>EMS rows with string columns produce valid parquet</td>
+      <td>2 rows: unit_id, point_name (strings), value, ts (float)</td>
+      <td><code>st.ok()</code> &amp; PAR1 magic present in output file</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Empty rows — no file written</td>
+      <td><code>rows = {}</code></td>
+      <td><code>st.ok()</code>; file does NOT exist (early return)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-wal">9. Suite: WAL round-trip (5 tests)</h2>
+
+<h3>Functions under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 886 — Write-Ahead Log using Arrow IPC file format.
+// Arrow IPC is used (not Parquet) because it is lossless for all Arrow types,
+// has lower write overhead, and is read back only by the writer itself on restart.</span>
+
+arrow::Status <span class="fn">write_wal_ipc</span>(<span class="kw">const</span> std::string&amp; path,
+                              <span class="kw">const</span> std::vector&lt;Row&gt;&amp; rows);
+
+std::vector&lt;Row&gt; <span class="fn">wal_replay_file</span>(<span class="kw">const</span> std::string&amp; path);</pre>
+
+<h3>Arrow IPC write path</h3>
+<pre><span class="cm">// write_wal_ipc() — Arrow IPC file write</span>
+ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> table, <span class="fn">build_table</span>(rows));
+ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> out, arrow::io::FileOutputStream::<span class="fn">Open</span>(path));
+ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> writer, arrow::ipc::<span class="fn">MakeFileWriter</span>(out, table-&gt;<span class="fn">schema</span>()));
+ARROW_RETURN_NOT_OK(writer-&gt;<span class="fn">WriteTable</span>(*table));
+ARROW_RETURN_NOT_OK(writer-&gt;<span class="fn">Close</span>());
+<span class="kw">return</span> out-&gt;<span class="fn">Close</span>();</pre>
+
+<h3>Arrow IPC replay path</h3>
+<pre><span class="cm">// wal_replay_file() — Arrow IPC file read with chunk handling</span>
+<span class="kw">auto</span> reader = arrow::ipc::RecordBatchFileReader::<span class="fn">Open</span>(infile);
+<span class="cm">// Read all record batches</span>
+<span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; reader-&gt;<span class="fn">num_record_batches</span>(); ++i)
+    batches.<span class="fn">push_back</span>(reader-&gt;<span class="fn">ReadRecordBatch</span>(i));
+<span class="kw">auto</span> table = arrow::Table::<span class="fn">FromRecordBatches</span>(batches);
+
+<span class="cm">// CRITICAL: use arrow::Concatenate() to flatten chunks before value access.
+// table->column(c)->chunk(0) silently drops data if the IPC table spans
+// multiple record batches — Concatenate ensures all rows are accessible.</span>
+<span class="kw">auto</span> arr = arrow::<span class="fn">Concatenate</span>(table-&gt;<span class="fn">column</span>(c)-&gt;<span class="fn">chunks</span>());
+
+<span class="cm">// Column type dispatch via Arrow type ID:</span>
+<span class="kw">if</span> (type_id == arrow::Type::<span class="tp">INT64</span>)
+    <span class="kw">static_cast</span>&lt;arrow::Int64Array*&gt;(arr)-&gt;<span class="fn">Value</span>(r);
+<span class="kw">else if</span> (type_id == arrow::Type::<span class="tp">DOUBLE</span>)
+    <span class="kw">static_cast</span>&lt;arrow::DoubleArray*&gt;(arr)-&gt;<span class="fn">Value</span>(r);
+<span class="kw">else if</span> (type_id == arrow::Type::<span class="tp">STRING</span> || type_id == arrow::Type::<span class="tp">LARGE_STRING</span>)
+    <span class="kw">static_cast</span>&lt;arrow::StringArray*&gt;(arr)-&gt;<span class="fn">GetString</span>(r);</pre>
+
+<table>
+  <tr><th>Test</th><th>Input</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>Empty rows — no file written</td>
+      <td><code>rows = {}</code></td>
+      <td><code>st.ok()</code>; file does NOT exist</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Single row round-trips all column types</td>
+      <td>1 row: unit_id (str), point_name (str), value (float), ts (float), project_id (int)</td>
+      <td>All values recovered exactly after write + replay</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>N rows — row count preserved</td>
+      <td>100 rows</td>
+      <td><code>back.size() == 100</code></td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Replay non-existent file</td>
+      <td>Path that does not exist</td>
+      <td>Returns empty vector (no exception)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Replay corrupt file</td>
+      <td>File containing garbage bytes</td>
+      <td>Returns empty vector (no exception)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<div class="note">
+  <strong>IPC vs Parquet:</strong> WAL files use Arrow IPC (not Parquet) for three reasons:
+  (1) no footer-rewrite requirement — IPC appends incrementally;
+  (2) lossless for all Arrow types including null bits;
+  (3) lower per-file overhead for small batches written under MQTT throughput.
+  WAL files are only read by <code>wal_replay_file()</code> on startup — they are never
+  queried by DuckDB.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="suite-compact">10. Suite: compact_directory (5 tests)</h2>
+
+<h3>Function under test</h3>
+<pre><span class="cm">// parquet_writer.cpp ~line 968
+// Merges N flush files in one directory into a single compact_&lt;ts&gt;.parquet file.
+// Atomically renames via a .tmp intermediate.
+// Returns count of source files consumed (0 on failure).</span>
+<span class="kw">static int</span> <span class="fn">compact_directory</span>(<span class="kw">const</span> fs::path&amp; dir,
+                               <span class="kw">const</span> std::vector&lt;fs::path&gt;&amp; files,
+                               <span class="kw">const</span> Config&amp; cfg);</pre>
+
+<h3>Arrow/Parquet read path inside compact_directory</h3>
+<pre><span class="cm">// Step 1 — read each flush file using read_parquet_table()</span>
+<span class="kw">static</span> arrow::Result&lt;std::shared_ptr&lt;arrow::Table&gt;&gt;
+<span class="fn">read_parquet_table</span>(<span class="kw">const</span> std::string&amp; path) {
+    ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> infile, arrow::io::ReadableFile::<span class="fn">Open</span>(path));
+    ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> reader,
+        parquet::arrow::<span class="fn">OpenFile</span>(infile, arrow::<span class="fn">default_memory_pool</span>()));
+    std::shared_ptr&lt;arrow::Table&gt; table;
+    ARROW_RETURN_NOT_OK(reader-&gt;<span class="fn">ReadTable</span>(&amp;table));
+    <span class="kw">return</span> table;
+}</pre>
+
+<pre><span class="cm">// Step 2 — concatenate tables (handles schema differences between files)</span>
+<span class="kw">auto</span> result = arrow::<span class="fn">ConcatenateTables</span>(tables);
+
+<span class="cm">// Step 3 — write merged table to compact_&lt;ts&gt;.parquet.tmp then rename atomically</span>
+<span class="fn">write_parquet_table</span>(out_path + <span class="str">".tmp"</span>, *result, cfg.compression);
+fs::<span class="fn">rename</span>(out_path + <span class="str">".tmp"</span>, out_path, ec);
+
+<span class="cm">// Step 4 — delete source files only on success</span>
+<span class="kw">for</span> (<span class="kw">const auto</span>&amp; f : files) fs::<span class="fn">remove</span>(f, ec);</pre>
+
+<table>
+  <tr><th>Test</th><th>Input</th><th>Expected</th><th>Result</th></tr>
+  <tr><td>Merges N files into one, deletes sources</td>
+      <td>3 flush files × 20 rows</td>
+      <td>consumed==3; sources gone; exactly 1 compact_ file present</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Row count preserved across merge</td>
+      <td>4 flush files × 50 rows</td>
+      <td>compact file has 200 rows (verified via read_parquet_table)</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Empty files list returns 0</td>
+      <td><code>files = {}</code></td>
+      <td>consumed==0; no output file</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>Bad source file — bails, sources intact</td>
+      <td>1 valid + 1 corrupt file</td>
+      <td>consumed==0; both source files still exist; no partial output</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+  <tr><td>No .tmp file left on success</td>
+      <td>3 flush files × 5 rows</td>
+      <td>No file ending in <code>.tmp</code> in directory after compact</td>
+      <td><span class="badge-pass">PASS</span></td></tr>
+</table>
+
+<div class="warn">
+  <strong>Schema evolution note:</strong> <code>arrow::ConcatenateTables()</code> requires
+  identical schemas by default. In production, wide-pivot flush files from different uptime
+  windows can have different column sets (e.g. early files before a COV reset may have 17
+  columns; later files have 64). When this occurs, the compactor must pass
+  <code>ConcatenateTablesOptions::Defaults()</code> with <code>unify_schemas=true</code>, or
+  use DuckDB's <code>union_by_name=true</code> for the merge. The unit test uses uniform
+  schema flush files to isolate the row-count / atomicity behaviour.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="arrow-api">11. Arrow C++ API Reference</h2>
+
+<p>Functions and types used across the tested code paths:</p>
+
+<table class="api-table">
+  <tr><th>Arrow API</th><th>Header</th><th>Used for</th></tr>
+  <tr><td><code>arrow::TimestampBuilder</code></td>
+      <td><code>&lt;arrow/builder.h&gt;</code></td>
+      <td>Build <code>ts</code> column as TIMESTAMP[µs, UTC]. Append int64 µs values.</td></tr>
+  <tr><td><code>arrow::Int64Builder</code></td>
+      <td><code>&lt;arrow/builder.h&gt;</code></td>
+      <td>Build all non-ts integer columns (fault codes, contactor state, etc.)</td></tr>
+  <tr><td><code>arrow::DoubleBuilder</code></td>
+      <td><code>&lt;arrow/builder.h&gt;</code></td>
+      <td>Build all float columns (voltage, current, SOC, etc.)</td></tr>
+  <tr><td><code>arrow::StringBuilder</code></td>
+      <td><code>&lt;arrow/builder.h&gt;</code></td>
+      <td>Build string columns (unit_id, device, point_name)</td></tr>
+  <tr><td><code>b.Append(val)</code> / <code>b.AppendNull()</code></td>
+      <td>builder methods</td>
+      <td>Populate arrays row-by-row; AppendNull for missing values (COV/sparse)</td></tr>
+  <tr><td><code>b.Finish(&amp;arr)</code></td>
+      <td>builder method</td>
+      <td>Finalise builder → <code>shared_ptr&lt;arrow::Array&gt;</code></td></tr>
+  <tr><td><code>arrow::schema(fields)</code></td>
+      <td><code>&lt;arrow/type.h&gt;</code></td>
+      <td>Build schema from <code>vector&lt;shared_ptr&lt;Field&gt;&gt;</code></td></tr>
+  <tr><td><code>arrow::Table::Make(schema, arrays)</code></td>
+      <td><code>&lt;arrow/table.h&gt;</code></td>
+      <td>Assemble finished arrays into a columnar table</td></tr>
+  <tr><td><code>arrow::Table::FromRecordBatches(batches)</code></td>
+      <td><code>&lt;arrow/table.h&gt;</code></td>
+      <td>WAL replay: reconstruct Table from IPC record batches</td></tr>
+  <tr><td><code>arrow::ConcatenateTables(tables)</code></td>
+      <td><code>&lt;arrow/table.h&gt;</code></td>
+      <td>Compact: merge N tables with identical schema into one</td></tr>
+  <tr><td><code>arrow::Concatenate(chunks)</code></td>
+      <td><code>&lt;arrow/compute.h&gt;</code></td>
+      <td>WAL replay: flatten chunked arrays before value access</td></tr>
+  <tr><td><code>arrow::io::FileOutputStream::Open(path)</code></td>
+      <td><code>&lt;arrow/io/file.h&gt;</code></td>
+      <td>Write Parquet and IPC files to disk</td></tr>
+  <tr><td><code>arrow::io::ReadableFile::Open(path)</code></td>
+      <td><code>&lt;arrow/io/file.h&gt;</code></td>
+      <td>Open Parquet and IPC files for reading</td></tr>
+  <tr><td><code>arrow::io::BufferOutputStream::Create()</code></td>
+      <td><code>&lt;arrow/io/memory.h&gt;</code></td>
+      <td>In-memory serialisation for <code>GET /current</code> HTTP endpoint (planned)</td></tr>
+  <tr><td><code>arrow::timestamp(TimeUnit::MICRO,"UTC")</code></td>
+      <td><code>&lt;arrow/type.h&gt;</code></td>
+      <td>Schema type for ts column. DuckDB maps this to TIMESTAMPTZ automatically.</td></tr>
+  <tr><td><code>arr->IsNull(row_idx)</code></td>
+      <td>Array method</td>
+      <td>Null check before Value() during WAL replay / compactor read-back</td></tr>
+  <tr><td><code>ARROW_ASSIGN_OR_RAISE(var, expr)</code></td>
+      <td><code>&lt;arrow/result.h&gt;</code></td>
+      <td>Propagate errors through <code>arrow::Result&lt;T&gt;</code> return values</td></tr>
+  <tr><td><code>ARROW_RETURN_NOT_OK(st)</code></td>
+      <td><code>&lt;arrow/status.h&gt;</code></td>
+      <td>Propagate <code>arrow::Status</code> errors up the call stack</td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="parquet-api">12. Parquet C++ API Reference</h2>
+
+<table class="api-table">
+  <tr><th>Parquet API</th><th>Header</th><th>Used for</th></tr>
+  <tr><td><code>parquet::WriterProperties::Builder()</code></td>
+      <td><code>&lt;parquet/properties.h&gt;</code></td>
+      <td>Configure compression codec (SNAPPY / ZSTD / LZ4 / UNCOMPRESSED)</td></tr>
+  <tr><td><code>.compression(codec)-&gt;build()</code></td>
+      <td>builder chain</td>
+      <td>Produce a <code>shared_ptr&lt;WriterProperties&gt;</code></td></tr>
+  <tr><td><code>parquet::arrow::WriteTable(table, pool, sink, row_group_size, props)</code></td>
+      <td><code>&lt;parquet/arrow/writer.h&gt;</code></td>
+      <td>Serialise an Arrow Table to Parquet format. <code>row_group_size</code> = num_rows puts all rows in one row group.</td></tr>
+  <tr><td><code>parquet::arrow::OpenFile(infile, pool)</code></td>
+      <td><code>&lt;parquet/arrow/reader.h&gt;</code></td>
+      <td>Open a Parquet file for Arrow-level reading. Returns <code>FileReader</code>.</td></tr>
+  <tr><td><code>reader-&gt;ReadTable(&amp;table)</code></td>
+      <td><code>FileReader</code> method</td>
+      <td>Read the entire Parquet file into an Arrow Table</td></tr>
+  <tr><td><code>parquet::Compression::SNAPPY</code></td>
+      <td><code>&lt;parquet/properties.h&gt;</code></td>
+      <td>Default codec — fast read/write, good ratio for time-series. See also ZSTD for archival.</td></tr>
+</table>
+
+<div class="note">
+  <strong>Row group sizing:</strong> all flush files use a single row group (row_group_size
+  = num_rows). This is optimal for DuckDB reads — it fetches the footer once then reads
+  exactly the columns it needs in one Range request per column page. Multiple row groups
+  would multiply the footer/metadata overhead without benefit for files &lt;50k rows.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="ipc-api">13. Arrow IPC API Reference</h2>
+
+<table class="api-table">
+  <tr><th>IPC API</th><th>Header</th><th>Used for</th></tr>
+  <tr><td><code>arrow::ipc::MakeFileWriter(sink, schema)</code></td>
+      <td><code>&lt;arrow/ipc/writer.h&gt;</code></td>
+      <td>Create IPC file writer. Schema is fixed at creation time.</td></tr>
+  <tr><td><code>writer-&gt;WriteTable(table)</code></td>
+      <td>RecordBatchWriter method</td>
+      <td>Write all rows as one or more record batches</td></tr>
+  <tr><td><code>writer-&gt;Close()</code></td>
+      <td>RecordBatchWriter method</td>
+      <td>Write IPC footer (schema + block offsets). Must be called before file close.</td></tr>
+  <tr><td><code>arrow::ipc::RecordBatchFileReader::Open(infile)</code></td>
+      <td><code>&lt;arrow/ipc/reader.h&gt;</code></td>
+      <td>Open IPC file for reading. Reads footer on open.</td></tr>
+  <tr><td><code>reader-&gt;num_record_batches()</code></td>
+      <td>RecordBatchFileReader method</td>
+      <td>Number of record batches in the file</td></tr>
+  <tr><td><code>reader-&gt;ReadRecordBatch(i)</code></td>
+      <td>RecordBatchFileReader method</td>
+      <td>Read the i-th batch</td></tr>
+</table>
+
+<div class="note">
+  <strong>IPC vs Parquet for WAL:</strong> Arrow IPC files have no per-value compression
+  but support incremental append and are lossless for all Arrow types including validity
+  bitmaps. Parquet files require a complete footer rewrite on every write, making them
+  unsuitable for WAL use. The IPC format adds ~1–2 KB overhead per file and encodes rows
+  in column order, so replay is O(columns × rows) — the same complexity as building the
+  original table.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="framework">14. test_runner.h — Zero-Dependency Framework</h2>
+
+<p>No external test library. The entire framework is ~80 lines in a single header.
+Tests register themselves at static-initialisation time via <code>_TestReg</code>.</p>
+
+<pre><span class="cm">// Registration via RAII at static init time</span>
+<span class="kw">struct</span> _TestReg {
+    _TestReg(<span class="kw">const char</span>* name, std::function&lt;<span class="kw">void</span>()&gt; fn) {
+        _test_registry().<span class="fn">push_back</span>({name, fn});
+    }
+};
+
+<span class="kw">#define</span> TEST(name) \
+    <span class="kw">static void</span> _tf_LINE(); \
+    <span class="kw">static</span> _TestReg _tr_LINE(name, _tf_LINE); \
+    <span class="kw">static void</span> _tf_LINE()     <span class="cm">// body follows in { }</span></pre>
+
+<h4>Assertion macros</h4>
+<table>
+  <tr><th>Macro</th><th>Checks</th><th>On failure</th></tr>
+  <tr><td><code>EXPECT_TRUE(expr)</code></td><td>expr is truthy</td>
+      <td>throws <code>std::runtime_error</code> with file:line</td></tr>
+  <tr><td><code>EXPECT_FALSE(expr)</code></td><td>expr is falsy</td><td>same</td></tr>
+  <tr><td><code>EXPECT_EQ(a, b)</code></td><td>a == b</td>
+      <td>prints got/expected values</td></tr>
+  <tr><td><code>EXPECT_NE(a, b)</code></td><td>a != b</td><td>prints value</td></tr>
+  <tr><td><code>EXPECT_NEAR(a, b, eps)</code></td><td>|a-b| ≤ eps (doubles)</td>
+      <td>prints got/expected/tolerance</td></tr>
+</table>
+
+<div class="note">
+  <strong>Fix applied 2026-04-12:</strong> <code>EXPECT_NEAR</code> originally used
+  <code>double _a = (a), _b = (b);</code> (comma declarator). Under gcc -std=c++20, this
+  caused <code>_b was not declared in this scope</code> due to macro token-paste interactions
+  with the <code>_T_CAT(a,b)</code> helper above it in the same header. Fixed by splitting
+  to two separate declarations: <code>double _nr_a = (a); double _nr_b = (b);</code> using
+  distinct variable names to avoid any shadowing.
+</div>
+
+</div><!-- .content -->
+
+<script>
+  const toc = document.querySelector('.sidebar');
+  if (toc) {
+    const links = toc.querySelectorAll('a');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          links.forEach(l => l.style.fontWeight = '');
+          const match = toc.querySelector(`a[href="#${e.target.id}"]`);
+          if (match) match.style.fontWeight = 'bold';
+        }
+      });
+    }, { threshold: 0.4 });
+    document.querySelectorAll('h2[id]').forEach(h => observer.observe(h));
+  }
+</script>
+</body>
+</html>

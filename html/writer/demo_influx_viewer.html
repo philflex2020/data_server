@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Demo InfluxDB Viewer</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+    --raw-col:#d29922; --base-col:#58a6ff; --filt-col:#3fb950;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:10px; }
+  .topbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .topbar label { font-size:.8rem; color:var(--muted); }
+  input[type=text], input[type=number], select {
+    background:var(--surface); border:1px solid var(--border); color:var(--text);
+    padding:4px 8px; border-radius:4px; font-size:.82rem; }
+  input:focus, select:focus { outline:none; border-color:var(--accent); }
+  .btn { border:1px solid var(--border); background:var(--surface); color:var(--text);
+         padding:4px 12px; border-radius:4px; cursor:pointer; font-size:.82rem;
+         transition:border-color .15s, color .15s; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn.active { background:var(--green); border-color:var(--green); color:#0d1117; font-weight:700; }
+  .btn-sm { padding:2px 8px; font-size:.75rem; }
+
+  /* ── layout ── */
+  /* RAW panel — full width, yellow */
+  .raw-panel-wrap { margin-bottom:10px; }
+  /* base + filt — side by side */
+  .dual-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+  @media(max-width:1000px){ .dual-grid{ grid-template-columns:1fr; } }
+
+  .side-wrap { display:flex; flex-direction:column; gap:8px; }
+  .side-hdr  { display:flex; align-items:center; gap:8px; padding:6px 12px;
+               border-radius:6px 6px 0 0; border:1px solid var(--border); border-bottom:none; }
+  .side-hdr.raw  { border-color:var(--raw-col);  background:#2d200018; }
+  .side-hdr.base { border-color:var(--base-col); background:#0c2d6b18; }
+  .side-hdr.filt { border-color:var(--filt-col); background:#0d441818; }
+  .side-title { font-weight:700; font-size:.85rem; }
+  .side-hdr.raw  .side-title { color:var(--raw-col); }
+  .side-hdr.base .side-title { color:var(--base-col); }
+  .side-hdr.filt .side-title { color:var(--filt-col); }
+
+  /* ── diagram ── */
+  .diagram-wrap { background:var(--surface); border:1px solid var(--border);
+                  border-radius:8px; padding:14px; margin-bottom:14px; overflow-x:auto; }
+  svg.arch { display:block; margin:0 auto; }
+  .box-yellow { fill:#2d200044; stroke:#d29922; stroke-width:1.5; }
+  .box-accent { fill:#0c2d6b44; stroke:#58a6ff; stroke-width:1.5; }
+  .box-green  { fill:#0d442944; stroke:#3fb950; stroke-width:1.5; }
+  .box-plain  { fill:#21262d;   stroke:#30363d; stroke-width:1.5; }
+  .box-purple { fill:#1a0f2e44; stroke:#bc8cff; stroke-width:1.5; }
+  .svlt { fill:#c9d1d9; font-size:11px; font-weight:700; font-family:'Consolas',monospace; }
+  .svls { fill:#8b949e; font-size:9px;  font-family:'Consolas',monospace; }
+  .svly { fill:#d29922; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .svlb { fill:#58a6ff; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .svlg { fill:#3fb950; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .aY { stroke:#d2992288; stroke-width:2; fill:none; marker-end:url(#aY); stroke-dasharray:6,3; }
+  .aB { stroke:#58a6ff88; stroke-width:2; fill:none; marker-end:url(#aB); stroke-dasharray:6,3; }
+  .aG { stroke:#3fb95088; stroke-width:2; fill:none; marker-end:url(#aG); stroke-dasharray:6,3; }
+  .side-sub   { font-size:.72rem; color:var(--muted); font-family:'Consolas',monospace; }
+
+  /* ── stats row ── */
+  .stats-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+  .scard { background:var(--surface); border:1px solid var(--border); border-radius:5px; padding:5px 8px; }
+  .scard-k { font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .scard-v { font-size:1rem; font-weight:700; font-family:'Consolas',monospace; }
+  .raw  .scard-v { color:var(--raw-col);  }
+  .base .scard-v { color:var(--base-col); }
+  .filt .scard-v { color:var(--filt-col); }
+
+  /* ── panel / schema ── */
+  .side-body { background:var(--surface); border:1px solid var(--border);
+               border-top:none; border-radius:0 0 8px 8px; padding:8px; }
+  .side-body.raw  { border-color:var(--raw-col); }
+  .side-body.base { border-color:var(--base-col); }
+  .side-body.filt { border-color:var(--filt-col); }
+  .panel-layout { display:grid; grid-template-columns:180px 1fr; gap:8px; }
+  @media(max-width:1400px) { .panel-layout { grid-template-columns:150px 1fr; } }
+  .schema-panel { overflow-y:auto; max-height:320px; }
+  .panel-title { font-size:.68rem; color:var(--muted); text-transform:uppercase;
+                 letter-spacing:.05em; margin-bottom:6px; }
+  .schema-item { font-size:.72rem; font-family:'Consolas',monospace; padding:2px 4px;
+                 border-radius:3px; cursor:pointer; }
+  .schema-item:hover { background:var(--code-bg); }
+  .schema-item .si-field { color:var(--green); }
+  .schema-item .si-tag   { color:var(--purple); }
+  .schema-sep  { font-size:.65rem; color:var(--border); text-transform:uppercase;
+                 letter-spacing:.06em; padding:4px 4px 1px; }
+
+  /* ── feed ── */
+  .feed-head { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:5px; }
+  .feed { background:#0a0d11; border:1px solid var(--border); border-radius:5px;
+          padding:5px 8px; font-family:'Consolas',monospace; font-size:.7rem;
+          height:320px; overflow-y:auto; }
+  .row-hdr  { display:grid; gap:4px; padding:2px 0 3px;
+              border-bottom:2px solid var(--border); color:var(--muted); font-size:.65rem;
+              text-transform:uppercase; letter-spacing:.04em; }
+  .data-row { display:grid; gap:4px; padding:2px 0;
+              border-bottom:1px solid #1c2128; align-items:baseline; cursor:pointer; }
+
+  /* ── float_dedup type highlighting ── */
+  /* All field types are subject to float_dedup — colour shows dedup method */
+  .hl-float   { background:#d2992214; border-left:2px solid var(--yellow); padding-left:2px; }
+  .hl-intbool { background:#bc8cff14; border-left:2px solid var(--purple); padding-left:2px; }
+  .hl-string  { background:#58a6ff14; border-left:2px solid var(--accent);  padding-left:2px; }
+  /* simulate-drops overlay — applied on top of type colour */
+  .hl-drop    { opacity:.3; }
+  .hl-keep    { outline:1px solid var(--green); outline-offset:-1px; }
+
+  /* ── legend ── */
+  .legend { display:flex; gap:10px; flex-wrap:wrap; font-size:.68rem;
+            padding:4px 8px; background:var(--code-bg); border-radius:4px; }
+  .legend-item { display:flex; align-items:center; gap:4px; }
+  .legend-swatch { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+  .data-row:hover { background:#1c2128; }
+  .data-row:last-child { border:none; }
+  .c-ts    { color:#444c57; font-size:.65rem; white-space:nowrap; }
+  .c-meas  { color:var(--yellow); }
+  .c-tags  { color:var(--purple); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .c-field { color:var(--green); }
+  .c-val   { color:var(--accent); text-align:right; }
+
+  /* ── flux query box ── */
+  .query-box { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+               padding:10px; margin-bottom:14px; }
+  .query-box h3 { font-size:.78rem; color:var(--muted); margin-bottom:8px; }
+  textarea { width:100%; height:72px; background:var(--code-bg); border:1px solid var(--border);
+             color:var(--text); font-family:'Consolas',monospace; font-size:.75rem;
+             padding:5px 8px; border-radius:4px; resize:vertical; }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  #query-result { background:#0a0d11; border:1px solid var(--border); border-radius:4px;
+                  padding:8px; font-family:'Consolas',monospace; font-size:.72rem;
+                  color:var(--text); max-height:200px; overflow:auto; margin-top:8px;
+                  white-space:pre; }
+  .err { color:var(--red); }
+
+  /* ── history modal ── */
+  .modal-overlay { position:fixed; inset:0; background:#000000bb;
+                   display:flex; align-items:center; justify-content:center; z-index:1000; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+           padding:18px 20px; width:min(820px,95vw); max-height:90vh;
+           display:flex; flex-direction:column; gap:12px; box-shadow:0 16px 48px #00000099; }
+  .modal-hdr  { display:flex; justify-content:space-between; align-items:flex-start; }
+  .modal-title { font-size:.95rem; font-weight:700; color:var(--accent); }
+  .modal-sub   { font-size:.75rem; color:var(--muted); margin-top:3px; }
+  .modal-close { background:none; border:none; color:var(--muted); font-size:1.3rem;
+                 cursor:pointer; line-height:1; padding:0 4px; }
+  .modal-close:hover { color:var(--red); }
+  .modal-chart { background:#0a0d11; border:1px solid var(--border); border-radius:6px; padding:8px; }
+  canvas#hist-canvas { display:block; width:100%; height:160px; }
+  .modal-stats { display:flex; gap:16px; font-size:.78rem; font-family:'Consolas',monospace; }
+  .modal-stats span { color:var(--muted); }
+  .modal-stats strong { color:var(--text); margin-left:4px; }
+  .hist-table-wrap { overflow-y:auto; max-height:260px;
+                     background:#0a0d11; border:1px solid var(--border); border-radius:6px; }
+  .hist-table { width:100%; border-collapse:collapse; font-family:'Consolas',monospace; font-size:.74rem; }
+  .hist-table th { padding:4px 10px; text-align:left; color:var(--muted); font-size:.68rem;
+                   text-transform:uppercase; letter-spacing:.04em;
+                   border-bottom:2px solid var(--border); position:sticky; top:0; background:#0a0d11; }
+  .hist-table td { padding:3px 10px; border-bottom:1px solid #1c2128; }
+  .hist-table tr:last-child td { border:none; }
+  .hist-table .td-ts    { color:#444c57; }
+  .hist-table .td-val   { color:var(--accent); text-align:right; }
+  .hist-table .td-delta { font-size:.68rem; text-align:right; }
+  .hist-table .td-delta.pos { color:var(--green); }
+  .hist-table .td-delta.neg { color:var(--red); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="evelyn_live_compare.html">Live Compare</a>
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="ems_simulator_control.html">Sim Control</a>
+  <a href="demo_influx_viewer.html" class="here">Demo InfluxDB</a>
+  <a href="demo_eval.html">Pipeline Eval</a>
+  <a href="telegraf_configs.html">Telegraf Configs</a>
+</div>
+
+<h1>Demo InfluxDB Viewer — Raw · Baseline · float_dedup</h1>
+
+<div class="topbar">
+  <label>Host
+    <input type="text" id="host" value="192.168.86.48" style="width:140px"
+           oninput="onHostChange()">
+  </label>
+  <label>Token <input type="text" id="token" value="ems-token-secret" style="width:150px"></label>
+  <label>Org   <input type="text" id="org"   value="ems-org"          style="width:80px"></label>
+  <label>Range
+    <select id="range-s" style="width:74px">
+      <option value="30">30s</option>
+      <option value="60" selected>60s</option>
+      <option value="300">5m</option>
+      <option value="900">15m</option>
+    </select>
+  </label>
+  <button class="btn" onclick="loadBoth()">Load Schema</button>
+  <button class="btn" id="auto-btn" onclick="toggleAuto()">Auto-refresh off</button>
+</div>
+
+<!-- ── System Layout ──────────────────────────────────────────────────────── -->
+<details open style="margin-bottom:14px">
+<summary style="font-size:.82rem;color:var(--orange);cursor:pointer;padding:4px 0;
+                border-bottom:1px solid var(--border);margin-bottom:8px;">
+  System Layout
+</summary>
+<div class="diagram-wrap">
+<svg class="arch" width="860" height="350" viewBox="0 0 860 350">
+  <defs>
+    <marker id="aY" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#d2992288"/></marker>
+    <marker id="aB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#58a6ff88"/></marker>
+    <marker id="aG" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb95088"/></marker>
+  </defs>
+
+  <!-- Generator -->
+  <rect x="10" y="110" width="130" height="90" rx="6" class="box-purple"/>
+  <text x="75" y="133" text-anchor="middle" class="svlt">Generator</text>
+  <text x="75" y="148" text-anchor="middle" class="svls">ems_site_simulator</text>
+  <text x="75" y="162" text-anchor="middle" class="svls">46 Evelyn units</text>
+  <text x="75" y="177" text-anchor="middle" class="svls">ws :8769</text>
+  <text x="75" y="191" text-anchor="middle" class="svls">two MQTT outputs</text>
+
+  <!-- smooth label -->
+  <text x="147" y="72" class="svly" text-anchor="middle">smooth out</text>
+  <text x="147" y="85" class="svls" text-anchor="middle" fill="#d29922">1 s/signal</text>
+  <!-- burst label -->
+  <text x="147" y="232" class="svlb" text-anchor="middle">burst out</text>
+  <text x="147" y="245" class="svls" text-anchor="middle" fill="#58a6ff">20 s slow cadence</text>
+
+  <path d="M140,132 Q162,100 186,75" class="aY"/>
+  <path d="M140,172 Q162,210 186,232" class="aB"/>
+
+  <!-- FlashMQ :11887 (smooth) -->
+  <rect x="190" y="28" width="115" height="72" rx="6" class="box-yellow"/>
+  <text x="247" y="50"  text-anchor="middle" class="svlt">FlashMQ</text>
+  <text x="247" y="65"  text-anchor="middle" class="svly">:11887</text>
+  <text x="247" y="79"  text-anchor="middle" class="svls">smooth/ems/#</text>
+  <text x="247" y="91"  text-anchor="middle" class="svls">raw topics</text>
+
+  <!-- FlashMQ :11888 (burst) -->
+  <rect x="190" y="205" width="115" height="72" rx="6" class="box-accent"/>
+  <text x="247" y="227" text-anchor="middle" class="svlt">FlashMQ</text>
+  <text x="247" y="242" text-anchor="middle" class="svlb">:11888</text>
+  <text x="247" y="256" text-anchor="middle" class="svls">ems/#</text>
+  <text x="247" y="268" text-anchor="middle" class="svls">burst topics</text>
+
+  <!-- fmq → telegraf arrows -->
+  <line x1="305" y1="64"  x2="350" y2="64"  class="aY"/>
+  <line x1="305" y1="236" x2="350" y2="196" class="aB"/>
+  <line x1="305" y1="252" x2="350" y2="278" class="aG"/>
+
+  <!-- Telegraf RAW -->
+  <rect x="350" y="18" width="140" height="85" rx="6" class="box-yellow"/>
+  <text x="420" y="40"  text-anchor="middle" class="svlt">Telegraf / RAW</text>
+  <text x="420" y="55"  text-anchor="middle" class="svls">sub: smooth/ems/#</text>
+  <text x="420" y="69"  text-anchor="middle" class="svls">json_v2 · pivot</text>
+  <text x="420" y="83"  text-anchor="middle" class="svls">no filter — all signals</text>
+  <text x="420" y="97"  text-anchor="middle" class="svly">→ :8099  ems-raw</text>
+
+  <!-- Telegraf Baseline -->
+  <rect x="350" y="155" width="140" height="77" rx="6" class="box-accent"/>
+  <text x="420" y="175" text-anchor="middle" class="svlt">Telegraf / Baseline</text>
+  <text x="420" y="190" text-anchor="middle" class="svls">sub: ems/#</text>
+  <text x="420" y="204" text-anchor="middle" class="svls">json_v2 · pivot · no filter</text>
+  <text x="420" y="222" text-anchor="middle" class="svlb">→ :8096  ems-baseline</text>
+
+  <!-- Telegraf float_dedup -->
+  <rect x="350" y="248" width="140" height="90" rx="6" class="box-green"/>
+  <text x="420" y="268" text-anchor="middle" class="svlt">Telegraf / float_dedup</text>
+  <text x="420" y="283" text-anchor="middle" class="svls">sub: ems/#</text>
+  <text x="420" y="297" text-anchor="middle" class="svlg">execd float_dedup</text>
+  <text x="420" y="311" text-anchor="middle" class="svls">ε-threshold · hb=60s</text>
+  <text x="420" y="326" text-anchor="middle" class="svlg">→ :8097  ems-filtered</text>
+
+  <!-- telegraf → influxdb -->
+  <line x1="490" y1="60"  x2="540" y2="60"  class="aY"/>
+  <line x1="490" y1="192" x2="540" y2="192" class="aB"/>
+  <line x1="490" y1="293" x2="540" y2="293" class="aG"/>
+
+  <!-- InfluxDB RAW :8099 -->
+  <rect x="540" y="18" width="130" height="85" rx="6" class="box-yellow"/>
+  <text x="605" y="40"  text-anchor="middle" class="svlt">InfluxDB</text>
+  <text x="605" y="55"  text-anchor="middle" class="svly">:8099</text>
+  <text x="605" y="70"  text-anchor="middle" class="svls">ems-raw</text>
+  <text x="605" y="84"  text-anchor="middle" class="svls">all signals · every 1 s</text>
+  <text x="605" y="98"  text-anchor="middle" class="svly">HIGH row rate</text>
+
+  <!-- InfluxDB Baseline :8096 -->
+  <rect x="540" y="155" width="130" height="77" rx="6" class="box-accent"/>
+  <text x="605" y="175" text-anchor="middle" class="svlt">InfluxDB</text>
+  <text x="605" y="190" text-anchor="middle" class="svlb">:8096</text>
+  <text x="605" y="205" text-anchor="middle" class="svls">ems-baseline</text>
+  <text x="605" y="222" text-anchor="middle" class="svlb">real cadence</text>
+
+  <!-- InfluxDB Filtered :8097 -->
+  <rect x="540" y="248" width="130" height="90" rx="6" class="box-green"/>
+  <text x="605" y="268" text-anchor="middle" class="svlt">InfluxDB</text>
+  <text x="605" y="283" text-anchor="middle" class="svlg">:8097</text>
+  <text x="605" y="298" text-anchor="middle" class="svls">ems-filtered</text>
+  <text x="605" y="313" text-anchor="middle" class="svls">deduped all types</text>
+  <text x="605" y="328" text-anchor="middle" class="svlg">LOWEST row rate</text>
+
+  <!-- bracket -->
+  <line x1="678" y1="60"  x2="695" y2="60"  stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="678" y1="192" x2="695" y2="192" stroke="#58a6ff" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="678" y1="293" x2="695" y2="293" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="695" y1="60"  x2="695" y2="293" stroke="#555"    stroke-width="1"/>
+  <line x1="695" y1="126" x2="705" y2="126" stroke="#555"    stroke-width="1"/>
+  <text x="710" y="118" fill="#8b949e" font-size="8" font-family="Consolas">cadence</text>
+  <text x="710" y="129" fill="#8b949e" font-size="8" font-family="Consolas">effect</text>
+  <line x1="695" y1="242" x2="705" y2="242" stroke="#555"    stroke-width="1"/>
+  <text x="710" y="234" fill="#8b949e" font-size="8" font-family="Consolas">float_dedup</text>
+  <text x="710" y="245" fill="#8b949e" font-size="8" font-family="Consolas">effect</text>
+</svg>
+</div>
+</details>
+
+<!-- ── System Layout — Parquet Writer ─────────────────────────────────────── -->
+<details style="margin-bottom:14px">
+<summary style="font-size:.82rem;color:var(--orange);cursor:pointer;padding:4px 0;
+                border-bottom:1px solid var(--border);margin-bottom:8px;">
+  System Layout — Parquet Writer
+</summary>
+<div class="diagram-wrap">
+<svg class="arch" width="860" height="360" viewBox="0 0 860 360">
+  <defs>
+    <marker id="pY"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#d2992288"/></marker>
+    <marker id="pB"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#58a6ff88"/></marker>
+    <marker id="pG"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb95088"/></marker>
+    <marker id="pGd" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb95044"/></marker>
+  </defs>
+
+  <!-- FlashMQ :11887 (greyed — shared with Influx diagram) -->
+  <rect x="10" y="28" width="115" height="72" rx="6"
+        fill="#2d200022" stroke="#d2992244" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="67" y="50"  text-anchor="middle" fill="#d2992266" font-size="10" font-family="Consolas" font-weight="700">FlashMQ</text>
+  <text x="67" y="65"  text-anchor="middle" fill="#d2992266" font-size="10" font-family="Consolas" font-weight="700">:11887</text>
+  <text x="67" y="79"  text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">smooth/ems/#</text>
+  <text x="67" y="91"  text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">(shared)</text>
+
+  <!-- FlashMQ :11888 (greyed — shared with Influx diagram) -->
+  <rect x="10" y="205" width="115" height="72" rx="6"
+        fill="#0c2d6b22" stroke="#58a6ff44" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="67" y="227" text-anchor="middle" fill="#58a6ff66" font-size="10" font-family="Consolas" font-weight="700">FlashMQ</text>
+  <text x="67" y="242" text-anchor="middle" fill="#58a6ff66" font-size="10" font-family="Consolas" font-weight="700">:11888</text>
+  <text x="67" y="256" text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">ems/#</text>
+  <text x="67" y="268" text-anchor="middle" fill="#8b949e66" font-size="8"  font-family="Consolas">(shared)</text>
+
+  <!-- arrows from FlashMQ to writers -->
+  <!-- smooth → raw writer -->
+  <line x1="125" y1="64"  x2="220" y2="64"
+        stroke="#d2992266" stroke-width="2" fill="none"
+        marker-end="url(#pY)" stroke-dasharray="6,3"/>
+
+  <!-- burst → baseline writer -->
+  <line x1="125" y1="232" x2="220" y2="200"
+        stroke="#58a6ff66" stroke-width="2" fill="none"
+        marker-end="url(#pB)" stroke-dasharray="6,3"/>
+
+  <!-- burst → float_dedup bridge (TBD) -->
+  <line x1="125" y1="252" x2="220" y2="305"
+        stroke="#3fb95044" stroke-width="2" fill="none"
+        marker-end="url(#pGd)" stroke-dasharray="4,4"/>
+
+  <!-- parquet_writer RAW (yellow) -->
+  <rect x="220" y="20" width="155" height="88" rx="6" class="box-yellow"/>
+  <text x="297" y="42"  text-anchor="middle" class="svlt">parquet_writer</text>
+  <text x="297" y="57"  text-anchor="middle" class="svly">RAW</text>
+  <text x="297" y="72"  text-anchor="middle" class="svls">sub: smooth/ems/#</text>
+  <text x="297" y="86"  text-anchor="middle" class="svls">no filter · all signals · 1 s</text>
+  <text x="297" y="100" text-anchor="middle" class="svly">health :8881</text>
+
+  <!-- parquet_writer Baseline (blue) -->
+  <rect x="220" y="155" width="155" height="88" rx="6" class="box-accent"/>
+  <text x="297" y="177" text-anchor="middle" class="svlt">parquet_writer</text>
+  <text x="297" y="192" text-anchor="middle" class="svlb">Baseline</text>
+  <text x="297" y="207" text-anchor="middle" class="svls">sub: ems/#</text>
+  <text x="297" y="221" text-anchor="middle" class="svls">no filter · burst cadence</text>
+  <text x="297" y="235" text-anchor="middle" class="svlb">health :8882</text>
+
+  <!-- float_dedup bridge (TBD — dashed green) -->
+  <rect x="220" y="270" width="155" height="76" rx="6"
+        fill="#0d442922" stroke="#3fb95066" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="297" y="292" text-anchor="middle" fill="#3fb95099" font-size="11" font-family="Consolas" font-weight="700">float_dedup bridge</text>
+  <text x="297" y="308" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">TBD: Telegraf mqtt→mqtt</text>
+  <text x="297" y="322" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">or inline in writer</text>
+  <text x="297" y="336" text-anchor="middle" fill="#3fb95066" font-size="9"  font-family="Consolas">? → filtered topic</text>
+
+  <!-- bridge → filtered writer -->
+  <line x1="375" y1="308" x2="430" y2="290"
+        stroke="#3fb95066" stroke-width="2" fill="none"
+        marker-end="url(#pGd)" stroke-dasharray="4,4"/>
+
+  <!-- parquet_writer Filtered (green, dashed = planned) -->
+  <rect x="430" y="248" width="155" height="100" rx="6"
+        fill="#0d442922" stroke="#3fb95088" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="507" y="270" text-anchor="middle" fill="#3fb950bb" font-size="11" font-family="Consolas" font-weight="700">parquet_writer</text>
+  <text x="507" y="285" text-anchor="middle" fill="#3fb950bb" font-size="10" font-family="Consolas" font-weight="700">float_dedup</text>
+  <text x="507" y="300" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">sub: filtered topic</text>
+  <text x="507" y="314" text-anchor="middle" fill="#8b949e88" font-size="9"  font-family="Consolas">ε-threshold · hb=60s</text>
+  <text x="507" y="330" text-anchor="middle" fill="#3fb95088" font-size="9"  font-family="Consolas">health :8883  (planned)</text>
+  <text x="507" y="343" text-anchor="middle" fill="#3fb95066" font-size="9"  font-family="Consolas">⚠ bridge path TBD</text>
+
+  <!-- arrows writer → output paths -->
+  <line x1="375" y1="64"  x2="430" y2="64"
+        stroke="#d2992266" stroke-width="2" fill="none" marker-end="url(#pY)" stroke-dasharray="6,3"/>
+  <line x1="375" y1="199" x2="430" y2="170"
+        stroke="#58a6ff66" stroke-width="2" fill="none" marker-end="url(#pB)" stroke-dasharray="6,3"/>
+
+  <!-- Output path boxes (right) -->
+  <!-- RAW output -->
+  <rect x="430" y="20" width="190" height="88" rx="6" class="box-yellow"/>
+  <text x="525" y="42"  text-anchor="middle" class="svlt">Parquet output</text>
+  <text x="525" y="57"  text-anchor="middle" class="svly">/data/parquet-eval/raw/</text>
+  <text x="525" y="72"  text-anchor="middle" class="svls">Arrow/Parquet files</text>
+  <text x="525" y="86"  text-anchor="middle" class="svls">all types · flush every N rows</text>
+  <text x="525" y="100" text-anchor="middle" class="svly">HIGH file growth rate</text>
+
+  <!-- Baseline output -->
+  <rect x="430" y="130" width="190" height="88" rx="6" class="box-accent"/>
+  <text x="525" y="152" text-anchor="middle" class="svlt">Parquet output</text>
+  <text x="525" y="167" text-anchor="middle" class="svlb">/data/parquet-eval/base/</text>
+  <text x="525" y="182" text-anchor="middle" class="svls">Arrow/Parquet files</text>
+  <text x="525" y="196" text-anchor="middle" class="svls">burst cadence · real rate</text>
+  <text x="525" y="210" text-anchor="middle" class="svlb">real cadence file growth</text>
+
+  <!-- health endpoint note -->
+  <rect x="660" y="28" width="185" height="172" rx="6"
+        fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="752" y="48"  text-anchor="middle" fill="#8b949e" font-size="10" font-family="Consolas" font-weight="700">Health endpoints</text>
+  <text x="670" y="66"  fill="#d29922" font-size="9"  font-family="Consolas">:8881 /health</text>
+  <text x="670" y="80"  fill="#8b949e" font-size="8"  font-family="Consolas">  msgs_received</text>
+  <text x="670" y="92"  fill="#8b949e" font-size="8"  font-family="Consolas">  total_rows_written</text>
+  <text x="670" y="104" fill="#8b949e" font-size="8"  font-family="Consolas">  flush_count</text>
+  <text x="670" y="116" fill="#8b949e" font-size="8"  font-family="Consolas">  disk_free_gb</text>
+  <text x="670" y="132" fill="#58a6ff" font-size="9"  font-family="Consolas">:8882 /health</text>
+  <text x="670" y="146" fill="#8b949e" font-size="8"  font-family="Consolas">  (same fields)</text>
+  <text x="670" y="162" fill="#3fb95066" font-size="9" font-family="Consolas">:8883 /health</text>
+  <text x="670" y="176" fill="#8b949e66" font-size="8" font-family="Consolas">  (planned)</text>
+  <text x="670" y="192" fill="#f8514966" font-size="8" font-family="Consolas">  cpu_pct / rss_mb: TBD</text>
+
+  <!-- legend note bottom -->
+  <text x="10"  y="352" fill="#8b949e" font-size="8" font-family="Consolas">Solid border = ready/planned · Dashed border = TBD / needs design · Greyed FlashMQ = shared with Influx paths above</text>
+</svg>
+</div>
+
+<!-- Parquet health live tiles -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">
+  <div style="background:var(--surface);border:1px solid var(--yellow);border-radius:6px;padding:8px 12px;">
+    <div style="font-size:.68rem;color:var(--yellow);font-weight:700;margin-bottom:5px;">parquet_writer RAW &nbsp;<code style="font-size:.65rem;color:var(--muted);">:8881</code></div>
+    <div id="pw-raw-status" style="font-size:.72rem;color:var(--muted);">not connected</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.72rem;margin-top:5px;">
+      <span style="color:var(--muted);">rows written</span><span id="pw-raw-rows" style="font-family:'Consolas',monospace;color:var(--yellow);">—</span>
+      <span style="color:var(--muted);">msgs recv</span><span id="pw-raw-msgs" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">flushes</span><span id="pw-raw-flush" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">disk free</span><span id="pw-raw-disk" style="font-family:'Consolas',monospace;">—</span>
+    </div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--accent);border-radius:6px;padding:8px 12px;">
+    <div style="font-size:.68rem;color:var(--accent);font-weight:700;margin-bottom:5px;">parquet_writer Baseline &nbsp;<code style="font-size:.65rem;color:var(--muted);">:8882</code></div>
+    <div id="pw-base-status" style="font-size:.72rem;color:var(--muted);">not connected</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.72rem;margin-top:5px;">
+      <span style="color:var(--muted);">rows written</span><span id="pw-base-rows" style="font-family:'Consolas',monospace;color:var(--accent);">—</span>
+      <span style="color:var(--muted);">msgs recv</span><span id="pw-base-msgs" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">flushes</span><span id="pw-base-flush" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">disk free</span><span id="pw-base-disk" style="font-family:'Consolas',monospace;">—</span>
+    </div>
+  </div>
+  <div style="background:var(--surface);border:1px solid #3fb95044;border-radius:6px;padding:8px 12px;">
+    <div style="font-size:.68rem;color:#3fb95099;font-weight:700;margin-bottom:5px;">parquet_writer float_dedup &nbsp;<code style="font-size:.65rem;color:var(--muted);">:8883</code> <span style="font-size:.62rem;color:var(--muted);font-weight:400;">(planned)</span></div>
+    <div id="pw-filt-status" style="font-size:.72rem;color:var(--muted);">not connected</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.72rem;margin-top:5px;">
+      <span style="color:var(--muted);">rows written</span><span id="pw-filt-rows" style="font-family:'Consolas',monospace;color:#3fb95088;">—</span>
+      <span style="color:var(--muted);">msgs recv</span><span id="pw-filt-msgs" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">flushes</span><span id="pw-filt-flush" style="font-family:'Consolas',monospace;">—</span>
+      <span style="color:var(--muted);">disk free</span><span id="pw-filt-disk" style="font-family:'Consolas',monospace;">—</span>
+    </div>
+  </div>
+</div>
+</details>
+
+<!-- ── Live data panels ─────────────────────────────────────────────────────── -->
+
+<!-- RAW panel — full width -->
+<div class="raw-panel-wrap">
+<div class="side-wrap raw">
+  <div class="side-hdr raw">
+    <span class="side-title">RAW — 1 s/signal</span>
+    <span class="side-sub">:8099 · ems-raw · smooth output · no filter</span>
+    <button class="btn btn-sm" style="margin-left:auto" onclick="fetchData('raw')">Refresh</button>
+  </div>
+  <div class="stats-bar raw" style="padding:0 1px">
+    <div class="scard"><div class="scard-k">Rows/s</div><div class="scard-v" id="s-rps-raw">—</div></div>
+    <div class="scard"><div class="scard-k">Measurements</div><div class="scard-v" id="s-meas-raw">—</div></div>
+    <div class="scard"><div class="scard-k">Series</div><div class="scard-v" id="s-series-raw">—</div></div>
+    <div class="scard"><div class="scard-k">Last fetch</div><div class="scard-v" id="s-ts-raw" style="font-size:.72rem">—</div></div>
+  </div>
+  <div class="side-body raw">
+    <div class="panel-layout">
+      <div class="schema-panel">
+        <div class="panel-title">Schema</div>
+        <div id="schema-list-raw"><span style="color:var(--muted);font-size:.75rem">click Load Schema</span></div>
+      </div>
+      <div>
+        <div class="feed-head">
+          <label style="font-size:.72rem">Limit
+            <input type="number" id="limit-raw" value="200" style="width:56px" min="10" max="2000">
+          </label>
+          <label style="font-size:.72rem">Meas.
+            <input type="text" id="meas-raw" value="unit" style="width:72px" placeholder="all">
+          </label>
+          <label style="font-size:.72rem">Field
+            <input type="text" id="field-filter-raw" value="" style="width:80px" placeholder="all">
+          </label>
+        </div>
+        <div class="legend" style="margin-bottom:5px">
+          <span style="color:var(--muted);font-size:.68rem">smooth output — every signal published every 1 s regardless of value change</span>
+          &nbsp;
+          <span class="legend-item"><span class="legend-swatch" style="background:#d2992288;border:1px solid var(--yellow)"></span><span style="color:var(--yellow)">float</span></span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#bc8cff88;border:1px solid var(--purple)"></span><span style="color:var(--purple)">int / bool</span></span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#58a6ff88;border:1px solid var(--accent)"></span><span style="color:var(--accent)">string</span></span>
+        </div>
+        <div class="feed" id="feed-raw"><span style="color:var(--muted)">no data yet</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ── dual panels ─────────────────────────────────────────────────────────── -->
+<div class="dual-grid">
+
+  <!-- Baseline :8096 -->
+  <div class="side-wrap base">
+    <div class="side-hdr base">
+      <span class="side-title">Baseline</span>
+      <span class="side-sub">:8096 · ems-baseline · no filters</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="fetchData('base')">Refresh</button>
+    </div>
+    <div class="stats-bar base" style="padding:0 1px">
+      <div class="scard"><div class="scard-k">Rows/s</div><div class="scard-v" id="s-rps-base">—</div></div>
+      <div class="scard"><div class="scard-k">Measurements</div><div class="scard-v" id="s-meas-base">—</div></div>
+      <div class="scard"><div class="scard-k">Series</div><div class="scard-v" id="s-series-base">—</div></div>
+      <div class="scard"><div class="scard-k">Last fetch</div><div class="scard-v" id="s-ts-base" style="font-size:.72rem">—</div></div>
+    </div>
+    <div class="side-body base">
+      <div class="panel-layout">
+        <div class="schema-panel">
+          <div class="panel-title">Schema</div>
+          <div id="schema-list-base"><span style="color:var(--muted);font-size:.75rem">click Load Schema</span></div>
+        </div>
+        <div>
+          <div class="feed-head">
+            <label style="font-size:.72rem">Limit
+              <input type="number" id="limit-base" value="200" style="width:56px" min="10" max="2000">
+            </label>
+            <label style="font-size:.72rem">Meas.
+              <input type="text" id="meas-base" value="unit" style="width:72px" placeholder="all" title="Measurement filter — blank = all measurements">
+            </label>
+            <label style="font-size:.72rem">Field
+              <input type="text" id="field-filter-base" value="" style="width:80px" placeholder="all">
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+            <div class="legend" style="flex:1">
+              <span class="legend-item"><span class="legend-swatch" style="background:#d2992288;border:1px solid var(--yellow)"></span><span style="color:var(--yellow)">float</span> — ε-threshold dedup</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#bc8cff88;border:1px solid var(--purple)"></span><span style="color:var(--purple)">int / bool</span> — exact-match dedup</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#58a6ff88;border:1px solid var(--accent)"></span><span style="color:var(--accent)">string</span> — exact-match dedup</span>
+            </div>
+            <button class="btn btn-sm" id="sim-drops-btn" onclick="toggleSimDrops()"
+                    title="Simulate float_dedup — dim rows that would be suppressed (default ε=0.5)">Simulate drops</button>
+          </div>
+          <div class="feed" id="feed-base"><span style="color:var(--muted)">no data yet</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtered :8097 -->
+  <div class="side-wrap filt">
+    <div class="side-hdr filt">
+      <span class="side-title">Filtered</span>
+      <span class="side-sub">:8097 · ems-filtered · float_dedup execd</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="fetchData('filt')">Refresh</button>
+    </div>
+    <div class="stats-bar filt" style="padding:0 1px">
+      <div class="scard"><div class="scard-k">Rows/s</div><div class="scard-v" id="s-rps-filt">—</div></div>
+      <div class="scard"><div class="scard-k">Measurements</div><div class="scard-v" id="s-meas-filt">—</div></div>
+      <div class="scard"><div class="scard-k">Series</div><div class="scard-v" id="s-series-filt">—</div></div>
+      <div class="scard"><div class="scard-k">Last fetch</div><div class="scard-v" id="s-ts-filt" style="font-size:.72rem">—</div></div>
+    </div>
+    <div class="side-body filt">
+      <div class="panel-layout">
+        <div class="schema-panel">
+          <div class="panel-title">Schema</div>
+          <div id="schema-list-filt"><span style="color:var(--muted);font-size:.75rem">click Load Schema</span></div>
+        </div>
+        <div>
+          <div class="feed-head">
+            <label style="font-size:.72rem">Limit
+              <input type="number" id="limit-filt" value="200" style="width:56px" min="10" max="2000">
+            </label>
+            <label style="font-size:.72rem">Meas.
+              <input type="text" id="meas-filt" value="" style="width:72px" placeholder="all" title="Measurement filter — blank = all measurements">
+            </label>
+            <label style="font-size:.72rem">Field
+              <input type="text" id="field-filter-filt" value="" style="width:80px" placeholder="all">
+            </label>
+          </div>
+          <div class="legend" style="margin-bottom:5px">
+            <span style="color:var(--muted);font-size:.68rem">float_dedup execd — rows written when: float |Δ| ≥ ε · int/bool/string value changed · OR 60s heartbeat elapsed (repeats every 60s regardless)</span>
+            &nbsp;
+            <span class="legend-item"><span class="legend-swatch" style="background:#d2992288;border:1px solid var(--yellow)"></span><span style="color:var(--yellow)">float</span></span>
+            <span class="legend-item"><span class="legend-swatch" style="background:#bc8cff88;border:1px solid var(--purple)"></span><span style="color:var(--purple)">int / bool</span></span>
+            <span class="legend-item"><span class="legend-swatch" style="background:#58a6ff88;border:1px solid var(--accent)"></span><span style="color:var(--accent)">string</span></span>
+          </div>
+          <div class="feed" id="feed-filt"><span style="color:var(--muted)">no data yet</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.dual-grid -->
+
+<!-- ── Custom Flux query ─────────────────────────────────────────────────── -->
+<div class="query-box">
+  <h3>Custom Flux query &nbsp;
+    <label style="font-size:.75rem;font-weight:400">Target
+      <select id="query-target" style="width:180px">
+        <option value="raw">Raw :8099</option>
+        <option value="base">Baseline :8096</option>
+        <option value="filt">Filtered :8097</option>
+      </select>
+    </label>
+  </h3>
+  <textarea id="flux-query">from(bucket:"ems-baseline")
+  |> range(start:-60s)
+  |> filter(fn:(r)=>r._measurement=="unit")
+  |> limit(n:20)</textarea>
+  <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+    <button class="btn" onclick="runQuery()">Run</button>
+    <button class="btn" onclick="runCount()">Count rows</button>
+    <button class="btn" onclick="listMeasurements()">List measurements</button>
+    <button class="btn" onclick="listFields()">List fields</button>
+    <button class="btn" onclick="listTags()">List tags</button>
+  </div>
+  <pre id="query-result">—</pre>
+</div>
+
+<!-- ── History modal ──────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="modal-title">—</div>
+        <div class="modal-sub"  id="modal-sub">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-chart"><canvas id="hist-canvas" height="160"></canvas></div>
+    <div class="modal-stats" id="modal-stats"></div>
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead><tr>
+          <th>#</th><th>Time</th><th style="text-align:right">Value</th><th style="text-align:right">Δ</th>
+        </tr></thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const PORTS   = { raw: 8099, base: 8096, filt: 8097 };
+const BUCKETS = { raw: 'ems-raw', base: 'ems-baseline', filt: 'ems-filtered' };
+const LS_DEMO = 'demo_compare_stats';   // shared with demo_compare.html
+
+let autoTimer = null;
+let autoOn    = false;
+
+// ── config helpers ─────────────────────────────────────────────────────────
+
+function cfg(side) {
+  return {
+    host:   document.getElementById('host').value.trim(),
+    port:   PORTS[side],
+    token:  document.getElementById('token').value.trim(),
+    org:    document.getElementById('org').value.trim(),
+    bucket: BUCKETS[side],
+    range:  document.getElementById('range-s').value,
+  };
+}
+
+function influxUrl(c) { return `http://${c.host}:${c.port}`; }
+
+async function flux(query, c) {
+  const resp = await fetch(`${influxUrl(c)}/api/v2/query?org=${encodeURIComponent(c.org)}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Token ${c.token}`,
+      'Content-Type':  'application/vnd.flux',
+      'Accept':        'application/csv',
+    },
+    body: query,
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+  return resp.text();
+}
+
+function parseCSV(csv) {
+  const lines = csv.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = lines.slice(1).map(l => {
+    const vals = l.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (vals[i] || '').trim());
+    return obj;
+  });
+  return { headers, rows };
+}
+
+// ── host inheritance from demo_compare localStorage ────────────────────────
+
+function loadHostFromDemoCompare() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_DEMO) || '{}');
+    if (saved.host) {
+      document.getElementById('host').value = saved.host;
+    }
+  } catch(e) { /* ignore */ }
+}
+
+function onHostChange() {
+  // persist host back so demo_compare also picks it up if reloaded
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_DEMO) || '{}');
+    saved.host = document.getElementById('host').value.trim();
+    localStorage.setItem(LS_DEMO, JSON.stringify(saved));
+  } catch(e) { /* ignore */ }
+}
+
+// ── schema loading ─────────────────────────────────────────────────────────
+
+async function loadSchema(side) {
+  const c = cfg(side);
+  const el = document.getElementById(`schema-list-${side}`);
+  el.innerHTML = '<span style="color:var(--muted);font-size:.75rem">loading…</span>';
+  try {
+    const measCsv = await flux(
+      `import "influxdata/influxdb/schema"\nschema.measurements(bucket: "${c.bucket}")`, c);
+    const { rows: measRows } = parseCSV(measCsv);
+    const measurements = measRows.map(r => r._value).filter(Boolean);
+
+    const fieldsCsv = await flux(
+      `import "influxdata/influxdb/schema"\nschema.fieldKeys(bucket: "${c.bucket}", start: -${c.range}s)`, c);
+    const { rows: fieldRows } = parseCSV(fieldsCsv);
+    const fields = fieldRows.map(r => r._value).filter(Boolean);
+
+    const tagsCsv = await flux(
+      `import "influxdata/influxdb/schema"\nschema.tagKeys(bucket: "${c.bucket}", start: -${c.range}s)`, c);
+    const { rows: tagRows } = parseCSV(tagsCsv);
+    const tags = tagRows.map(r => r._value).filter(v => v && !v.startsWith('_'));
+
+    document.getElementById(`s-meas-${side}`).textContent = measurements.length;
+
+    let html = '';
+    if (measurements.length) {
+      html += `<div class="schema-sep">Measurements</div>`;
+      html += measurements.map(m =>
+        `<div class="schema-item"><span class="si-field">⊞ ${m}</span></div>`).join('');
+    }
+    if (fields.length) {
+      html += `<div class="schema-sep">Fields</div>`;
+      html += fields.map(f =>
+        `<div class="schema-item"><span class="si-field">▸ ${f}</span></div>`).join('');
+    }
+    if (tags.length) {
+      html += `<div class="schema-sep">Tags</div>`;
+      html += tags.map(t =>
+        `<div class="schema-item"><span class="si-tag">⬡ ${t}</span></div>`).join('');
+    }
+    if (!html) html = '<span style="color:var(--muted);font-size:.75rem">no schema — increase range</span>';
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+}
+
+function loadBoth() { loadSchema('raw'); loadSchema('base'); loadSchema('filt'); }
+
+// ── data fetch ─────────────────────────────────────────────────────────────
+
+async function fetchData(side) {
+  const c     = cfg(side);
+  const lim   = parseInt(document.getElementById(`limit-${side}`).value) || 200;
+  const meas  = document.getElementById(`meas-${side}`).value.trim();
+  const ffilt = document.getElementById(`field-filter-${side}`).value.trim();
+  let q = `from(bucket:"${c.bucket}")\n  |> range(start:-${c.range}s)`;
+  if (meas)  q += `\n  |> filter(fn:(r)=>r._measurement=="${meas}")`;
+  if (ffilt) q += `\n  |> filter(fn:(r)=>r._field=="${ffilt}")`;
+  q += `\n  |> sort(columns:["_time"], desc:true)\n  |> limit(n:${lim})`;
+
+  const feed = document.getElementById(`feed-${side}`);
+  try {
+    const csv = await flux(q, c);
+    const { rows } = parseCSV(csv);
+    if (!rows.length) {
+      const measDesc = meas ? `measurement="${meas}"` : 'all measurements';
+      feed.innerHTML = `<span style="color:var(--yellow)">no rows — ${c.host}:${c.port} bucket="${c.bucket}" ${measDesc} range=-${c.range}s</span>`;
+      return;
+    }
+
+    const sampleKeys = Object.keys(rows[0]).filter(k =>
+      !k.startsWith('_') && k !== 'result' && k !== 'table');
+
+    const seriesSet = new Set(rows.map(r => r._field));
+    document.getElementById(`s-series-${side}`).textContent = seriesSet.size;
+    document.getElementById(`s-ts-${side}`).textContent     = new Date().toLocaleTimeString();
+    document.getElementById(`s-rps-${side}`).textContent    =
+      (rows.length / parseInt(c.range)).toFixed(1);
+
+    // Give point_name column more room since it carries the signal name
+    const colWidths = sampleKeys.map(k => k === 'point_name' ? '180px' : '1fr');
+    const cols = `120px 60px ${colWidths.join(' ')} 110px 80px`;
+
+    // Highlight by dedup method (same for both sides — float_dedup handles all types)
+    function rowHlClass(field) {
+      if (field === 'float')                                  return 'hl-float';
+      if (field === 'integer' || field === 'boolean_integer') return 'hl-intbool';
+      if (field === 'string')                                 return 'hl-string';
+      return '';
+    }
+
+    const rowMeta = [];
+    let html = `<div class="row-hdr" style="grid-template-columns:${cols}">` +
+      `<span>time</span><span>meas</span>` +
+      sampleKeys.map(k => `<span>${k}</span>`).join('') +
+      `<span>field</span><span style="text-align:right">value</span></div>`;
+
+    for (const r of rows) {
+      const ts    = (r._time||'').slice(11,23);
+      const meas  = r._measurement || '';
+      const field = r._field || '';
+      const val   = r._value || '';
+      const hlCls = rowHlClass(field);
+      const tagCells = sampleKeys.map(k =>
+        `<span class="c-tags" title="${r[k]||''}">${r[k]||''}</span>`).join('');
+      const idx = rowMeta.length;
+      const tags = {};
+      sampleKeys.forEach(k => { if (r[k]) tags[k] = r[k]; });
+      rowMeta.push({ meas, field, tags, side, val });
+      if (side === 'base') baseRowMeta[idx] = { meas, field, tags, val };
+      html += `<div class="data-row ${hlCls}" style="grid-template-columns:${cols}" data-idx="${idx}">` +
+        `<span class="c-ts">${ts}</span>` +
+        `<span class="c-meas">${meas}</span>` +
+        tagCells +
+        `<span class="c-field">${field}</span>` +
+        `<span class="c-val">${parseFloat(val).toFixed ? parseFloat(val).toFixed(4) : val}</span>` +
+        `</div>`;
+    }
+    feed.innerHTML = html;
+    feed.querySelectorAll('.data-row').forEach(el => {
+      el.addEventListener('click', () => {
+        const meta = rowMeta[parseInt(el.dataset.idx)];
+        if (meta) showHistory(meta);
+      });
+    });
+    if (side === 'base' && simDropsActive) simulateDrops();
+  } catch(e) {
+    feed.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+}
+
+function fetchBoth() { fetchData('raw'); fetchData('base'); fetchData('filt'); }
+
+// ── simulate float_dedup drops on baseline ────────────────────────────────
+// Rows come from InfluxDB sorted desc (newest first). We process oldest-first
+// to simulate the dedup state machine, then mark each row keep/drop.
+// Default epsilon 0.5 (matches float_dedup.toml default_epsilon).
+// Int/bool/string: exact-match change-on-value.
+
+const DEFAULT_EPSILON = 0.5;
+let simDropsActive = false;
+// Store row metadata for re-use after toggle without re-fetch
+const baseRowMeta = [];   // populated in fetchData('base')
+
+function seriesKey(r, sampleKeys) {
+  // meas + sorted tag values + field
+  const tagPart = sampleKeys.filter(k => k !== 'point_name' && r[k])
+                            .sort().map(k => `${k}=${r[k]}`).join(',');
+  return `${r._measurement||''}|${tagPart}|${r._field||''}`;
+}
+
+function simulateDrops() {
+  const feed = document.getElementById('feed-base');
+  const rows = feed.querySelectorAll('.data-row');
+  if (!rows.length) return;
+
+  // Build ordered list oldest→newest (rows are displayed newest-first)
+  const items = Array.from(rows).reverse();
+  const lastSeen = {};   // series key → last value
+
+  items.forEach(el => {
+    const idx  = parseInt(el.dataset.idx);
+    const meta = baseRowMeta[idx];
+    if (!meta) return;
+    const key   = `${meta.meas}|${JSON.stringify(meta.tags)}|${meta.field}`;
+    const val   = parseFloat(meta.val);
+    const prev  = lastSeen[key];
+
+    let drops = false;
+    if (prev !== undefined) {
+      if (meta.field === 'float') {
+        drops = !isNaN(val) && !isNaN(prev) && Math.abs(val - prev) < DEFAULT_EPSILON;
+      } else {
+        // int, bool, string: exact-match
+        drops = (meta.val === prev);
+      }
+    }
+    lastSeen[key] = meta.val;
+
+    el.classList.remove('hl-drop', 'hl-keep');
+    if (drops) el.classList.add('hl-drop');
+    else        el.classList.add('hl-keep');
+  });
+}
+
+function clearSimDrops() {
+  document.getElementById('feed-base').querySelectorAll('.data-row').forEach(el => {
+    el.classList.remove('hl-drop', 'hl-keep');
+  });
+}
+
+function toggleSimDrops() {
+  simDropsActive = !simDropsActive;
+  const btn = document.getElementById('sim-drops-btn');
+  if (simDropsActive) {
+    btn.textContent = 'Drops ON';
+    btn.classList.add('active');
+    simulateDrops();
+  } else {
+    btn.textContent = 'Simulate drops';
+    btn.classList.remove('active');
+    clearSimDrops();
+  }
+}
+
+// ── auto-refresh ───────────────────────────────────────────────────────────
+
+function toggleAuto() {
+  autoOn = !autoOn;
+  const btn = document.getElementById('auto-btn');
+  if (autoOn) {
+    btn.textContent = 'Auto-refresh ON';
+    btn.classList.add('active');
+    fetchBoth();
+    autoTimer = setInterval(fetchBoth, 5000);
+  } else {
+    btn.textContent = 'Auto-refresh off';
+    btn.classList.remove('active');
+    clearInterval(autoTimer);
+  }
+}
+
+// ── custom flux query ──────────────────────────────────────────────────────
+
+function queryCfg() {
+  const side = document.getElementById('query-target').value;
+  return cfg(side);
+}
+
+async function runQuery() {
+  const c   = queryCfg();
+  const q   = document.getElementById('flux-query').value;
+  const out = document.getElementById('query-result');
+  out.className = '';
+  out.textContent = 'running…';
+  try {
+    const csv = await flux(q, c);
+    const { rows } = parseCSV(csv);
+    if (!rows.length) { out.textContent = '(no rows)'; return; }
+    const keys = Object.keys(rows[0]).filter(k => k !== 'result' && k !== 'table' && k !== '');
+    const widths = keys.map(k => Math.max(k.length, ...rows.slice(0,100).map(r => (r[k]||'').length)));
+    const header = keys.map((k,i) => k.padEnd(widths[i])).join('  ');
+    const sep    = widths.map(w => '-'.repeat(w)).join('  ');
+    const body   = rows.slice(0,200).map(r =>
+      keys.map((k,i) => (r[k]||'').padEnd(widths[i])).join('  ')).join('\n');
+    out.textContent = `${header}\n${sep}\n${body}\n\n(${rows.length} rows)`;
+  } catch(e) {
+    out.className = 'err';
+    out.textContent = e.message;
+  }
+}
+
+async function runCount() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `from(bucket:"${c.bucket}")\n  |> range(start:-${c.range}s)\n  |> filter(fn:(r)=>r._measurement=="unit")\n  |> group()\n  |> count()`;
+  await runQuery();
+}
+
+async function listMeasurements() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `import "influxdata/influxdb/schema"\nschema.measurements(bucket: "${c.bucket}")`;
+  await runQuery();
+}
+
+async function listFields() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `import "influxdata/influxdb/schema"\nschema.fieldKeys(bucket: "${c.bucket}", start: -${c.range}s)`;
+  await runQuery();
+}
+
+async function listTags() {
+  const c = queryCfg();
+  document.getElementById('flux-query').value =
+    `import "influxdata/influxdb/schema"\nschema.tagKeys(bucket: "${c.bucket}", start: -${c.range}s)`;
+  await runQuery();
+}
+
+// update query bucket hint when target changes
+document.getElementById('query-target').addEventListener('change', () => {
+  const side = document.getElementById('query-target').value;
+  const q = document.getElementById('flux-query').value;
+  document.getElementById('flux-query').value =
+    q.replace(/bucket:"[^"]*"/, `bucket:"${BUCKETS[side]}"`);
+});
+
+// ── history modal ──────────────────────────────────────────────────────────
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal'))
+    document.getElementById('modal').style.display = 'none';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('modal').style.display = 'none';
+});
+
+async function showHistory(meta) {
+  const c = cfg(meta.side);
+  const pointName = meta.tags.point_name || meta.field;
+  const unitId    = meta.tags.unit_id    || meta.tags.site_id || '';
+  const instance  = meta.tags.instance   || meta.tags.device  || '';
+
+  const sideLabels = { raw: 'Raw :8099', base: 'Baseline :8096', filt: 'Filtered :8097' };
+  const sideLabel  = sideLabels[meta.side] || meta.side;
+  document.getElementById('modal-title').textContent = `${pointName}  [${meta.field}]`;
+  document.getElementById('modal-sub').textContent   =
+    [sideLabel, unitId, instance, meta.tags.device, meta.meas].filter(Boolean).join(' · ');
+  document.getElementById('modal-stats').textContent = 'loading…';
+  document.getElementById('hist-tbody').innerHTML    =
+    '<tr><td colspan="4" style="color:var(--muted);padding:8px">querying…</td></tr>';
+  document.getElementById('modal').style.display    = 'flex';
+
+  let tagFilters = '';
+  for (const [k, v] of Object.entries(meta.tags))
+    tagFilters += `\n  |> filter(fn:(r) => r.${k} == "${v}")`;
+
+  const q = `from(bucket:"${c.bucket}")
+  |> range(start:-1h)
+  |> filter(fn:(r) => r._measurement == "${meta.meas}")
+  |> filter(fn:(r) => r._field == "${meta.field}")${tagFilters}
+  |> sort(columns:["_time"], desc:true)
+  |> limit(n:200)`;
+
+  try {
+    const csv = await flux(q, c);
+    const { rows } = parseCSV(csv);
+    if (!rows.length) {
+      document.getElementById('hist-tbody').innerHTML =
+        '<tr><td colspan="4" style="color:var(--muted);padding:8px">no data in last 1h</td></tr>';
+      document.getElementById('modal-stats').innerHTML = '';
+      clearHistChart();
+      return;
+    }
+
+    const sorted = [...rows].sort((a,b) => (a._time||'').localeCompare(b._time||''));
+    const values = sorted.map(r => parseFloat(r._value));
+    const times  = sorted.map(r => r._time||'');
+    const nums   = values.filter(v => !isNaN(v));
+    const vmin   = Math.min(...nums), vmax = Math.max(...nums);
+    const vmean  = nums.reduce((a,b)=>a+b,0) / nums.length;
+    const vlast  = nums[nums.length-1];
+
+    document.getElementById('modal-stats').innerHTML =
+      `<span>min <strong>${vmin.toFixed(4)}</strong></span>` +
+      `<span>max <strong>${vmax.toFixed(4)}</strong></span>` +
+      `<span>mean <strong>${vmean.toFixed(4)}</strong></span>` +
+      `<span>last <strong>${vlast.toFixed(4)}</strong></span>` +
+      `<span>n <strong>${nums.length}</strong></span>`;
+
+    drawHistChart(values, times, meta.side === 'filt');
+
+    const tbody = document.getElementById('hist-tbody');
+    tbody.innerHTML = '';
+    rows.forEach((r, i) => {
+      const val   = parseFloat(r._value);
+      const prev  = i + 1 < rows.length ? parseFloat(rows[i+1]._value) : null;
+      const delta = (prev !== null && !isNaN(prev) && !isNaN(val)) ? (val - prev) : null;
+      const dStr  = delta !== null ? (delta >= 0 ? '+' : '') + delta.toFixed(4) : '—';
+      const dCls  = delta === null ? '' : delta > 0 ? 'pos' : delta < 0 ? 'neg' : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td class="td-ts">${i+1}</td>` +
+        `<td class="td-ts">${(r._time||'').slice(0,23).replace('T',' ')}</td>` +
+        `<td class="td-val">${isNaN(val) ? r._value : val.toFixed(4)}</td>` +
+        `<td class="td-delta ${dCls}">${dStr}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e) {
+    document.getElementById('hist-tbody').innerHTML =
+      `<tr><td colspan="4" class="err" style="padding:8px">${e.message}</td></tr>`;
+  }
+}
+
+function clearHistChart() {
+  const canvas = document.getElementById('hist-canvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawHistChart(values, times, green) {
+  const canvas = document.getElementById('hist-canvas');
+  const W = canvas.offsetWidth || 760;
+  const H = 160;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const nums = values.filter(v => !isNaN(v));
+  if (nums.length < 2) return;
+  const pad = { t:10, r:8, b:28, l:54 };
+  const cw  = W - pad.l - pad.r;
+  const ch  = H - pad.t - pad.b;
+  const vmin = Math.min(...nums), vmax = Math.max(...nums);
+  const vrange = vmax - vmin || 1;
+  const xOf = i => pad.l + (i / (values.length - 1)) * cw;
+  const yOf = v => pad.t + ch - ((v - vmin) / vrange) * ch;
+  const lineCol = green ? '#3fb950' : '#58a6ff';
+  const fillCol = green ? '#3fb95018' : '#58a6ff18';
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (i / 4) * ch;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+  }
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px Consolas,monospace'; ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = vmax - (i / 4) * vrange;
+    ctx.fillText(v.toFixed(3), pad.l - 4, pad.t + (i / 4) * ch + 4);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillText((times[0]||'').slice(11,19), pad.l, H - 6);
+  ctx.textAlign = 'right';
+  ctx.fillText((times[times.length-1]||'').slice(11,19), pad.l + cw, H - 6);
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = xOf(i), y = isNaN(v) ? yOf(vmin) : yOf(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(xOf(values.length-1), pad.t + ch);
+  ctx.lineTo(pad.l, pad.t + ch);
+  ctx.closePath(); ctx.fillStyle = fillCol; ctx.fill();
+  ctx.beginPath(); ctx.strokeStyle = lineCol; ctx.lineWidth = 1.5;
+  values.forEach((v, i) => {
+    if (isNaN(v)) return;
+    const x = xOf(i), y = yOf(v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  const lv = values[values.length - 1];
+  if (!isNaN(lv)) {
+    ctx.beginPath();
+    ctx.arc(xOf(values.length-1), yOf(lv), 3.5, 0, Math.PI*2);
+    ctx.fillStyle = lineCol; ctx.fill();
+  }
+}
+
+// ── parquet writer health ──────────────────────────────────────────────────
+
+const PW_PORTS = { raw: 8881, base: 8882, filt: 8883 };
+
+async function fetchParquetHealth(side) {
+  const host = document.getElementById('host').value.trim();
+  const port = PW_PORTS[side];
+  const statusEl = document.getElementById(`pw-${side}-status`);
+  try {
+    const resp = await fetch(`http://${host}:${port}/health`,
+                             { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const j = await resp.json();
+    statusEl.textContent = 'ok';
+    statusEl.style.color = 'var(--green)';
+    const set = (id, val) => {
+      const el = document.getElementById(`pw-${side}-${id}`);
+      if (el) el.textContent = val != null ? (typeof val === 'number' ? val.toLocaleString() : val) : '—';
+    };
+    set('rows',  j.total_rows_written);
+    set('msgs',  j.msgs_received);
+    set('flush', j.flush_count);
+    set('disk',  j.disk_free_gb != null ? j.disk_free_gb.toFixed(1) + ' GB' : '—');
+  } catch(e) {
+    statusEl.textContent = e.name === 'TimeoutError' ? 'timeout' : 'offline';
+    statusEl.style.color = 'var(--muted)';
+  }
+}
+
+function fetchAllParquetHealth() {
+  fetchParquetHealth('raw');
+  fetchParquetHealth('base');
+  fetchParquetHealth('filt');
+}
+
+// poll parquet health every 10s alongside influx auto-refresh
+setInterval(fetchAllParquetHealth, 10000);
+
+// ── init ───────────────────────────────────────────────────────────────────
+loadHostFromDemoCompare();
+fetchAllParquetHealth();
+</script>
+</body>
+</html>

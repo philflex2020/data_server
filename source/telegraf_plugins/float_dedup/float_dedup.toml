@@ -1,0 +1,156 @@
+# float_dedup.toml — per-signal epsilon rules for Evelyn EMS data
+#
+# Floats pass through only if |new - last| >= epsilon  OR  heartbeat elapsed.
+# Rules are checked top-to-bottom; first match wins.
+# point_name patterns use filepath.Match syntax (* = any chars, ? = one char).
+
+heartbeat       = "60s"   # always forward after this interval (keeps TSM alive)
+default_epsilon = 0.5     # fallback for unmatched signals
+
+# ── Site-level high-frequency control signals ─────────────────────────────────
+[[rule]]
+  pattern = "HS-CONTROL-AGC"
+  epsilon = 10.0            # median diff ~125, suppress sub-10 jitter
+
+[[rule]]
+  pattern = "HS-CONTROL-P"
+  epsilon = 5.0             # median diff ~53
+
+[[rule]]
+  pattern = "HS-CONTROL-Q*"
+  epsilon = 2.0             # HS-CONTROL-Q, HS-CONTROL-Q-Measured (~8-31)
+
+[[rule]]
+  pattern = "HS-CONTROL-P-Measured"
+  epsilon = 5.0
+
+[[rule]]
+  pattern = "HS-CONTROL-V"
+  epsilon = 1.0             # median diff ~8.5
+
+# ── Power / energy ────────────────────────────────────────────────────────────
+[[rule]]
+  pattern = "kW"
+  epsilon = 5.0             # median diff ~31 kW
+
+[[rule]]
+  pattern = "kVAR"
+  epsilon = 5.0
+
+[[rule]]
+  pattern = "kVA"
+  epsilon = 5.0
+
+[[rule]]
+  pattern = "PCS_P"
+  epsilon = 2.0
+
+[[rule]]
+  pattern = "PCS_Q"
+  epsilon = 0.5             # median diff ~0.68 — tight but real changes
+
+[[rule]]
+  pattern = "CMD_P"
+  epsilon = 2.0
+
+[[rule]]
+  pattern = "CMD_Q"
+  epsilon = 0.5
+
+# ── Meter signals ─────────────────────────────────────────────────────────────
+[[rule]]
+  pattern = "CLR_NET_MW"
+  epsilon = 5.0
+
+[[rule]]
+  pattern = "CLR_NET_LOAD_MW"
+  epsilon = 5.0
+
+[[rule]]
+  pattern = "GEN_NET_MW"
+  epsilon = 2.0
+
+[[rule]]
+  pattern = "GEN_GROSS_MW"
+  epsilon = 2.0
+
+[[rule]]
+  pattern = "Current"
+  epsilon = 0.1             # median diff ~0.48 A
+
+# ── Voltages (high absolute values in V) ─────────────────────────────────────
+[[rule]]
+  pattern = "Meter_V*"
+  epsilon = 50.0            # median diff ~298 V — suppress noise
+
+[[rule]]
+  pattern = "Meter_Vab"
+  epsilon = 50.0
+
+[[rule]]
+  pattern = "Group1_V*"
+  epsilon = 50.0
+
+# ── RTAC / grid metering ──────────────────────────────────────────────────────
+[[rule]]
+  pattern = "MET_F*_P_WATTS"
+  epsilon = 5.0
+
+[[rule]]
+  pattern = "MET_F*_Q_VARS"
+  epsilon = 2.0
+
+[[rule]]
+  pattern = "MET_L1_P_WATTS"
+  epsilon = 5.0
+
+# ── Battery / rack signals ────────────────────────────────────────────────────
+[[rule]]
+  pattern = "Max Cell Voltage"
+  epsilon = 0.005           # 3.327 V, quantised to 0.001 V
+
+[[rule]]
+  pattern = "AllowedMaxP"
+  epsilon = 0.1
+
+[[rule]]
+  pattern = "AllowedMinP"
+  epsilon = 0.1
+
+[[rule]]
+  pattern = "SysVoltage"
+  epsilon = 0.05
+
+[[rule]]
+  pattern = "RackVoltage"
+  epsilon = 0.05
+
+[[rule]]
+  pattern = "RackCurrent"
+  epsilon = 0.1
+
+# ── Temperature signals (1°C quantised) ──────────────────────────────────────
+[[rule]]
+  pattern = "*Temp*"
+  epsilon = 0.3
+
+[[rule]]
+  pattern = "*CellT"
+  epsilon = 0.3
+
+[[rule]]
+  pattern = "*AmbT"
+  epsilon = 0.3
+
+# ── PCS DC bus ────────────────────────────────────────────────────────────────
+[[rule]]
+  pattern = "StatusDCValues_DcVoltageLo"
+  epsilon = 50.0            # median diff ~105
+
+[[rule]]
+  pattern = "StatusDCVoltage3L_DcMidpointRipple"
+  epsilon = 20.0
+
+[[rule]]
+  pattern = "CmdMsgr_Freq_ms"
+  epsilon = 2.0             # median diff 4ms — suppress 2ms jitter

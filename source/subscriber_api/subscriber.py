@@ -1,26 +1,30 @@
 """
 Subscriber API — WebSocket server for battery telemetry.
 
-Real-time: plain NATS core subscription on batteries.> broadcasts every
-           incoming message to all connected WebSocket clients instantly.
-History:   client sends a query_history request; DuckDB reads the
-           partitioned Parquet files directly from S3/MinIO and returns
-           the result set.
+Real-time: FlashMQ MQTT subscription (paho-mqtt) broadcasts incoming
+           messages to all connected WebSocket clients.
+History:   client sends a query_history request; DuckDB reads date-
+           partitioned Parquet files from S3/local and returns results.
 
 Wire protocol (all JSON):
 
   Client → Server
-    {"type":"query_history","query_id":"1","site_id":"0",
+    {"type":"query_history","query_id":"1",
+     "site":"evelyn","instance":"unit-3",
      "from_ts":1234567890.0,"to_ts":1234567891.0,"limit":2000}
 
   Server → Client
-    {"type":"live",    "data":{flat battery record}}
+    {"type":"live",    "topic":"unit/3/kw", "payload":{flat record}}
     {"type":"history", "query_id":"1","columns":[...],"rows":[...],
-                       "total":N,"elapsed_ms":N}
+                       "total":N,"elapsed_ms":N,"backend":"duckdb"}
     {"type":"error",   "query_id":"1","message":"..."}
 
+Path layout:
+  s3://{bucket}/{prefix}/{site}/{instance}/{yyyy}/{mm}/{dd}/*.parquet
+  e.g. s3://ems-archive/parquet/evelyn/unit-3/2025/06/01/data.parquet
+
 Usage:
-  pip install nats-py duckdb websockets pyyaml
+  pip install duckdb websockets pyyaml paho-mqtt
   python subscriber.py
   python subscriber.py --config config.yaml
 """
@@ -30,22 +34,30 @@ import asyncio
 import json
 import logging
 import signal
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
+import os
+
 import duckdb
-import nats
+import paho.mqtt.client as mqtt
 import websockets
 import yaml
+
+from backends.duckdb_backend import DuckDBBackend
+from backends.influxdb2 import InfluxDB2Backend
+from router import QueryRouter
+import http_server as _http
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# All connected WebSocket clients
 _clients: set = set()
 _executor = ThreadPoolExecutor(max_workers=4)
+_loop: asyncio.AbstractEventLoop | None = None   # set in run()
 
 
 # ---------------------------------------------------------------------------
@@ -60,24 +72,53 @@ def _flatten(row: dict) -> dict:
     }
 
 
-def _hour_partitions(from_ts: float, to_ts: float):
-    """Yield (date_str, hour_str) for every UTC hour bucket in [from_ts, to_ts]."""
+def _day_partitions(from_ts: float, to_ts: float):
+    """Yield (yyyy, mm, dd) strings for every UTC day in [from_ts, to_ts]."""
     dt = datetime.fromtimestamp(from_ts, tz=timezone.utc).replace(
-        minute=0, second=0, microsecond=0
+        hour=0, minute=0, second=0, microsecond=0
     )
     end = datetime.fromtimestamp(to_ts, tz=timezone.utc)
     while dt <= end:
-        yield dt.strftime("%Y-%m-%d"), dt.strftime("%H")
-        dt += timedelta(hours=1)
+        yield dt.strftime("%Y"), dt.strftime("%m"), dt.strftime("%d")
+        dt += timedelta(days=1)
+
+
+def _build_globs(cfg: dict, site: str, instance: str,
+                 from_ts: float, to_ts: float) -> list:
+    """Return glob paths covering [from_ts, to_ts] for this site/instance.
+
+    Uses local_path if configured (fractal-phil / tests), otherwise S3.
+    """
+    local = cfg["s3"].get("local_path")
+    if local:
+        base = os.path.join(local.rstrip("/"), site, instance)
+        return [
+            os.path.join(base, yyyy, mm, dd, "*.parquet")
+            for yyyy, mm, dd in _day_partitions(from_ts, to_ts)
+        ]
+
+    bucket = cfg["s3"]["bucket"]
+    prefix = cfg["s3"].get("prefix", "").strip("/")
+    base = "s3://{}/{}{}".format(
+        bucket,
+        prefix + "/" if prefix else "",
+        f"{site}/{instance}",
+    )
+    return [
+        f"{base}/{yyyy}/{mm}/{dd}/*.parquet"
+        for yyyy, mm, dd in _day_partitions(from_ts, to_ts)
+    ]
 
 
 # ---------------------------------------------------------------------------
-# DuckDB / S3  (called in thread executor — one connection per query)
+# DuckDB / S3
 # ---------------------------------------------------------------------------
 
 def _make_conn(cfg: dict) -> duckdb.DuckDBPyConnection:
-    s3 = cfg["s3"]
     conn = duckdb.connect()
+    if cfg["s3"].get("local_path"):
+        return conn   # local filesystem — no httpfs needed
+    s3 = cfg["s3"]
     conn.execute("INSTALL httpfs; LOAD httpfs;")
     if s3.get("endpoint_url"):
         netloc = urlparse(s3["endpoint_url"]).netloc
@@ -91,26 +132,11 @@ def _make_conn(cfg: dict) -> duckdb.DuckDBPyConnection:
     return conn
 
 
-def _query_history(cfg: dict, site_id: str,
+def _query_history(cfg: dict, site: str, instance: str,
                    from_ts: float, to_ts: float, limit: int):
-    """Query S3 Parquet files for a site/time-range. Returns (columns, rows)."""
+    """Query parquet files for a site/instance/time-range. Returns (columns, rows)."""
     conn = _make_conn(cfg)
-    bucket = cfg["s3"]["bucket"]
-    prefix = cfg["s3"].get("prefix", "").strip("/")
-    base   = "s3://{}/{}{}/site={}".format(
-        bucket,
-        prefix + "/" if prefix else "",
-        "",          # no extra segment when prefix is empty
-        site_id,
-    )
-    # Fix double-slash when prefix is empty
-    base = f"s3://{bucket}/" + (f"{prefix}/" if prefix else "") + f"site={site_id}"
-
-    # Target only the specific hour partitions that overlap the query window
-    globs = [
-        f"{base}/date={d}/hour={h}/*.parquet"
-        for d, h in _hour_partitions(from_ts, to_ts)
-    ]
+    globs = _build_globs(cfg, site, instance, from_ts, to_ts)
     sources = ", ".join(f"'{g}'" for g in globs)
 
     try:
@@ -123,12 +149,22 @@ def _query_history(cfg: dict, site_id: str,
         cols = [d[0] for d in result.description]
         rows = result.fetchall()
     except Exception as exc:
-        # Some hour partitions may not exist — fall back to full-site glob
-        log.warning("Partition query failed (%s) — falling back to site glob", exc)
+        # Some day partitions may not exist — fall back to full-instance glob
+        log.warning("Partition query failed (%s) — falling back to instance glob", exc)
+        local = cfg["s3"].get("local_path")
+        if local:
+            base = os.path.join(local.rstrip("/"), site, instance)
+        else:
+            bucket = cfg["s3"]["bucket"]
+            prefix = cfg["s3"].get("prefix", "").strip("/")
+            base = "s3://{}/{}{}".format(
+                bucket,
+                prefix + "/" if prefix else "",
+                f"{site}/{instance}",
+            )
         try:
             result = conn.execute(f"""
-                SELECT * FROM read_parquet('{base}/date=*/hour=*/*.parquet',
-                                           union_by_name=true)
+                SELECT * FROM read_parquet('{base}/*/*/*/*.parquet', union_by_name=true)
                 WHERE timestamp >= {from_ts} AND timestamp <= {to_ts}
                 ORDER BY timestamp
                 LIMIT {limit}
@@ -157,7 +193,7 @@ async def _broadcast(msg: dict) -> None:
     )
 
 
-async def _ws_handler(websocket, cfg: dict) -> None:
+async def _ws_handler(websocket, cfg: dict, router=None) -> None:
     _clients.add(websocket)
     log.info("Client connected %s  (total: %d)", websocket.remote_address, len(_clients))
     try:
@@ -171,7 +207,8 @@ async def _ws_handler(websocket, cfg: dict) -> None:
                 continue
 
             query_id = str(msg.get("query_id", ""))
-            site_id  = str(msg.get("site_id",  "0"))
+            site     = str(msg.get("site",     "unknown"))
+            instance = str(msg.get("instance", "unknown"))
             from_ts  = float(msg.get("from_ts", time.time() - 300))
             to_ts    = float(msg.get("to_ts",   time.time()))
             limit    = int(msg.get("limit",   2000))
@@ -179,9 +216,15 @@ async def _ws_handler(websocket, cfg: dict) -> None:
             t0 = time.monotonic()
             try:
                 loop = asyncio.get_running_loop()
-                cols, rows = await loop.run_in_executor(
-                    _executor, _query_history, cfg, site_id, from_ts, to_ts, limit
-                )
+                if router:
+                    cols, rows, backend = await loop.run_in_executor(
+                        _executor, router.query, site, instance, from_ts, to_ts, limit
+                    )
+                else:
+                    cols, rows = await loop.run_in_executor(
+                        _executor, _query_history, cfg, site, instance, from_ts, to_ts, limit
+                    )
+                    backend = "duckdb"
                 elapsed = int((time.monotonic() - t0) * 1000)
                 await websocket.send(json.dumps({
                     "type":       "history",
@@ -190,8 +233,10 @@ async def _ws_handler(websocket, cfg: dict) -> None:
                     "rows":       [list(r) for r in rows],
                     "total":      len(rows),
                     "elapsed_ms": elapsed,
+                    "backend":    backend,
                 }, default=str))
-                log.info("History  site=%s  rows=%d  %dms", site_id, len(rows), elapsed)
+                log.info("History  site=%s  instance=%s  rows=%d  %dms",
+                         site, instance, len(rows), elapsed)
             except Exception as exc:
                 await websocket.send(json.dumps({
                     "type":     "error",
@@ -208,46 +253,86 @@ async def _ws_handler(websocket, cfg: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# NATS live subscription  (plain core sub — no JetStream consumer overhead)
+# MQTT live subscription — paho runs in its own thread, bridges to asyncio
 # ---------------------------------------------------------------------------
 
-async def _nats_subscriber(cfg: dict) -> None:
-    url  = cfg["nats"]["url"]
-    subj = cfg["nats"].get("subject_filter", "batteries.>")
+def _start_mqtt(cfg: dict, loop: asyncio.AbstractEventLoop) -> None:
+    """Start paho-mqtt client in a daemon thread, posting to asyncio event loop."""
+    mqtt_cfg = cfg["live"]["mqtt"]
+    url      = mqtt_cfg["url"]          # tcp://host:port
+    topics   = mqtt_cfg.get("topics", ["unit/#"])
 
-    while True:
+    parsed = urlparse(url)
+    host   = parsed.hostname
+    port   = parsed.port or 1883
+
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            for topic in topics:
+                client.subscribe(topic)
+            log.info("MQTT connected %s:%d  topics=%s", host, port, topics)
+            _http.set_live_status(True, url, topics)
+        else:
+            log.warning("MQTT connect failed rc=%d", rc)
+
+    def on_message(client, userdata, msg):
         try:
-            nc = await nats.connect(url)
-            log.info("NATS connected: %s", url)
+            payload = _flatten(json.loads(msg.payload))
+            broadcast = {"type": "live", "topic": msg.topic, "payload": payload}
+            asyncio.run_coroutine_threadsafe(_broadcast(broadcast), loop)
+        except Exception:
+            pass
 
-            async def on_msg(msg):
-                try:
-                    payload = _flatten(json.loads(msg.data))
-                    await _broadcast({"type": "live", "subject": msg.subject, "payload": payload})
-                except Exception:
-                    pass
+    def on_disconnect(client, userdata, rc):
+        log.warning("MQTT disconnected rc=%d — paho will reconnect", rc)
+        _http.set_live_status(False, url, topics)
 
-            await nc.subscribe(subj, cb=on_msg)
-            log.info("Live subscription active on '%s'", subj)
+    client = mqtt.Client()
+    client.on_connect    = on_connect
+    client.on_message    = on_message
+    client.on_disconnect = on_disconnect
+    client.reconnect_delay_set(min_delay=1, max_delay=10)
 
-            while nc.is_connected:
-                await asyncio.sleep(1)
-            await nc.drain()
-
-        except Exception as exc:
-            log.warning("NATS error (%s) — reconnecting in 5s", exc)
-            await asyncio.sleep(5)
+    client.connect_async(host, port)
+    client.loop_forever()   # blocks this thread; auto-reconnects on drop
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
-async def run(cfg: dict) -> None:
-    host = cfg["server"].get("host", "0.0.0.0")
-    port = cfg["server"].get("port", 8767)
+def _build_router(cfg: dict) -> QueryRouter | None:
+    """Build QueryRouter if both backends are configured; return None if not."""
+    has_influx = "influxdb2" in cfg
+    has_duckdb = "s3" in cfg
+    if not (has_influx and has_duckdb):
+        log.info("Router disabled — missing influxdb2 or s3 config; using DuckDB only")
+        return None
+    cold = DuckDBBackend(cfg)
+    hot  = InfluxDB2Backend(cfg)
+    router_cfg = cfg.get("router", {})
+    secs = router_cfg.get("hot_window_seconds")
+    days = router_cfg.get("hot_window_days", 90)
+    if secs is not None:
+        log.info("QueryRouter: hot=influxdb2  cold=duckdb  window=%ds", secs)
+        return QueryRouter(hot, cold, hot_window_seconds=secs)
+    log.info("QueryRouter: hot=influxdb2  cold=duckdb  window=%dd", days)
+    return QueryRouter(hot, cold, hot_window_days=days)
 
-    asyncio.create_task(_nats_subscriber(cfg))
+
+async def run(cfg: dict) -> None:
+    global _loop
+    _loop = asyncio.get_running_loop()
+
+    host     = cfg["server"].get("host", "0.0.0.0")
+    ws_port  = cfg["server"].get("ws_port",   cfg["server"].get("port", 8767))
+    http_port = cfg["server"].get("http_port", 8768)
+    router   = _build_router(cfg)
+
+    mqtt_thread = threading.Thread(
+        target=_start_mqtt, args=(cfg, _loop), daemon=True, name="mqtt-live"
+    )
+    mqtt_thread.start()
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -255,12 +340,16 @@ async def run(cfg: dict) -> None:
     loop.add_signal_handler(signal.SIGTERM, stop.set)
 
     async def handler(websocket):
-        await _ws_handler(websocket, cfg)
+        await _ws_handler(websocket, cfg, router)
 
-    async with websockets.serve(handler, host, port):
-        log.info("Subscriber API  ws://%s:%d", host, port)
+    http_srv = await _http.start(host, http_port, router, _executor)
+    async with websockets.serve(handler, host, ws_port):
+        log.info("Subscriber API  ws://%s:%d  http://%s:%d",
+                 host, ws_port, host, http_port)
         await stop.wait()
 
+    http_srv.close()
+    await http_srv.wait_closed()
     log.info("Shutdown complete")
 
 

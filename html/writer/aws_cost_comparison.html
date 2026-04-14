@@ -1,0 +1,1838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AWS Cost Comparison — InfluxDB vs Parquet/DuckDB (Longbow Rate, 10-year)</title>
+<style>
+  /* ── dark mode (default) ── */
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --th-bg: #21262d; --tr-alt: #0d1117;
+    --kpi-bg: #0d1117; --surface2: #0d1117;
+    --bar-track: #0d1117;
+    --bar-red: #5a1010; --bar-grn: #0d3a1a; --bar-ylw: #3a2a00;
+    --tl-cell-r: #1a0a0a; --tl-cell-g: #0a1a0a; --tl-cell-y: #1a1500;
+    --tag-red-bg: #3d0a0a; --tag-grn-bg: #0d4429; --tag-ylw-bg: #2d2000;
+    --savings-bg: #0d3a1a;
+  }
+
+  /* ── light / print mode ── */
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+    --kpi-bg: #f6f8fa; --surface2: #f6f8fa;
+    --bar-track: #e8ecf0;
+    --bar-red: #fde8e8; --bar-grn: #dcfce7; --bar-ylw: #fef9c3;
+    --tl-cell-r: #fde8e8; --tl-cell-g: #dcfce7; --tl-cell-y: #fef9c3;
+    --tag-red-bg: #fee2e2; --tag-grn-bg: #dcfce7; --tag-ylw-bg: #fef9c3;
+    --savings-bg: #dcfce7;
+  }
+
+  /* ── auto light on print ── */
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+      --kpi-bg: #f6f8fa; --surface2: #f6f8fa;
+      --bar-track: #e8ecf0;
+      --bar-red: #fde8e8; --bar-grn: #dcfce7; --bar-ylw: #fef9c3;
+      --tl-cell-r: #fde8e8; --tl-cell-g: #dcfce7; --tl-cell-y: #fef9c3;
+      --tag-red-bg: #fee2e2; --tag-grn-bg: #dcfce7; --tag-ylw-bg: #fef9c3;
+      --savings-bg: #dcfce7;
+    }
+    .theme-toggle { display: none; }
+    .nav { display: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 32px; line-height: 1.7; max-width: 1100px; margin: 0 auto;
+         transition: background 0.2s, color 0.2s; }
+
+  h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.88rem; margin-bottom: 32px; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px;
+       padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.92rem; margin: 18px 0 8px; }
+
+  p  { margin-bottom: 10px; font-size: 0.88rem; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { font-size: 0.88rem; margin-bottom: 4px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 22px 24px; margin-bottom: 20px; }
+
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 1px 5px;
+         border-radius: 4px; font-size: 0.82rem; color: var(--code-text); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin: 10px 0; }
+  th    { background: var(--th-bg); color: var(--accent); text-align: left;
+          padding: 7px 12px; border: 1px solid var(--border); }
+  td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--tr-alt); }
+  .num  { font-family: monospace; }
+  .ok   { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .err  { color: var(--red); }
+  .dim  { color: var(--muted); }
+  .r    { text-align: right; }
+
+  .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 0.84rem; }
+  .alert-info { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
+  .alert-warn { background: #2d200044; border: 1px solid #5a4000; color: var(--yellow); }
+  .alert-ok   { background: #0d442944; border: 1px solid #1a6e3a; color: var(--green); }
+  body.light .alert-info { background: #dbeafe; border-color: #93c5fd; color: var(--accent); }
+  body.light .alert-warn { background: #fef9c3; border-color: #fde047; color: var(--yellow); }
+  body.light .alert-ok   { background: #dcfce7; border-color: #86efac; color: var(--green); }
+
+  .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.8rem;
+           padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 14px 0; }
+  @media (max-width: 800px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  .kpi-card { background: var(--kpi-bg); border: 1px solid var(--border); border-radius: 6px;
+              padding: 14px; text-align: center; }
+  .kpi-val  { font-size: 1.5rem; font-family: monospace; line-height: 1.1; }
+  .kpi-lbl  { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+  .kpi-red  { color: var(--red); }
+  .kpi-grn  { color: var(--green); }
+  .kpi-ylw  { color: var(--yellow); }
+  .kpi-acc  { color: var(--accent); }
+
+  /* bar chart */
+  .bar-wrap { margin: 6px 0 4px; }
+  .bar-row  { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.82rem; }
+  .bar-label { width: 180px; flex-shrink: 0; color: var(--muted); }
+  .bar-track { flex: 1; background: var(--bar-track); border: 1px solid var(--border);
+               border-radius: 3px; height: 22px; position: relative; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .bar-fill-red  { background: var(--bar-red); border-right: 2px solid var(--red); }
+  .bar-fill-grn  { background: var(--bar-grn); border-right: 2px solid var(--green); }
+  .bar-fill-ylw  { background: var(--bar-ylw); border-right: 2px solid var(--yellow); }
+  .bar-val   { width: 90px; text-align: right; flex-shrink: 0;
+               font-family: monospace; font-size: 0.82rem; }
+
+  /* cost timeline chart */
+  .timeline { display: grid; grid-template-columns: 80px repeat(6, 1fr); gap: 0;
+              border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+              margin: 14px 0; font-size: 0.8rem; }
+  .tl-head  { background: var(--th-bg); color: var(--accent); padding: 8px 10px;
+              border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+              font-weight: 600; text-align: center; }
+  .tl-cell  { padding: 8px 10px; border-right: 1px solid var(--border);
+              border-bottom: 1px solid var(--border); text-align: center;
+              font-family: monospace; }
+  .tl-label { padding: 8px 10px; border-right: 1px solid var(--border);
+              border-bottom: 1px solid var(--border); color: var(--muted);
+              font-size: 0.78rem; display: flex; align-items: center; }
+  .tl-cell-r { background: var(--tl-cell-r); }
+  .tl-cell-g { background: var(--tl-cell-g); }
+  .tl-cell-y { background: var(--tl-cell-y); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+  .box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+  .box-title { font-size: 0.8rem; color: var(--muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem;
+         font-weight: 700; margin-left: 4px; }
+  .tag-red  { background: var(--tag-red-bg); color: var(--red);    border: 1px solid #7a1515; }
+  .tag-grn  { background: var(--tag-grn-bg); color: var(--green);  border: 1px solid #1a6e3a; }
+  .tag-ylw  { background: var(--tag-ylw-bg); color: var(--yellow); border: 1px solid #5a4000; }
+  body.light .tag-red  { border-color: #fca5a5; }
+  body.light .tag-grn  { border-color: #86efac; }
+  body.light .tag-ylw  { border-color: #fde047; }
+
+  .savings-banner { background: var(--savings-bg); border: 1px solid #1a6e3a; border-radius: 8px;
+                    padding: 18px 24px; margin: 16px 0; display: flex;
+                    align-items: center; gap: 24px; flex-wrap: wrap; }
+  body.light .savings-banner { border-color: #86efac; }
+  .savings-big { font-size: 2.4rem; font-family: monospace; color: var(--green); font-weight: 700; }
+  .savings-sub { font-size: 0.85rem; color: var(--muted); }
+
+  footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);
+           font-size: 0.78rem; color: var(--muted); }
+
+  /* ── §12 query cost section ── */
+  .athena-box {
+    background: #0c2d6b22; border: 1px solid #1a4d9e;
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;
+  }
+  body.light .athena-box { background: #dbeafe; border-color: #93c5fd; }
+
+  .athena-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px;
+  }
+
+  .sql-pre {
+    background: #0d0d1a; border: 1px solid #1a1a4a;
+    font-size: 0.78rem; padding: 12px; border-radius: 6px; overflow-x: auto;
+    font-family: 'Consolas', 'Courier New', monospace; line-height: 1.6;
+    color: var(--code-text); margin: 0;
+  }
+  body.light .sql-pre { background: var(--code-bg); border-color: var(--border); }
+
+  /* ── theme toggle button ── */
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 14px;
+    font-size: 0.8rem; cursor: pointer; z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: background 0.2s, color 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+
+<script>
+  function toggleTheme() {
+    const body = document.body;
+    const btn  = document.getElementById('theme-btn');
+    if (body.classList.toggle('light')) {
+      btn.textContent = '🌙 Dark mode';
+    } else {
+      btn.textContent = '🖨 Print / Light mode';
+    }
+  }
+</script>
+</head>
+<body>
+
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🖨 Print / Light mode</button>
+
+<h1>AWS Cost Comparison</h1>
+<div class="subtitle">
+  InfluxDB/Telegraf path vs Parquet/DuckDB path &nbsp;·&nbsp;
+  Longbow EMS data rate (81,420 msg/s) &nbsp;·&nbsp;
+  10-year projection &nbsp;·&nbsp; 2026 AWS pricing &nbsp;·&nbsp;
+  <span style="color:var(--red)">storage costs only — processing costs and data loss risk covered in §9–10</span>
+</div>
+
+<div class="nav">
+  <a href="#assumptions">Assumptions</a>
+  <a href="#monthly">Monthly cost table</a>
+  <a href="#barchart">Year-10 comparison</a>
+  <a href="#breakdown">Month-120 breakdown</a>
+  <a href="#cumulative">10-year total</a>
+  <a href="#lifecycle">S3 lifecycle option</a>
+  <a href="#why">Why the gap</a>
+  <a href="#processing">Processing costs</a>
+  <a href="#dataloss">Data loss risk</a>
+  <a href="#influx3">InfluxDB 3</a>
+  <a href="#querycost">Query cost</a>
+  <a href="#notes">Notes &amp; caveats</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="assumptions">1 · Assumptions</h2>
+
+<div class="section">
+  <div class="two-col">
+    <div>
+      <h3>Data source — Longbow EMS site</h3>
+      <table>
+        <tbody>
+          <tr><td>Message rate</td><td class="num">81,420 msg/s (continuous)</td></tr>
+          <tr><td>Unique topics</td><td class="num">1,770</td></tr>
+          <tr><td>BMS units</td><td class="num">47</td></tr>
+          <tr><td>Avg topic length</td><td class="num">84.4 bytes (max 136)</td></tr>
+          <tr><td>Avg payload length</td><td class="num">~52 bytes</td></tr>
+          <tr><td>Raw MQTT throughput</td><td class="num">~10.8 MB/s</td></tr>
+          <tr><td>Hours/day operational</td><td class="num">24 (continuous)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Storage rates (post-compression)</h3>
+      <table>
+        <tbody>
+          <tr><td>InfluxDB line protocol/day</td><td class="num warn">985 GB/day</td></tr>
+          <tr><td>InfluxDB TSM compression</td><td class="num">~8× (IoT time series)</td></tr>
+          <tr><td>InfluxDB stored/day</td><td class="num warn">~123 GB/day</td></tr>
+          <tr><td>InfluxDB stored/month</td><td class="num warn">~3,690 GB/month</td></tr>
+          <tr><td>Parquet compressed/day</td><td class="num ok">~67 GB/day</td></tr>
+          <tr><td>Parquet stored/month</td><td class="num ok">~2,010 GB/month</td></tr>
+          <tr><td>Compression ratio vs raw</td><td class="num ok">11.4× (9.6 B/row)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3 style="margin-top:18px">AWS pricing used</h3>
+  <table>
+    <thead><tr><th>Resource</th><th>Price</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>EC2 r5.2xlarge (8 vCPU / 64 GB)</td><td class="num">$0.504/hr → $365/month</td><td>InfluxDB server (minimum spec for 81k writes/s)</td></tr>
+      <tr><td>EBS gp3</td><td class="num">$0.08 / GB-month</td><td>InfluxDB storage (on-instance block device)</td></tr>
+      <tr><td>EC2 t3.small</td><td class="num">$0.0208/hr → $15/month</td><td>Parquet writer API / DuckDB query server</td></tr>
+      <tr><td>S3 Standard</td><td class="num">$0.023 / GB-month</td><td>Parquet file storage</td></tr>
+      <tr><td>S3 Standard-IA</td><td class="num">$0.0125 / GB-month</td><td>Parquet — tiered (lifecycle option)</td></tr>
+      <tr><td>S3 PUT requests</td><td class="num">$0.005 / 1,000 req</td><td>~67,000 files/day at 47-unit partitioning → ~$10/month</td></tr>
+      <tr><td>AWS Athena</td><td class="num">$5.00 / TB scanned</td><td>Ad-hoc queries on Parquet — est. ~30 TB/month → $150/month</td></tr>
+      <tr><td>S3-IA retrieval</td><td class="num">$0.01 / GB</td><td>Lifecycle path: estimated $30/month for typical queries</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn" style="margin-top:12px">
+    <strong>InfluxDB line protocol overhead:</strong> the full topic string
+    (<code>unit/02281660/bms/bms_1/Batt1_MBMS_…/integer</code>, avg 84.4 bytes) repeats in
+    every single line protocol message. At 81,420 msg/s this alone contributes 6.9 MB/s of
+    wire data — before field names, measurement name, or timestamp.
+    Parquet eliminates this through dictionary encoding: 1,770 unique point names are stored
+    <em>once per row group</em> (~106 KB total) regardless of how many millions of rows reference them.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="monthly">2 · Monthly Cost Progression</h2>
+
+<div class="section">
+  <p>
+    Storage costs grow linearly: each month adds a fixed volume of data that must be paid for
+    every subsequent month. EC2 and query costs are flat. The dominant cost driver for both
+    paths is accumulated storage.
+  </p>
+
+  <div class="timeline">
+    <!-- header row -->
+    <div class="tl-head">Path</div>
+    <div class="tl-head">Month 1</div>
+    <div class="tl-head">Month 6</div>
+    <div class="tl-head">Month 12<br><span style="font-size:0.72rem;color:var(--muted)">(yr 1)</span></div>
+    <div class="tl-head">Month 24<br><span style="font-size:0.72rem;color:var(--muted)">(yr 2)</span></div>
+    <div class="tl-head">Month 60<br><span style="font-size:0.72rem;color:var(--muted)">(yr 5)</span></div>
+    <div class="tl-head">Month 120<br><span style="font-size:0.72rem;color:var(--muted)">(yr 10)</span></div>
+
+    <!-- InfluxDB -->
+    <div class="tl-label">InfluxDB<br>(EC2 + EBS)</div>
+    <div class="tl-cell tl-cell-r">$660</div>
+    <div class="tl-cell tl-cell-r">$2,135</div>
+    <div class="tl-cell tl-cell-r">$3,905</div>
+    <div class="tl-cell tl-cell-r">$7,445</div>
+    <div class="tl-cell tl-cell-r">$18,065</div>
+    <div class="tl-cell tl-cell-r" style="color:var(--red);font-weight:700">$35,765</div>
+
+    <!-- EBS storage only -->
+    <div class="tl-label" style="color:var(--muted);font-size:0.76rem">  └ EBS storage only</div>
+    <div class="tl-cell dim">$295</div>
+    <div class="tl-cell dim">$1,770</div>
+    <div class="tl-cell dim">$3,540</div>
+    <div class="tl-cell dim">$7,080</div>
+    <div class="tl-cell dim">$17,700</div>
+    <div class="tl-cell dim">$35,400</div>
+
+    <!-- Parquet S3 standard -->
+    <div class="tl-label">Parquet/S3<br>(Standard)</div>
+    <div class="tl-cell tl-cell-g">$224</div>
+    <div class="tl-cell tl-cell-g">$459</div>
+    <div class="tl-cell tl-cell-g">$741</div>
+    <div class="tl-cell tl-cell-g">$1,305</div>
+    <div class="tl-cell tl-cell-g">$2,997</div>
+    <div class="tl-cell tl-cell-g" style="color:var(--green);font-weight:700">$5,817</div>
+
+    <!-- Parquet S3-IA -->
+    <div class="tl-label">Parquet/S3-IA<br>(lifecycle)</div>
+    <div class="tl-cell tl-cell-y">$232</div>
+    <div class="tl-cell tl-cell-y">$387</div>
+    <div class="tl-cell tl-cell-y">$537</div>
+    <div class="tl-cell tl-cell-y">$837</div>
+    <div class="tl-cell tl-cell-y">$1,737</div>
+    <div class="tl-cell tl-cell-y" style="color:var(--yellow);font-weight:700">$3,237</div>
+  </div>
+
+  <p style="font-size:0.8rem;color:var(--muted);margin-top:8px">
+    Parquet/S3 fixed costs: EC2 $15 + Athena est. $150 + S3 PUT ~$10 = $175/month.
+    InfluxDB fixed costs: EC2 r5.2xlarge $365/month.
+    Storage cost = rate × cumulative months of data held.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="barchart">3 · Month 120 (Year 10) — Visual Comparison</h2>
+
+<div class="section">
+  <p>All bars normalised to InfluxDB month-120 cost ($35,765). Each bar represents
+     the total monthly bill at the end of year 10.</p>
+
+  <div class="bar-wrap">
+    <div class="bar-row">
+      <div class="bar-label">InfluxDB (EC2+EBS)</div>
+      <div class="bar-track">
+        <div class="bar-fill bar-fill-red" style="width:100%"></div>
+      </div>
+      <div class="bar-val err">$35,765</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">Parquet / S3 Standard</div>
+      <div class="bar-track">
+        <div class="bar-fill bar-fill-grn" style="width:16.3%"></div>
+      </div>
+      <div class="bar-val ok">$5,817</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">Parquet / S3-IA lifecycle</div>
+      <div class="bar-track">
+        <div class="bar-fill bar-fill-ylw" style="width:9.1%"></div>
+      </div>
+      <div class="bar-val warn">$3,237</div>
+    </div>
+  </div>
+
+  <div class="savings-banner" style="margin-top:20px">
+    <div>
+      <div class="savings-big">83.7%</div>
+      <div class="savings-sub">cheaper per month at year 10<br>Parquet/S3 vs InfluxDB</div>
+    </div>
+    <div>
+      <div class="savings-big" style="color:var(--yellow)">91.0%</div>
+      <div class="savings-sub">cheaper per month at year 10<br>Parquet/S3-IA vs InfluxDB</div>
+    </div>
+    <div>
+      <div class="savings-big">$29,948</div>
+      <div class="savings-sub">saved every month<br>Parquet/S3 vs InfluxDB (yr 10)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="breakdown">4 · Month 120 Cost Breakdown</h2>
+
+<div class="section">
+  <div class="two-col">
+    <div class="box">
+      <div class="box-title">InfluxDB path <span class="tag tag-red">$35,765/month</span></div>
+      <table>
+        <thead><tr><th>Item</th><th class="r">$/month</th><th class="r">% of total</th></tr></thead>
+        <tbody>
+          <tr><td>EBS gp3 storage<br><span class="dim" style="font-size:0.76rem">443 TB accumulated (3,693 GB/month × 120)</span></td>
+              <td class="r num err">$35,400</td><td class="r">99.0%</td></tr>
+          <tr><td>EC2 r5.2xlarge (InfluxDB server)</td>
+              <td class="r num">$365</td><td class="r">1.0%</td></tr>
+          <tr style="font-weight:700"><td>Total</td>
+              <td class="r num err">$35,765</td><td class="r">100%</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;font-size:0.8rem;color:var(--muted)">
+        Storage is 99% of the bill. EC2 is rounding error by year 10.
+        Adding EBS snapshots (recommended for backup) would add ~$17,700/month,
+        bringing the total to ~$53,465/month.
+      </p>
+    </div>
+    <div class="box">
+      <div class="box-title">Parquet/S3 Standard path <span class="tag tag-grn">$5,817/month</span></div>
+      <table>
+        <thead><tr><th>Item</th><th class="r">$/month</th><th class="r">% of total</th></tr></thead>
+        <tbody>
+          <tr><td>S3 Standard storage<br><span class="dim" style="font-size:0.76rem">243 TB accumulated (2,010 GB/month × 120)</span></td>
+              <td class="r num ok">$5,589</td><td class="r">96.1%</td></tr>
+          <tr><td>Athena query costs (est. 30 TB/month)</td>
+              <td class="r num">$150</td><td class="r">2.6%</td></tr>
+          <tr><td>S3 PUT requests (~67k files/day)</td>
+              <td class="r num">$10</td><td class="r">0.2%</td></tr>
+          <tr><td>EC2 t3.small (writer API / DuckDB)</td>
+              <td class="r num">$15</td><td class="r">0.3%</td></tr>
+          <tr style="font-weight:700"><td>Total</td>
+              <td class="r num ok">$5,817 (est.)</td><td class="r">~100%</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;font-size:0.8rem;color:var(--muted)">
+        Parquet storage is 96% of the bill. Athena costs are query-volume dependent;
+        cached/partitioned queries can reduce this to &lt;$50/month with per-unit file
+        partitioning (<code>topic_partition_segments: 2</code>).
+      </p>
+    </div>
+  </div>
+
+  <div style="margin-top:16px" class="box">
+    <div class="box-title">Parquet/S3-IA lifecycle path <span class="tag tag-ylw">$3,237/month</span></div>
+    <p style="font-size:0.84rem">
+      Move files to S3 Standard-IA 30 days after write. S3-IA: $0.0125/GB-month vs $0.023
+      (46% cheaper) with a $0.01/GB retrieval fee. At 30 days warm, 120 days aged:
+    </p>
+    <table>
+      <thead><tr><th>Item</th><th class="r">$/month</th></tr></thead>
+      <tbody>
+        <tr><td>S3-IA storage (241 TB aged, $0.0125/GB)</td><td class="r num warn">$3,013</td></tr>
+        <tr><td>S3 Standard (2 TB warm, $0.023/GB)</td><td class="r num">$47</td></tr>
+        <tr><td>S3-IA retrieval overhead (est.)</td><td class="r num">$30</td></tr>
+        <tr><td>Athena + S3 PUT + EC2</td><td class="r num">$175</td></tr>
+        <tr style="font-weight:700"><td>Total</td><td class="r num warn">$3,237 (est.)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="cumulative">5 · 10-Year Cumulative Total</h2>
+
+<div class="section">
+  <p>
+    Cumulative cost = Σ monthly bills from month 1 to 120. Because storage grows each month,
+    the sum of monthly storage costs = rate × (1+2+…+120) = rate × 7,260.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th class="r">EC2 / fixed<br>10-year</th>
+        <th class="r">Storage<br>10-year</th>
+        <th class="r">Query / misc<br>10-year</th>
+        <th class="r">Total<br>10-year</th>
+        <th class="r">vs InfluxDB</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>InfluxDB</strong> <span class="tag tag-red">EC2+EBS</span></td>
+        <td class="r num">$43,800</td>
+        <td class="r num err">$2,141,280</td>
+        <td class="r num dim">—</td>
+        <td class="r num err" style="font-weight:700">$2,185,080</td>
+        <td class="r dim">baseline</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet/S3 Standard</strong> <span class="tag tag-grn">S3+Athena</span></td>
+        <td class="r num">$1,800</td>
+        <td class="r num ok">$341,460</td>
+        <td class="r num">$19,200</td>
+        <td class="r num ok" style="font-weight:700">$362,460</td>
+        <td class="r ok">−$1.82M (83.4% cheaper)</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet/S3-IA</strong> <span class="tag tag-ylw">lifecycle</span></td>
+        <td class="r num">$1,800</td>
+        <td class="r num warn">$185,625</td>
+        <td class="r num">$23,400</td>
+        <td class="r num warn" style="font-weight:700">$210,825</td>
+        <td class="r warn">−$1.97M (90.4% cheaper)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="savings-banner">
+    <div>
+      <div class="savings-big">$1.82M</div>
+      <div class="savings-sub">saved over 10 years<br>Parquet/S3 vs InfluxDB</div>
+    </div>
+    <div>
+      <div class="savings-big" style="color:var(--yellow)">$1.97M</div>
+      <div class="savings-sub">saved over 10 years<br>Parquet/S3-IA vs InfluxDB</div>
+    </div>
+    <div style="font-size:0.84rem;color:var(--muted);max-width:280px">
+      These figures are for a <strong>single Longbow site</strong> at 47 units.
+      At fleet scale (hundreds of sites), the multiplier is proportional.
+    </div>
+  </div>
+
+  <h3>Data volume at month 120</h3>
+  <table>
+    <thead><tr><th>Path</th><th>Accumulated data</th><th>Monthly write rate</th><th>Storage cost/GB-month</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>InfluxDB (EBS)</td>
+        <td class="num err">~433 TB</td>
+        <td class="num">3,693 GB/month</td>
+        <td class="num err">$0.080</td>
+      </tr>
+      <tr>
+        <td>Parquet (S3 Standard)</td>
+        <td class="num ok">~237 TB</td>
+        <td class="num">2,010 GB/month</td>
+        <td class="num ok">$0.023</td>
+      </tr>
+      <tr>
+        <td>Parquet (S3-IA lifecycle)</td>
+        <td class="num warn">~237 TB</td>
+        <td class="num">2,010 GB/month</td>
+        <td class="num warn">$0.0125 (aged)</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82rem;color:var(--muted)">
+    InfluxDB accumulates 1.84× more bytes than Parquet on disk despite
+    covering the same data — the extra volume comes from line protocol overhead
+    (full topic string per message) and TSM block index entries that embed
+    the series key (tag string) in every block header.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="lifecycle">6 · S3 Lifecycle — Recommended Configuration</h2>
+
+<div class="section">
+  <p>
+    S3 lifecycle rules can move Parquet files to cheaper tiers automatically after a
+    configurable age. DuckDB and Athena can query S3-IA files with identical syntax;
+    the only difference is a small per-GB retrieval fee on cold data.
+  </p>
+
+  <pre style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px;font-size:0.82rem;color:var(--code-text)">
+# S3 lifecycle policy (JSON / Terraform)
+{
+  "Rules": [{
+    "ID":     "parquet-tiering",
+    "Status": "Enabled",
+    "Filter": { "Prefix": "parquet/" },
+    "Transitions": [
+      { "Days": 30,  "StorageClass": "STANDARD_IA"  },   // -46% vs Standard
+      { "Days": 365, "StorageClass": "GLACIER_IR"   }    // -82% vs Standard ($0.004/GB)
+    ]
+  }]
+}</pre>
+
+  <table>
+    <thead><tr><th>Tier</th><th>Age</th><th>$/GB-month</th><th>Retrieval cost</th><th>Latency</th></tr></thead>
+    <tbody>
+      <tr><td>S3 Standard</td><td>0–30 days (recent data)</td><td class="num">$0.023</td><td class="ok">Free</td><td>Milliseconds</td></tr>
+      <tr><td>S3 Standard-IA</td><td>30–365 days</td><td class="num warn">$0.0125</td><td class="warn">$0.01/GB</td><td>Milliseconds</td></tr>
+      <tr><td>S3 Glacier Instant</td><td>365+ days</td><td class="num ok">$0.004</td><td class="warn">$0.03/GB</td><td>Milliseconds</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    With Glacier Instant Retrieval for data older than 1 year, the effective blended storage rate
+    across 10 years drops below $0.010/GB-month on average. Athena and DuckDB access Glacier IR
+    at the same speed as S3 Standard — there is no restore step. The $0.03/GB retrieval fee only
+    matters if you scan the entire 10-year history frequently; partitioned (per-unit) queries
+    typically scan &lt;1% of the total dataset per query.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="why">7 · Why the Cost Gap Is So Large</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Factor</th><th>InfluxDB/Telegraf</th><th>Parquet/DuckDB</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>String storage model</strong></td>
+        <td class="err">Full topic string (avg 84 bytes) written in every line protocol message.
+            Repeated 81,420 times/sec = 6.9 MB/s of string overhead before values.</td>
+        <td class="ok">Dictionary encoding: 1,770 unique point names stored once per row group
+            (~106 KB). Every row stores a 2-byte index. String length has zero per-row cost.</td>
+      </tr>
+      <tr>
+        <td><strong>Storage medium</strong></td>
+        <td class="err">EBS gp3: $0.08/GB-month. Necessary for InfluxDB's random-read TSM
+            query engine — cannot use S3 directly (OSS edition).</td>
+        <td class="ok">S3: $0.023/GB-month (3.5× cheaper). Parquet is a scan-optimised
+            columnar format — works natively with object storage.</td>
+      </tr>
+      <tr>
+        <td><strong>On-disk size</strong></td>
+        <td class="warn">~123 GB/day after 8× TSM compression. TSM block indices embed the
+            full series key (tag strings) in every 1,000-row block header.</td>
+        <td class="ok">~67 GB/day after Parquet snappy compression. No per-row metadata;
+            column statistics compressed with RLE and bit-packing.</td>
+      </tr>
+      <tr>
+        <td><strong>Query scalability</strong></td>
+        <td class="warn">Full table scan unless a matching tag index exists.
+            Adding new tag combinations requires re-ingestion or
+            separate continuous queries.</td>
+        <td class="ok">DuckDB/Athena prune files by directory (per-unit partitioning).
+            A single-unit query scans 1/47th of the data = 47× cheaper per query.</td>
+      </tr>
+      <tr>
+        <td><strong>Backup cost</strong></td>
+        <td class="err">EBS snapshots recommended: +$0.05/GB-month on top of primary storage.
+            At month 120 with backup: +$17,700/month (~$53K/month total).</td>
+        <td class="ok">S3 has built-in 11× redundancy (99.999999999% durability).
+            No backup tier needed. Cross-region replication optional: +$0.023/GB.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="processing">9 · Processing Costs (Not Included Above)</h2>
+
+<div class="section">
+  <p>
+    The storage figures in §2–6 cover only S3/EBS storage and the minimum compute to run
+    InfluxDB itself. The InfluxDB/Telegraf path requires additional always-on AWS compute
+    that the Parquet path does not — because Telegraf and the MQTT relay must run on AWS
+    to receive, parse, and ingest data continuously. The Parquet writer runs on the
+    <em>edge machine</em> alongside FlashMQ; no AWS compute is needed for data collection.
+  </p>
+
+  <h3>InfluxDB path — additional AWS compute (constant, every month)</h3>
+  <table>
+    <thead><tr><th>Service</th><th>Instance</th><th>$/month</th><th>Why needed</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>FlashMQ relay (aws-sim)</td>
+        <td>m5.large (2 vCPU / 8 GB)</td>
+        <td class="num err">$70</td>
+        <td>Receives the MQTT bridge from the edge host. Must handle 81,420 msg/s ingress
+            and fan-out to Telegraf subscriber. Cannot use a nano/micro — broker needs
+            enough RAM to buffer the full in-flight message queue.</td>
+      </tr>
+      <tr>
+        <td>Telegraf agent</td>
+        <td>t3.xlarge (4 vCPU / 16 GB)</td>
+        <td class="num err">$120</td>
+        <td>JSON parse of every payload at 81,420/s is CPU-intensive. Telegraf is largely
+            single-threaded per-input; at this rate it saturates ~2 cores on JSON
+            deserialisation + line protocol construction. Needs headroom for burst and
+            GC pauses (Go runtime). Sharing the same EC2 as InfluxDB risks OOM
+            contention during compaction spikes.</td>
+      </tr>
+      <tr>
+        <td>InfluxDB TSM compaction I/O</td>
+        <td>EBS IOPS above gp3 baseline</td>
+        <td class="num err">$50</td>
+        <td>InfluxDB background compaction merges Level-0→1→2→3 TSM files continuously
+            at high write rates. gp3 baseline is 3,000 IOPS free; at 81k writes/s
+            batched in 1,000-row chunks ≈ 81 WAL writes/s plus compaction read-back.
+            Provisioning an extra 3,000 IOPS: $0.016/IOPS-month × 3,000 = $48/month.</td>
+      </tr>
+      <tr>
+        <td>InfluxDB S3 backup</td>
+        <td>Daily EBS snapshot → S3</td>
+        <td class="num warn">$28 → $85</td>
+        <td>Incremental daily snapshot of growing EBS volume. At 123 GB/day new data,
+            annual snapshot storage grows: $0.05/GB-month × 123 GB × months.
+            Starts at ~$28/month (month 1), reaches ~$85/month by year 3 and stays
+            roughly there (rotating 30-day retention). <em>Not taking backups is not
+            an option for a production BMS system.</em></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two-col" style="margin-top:14px">
+    <div class="box">
+      <div class="box-title">InfluxDB — true monthly cost (with processing)</div>
+      <table>
+        <thead><tr><th></th><th class="r">Month 1</th><th class="r">Month 60</th><th class="r">Month 120</th></tr></thead>
+        <tbody>
+          <tr><td>Storage (from §2)</td><td class="r num">$660</td><td class="r num">$18,065</td><td class="r num">$35,765</td></tr>
+          <tr><td>FlashMQ relay EC2</td><td class="r num">$70</td><td class="r num">$70</td><td class="r num">$70</td></tr>
+          <tr><td>Telegraf EC2</td><td class="r num">$120</td><td class="r num">$120</td><td class="r num">$120</td></tr>
+          <tr><td>EBS extra IOPS</td><td class="r num">$50</td><td class="r num">$50</td><td class="r num">$50</td></tr>
+          <tr><td>InfluxDB S3 backup</td><td class="r num">$28</td><td class="r num">$75</td><td class="r num">$85</td></tr>
+          <tr style="font-weight:700;color:var(--red)"><td>Total</td>
+              <td class="r num">$928</td><td class="r num">$18,380</td><td class="r num">$36,090</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="box">
+      <div class="box-title">Parquet/DuckDB — true monthly cost (with processing)</div>
+      <table>
+        <thead><tr><th></th><th class="r">Month 1</th><th class="r">Month 60</th><th class="r">Month 120</th></tr></thead>
+        <tbody>
+          <tr><td>Storage (from §2)</td><td class="r num">$224</td><td class="r num">$2,997</td><td class="r num">$5,817</td></tr>
+          <tr><td>FlashMQ relay EC2</td><td class="r ok">—</td><td class="r ok">—</td><td class="r ok">—</td></tr>
+          <tr><td>Telegraf EC2</td><td class="r ok">—</td><td class="r ok">—</td><td class="r ok">—</td></tr>
+          <tr><td>Extra IOPS</td><td class="r ok">—</td><td class="r ok">—</td><td class="r ok">—</td></tr>
+          <tr><td>Backup (S3 redundancy built-in)</td><td class="r ok">—</td><td class="r ok">—</td><td class="r ok">—</td></tr>
+          <tr style="font-weight:700;color:var(--green)"><td>Total</td>
+              <td class="r num">$224</td><td class="r num">$2,997</td><td class="r num">$5,817</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;font-size:0.8rem;color:var(--muted)">
+        writer.cpp runs on the edge machine alongside FlashMQ. S3 PUT goes directly
+        from the writer process. No AWS EC2 is needed in the data collection path.
+        S3's 11-nines redundancy replaces the backup line.
+      </p>
+    </div>
+  </div>
+
+  <h3>Processing cost — 10-year addition to InfluxDB total</h3>
+  <table>
+    <thead><tr><th>Item</th><th class="r">Monthly (avg)</th><th class="r">10-year total</th></tr></thead>
+    <tbody>
+      <tr><td>FlashMQ relay EC2</td><td class="r num">$70</td><td class="r num err">$8,400</td></tr>
+      <tr><td>Telegraf EC2</td><td class="r num">$120</td><td class="r num err">$14,400</td></tr>
+      <tr><td>EBS extra IOPS</td><td class="r num">$50</td><td class="r num err">$6,000</td></tr>
+      <tr><td>InfluxDB S3 backup (avg)</td><td class="r num">$60</td><td class="r num err">$7,200</td></tr>
+      <tr style="font-weight:700"><td>Processing subtotal</td><td class="r num">$300</td><td class="r num err">$36,000</td></tr>
+      <tr style="font-weight:700;color:var(--red)"><td>InfluxDB true 10-year total</td>
+          <td class="r">—</td><td class="r num">$2,221,080</td></tr>
+      <tr style="font-weight:700;color:var(--green)"><td>Parquet/S3 true 10-year total</td>
+          <td class="r">—</td><td class="r num">$362,460</td></tr>
+      <tr style="font-weight:700;color:var(--accent)"><td>True saving</td>
+          <td class="r">—</td><td class="r num">$1,858,620 (83.6%)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="dataloss">10 · Data Loss Risk</h2>
+
+<div class="section">
+  <p>
+    BMS telemetry is not just operational data — it is the evidence base for warranty claims,
+    safety incident investigation, battery degradation analysis, and regulatory compliance for
+    energy storage systems. Data loss in this context has a direct financial and legal cost
+    beyond the cost of re-collection (which is impossible for historical events).
+  </p>
+
+  <h3>InfluxDB data loss vectors</h3>
+  <table>
+    <thead><tr><th>Scenario</th><th>Probability</th><th>Data lost</th><th>Detection</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Silent write drop — cache overflow</strong></td>
+        <td class="warn">High at sustained 81k writes/s</td>
+        <td class="err">Any message arriving while <code>cache-max-memory-size</code> is exceeded is silently dropped. No counter, no log line by default. At 81,420 writes/s, a 30-second compaction stall fills a 2 GB cache in ~34 seconds.</td>
+        <td class="err">Not visible in InfluxDB metrics by default. Requires external message count reconciliation.</td>
+      </tr>
+      <tr>
+        <td><strong>WAL gap on crash</strong></td>
+        <td class="warn">Any time the EC2 or process is restarted</td>
+        <td class="warn">WAL is flushed to TSM on a configurable schedule (default: cache-snapshot-memory-size = 25 MB). On a sudden crash, the last 25 MB of writes — roughly <strong>3 minutes of Longbow data</strong> — may not be persisted.</td>
+        <td class="warn">WAL recovery on restart re-applies the WAL, but only if the WAL file is intact. EC2 instance-store or EBS I/O failure during the crash may corrupt it.</td>
+      </tr>
+      <tr>
+        <td><strong>EBS volume failure</strong></td>
+        <td class="warn">~0.1–0.2%/year → ~1–2% over 10 years</td>
+        <td class="err">Total loss of all InfluxDB data if no backup, or loss of up to 24 hours if daily snapshots are used. 10 years of BMS history gone.</td>
+        <td class="warn">EBS health alerts via CloudWatch, but recovery requires full restore from snapshot.</td>
+      </tr>
+      <tr>
+        <td><strong>OOM kill (compaction + ingest contention)</strong></td>
+        <td class="warn">Occasional at high sustained rates</td>
+        <td class="warn">OS kills the InfluxDB process mid-compaction. TSM files may be left in a partially merged state. InfluxDB recovery tooling (<code>influx_inspect</code>) can usually recover, but there is a window of data inconsistency.</td>
+        <td class="warn">Visible in OS logs; not always visible in application metrics before it occurs.</td>
+      </tr>
+      <tr>
+        <td><strong>Series cardinality explosion</strong></td>
+        <td class="ok">Low for known EMS schema</td>
+        <td class="err">If a firmware update changes the topic structure (e.g., adds a new tag segment), cardinality can spike from 1,770 to millions of series. InfluxDB TSI index fills RAM; writes are dropped and the database may become unresponsive until restarted with a reduced retention policy.</td>
+        <td class="err">Hard to predict without schema enforcement at the broker. Topic format changes are common in production BMS deployments.</td>
+      </tr>
+      <tr>
+        <td><strong>Telegraf pipeline stall</strong></td>
+        <td class="warn">Occasional (GC pause, OOM, network blip)</td>
+        <td class="warn">Telegraf buffers in memory (default: metric_buffer_limit = 10,000 metrics). At 81,420 metrics/s, the buffer fills in <strong>123 milliseconds</strong>. Any stall longer than that drops data. Buffer overrun is logged but the lost data cannot be recovered.</td>
+        <td class="warn">Telegraf logs <code>Metric buffer overflow</code> but this is often missed in production log noise. Dropped metrics are not reported to InfluxDB.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn" style="margin-top:14px">
+    <strong>The most dangerous scenario: silent drops at normal operation.</strong>
+    At 81,420 writes/s, InfluxDB's default <code>cache-max-memory-size = 1 GB</code>
+    fills in ~12 seconds of message backlog. Any compaction cycle that takes longer than
+    12 seconds without flushing the cache causes silent drops — no error, no counter,
+    no alert unless you have external message-count reconciliation in place.
+    This is not a theoretical concern: it is the expected behaviour under the documented
+    default configuration at this write rate.
+  </div>
+
+  <h3>Parquet path data loss vectors</h3>
+  <table>
+    <thead><tr><th>Scenario</th><th>Probability</th><th>Data lost</th><th>Detection</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>writer.cpp crash mid-flush</strong></td>
+        <td class="ok">Rare (C++ process, no GC)</td>
+        <td class="warn">Rows accumulated since the last completed flush (up to <code>flush_interval_seconds</code>, default 60s). All previously flushed files on S3 are intact. The in-progress Parquet file is abandoned with a <code>.partial</code> suffix.</td>
+        <td class="ok">Health endpoint goes dark immediately. <code>ring_drops</code> counter visible in <code>/health</code> before crash. SHM ring (when implemented) reduces this window to near-zero by preserving unread messages across restarts.</td>
+      </tr>
+      <tr>
+        <td><strong>MqttRing overflow</strong></td>
+        <td class="ok">Only above ~400k msg/s (confirmed at 300k/s with zero drops)</td>
+        <td class="warn">Ring drops are counted and exposed in <code>/health</code> as <code>ring_drops</code>. The monitoring dashboard shows this value in real time. No silent drops.</td>
+        <td class="ok"><strong>Fully observable.</strong> Counter visible at <code>/health</code>, shown in torture_monitor.html, and alertable via any HTTP check.</td>
+      </tr>
+      <tr>
+        <td><strong>S3 object loss</strong></td>
+        <td class="ok">Effectively zero (11 nines = 0.000000001%/year)</td>
+        <td class="ok">S3 Standard stores every object across ≥3 Availability Zones with automatic integrity checking. 10-year probability of losing any single object: ~10<sup>-10</sup>.</td>
+        <td class="ok">S3 replication metrics and CloudWatch S3 storage lens provide continuous visibility.</td>
+      </tr>
+      <tr>
+        <td><strong>Edge machine power loss</strong></td>
+        <td class="warn">Possible (edge deployment, UPS not guaranteed)</td>
+        <td class="warn">Same as writer crash — up to 60s of buffered rows. Files already pushed to S3 are safe. With <code>push_agent</code> rsync, files are off-machine within seconds of flush.</td>
+        <td class="ok">Restart is automatic; SHM ring preserves in-flight messages across restarts.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Durability comparison</h3>
+  <table>
+    <thead><tr><th>Storage medium</th><th>Annual durability</th><th>10-year survival prob.</th><th>Backup requirement</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>AWS S3 Standard</td>
+        <td class="ok">99.999999999% (11 nines)</td>
+        <td class="ok">&gt;99.9999999%</td>
+        <td class="ok">None — redundancy is built-in across 3 AZs</td>
+      </tr>
+      <tr>
+        <td>AWS EBS gp3</td>
+        <td class="warn">99.8–99.9% (3 nines)</td>
+        <td class="err">~1–2% cumulative failure risk</td>
+        <td class="err">Daily snapshots required (+$85/month); even then, last 24h at risk</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Business cost of data loss for BMS systems</h3>
+  <table>
+    <thead><tr><th>Loss event</th><th>Business impact</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Missing fault/alarm data during a thermal event</td>
+        <td class="err">Warranty claim denied — OEM requires continuous telemetry log to validate
+            cell fault sequence. A 3-minute WAL gap at the critical period is sufficient to void
+            the claim. Battery pack replacement cost: $50k–$500k per unit.</td>
+      </tr>
+      <tr>
+        <td>Regulatory compliance gap</td>
+        <td class="err">Energy storage systems in many jurisdictions require continuous data
+            retention for 5–10 years (UL 9540A, IEC 62933, local grid codes).
+            Silent InfluxDB drops create gaps that may not be discovered until a compliance
+            audit — at which point they cannot be back-filled.</td>
+      </tr>
+      <tr>
+        <td>Degradation model training data</td>
+        <td class="warn">BMS state-of-health models require complete charge/discharge cycle data.
+            Gaps caused by Telegraf buffer overflow during peak-rate events (charging spikes)
+            are correlated with the most important operational moments — exactly the data
+            that should not be lost.</td>
+      </tr>
+      <tr>
+        <td>Incident reconstruction</td>
+        <td class="err">Post-incident forensic analysis of a cell failure or fire requires
+            complete sub-second telemetry. If the incident triggered a write-rate spike
+            that caused InfluxDB cache overflow, the forensic record has a gap at the
+            most critical moment.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-ok" style="margin-top:14px">
+    <strong>Parquet path: all drops are observable and bounded.</strong>
+    The <code>ring_drops</code> counter in <code>/health</code> is incremented atomically
+    for every dropped message — there are no silent losses. At 300k msg/s (3.7× Longbow rate)
+    the counter has been confirmed at zero in sustained testing. The SHM ring extension will
+    reduce the crash-gap window from ~60s to near-zero by preserving unread messages across
+    writer restarts.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="influx3">11 · InfluxDB 3.0 — Does It Change the Picture?</h2>
+
+<div class="section">
+  <p>
+    InfluxDB 3.0 (IOx engine, released 2024) is a substantial re-architecture of InfluxDB.
+    It replaces the TSM storage engine with Apache Arrow columnar Parquet files on object
+    storage, and replaces the Flux query language with SQL (via Apache DataFusion).
+    These are both directions our own Parquet/DuckDB approach already takes.
+    This section examines what InfluxDB 3.0 actually offers, whether it can consume
+    our existing Parquet files, and what a migration from InfluxDB 2.x would cost.
+  </p>
+
+  <h3>What changed in InfluxDB 3.0</h3>
+  <table>
+    <thead><tr><th>Dimension</th><th>InfluxDB 2.x</th><th>InfluxDB 3.0 (IOx)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Storage engine</strong></td>
+        <td class="err">TSM (Time-Structured Merge Tree) — proprietary columnar format on local EBS. No object storage in OSS edition.</td>
+        <td class="ok">Parquet files on S3 / GCS / Azure Blob. Object storage is the primary store, not an add-on.</td>
+      </tr>
+      <tr>
+        <td><strong>Query language</strong></td>
+        <td class="err">Flux (functional, purpose-built, complex). InfluxQL supported but limited.</td>
+        <td class="ok">SQL (ANSI-compatible via DataFusion). InfluxQL also supported. <strong>Flux is completely removed.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>Series cardinality</strong></td>
+        <td class="err">Hard RAM limit — TSI index held in memory. Millions of series → OOM.</td>
+        <td class="ok">No cardinality limit. Column-based storage handles high cardinality natively.</td>
+      </tr>
+      <tr>
+        <td><strong>WAL durability</strong></td>
+        <td class="err">WAL on local EBS — lost on instance failure if no snapshot. Crash window: ~3 min at default config.</td>
+        <td class="ok">WAL in object storage. Survives instance failure; replayed on restart automatically.</td>
+      </tr>
+      <tr>
+        <td><strong>Write protocol</strong></td>
+        <td class="warn">InfluxDB line protocol over HTTP. Telegraf still required for MQTT → line protocol conversion.</td>
+        <td class="warn">Line protocol + Apache Arrow Flight. <strong>Telegraf still required for MQTT ingest.</strong> Flight API adds options but does not eliminate the line protocol hop for MQTT sources.</td>
+      </tr>
+      <tr>
+        <td><strong>Data transfer API</strong></td>
+        <td class="warn">HTTP REST only.</td>
+        <td class="ok">Apache Arrow Flight (gRPC, columnar, high-throughput) available alongside HTTP.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Can InfluxDB 3.0 read our Parquet files?</h3>
+  <div class="alert alert-warn">
+    <strong>No.</strong> InfluxDB 3.0's query engine (DataFusion) only sees Parquet files
+    that are registered in its internal <strong>Catalog</strong> — a metadata store
+    (SQLite or PostgreSQL) that tracks every object, its schema, and its time bounds.
+    The Catalog is populated exclusively through InfluxDB's own write path (line protocol
+    or Flight API). There is no mechanism to point InfluxDB 3.0 at an S3 prefix of
+    externally-written Parquet files and query them.
+  </div>
+  <p>
+    This is the critical architectural difference from DuckDB/Athena, which treat S3 as a
+    generic file system: <code>SELECT * FROM 's3://bucket/parquet/**/*.parquet'</code> with
+    no catalog, no registration, no import step. InfluxDB 3.0's Parquet files are
+    indistinguishable from ours at the byte level, but they are invisible to each other's
+    query engines.
+  </p>
+  <table>
+    <thead><tr><th>Query tool</th><th>Can query our writer.cpp Parquet files?</th><th>Can query InfluxDB 3.0 Parquet files?</th></tr></thead>
+    <tbody>
+      <tr><td>DuckDB</td><td class="ok">Yes — direct S3 glob, no setup</td><td class="err">No — not in DuckDB catalog (unless manually registered)</td></tr>
+      <tr><td>AWS Athena</td><td class="ok">Yes — Glue catalog or direct S3</td><td class="err">No — InfluxDB catalog not exposed to Athena</td></tr>
+      <tr><td>InfluxDB 3.0 SQL</td><td class="err">No — not in InfluxDB catalog</td><td class="ok">Yes — native</td></tr>
+      <tr><td>Apache Spark</td><td class="ok">Yes — direct S3 path</td><td class="warn">Technically yes, but requires reverse-engineering the file layout</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Migration cost: InfluxDB 2.x → 3.0</h3>
+  <div class="alert alert-warn">
+    <strong>There is no supported migration path.</strong> InfluxDB has not provided an
+    official tool to convert TSM data to IOx Parquet format. Historical data in InfluxDB 2.x
+    remains queryable only by InfluxDB 2.x. A dual-stack must be maintained during any
+    transition period.
+  </div>
+  <table>
+    <thead><tr><th>Migration concern</th><th>Detail</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Flux → SQL query rewrite</strong></td>
+        <td>Every dashboard, alert, task, and script written in Flux must be rewritten.
+            Flux and SQL are not syntactically related — this is a full rewrite, not a
+            find-and-replace. Flux's pipe-forward operator, <code>filter()</code>,
+            <code>aggregateWindow()</code>, and <code>pivot()</code> functions all require
+            SQL equivalents. Typical Flux queries are 5–20 lines; SQL equivalents are
+            shorter but the translation is manual.</td>
+        <td class="err">High — every query, dashboard panel, and alert condition</td>
+      </tr>
+      <tr>
+        <td><strong>Historical data access</strong></td>
+        <td>All data written to InfluxDB 2.x stays in TSM format. To access it in InfluxDB 3.0
+            it must be re-exported via the InfluxDB 2.x query API and re-ingested into 3.0
+            via line protocol. At 81,420 rows/s × years of history, this is a
+            multi-week operation requiring both systems to run in parallel.</td>
+        <td class="err">Very high — years of data, manual pipeline, weeks of compute</td>
+      </tr>
+      <tr>
+        <td><strong>Telegraf configuration</strong></td>
+        <td>Telegraf output plugin changes from <code>outputs.influxdb_v2</code> to
+            <code>outputs.influxdb_v3</code> (or Flight). Input plugin and processor
+            chain unchanged. Minor config change.</td>
+        <td class="ok">Low — one config file change</td>
+      </tr>
+      <tr>
+        <td><strong>Client SDK updates</strong></td>
+        <td>InfluxDB client libraries have 3.0 versions (Python, Go, Java, etc.).
+            API calls change but the write/query patterns are similar. Any
+            code using Flux via the query API must be rewritten to SQL.</td>
+        <td class="warn">Medium — API calls similar, but any Flux queries in code need rewriting</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB Cloud migration</strong></td>
+        <td>InfluxDB Cloud (hosted 2.x) → Cloud Serverless (3.0) requires a manual
+            data export/import. Flux-based alerts and dashboards in the Cloud UI have
+            no automatic migration path. Tasks (scheduled Flux scripts) must be
+            converted to SQL tasks manually.</td>
+        <td class="err">High — Cloud UI dashboards, tasks, and alerts all require manual rebuild</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Retention and query limits by tier — clarified</h3>
+  <div class="alert alert-info">
+    <strong>Correction from earlier drafts:</strong> InfluxDB 3.0 Core does <em>not</em>
+    hard-delete data after 7 days. The actual limitations are more nuanced and depend on tier.
+    The "7 days" figure refers to default expiry on certain internal system tables in some
+    Enterprise configurations, not on user databases. The binding constraint in Core is
+    a <strong>72-hour maximum query range</strong> in early OSS Alpha releases, combined
+    with severe performance degradation on long-range queries because the
+    <strong>Compactor</strong> — the process that merges and re-sorts Parquet files for
+    efficient time-range scans — is an Enterprise-only component.
+  </div>
+  <table>
+    <thead><tr><th>Tier</th><th>Query range limit</th><th>Long-range performance</th><th>Cost</th><th>Practical for 10-year BMS?</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>OSS Core (Alpha)</strong></td>
+        <td class="err">72 hours per query in early releases</td>
+        <td class="err">Degrades over time — uncompacted Parquet files accumulate, scan times grow unboundedly without the Compactor</td>
+        <td class="ok">Free (Apache 2.0)</td>
+        <td class="err">No — 72h query limit rules out historical analysis; performance degrades without Compactor</td>
+      </tr>
+      <tr>
+        <td><strong>Enterprise (home / non-commercial)</strong></td>
+        <td class="ok">Unlimited</td>
+        <td class="ok">Full — Compactor included, long-range queries efficient</td>
+        <td class="ok">Free for personal / non-commercial use</td>
+        <td class="warn">Technically yes, but non-commercial licence prohibits production BMS deployment</td>
+      </tr>
+      <tr>
+        <td><strong>Enterprise (commercial)</strong></td>
+        <td class="ok">Unlimited</td>
+        <td class="ok">Full</td>
+        <td class="err">AWS Marketplace: ~$0.198/vCPU-hour. 8-vCPU node: ~$1,143/month. Custom quotes for full support contracts.</td>
+        <td class="warn">Yes — but licence adds ~$1,143+/month on top of infrastructure</td>
+      </tr>
+      <tr>
+        <td><strong>Cloud Serverless</strong></td>
+        <td class="ok">Unlimited (paid tier)</td>
+        <td class="ok">Full</td>
+        <td class="err">Usage-based — write ingestion is prohibitive at 81k msg/s (see below)</td>
+        <td class="err">No at this write rate</td>
+      </tr>
+      <tr>
+        <td><strong>Cloud Dedicated</strong></td>
+        <td class="ok">Unlimited</td>
+        <td class="ok">Full</td>
+        <td class="err">Private cluster — custom quote, not publicly listed</td>
+        <td class="warn">Possibly — cost opacity makes planning impossible without vendor engagement</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn" style="margin-top:10px">
+    <strong>The Compactor is the hidden dependency.</strong> Without it, every flush produces
+    a new set of small Parquet files that are never merged. A 10-year dataset would accumulate
+    millions of uncompacted files; scanning any long time range requires opening and reading
+    every file individually. Query time for a 1-year scan grows from minutes to hours or days
+    as the file count compounds. The Compactor reorganises files into time-sorted, size-optimised
+    chunks that allow DataFusion to prune efficiently — but it is only available in Enterprise
+    and Cloud tiers.
+  </div>
+
+  <h3>InfluxDB Cloud Serverless — query and write pricing at Longbow rate</h3>
+  <p>
+    InfluxDB Cloud Serverless (the hosted IOx product) charges per MB written,
+    per GB-hour stored, and per query execution. At the Longbow data rate the
+    write cost alone is the dominant factor.
+  </p>
+  <table>
+    <thead><tr><th>Cost dimension</th><th>Unit price</th><th>At Longbow rate</th><th>Monthly cost</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Write ingestion</strong></td>
+        <td>$0.0025 per MB of line protocol written</td>
+        <td>11.4 MB/s × 86,400 s × 30 days = 29,548,800 MB/month</td>
+        <td class="err" style="font-weight:700">~$73,872/month</td>
+      </tr>
+      <tr>
+        <td><strong>Storage</strong> (per GB-hour)</td>
+        <td>$0.002/GB-hour = $1.44/GB-month</td>
+        <td>2,010 GB/month accumulation; at month 12: 24,120 GB stored</td>
+        <td class="err">$34,733/month at year 1<br>$347,328/month at year 10</td>
+      </tr>
+      <tr>
+        <td><strong>Query</strong></td>
+        <td>$0.01 per 100 query executions<br><span class="dim" style="font-size:0.76rem">($0.0001 per query)</span></td>
+        <td>Even 10,000 queries/month = 100 batches</td>
+        <td class="ok">~$1/month typical — effectively negligible</td>
+      </tr>
+      <tr>
+        <td><strong>Data Out</strong></td>
+        <td>$0.09/GB egress</td>
+        <td>Depends on result set size</td>
+        <td class="warn">Variable; rarely dominant</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn" style="margin-top:10px">
+    <strong>Write cost at 81k msg/s makes InfluxDB Cloud Serverless non-viable.</strong>
+    The $0.0025/MB write pricing is designed for IoT fleets with intermittent, low-rate devices.
+    At Longbow's sustained 11.4 MB/s line protocol rate, write ingestion alone costs
+    <strong>~$73,872/month</strong> — more than twice the entire 10-year InfluxDB 2.x
+    storage bill per month. Query costs are negligible ($0.0001/query) but storage costs
+    compound on top of write costs making total ownership unsustainable. InfluxDB Cloud
+    Serverless is the wrong product tier for this workload; Cloud Dedicated (private cluster)
+    would be required, at undisclosed enterprise pricing.
+  </div>
+
+  <h3>Query costs for self-hosted InfluxDB 3.0 Enterprise</h3>
+  <p>
+    For a self-hosted InfluxDB 3.0 Enterprise deployment there is no per-query charge —
+    you pay for EC2 and S3. However, the query engine (DataFusion) runs on the same EC2 as
+    the ingest server. Heavy analytical queries compete with ingest at 81k writes/s:
+  </p>
+  <table>
+    <thead><tr><th>Query pattern</th><th>Parquet/DuckDB (t3.small)</th><th>InfluxDB 3.0 Enterprise EC2</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Real-time monitoring (last hour)</td>
+        <td class="ok">Milliseconds — partition pruned to 1 file per unit</td>
+        <td class="ok">Milliseconds — IOx also uses partition pruning</td>
+      </tr>
+      <tr>
+        <td>Full-day unit report (1 of 47 units)</td>
+        <td class="ok">~1–2 s on t3.small; $0.01 Athena cost</td>
+        <td class="warn">~1–2 s but query competes with 81k writes/s ingest on same EC2</td>
+      </tr>
+      <tr>
+        <td>Multi-year degradation analysis (all units)</td>
+        <td class="ok">DuckDB on t3.small: minutes; Athena: seconds at $5–50/query</td>
+        <td class="err">High memory pressure — DataFusion + ingest cache + compaction
+            all compete on the same m5.xlarge. May require a dedicated query node
+            (+$153/month) to avoid OOM</td>
+      </tr>
+      <tr>
+        <td>Concurrent query isolation</td>
+        <td class="ok">Each DuckDB client is a separate process — full isolation</td>
+        <td class="err">InfluxDB 3.0 OSS/Enterprise has no query queue or resource governor.
+            A large scan can starve the ingest path.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>InfluxDB 3.0 cost estimate vs InfluxDB 2.x</h3>
+  <p>
+    The table below reflects a self-hosted InfluxDB 3.0 Enterprise deployment — the
+    only configuration suitable for 10-year BMS retention without per-write cloud charges.
+    The Enterprise license cost is estimated (not publicly listed); infrastructure
+    costs are as §9.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th class="r">InfluxDB 2.x/month (yr 10)</th>
+        <th class="r">InfluxDB 3.0/month (yr 10)</th>
+        <th class="r">Parquet/DuckDB/month (yr 10)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Storage</td>
+        <td class="r num err">$35,400 (EBS, 443 TB)</td>
+        <td class="r num warn">$6,210 (S3, ~270 TB incl. catalog overhead)</td>
+        <td class="r num ok">$5,589 (S3, 243 TB)</td>
+      </tr>
+      <tr>
+        <td>InfluxDB / query server EC2</td>
+        <td class="r num err">$365 (r5.2xlarge)</td>
+        <td class="r num ok">$153 (m5.xlarge — no TSI in RAM)</td>
+        <td class="r num ok">$15 (t3.small)</td>
+      </tr>
+      <tr>
+        <td>FlashMQ relay EC2</td>
+        <td class="r num err">$70</td>
+        <td class="r num err">$70</td>
+        <td class="r ok">—</td>
+      </tr>
+      <tr>
+        <td>Telegraf EC2</td>
+        <td class="r num err">$120</td>
+        <td class="r num err">$120</td>
+        <td class="r ok">—</td>
+      </tr>
+      <tr>
+        <td>Backup / catalog overhead</td>
+        <td class="r num err">$85 (EBS snapshot)</td>
+        <td class="r num warn">$50 (catalog DB + WAL)</td>
+        <td class="r ok">— (S3 built-in)</td>
+      </tr>
+      <tr>
+        <td><strong>Enterprise license</strong><br>
+            <span class="dim" style="font-size:0.76rem">Required for &gt;7-day retention</span></td>
+        <td class="r ok">— (OSS, no license)</td>
+        <td class="r num err">$4,167–$12,500<br><span class="dim" style="font-size:0.76rem">est. $50k–$150k/year ÷ 12</span></td>
+        <td class="r ok">—</td>
+      </tr>
+      <tr>
+        <td>Query costs (Athena equiv.)</td>
+        <td class="r num">—</td>
+        <td class="r num">— (self-hosted, no per-query fee)</td>
+        <td class="r num">$150</td>
+      </tr>
+      <tr style="font-weight:700">
+        <td>Total / month at year 10</td>
+        <td class="r num err">$36,040</td>
+        <td class="r num err">$10,770–$19,103<br><span style="font-size:0.76rem;color:var(--muted)">(license est. range)</span></td>
+        <td class="r num ok">$5,754</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="savings-banner" style="margin-top:16px">
+    <div>
+      <div class="savings-big" style="color:var(--yellow)">$16,937–$25,270</div>
+      <div class="savings-sub">saved vs InfluxDB 2.x by moving<br>to InfluxDB 3.0 Enterprise (yr 10)</div>
+    </div>
+    <div>
+      <div class="savings-big">$5,016–$13,349</div>
+      <div class="savings-sub">remaining gap at yr 10<br>InfluxDB 3.0 Enterprise vs Parquet/DuckDB</div>
+    </div>
+    <div style="font-size:0.84rem;color:var(--muted);max-width:300px">
+      The Enterprise license adds $4,167–$12,500/month — dwarfing the infrastructure
+      savings from switching to Parquet on S3. The license alone costs more per month
+      than the <em>entire</em> Parquet/DuckDB bill at year 10.
+    </div>
+  </div>
+
+  <h3>Summary: does InfluxDB 3.0 change the recommendation?</h3>
+  <table>
+    <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Does InfluxDB 3.0 fix the storage cost problem?</td>
+        <td class="ok"><strong>Largely yes.</strong> Moving from EBS ($0.08/GB) to S3 ($0.023/GB)
+            reduces storage cost by ~3.5×. At year 10, storage drops from $35,400 to ~$6,210/month.</td>
+      </tr>
+      <tr>
+        <td>Can it read our existing Parquet files?</td>
+        <td class="err"><strong>No.</strong> InfluxDB 3.0 requires data to be ingested through its
+            own write path and registered in its Catalog. External Parquet files are invisible.</td>
+      </tr>
+      <tr>
+        <td>Does it eliminate Telegraf and the relay overhead?</td>
+        <td class="err"><strong>No.</strong> The MQTT → line protocol → InfluxDB 3.0 pipeline still
+            requires Telegraf and an AWS MQTT relay. These cost $190/month fixed — the same as 2.x.</td>
+      </tr>
+      <tr>
+        <td>What happens to all Flux queries?</td>
+        <td class="err"><strong>Full rewrite required.</strong> Flux is removed. Every dashboard,
+            alert, task, and script must be rewritten in SQL. There is no migration tool.</td>
+      </tr>
+      <tr>
+        <td>What happens to historical InfluxDB 2.x data?</td>
+        <td class="err"><strong>Inaccessible in 3.0 without re-ingestion.</strong> A dual-stack
+            must be maintained, or years of data must be re-piped through the new write
+            path at significant compute and time cost.</td>
+      </tr>
+      <tr>
+        <td>Does InfluxDB 3.0 Core work for 10-year BMS retention?</td>
+        <td class="err"><strong>Not without the Compactor.</strong> OSS Core Alpha imposes a
+            72-hour query range limit and query performance degrades unboundedly without the
+            Compactor (Enterprise-only). The free home-use Enterprise tier includes the Compactor
+            but is restricted to non-commercial use. Commercial 10-year BMS retention requires
+            a paid Enterprise license.</td>
+      </tr>
+      <tr>
+        <td>What does the Enterprise license cost?</td>
+        <td class="err"><strong>Not publicly listed.</strong> Estimated $50,000–$150,000/year
+            based on comparable enterprise time-series database pricing. This adds
+            $4,167–$12,500/month on top of all infrastructure costs — more than the
+            entire Parquet/DuckDB bill at year 10.</td>
+      </tr>
+      <tr>
+        <td>Is InfluxDB Cloud Serverless viable at 81k msg/s?</td>
+        <td class="err"><strong>No.</strong> Write ingestion at $0.0025/MB applied to
+            11.4 MB/s of line protocol yields ~$73,872/month in write costs alone — before
+            storage charges. Cloud Dedicated (private cluster, enterprise pricing) would be
+            required for high-rate ingestion workloads.</td>
+      </tr>
+      <tr>
+        <td>Is InfluxDB 3.0 Enterprise cheaper than our Parquet path?</td>
+        <td class="err"><strong>No — 87–233% more expensive at year 10</strong>
+            ($10,770–$19,103/month vs $5,754/month). The Enterprise license alone
+            ($4,167–$12,500/month) costs more than the entire Parquet/DuckDB
+            infrastructure bill. Storage and EC2 costs are now comparable; the
+            license is the new dominant cost.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn" style="margin-top:12px">
+    <strong>InfluxDB 3.0 replaces one cost problem with another.</strong>
+    InfluxDB 2.x's dominant cost was EBS storage ($35,400/month at year 10).
+    InfluxDB 3.0 Enterprise's dominant cost becomes the software license
+    ($4,167–$12,500/month every month, regardless of data volume).
+    Infrastructure costs drop significantly — but the license floor means total cost
+    never falls below roughly $11k/month, compared to $5,754/month for Parquet/DuckDB
+    with no license fees ever.
+  </div>
+
+  <div class="alert alert-info" style="margin-top:10px">
+    <strong>Strategic conclusion:</strong> InfluxDB 3.0 converges toward the same
+    architecture we already have (Parquet on S3, SQL query engine) but adds three
+    costs that our path does not incur: a mandatory commercial Enterprise license
+    (the free home tier is non-commercial only), Telegraf + FlashMQ relay EC2 for MQTT ingest, and
+    Catalog lock-in that prevents our files from being queried by InfluxDB and
+    vice versa. The Flux → SQL migration is a further one-time cost with no
+    equivalent in our path. At every time horizon the Parquet/DuckDB path is
+    cheaper, more durable, and produces files that are queryable by any standard
+    tool without a license.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="querycost">12 · Sample Query Cost — Max Cell Voltage</h2>
+
+<div class="section">
+
+  <!-- ── What is Athena? ─────────────────────────────────────────── -->
+  <div class="athena-box">
+    <div style="color:var(--accent);font-weight:700;font-size:0.9rem;margin-bottom:8px">What is AWS Athena?</div>
+    <p style="margin-bottom:8px">
+      Athena is Amazon's <strong>serverless SQL query service</strong>. You point it at Parquet
+      files sitting on S3, run a standard SQL query, and Athena automatically spins up a
+      temporary fleet of ~200 worker nodes that scan the files in parallel. When the query
+      finishes the fleet shuts down. There is no server to provision, patch, or pay for
+      when idle — you are billed only for the bytes scanned ($5 per TB).
+    </p>
+    <p style="margin-bottom:8px">
+      Because it parallelises across hundreds of nodes simultaneously, Athena finishes scans
+      that would take a single machine hours in a matter of minutes. The same SQL query that
+      runs on a local DuckDB installation also runs unchanged on Athena — the only difference
+      is where the compute happens.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div class="athena-card">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Athena</div>
+        <ul style="font-size:0.82rem;margin-bottom:0">
+          <li>No server — fully managed by AWS</li>
+          <li>~200 parallel workers per query</li>
+          <li>50 TB scanned in ~15 minutes</li>
+          <li>Pay per query: $5/TB scanned</li>
+          <li>Idle cost: <strong>$0</strong></li>
+          <li>Same SQL as DuckDB — no relearning</li>
+        </ul>
+      </div>
+      <div class="athena-card">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">DuckDB local (spark1 / phil-dev)</div>
+        <ul style="font-size:0.82rem;margin-bottom:0">
+          <li>Runs on your own machine</li>
+          <li>One machine, all available cores</li>
+          <li>50 TB scanned in ~3–5 hours</li>
+          <li>Pay per query: <strong>$0</strong></li>
+          <li>Idle cost: $0 (already running)</li>
+          <li>Identical SQL syntax</li>
+        </ul>
+      </div>
+    </div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-top:10px;margin-bottom:0">
+      <strong>Rule of thumb:</strong> use local DuckDB for day-to-day queries on recent data
+      (fast, free, no internet required). Use Athena for occasional large historical scans
+      where waiting hours is impractical — the $25–$250 cost is a one-off, not a monthly charge.
+    </p>
+  </div>
+  <!-- ── end Athena explainer ──────────────────────────────────────── -->
+
+  <p>
+    A concrete query is the clearest way to compare systems. The query below retrieves
+    the <strong>daily maximum cell voltage for each of 47 BMS units</strong> — a standard
+    degradation-monitoring query that a BMS engineer or automated report would run
+    regularly. It requires scanning the full time range and aggregating across all units.
+  </p>
+
+  <h3>The query</h3>
+  <div class="two-col">
+    <div class="box">
+      <div class="box-title">Parquet / DuckDB / AWS Athena (SQL)</div>
+      <pre class="sql-pre">-- works unchanged on local DuckDB, Athena, or InfluxDB 3.0
+SELECT
+    regexp_extract(filename, 'unit/([^/]+)', 1) AS unit_id,
+    strftime(to_timestamp(ts), '%Y-%m-%d')      AS day,
+    MAX(value_f)                                AS max_cell_voltage
+FROM read_parquet('s3://bucket/parquet/unit/**/*.parquet')
+WHERE point_name = 'Batt1_BMS_Max_cell_voltage'
+GROUP BY unit_id, day
+ORDER BY unit_id, day;</pre>
+    </div>
+    <div class="box">
+      <div class="box-title">InfluxDB 2.x (Flux — required for InfluxDB 2.x)</div>
+      <pre class="sql-pre">// Flux has no concept of column projection —
+// entire series records are returned before filtering
+from(bucket: "bms_data")
+  |> range(start: -1y)
+  |> filter(fn: (r) =>
+       r._measurement == "unit" and
+       r.topic =~ /Max_cell_voltage/)
+  |> aggregateWindow(
+       every: 1d, fn: max, createEmpty: false)
+  |> group(columns: ["unit_id"])</pre>
+      <p style="font-size:0.78rem;color:var(--muted);margin-top:8px">
+        Note: Flux's <code>aggregateWindow</code> materialises the full result set in memory
+        before returning. For 10 years of data across 47 units this can exhaust the
+        InfluxDB server's memory budget.
+      </p>
+    </div>
+  </div>
+
+  <h3>What the query scans</h3>
+  <p>
+    The efficiency of each system depends on how well it can skip data that does not match
+    <code>point_name = 'Batt1_BMS_Max_cell_voltage'</code>. One year of Longbow data at
+    81,420 msg/s contains ~2.57 trillion rows and ~24.5 TB of Parquet. The max cell voltage
+    metric is one of 1,770 unique topics — roughly 1/1,770th of all rows.
+  </p>
+  <table>
+    <thead><tr><th>System</th><th>Index / pruning mechanism</th><th>Bytes actually read (1 yr)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>InfluxDB 2.x (TSM)</strong></td>
+        <td class="ok">Series index: maps tag set directly to TSM block offsets. Only the 47
+            <code>Max_cell_voltage</code> series are opened — all other 1,723 topics are not
+            touched.</td>
+        <td class="ok">~6 GB<br><span class="dim" style="font-size:0.76rem">46 rows/s for this topic × 86,400 × 365 × ~4 B/value compressed</span></td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB 3.0 Enterprise (IOx)</strong></td>
+        <td class="warn">Catalog knows which Parquet files cover which time ranges (time pruning
+            ✓) but files are time-sorted, not field-sorted. Cannot skip files that don't
+            contain the target field — must read the <code>point_name</code> and
+            <code>value_f</code> columns from every file in the range.</td>
+        <td class="warn">~5 TB (column projection: point_name + value_f ≈ 20% of 24.5 TB)</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB Cloud Serverless</strong></td>
+        <td class="warn">Same IOx engine as above but running on shared InfluxData
+            infrastructure — Athena-scale parallelism not guaranteed.</td>
+        <td class="warn">~5 TB (same column projection)</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + Athena</strong></td>
+        <td class="warn">Hive directory pruning on date (time pruning ✓). Column projection
+            reads only point_name + value_f. Row group min/max stats checked but field values
+            are interleaved in every row group so no row group is skipped.</td>
+        <td class="warn">~5 TB (same as IOx; Athena compensates with ~200-node parallelism)</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB (local or EC2)</strong></td>
+        <td class="warn">Same pruning as Athena. DuckDB's async S3 reader uses multiple
+            parallel threads but is limited to one machine's network and CPU bandwidth.</td>
+        <td class="warn">~5 TB</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info" style="margin-top:8px">
+    <strong>InfluxDB 2.x series index advantage:</strong> for this specific narrow query
+    (one metric, fixed time range) InfluxDB 2.x scans ~833× less data than any
+    Parquet-based approach. This advantage only exists for queries that map cleanly to
+    a fixed set of series. For cross-metric analytics — e.g. "find all cells where
+    max_voltage &gt; 4.2 V within 5 minutes of temperature &gt; 35 °C" — InfluxDB 2.x
+    must scan all series and loses this advantage entirely. Parquet excels at these
+    join-style analytical queries.
+  </div>
+
+  <h3>1-year query — cost and runtime comparison</h3>
+  <p>Returns daily max cell voltage per unit for calendar year 2024 (2.57 T rows, 24.5 TB Parquet).</p>
+  <table>
+    <thead>
+      <tr>
+        <th>System</th>
+        <th>Where query runs</th>
+        <th>Data scanned</th>
+        <th>Runtime (est.)</th>
+        <th class="r">AWS cost</th>
+        <th class="r">Compute cost</th>
+        <th class="r">Total cost</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>InfluxDB 2.x</strong></td>
+        <td>EC2 r5.2xlarge (always on)</td>
+        <td class="ok">~6 GB (series index)</td>
+        <td class="ok">~15 s</td>
+        <td class="r ok">$0</td>
+        <td class="r dim">EC2 already paid</td>
+        <td class="r ok">$0 *</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB 3.0 Enterprise</strong></td>
+        <td>EC2 m5.xlarge (always on)</td>
+        <td class="warn">~5 TB (col. proj.)</td>
+        <td class="warn">~30–50 min</td>
+        <td class="r ok">$0</td>
+        <td class="r dim">EC2 already paid</td>
+        <td class="r warn">$0 * †</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB Cloud Serverless</strong></td>
+        <td>Shared InfluxData cloud</td>
+        <td class="warn">~5 TB</td>
+        <td class="warn">~30–60 min</td>
+        <td class="r err">$25.00</td>
+        <td class="r ok">—</td>
+        <td class="r err">$25.00</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + AWS Athena</strong></td>
+        <td>Athena (serverless, ~200 nodes)</td>
+        <td class="warn">~5 TB</td>
+        <td class="ok">~90 s</td>
+        <td class="r warn">$25.00</td>
+        <td class="r ok">—</td>
+        <td class="r warn">$25.00</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB on EC2</strong><br>
+            <span class="dim" style="font-size:0.76rem">c5.4xlarge: 16 vCPU, $0.68/hr</span></td>
+        <td>Dedicated query EC2 (on-demand)</td>
+        <td class="warn">~5 TB</td>
+        <td class="warn">~25–35 min</td>
+        <td class="r ok">$0</td>
+        <td class="r warn">~$0.32</td>
+        <td class="r ok">$0.32</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB local</strong><br>
+            <span class="dim" style="font-size:0.76rem">spark1: 20-core ARM, NVMe 3.3 GB/s</span></td>
+        <td>On-premise edge machine</td>
+        <td class="warn">~5 TB (local disk)</td>
+        <td class="warn">~10–15 min</td>
+        <td class="r ok">$0</td>
+        <td class="r ok">$0</td>
+        <td class="r ok">$0</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB local</strong><br>
+            <span class="dim" style="font-size:0.76rem">30-day local cache + S3 for older</span></td>
+        <td>Local for recent; Athena for older</td>
+        <td class="ok">~600 GB local + older on S3</td>
+        <td class="ok">&lt;2 min (last 30 days free)<br>$25 if querying full year</td>
+        <td class="r ok">$0 (recent)</td>
+        <td class="r ok">$0</td>
+        <td class="r ok">$0 (recent)</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.78rem;color:var(--muted);margin-top:6px">
+    * "EC2 already paid" means no marginal cost per query — but the always-on EC2 is a fixed
+    monthly charge regardless of query volume. † InfluxDB 3.0 Enterprise also contends
+    with the live 81k writes/s ingest on the same node — large scans slow ingest and vice versa.
+  </p>
+
+  <h3>10-year query — cost and runtime comparison</h3>
+  <p>Returns daily max cell voltage per unit across the full 10-year dataset (25.7 T rows, 245 TB Parquet).</p>
+  <table>
+    <thead>
+      <tr>
+        <th>System</th>
+        <th>Data scanned</th>
+        <th>Runtime (est.)</th>
+        <th class="r">AWS cost</th>
+        <th class="r">Compute cost</th>
+        <th class="r">Total cost</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>InfluxDB 2.x</strong></td>
+        <td class="ok">~60 GB (series index)</td>
+        <td class="ok">~2 min</td>
+        <td class="r ok">$0</td>
+        <td class="r dim">EC2 paid</td>
+        <td class="r ok">$0 *</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB 3.0 Enterprise</strong></td>
+        <td class="err">~50 TB (col. proj.)</td>
+        <td class="err">~5–8 hrs</td>
+        <td class="r ok">$0</td>
+        <td class="r dim">EC2 paid</td>
+        <td class="r warn">$0 * †</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB Cloud Serverless</strong></td>
+        <td class="err">~50 TB</td>
+        <td class="err">~5–10 hrs</td>
+        <td class="r err">$250.00</td>
+        <td class="r ok">—</td>
+        <td class="r err">$250.00</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + AWS Athena</strong></td>
+        <td class="err">~50 TB</td>
+        <td class="ok">~15 min</td>
+        <td class="r warn">$250.00</td>
+        <td class="r ok">—</td>
+        <td class="r warn">$250.00</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB on EC2</strong><br>
+            <span class="dim" style="font-size:0.76rem">c5.4xlarge on-demand</span></td>
+        <td class="err">~50 TB</td>
+        <td class="err">~4–6 hrs</td>
+        <td class="r ok">$0</td>
+        <td class="r warn">~$3.40</td>
+        <td class="r ok">$3.40</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB local (spark1)</strong></td>
+        <td class="err">~50 TB (local disk)</td>
+        <td class="err">~3–5 hrs</td>
+        <td class="r ok">$0</td>
+        <td class="r ok">$0</td>
+        <td class="r ok">$0</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + Athena + S3-IA lifecycle</strong></td>
+        <td class="err">~50 TB (S3-IA retrieval)</td>
+        <td class="ok">~15 min</td>
+        <td class="r warn">$250 scan + $500 S3-IA retrieval</td>
+        <td class="r ok">—</td>
+        <td class="r err">$750.00 ‡</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.78rem;color:var(--muted);margin-top:6px">
+    † 5–8 hour query blocks ingest on a single-node InfluxDB 3.0 Enterprise instance — real deployments would need a dedicated read replica (+$153/month always-on) to avoid this.
+    ‡ S3-IA retrieval fee ($0.01/GB × 50 TB = $500) applies when Athena reads archived data; avoid by keeping recent 1–2 years on S3 Standard for frequent queries, using S3-IA/Glacier only for occasional compliance lookups.
+  </p>
+
+  <h3>Per-unit query — single unit, 1 year (operational use case)</h3>
+  <p>
+    Most day-to-day operational queries target one unit. With
+    <code>topic_partition_segments: 2</code>, DuckDB and Athena can limit the scan to
+    that unit's files only (1/47th of total data).
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>System</th>
+        <th>Data scanned</th>
+        <th>Runtime</th>
+        <th class="r">Cost</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>InfluxDB 2.x</strong></td>
+        <td class="ok">~130 MB (1 unit, series index)</td>
+        <td class="ok">&lt;1 s</td>
+        <td class="r ok">$0</td>
+      </tr>
+      <tr>
+        <td><strong>InfluxDB 3.0 Enterprise</strong></td>
+        <td class="warn">~106 GB (col. proj., 1 unit's files)</td>
+        <td class="warn">~8–12 min</td>
+        <td class="r ok">$0 (EC2 paid)</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + Athena (per-unit partition)</strong></td>
+        <td class="ok">~106 GB</td>
+        <td class="ok">~5 s</td>
+        <td class="r ok">$0.53</td>
+      </tr>
+      <tr>
+        <td><strong>Parquet + DuckDB local (spark1)</strong></td>
+        <td class="ok">~106 GB (local NVMe)</td>
+        <td class="ok">~30 s</td>
+        <td class="r ok">$0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Recommended query strategy by use case</h3>
+  <table>
+    <thead><tr><th>Use case</th><th>Recommended approach</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Live dashboard / last 24 hours</td>
+        <td class="ok">DuckDB on local edge machine (30-day cache)</td>
+        <td>Sub-second, free, no S3 egress</td>
+      </tr>
+      <tr>
+        <td>Weekly unit report (1 unit, 1 year)</td>
+        <td class="ok">Athena with per-unit partitioning</td>
+        <td>5 seconds, $0.53 — negligible</td>
+      </tr>
+      <tr>
+        <td>Fleet-wide degradation analysis (all units, 1 year)</td>
+        <td class="warn">Athena ($25) or overnight DuckDB EC2 ($0.32)</td>
+        <td>Athena is 20× faster; DuckDB EC2 is 78× cheaper</td>
+      </tr>
+      <tr>
+        <td>10-year compliance/warranty audit (all units)</td>
+        <td class="warn">Athena ($250) — keep data on S3 Standard, not S3-IA, for these files</td>
+        <td>15 minutes vs 5–8 hours for self-hosted options; $250 is one-off cost</td>
+      </tr>
+      <tr>
+        <td>Ad-hoc cross-metric investigation</td>
+        <td class="ok">DuckDB local on spark1 (data already there)</td>
+        <td>Free, flexible SQL, no cloud dependency, full Parquet toolchain</td>
+      </tr>
+      <tr>
+        <td>Automated nightly aggregation</td>
+        <td class="ok">DuckDB on EC2 spot instance (c5.4xlarge spot ~$0.07/hr)</td>
+        <td>Run overnight when spot is cheap; terminate when done; ~$0.06/night</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="notes">13 · Notes and Caveats</h2>
+
+<div class="section">
+  <ul>
+    <li>
+      <strong>InfluxDB compression varies widely.</strong> Simple integer/boolean values compress
+      better than floats; irregular timestamps compress worse. The 8× estimate is typical for
+      mixed IoT time series. Real-world range: 5–15×. Even at 15×, InfluxDB stored/day would
+      be 66 GB (similar to Parquet), but at $0.08/GB vs $0.023/GB — EBS vs S3 alone is 3.5×
+      more expensive.
+    </li>
+    <li>
+      <strong>InfluxDB Cloud pricing differs.</strong> InfluxDB Cloud (IOx engine) uses Parquet
+      on S3 internally and charges ~$0.20/GB-month for storage — roughly 8.7× more than raw S3.
+      Cloud plans also meter writes by data point count, adding $0.002–0.006/MB written
+      on top of storage.
+    </li>
+    <li>
+      <strong>Athena cost is query-dependent.</strong> The $150/month estimate assumes typical
+      monitoring queries scanning ~30 TB/month. With aggressive partitioning
+      (<code>topic_partition_segments: 2</code>), per-unit queries scan 1/47 of total data;
+      Athena costs could drop to $10–50/month. Heavy analytics could push costs higher.
+    </li>
+    <li>
+      <strong>InfluxDB downsampling is common in practice.</strong> Operators often configure
+      continuous queries to aggregate data older than 30 days (e.g., 1-minute intervals).
+      This reduces long-term storage but loses the original resolution — a trade-off that
+      Parquet avoids entirely: all raw rows are preserved cheaply.
+    </li>
+    <li>
+      <strong>EC2 for InfluxDB may need to be larger.</strong> At 81,420 writes/sec sustained,
+      r5.2xlarge is a lower bound. Production deployments often use r5.4xlarge ($730/month)
+      or run a two-node cluster for HA ($1,460/month), increasing the 10-year total
+      by $175K–$1.05M beyond the figures shown here.
+    </li>
+    <li>
+      <strong>Parquet writer runs on the edge.</strong> writer.cpp runs on the same machine as
+      FlashMQ (the edge host). No additional EC2 is needed for data collection.
+      The only AWS EC2 in the Parquet path is the small DuckDB query server.
+    </li>
+    <li>
+      <strong>Fleet scale multiplier.</strong> These figures are for a single site (47 BMS units).
+      At 10 sites the costs scale proportionally; at 100 sites the 10-year InfluxDB bill
+      approaches $218M vs $36M for Parquet/S3 Standard.
+    </li>
+  </ul>
+</div>
+
+<footer>
+  Generated 2026-03-23 &nbsp;·&nbsp;
+  Data source: Longbow EMS recording analysis (<a href="writer_real_data.html" style="color:var(--accent)">writer_real_data.html</a>) &nbsp;·&nbsp;
+  AWS pricing: 2026 us-east-1 public rates &nbsp;·&nbsp;
+  <a href="writer_design.html" style="color:var(--accent)">writer_design.html</a>
+</footer>
+
+</body>
+</html>

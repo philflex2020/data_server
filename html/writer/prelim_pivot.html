@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Prelim Parquet — Pivot Layout Experiment</title>
+<style>
+  :root {
+    --bg:#f6f8fa; --surface:#fff; --border:#d0d7de;
+    --text:#1f2328; --muted:#656d76; --accent:#0969da;
+    --green:#1a7f37; --orange:#9a6700; --red:#cf222e;
+    --code-bg:#f0f2f4; --header-bg:#f6f8fa;
+    --bar-narrow:#0969da; --bar-wide:#cf222e; --bar-dev:#9a6700; --bar-orig:#1a7f37;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:16px; font-size:.88rem; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface); }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#ddf4ff; }
+
+  h1   { font-size:1.15rem; margin-bottom:2px; }
+  h2   { font-size:.95rem; color:var(--text); margin:20px 0 8px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+  .meta { color:var(--muted); font-size:.78rem; margin-bottom:16px; }
+
+  .verdict { background:#dafbe1; border:1px solid #a8d5b5; border-radius:6px;
+             padding:10px 14px; margin-bottom:16px; color:#1a5c2a; font-size:.85rem; line-height:1.5; }
+  .verdict strong { color:#1a7f37; }
+
+  .cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+          padding:10px 14px; min-width:120px; }
+  .card-label { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .card-value { font-size:1.4rem; font-weight:700; line-height:1.2; }
+  .card-sub   { font-size:.72rem; color:var(--muted); }
+  .c-blue  { color:var(--accent); }
+  .c-green { color:var(--green); }
+  .c-red   { color:var(--red); }
+  .c-orange{ color:var(--orange); }
+
+  /* Bar chart */
+  .chart-wrap { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+                padding:14px; margin-bottom:16px; }
+  .chart-title { font-size:.82rem; font-weight:600; color:var(--muted); margin-bottom:10px; }
+  .bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:.8rem; }
+  .bar-label { width:220px; flex-shrink:0; color:var(--text); white-space:nowrap;
+               overflow:hidden; text-overflow:ellipsis; }
+  .bar-track { flex:1; background:#eaecef; border-radius:3px; height:16px; position:relative; overflow:hidden; }
+  .bar-fill  { height:100%; border-radius:3px; transition:width .3s; }
+  .bar-val   { width:90px; flex-shrink:0; text-align:right; font-variant-numeric:tabular-nums;
+               font-family:monospace; font-size:.78rem; color:var(--muted); }
+  .bar-pct   { width:60px; flex-shrink:0; text-align:right; font-size:.75rem; }
+  .pct-good  { color:var(--green); font-weight:600; }
+  .pct-bad   { color:var(--red); font-weight:600; }
+
+  table { border-collapse:collapse; width:100%; background:var(--surface);
+          border:1px solid var(--border); border-radius:6px; overflow:hidden;
+          font-size:.82rem; margin-bottom:16px; }
+  thead tr { background:var(--header-bg); }
+  th { padding:7px 11px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:5px 11px; border-bottom:1px solid #eaecef; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#f0f6ff; }
+  .num  { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
+  .best { color:var(--green); font-weight:700; }
+  .worst{ color:var(--red); }
+
+  .insight { background:#fff8e1; border:1px solid #e8c84a; border-radius:6px;
+             padding:10px 14px; margin-bottom:16px; font-size:.82rem; line-height:1.6; color:#5a4a00; }
+  .insight strong { color:#7a5e00; }
+
+  .section-note { font-size:.78rem; color:var(--muted); margin-bottom:8px; line-height:1.5; }
+
+  .tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:.72rem;
+         background:var(--code-bg); color:var(--muted); border:1px solid var(--border); }
+  .tag-win  { background:#e6f4ea; border-color:#a8d5b5; color:#1a5c2a; }
+  .tag-lose { background:#ffebe9; border-color:#f0b0a0; color:#7a1a10; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Writer Projects</a>
+  <a href="prelim_parquet.html">Prelim Point Inventory</a>
+  <a href="prelim_pivot.html" class="here">Pivot Experiment</a>
+</div>
+
+<h1>Prelim Parquet — Wide vs Narrow Layout Experiment</h1>
+<p class="meta">Source: <code>prelim_0000011876.parquet</code> &nbsp;·&nbsp; Site: <code>0215D1EC</code> &nbsp;·&nbsp;
+  3,057 rows · 7 cols · 8 units · 2m 50s window &nbsp;·&nbsp; 2025-11-19</p>
+
+<div class="verdict">
+  <strong>Result: narrow wins decisively.</strong> The original IOx narrow format (3.9 B/row) is already highly efficient.
+  Wide-unit pivot balloons to 28× larger because parquet column metadata (~20 KB/col overhead) dominates
+  when there are only 17 rows across 453 columns. Wide-device (one table per device type) is still 24× larger
+  in aggregate. COV filtering had zero effect — only 17 scan events in the 170 s window, all unique.
+  <br><br>
+  Wide format only wins when scan-cycle count >> column count. With 437 points and only 17 snapshots,
+  the crossover is far out of reach for this file.
+</div>
+
+<!-- Summary cards -->
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Original (IOx)</div>
+    <div class="card-value c-green">11,799 B</div>
+    <div class="card-sub">3,057 rows · 7 cols · 3.9 B/row</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Narrow re-encode (zstd)</div>
+    <div class="card-value c-blue">11,135 B</div>
+    <div class="card-sub">−5.6% vs IOx · best codec</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Wide-unit (snappy)</div>
+    <div class="card-value c-red">344,086 B</div>
+    <div class="card-sub">17 rows · 453 cols · +2,816%</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Wide-device sum</div>
+    <div class="card-value c-orange">285,161 B</div>
+    <div class="card-sub">9 tables · 6–98 cols each</div>
+  </div>
+  <div class="card">
+    <div class="card-label">COV rows dropped</div>
+    <div class="card-value c-blue">0</div>
+    <div class="card-sub">all 17 scan events distinct</div>
+  </div>
+</div>
+
+<!-- Main bar chart: codec comparison for narrow layouts -->
+<h2>Size by Layout &amp; Codec</h2>
+<p class="section-note">Re-encoded from the IOx source. Original file (11,799 B) shown as reference. Wide formats truncated to scale.</p>
+
+<div class="chart-wrap">
+  <div class="chart-title">File size (bytes) — lower is better</div>
+  <script>
+  const ORIG = 11799;
+  const BARS = [
+    { label:"Original IOx (as-is)",          size:11799,  color:"#1a7f37" },
+    { label:"Narrow · zstd",                  size:11135,  color:"#0969da" },
+    { label:"Narrow · brotli",                size:10552,  color:"#0969da" },
+    { label:"Narrow · snappy",                size:13378,  color:"#0969da" },
+    { label:"Narrow · uncompressed",          size:21721,  color:"#656d76" },
+    { label:"Wide-device sum · snappy",       size:285161, color:"#9a6700" },
+    { label:"Wide-unit · snappy",             size:344086, color:"#cf222e" },
+    { label:"Wide-unit · zstd",               size:350930, color:"#cf222e" },
+    { label:"Wide-unit · uncompressed",       size:343775, color:"#cf222e" },
+  ];
+  const MAX = Math.max(...BARS.map(b=>b.size));
+  document.addEventListener('DOMContentLoaded', () => {
+    const wrap = document.querySelector('.chart-wrap');
+    BARS.forEach(b => {
+      const pct = ((b.size - ORIG) / ORIG * 100).toFixed(1);
+      const sign = b.size <= ORIG ? `<span class="pct-good">${pct}%</span>` : `<span class="pct-bad">+${pct}%</span>`;
+      const w = Math.max(2, b.size / MAX * 100);
+      wrap.innerHTML += `
+        <div class="bar-row">
+          <div class="bar-label" title="${b.label}">${b.label}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${w}%;background:${b.color}"></div>
+          </div>
+          <div class="bar-val">${b.size.toLocaleString()} B</div>
+          <div class="bar-pct">${sign}</div>
+        </div>`;
+    });
+  });
+  </script>
+</div>
+
+<!-- Codec comparison table -->
+<h2>Narrow Layout — Codec Comparison</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Codec</th>
+      <th class="num">Size (bytes)</th>
+      <th class="num">B / row</th>
+      <th class="num">vs IOx original</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>IOx original</strong></td>
+      <td class="num">11,799</td>
+      <td class="num">3.86</td>
+      <td class="num">—</td>
+      <td>IOx internal encoding + dict compression</td>
+    </tr>
+    <tr>
+      <td>brotli <span class="tag tag-win">best</span></td>
+      <td class="num best">10,552</td>
+      <td class="num best">3.45</td>
+      <td class="num best">−10.6%</td>
+      <td>Highest ratio, slower encode</td>
+    </tr>
+    <tr>
+      <td>zstd</td>
+      <td class="num">11,135</td>
+      <td class="num">3.64</td>
+      <td class="num">−5.6%</td>
+      <td>Good balance of ratio + speed</td>
+    </tr>
+    <tr>
+      <td>snappy</td>
+      <td class="num">13,378</td>
+      <td class="num">4.37</td>
+      <td class="num worst">+13.4%</td>
+      <td>Fast but worse than IOx here</td>
+    </tr>
+    <tr>
+      <td>none</td>
+      <td class="num worst">21,721</td>
+      <td class="num worst">7.10</td>
+      <td class="num worst">+84.1%</td>
+      <td>Dict encoding only, no byte compression</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- Wide layout comparison -->
+<h2>Wide-Unit Layout — All Codecs</h2>
+<p class="section-note">Pivot: one row per (unit, timestamp). 453 columns = unit + time + 451 device/point pairs.
+  17 rows total. Column metadata overhead dominates — compression has almost no effect.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Codec</th>
+      <th class="num">Size (bytes)</th>
+      <th class="num">vs narrow zstd</th>
+      <th class="num">Rows</th>
+      <th class="num">Cols</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>snappy</td><td class="num worst">344,086</td><td class="num worst">+30.9×</td><td class="num">17</td><td class="num">453</td></tr>
+    <tr><td>brotli</td><td class="num worst">345,530</td><td class="num worst">+31.0×</td><td class="num">17</td><td class="num">453</td></tr>
+    <tr><td>zstd</td>  <td class="num worst">350,930</td><td class="num worst">+31.5×</td><td class="num">17</td><td class="num">453</td></tr>
+    <tr><td>none</td>  <td class="num worst">343,775</td><td class="num worst">+30.9×</td><td class="num">17</td><td class="num">453</td></tr>
+  </tbody>
+</table>
+
+<div class="insight">
+  <strong>Why wide-unit fails here:</strong> Parquet stores schema metadata for every column name as a UTF-8 string
+  in the file footer. With 453 columns averaging ~25 chars each ≈ ~11 KB of column name strings alone, on top of
+  row group and page headers. At only 17 data rows, that metadata accounts for the vast majority of the file.
+  The actual float64 data is tiny — 17 rows × 451 cols × 8 bytes = ~61 KB uncompressed, which compresses well,
+  but the footer overhead is inescapable.
+  <br><br>
+  <strong>Break-even estimate:</strong> wide-unit starts winning around <strong>~30,000+ scan cycles</strong>
+  (≈ 1 row/30 s × 10 days), where column data finally exceeds the fixed metadata cost per file.
+</div>
+
+<!-- Wide-device breakdown -->
+<h2>Wide-Device Layout — Per Device Table</h2>
+<p class="section-note">Pivot each device separately: one row per (unit, timestamp) within that device.
+  Rack devices are dense (49 points, no nulls). Aggregate size = 285,161 B (24× narrow).</p>
+<table>
+  <thead>
+    <tr>
+      <th>Device</th>
+      <th class="num">Rows</th>
+      <th class="num">Cols</th>
+      <th class="num">Points</th>
+      <th class="num">snappy (B)</th>
+      <th class="num">B / row</th>
+      <th class="num">vs narrow</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody id="dev-tbody">
+  </tbody>
+  <tfoot>
+    <tr style="font-weight:700;background:#f6f8fa">
+      <td>Total (all devices)</td>
+      <td class="num">67</td>
+      <td class="num">—</td>
+      <td class="num">451</td>
+      <td class="num">285,161</td>
+      <td class="num">4,256</td>
+      <td class="num worst">24.2×</td>
+      <td>9 separate files</td>
+    </tr>
+  </tfoot>
+</table>
+
+<script>
+const DEV_DATA = [
+  { dev:"NA",          rows:17, cols:30, pts:28, snappy:19676,  note:"Site-level; 8 timestamps, sparse" },
+  { dev:"bms_1",       rows:8,  cols:98, pts:96, snappy:66149,  note:"96 points; largest single device" },
+  { dev:"bms_1_rack_1",rows:8,  cols:51, pts:49, snappy:35676,  note:"Dense — identical schema to rack 2-6" },
+  { dev:"bms_1_rack_2",rows:7,  cols:51, pts:49, snappy:35530,  note:"" },
+  { dev:"bms_1_rack_3",rows:6,  cols:51, pts:49, snappy:35459,  note:"" },
+  { dev:"bms_1_rack_4",rows:6,  cols:51, pts:49, snappy:35434,  note:"" },
+  { dev:"bms_1_rack_5",rows:6,  cols:51, pts:49, snappy:35439,  note:"" },
+  { dev:"bms_1_rack_6",rows:6,  cols:51, pts:49, snappy:35457,  note:"" },
+  { dev:"pcs_1",       rows:9,  cols:35, pts:33, snappy:21771,  note:"" },
+];
+const NARROW_REF = 11135;
+document.addEventListener('DOMContentLoaded', () => {
+  const tb = document.getElementById('dev-tbody');
+  DEV_DATA.forEach(d => {
+    const ratio = (d.snappy / NARROW_REF).toFixed(1);
+    tb.innerHTML += `<tr>
+      <td><code>${d.dev}</code></td>
+      <td class="num">${d.rows}</td>
+      <td class="num">${d.cols}</td>
+      <td class="num">${d.pts}</td>
+      <td class="num worst">${d.snappy.toLocaleString()}</td>
+      <td class="num">${Math.round(d.snappy/d.rows).toLocaleString()}</td>
+      <td class="num worst">${ratio}×</td>
+      <td>${d.note}</td>
+    </tr>`;
+  });
+});
+</script>
+
+<!-- COV analysis -->
+<h2>Change-on-Value (COV) Filter Result</h2>
+<p class="section-note">Applied to wide-unit table: drop scan cycles where no value changed vs prior cycle for the same unit.</p>
+<table>
+  <thead>
+    <tr><th>Unit</th><th class="num">Scan cycles</th><th class="num">COV kept</th><th class="num">Rows dropped</th><th>Reason</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>01C4F65E</td> <td class="num">1</td><td class="num">1</td><td class="num">0</td><td>Only 1 scan — always keep first</td></tr>
+    <tr><td>01C4F68D</td> <td class="num">1</td><td class="num">1</td><td class="num">0</td><td>Only 1 scan</td></tr>
+    <tr><td>01C4F6D2</td> <td class="num">2</td><td class="num">2</td><td class="num">0</td><td>Values changed between scans</td></tr>
+    <tr><td>01C6910A</td> <td class="num">1</td><td class="num">1</td><td class="num">0</td><td>Only 1 scan</td></tr>
+    <tr><td>01C69110</td> <td class="num">2</td><td class="num">2</td><td class="num">0</td><td>Values changed between scans</td></tr>
+    <tr><td>01C69113</td> <td class="num">1</td><td class="num">1</td><td class="num">0</td><td>Only 1 scan</td></tr>
+    <tr><td>01C69117</td> <td class="num">1</td><td class="num">1</td><td class="num">0</td><td>Only 1 scan</td></tr>
+    <tr><td>NA</td>       <td class="num">8</td><td class="num">8</td><td class="num">0</td><td>Site-level, each ts different</td></tr>
+    <tr style="font-weight:700;background:#f6f8fa">
+      <td>Total</td><td class="num">17</td><td class="num">17</td><td class="num best">0</td>
+      <td>2m 50s window too short for COV savings</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="insight">
+  <strong>COV needs longer windows or higher rates to show savings.</strong>
+  In a 2m 50s capture with ~1 scan/20s, there are only 1–2 cycles per unit — and BESS values change on every cycle.
+  COV filtering shines on 10+ minute files where slow-moving signals (temperatures, SOC) stay flat for many cycles.
+  At 21,240 msg/s (Evelyn full load), wide-unit + COV would be a very different story.
+</div>
+
+<!-- Recommendations -->
+<h2>Recommendations</h2>
+<table>
+  <thead>
+    <tr><th>Use case</th><th>Recommended layout</th><th>Reasoning</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Storage / archival</td>
+      <td><span class="tag tag-win">Narrow + zstd/brotli</span></td>
+      <td>Already ~3.5 B/row; flexible schema, no schema migration pain</td>
+    </tr>
+    <tr>
+      <td>COV filtering (long window)</td>
+      <td><span class="tag tag-win">Wide-unit + COV</span></td>
+      <td>Requires 10+ min files with 100s of scan cycles to amortize column overhead</td>
+    </tr>
+    <tr>
+      <td>Analytics (DuckDB queries)</td>
+      <td><span class="tag tag-win">Narrow</span></td>
+      <td>DuckDB handles long format natively; no pivot needed for queries</td>
+    </tr>
+    <tr>
+      <td>Rack-type schema reuse</td>
+      <td><span class="tag">Wide-device per rack</span></td>
+      <td>All 6 racks share identical 49-point schema — viable if files are large enough</td>
+    </tr>
+    <tr>
+      <td>Transmission / edge</td>
+      <td><span class="tag tag-win">Narrow + zstd</span></td>
+      <td>11 KB/file already tiny; wide adds no benefit for short burst files</td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>

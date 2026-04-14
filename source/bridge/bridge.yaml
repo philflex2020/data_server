@@ -24,6 +24,16 @@ groups:
     topics:
       - "batteries/#"
 
+  ems_all:
+    description: "All real EMS telemetry (unit/... — real_stress_runner / Longbow schema)"
+    topics:
+      - "unit/#"
+
+  sync_heartbeat:
+    description: "Chain-of-custody sync heartbeats from the stress runner"
+    topics:
+      - "_sync"
+
   solar_all:
     description: "All solar panel telemetry"
     topics:
@@ -75,19 +85,18 @@ groups:
 bridges:
 
   aws_live:
-    description: "Forward live sensor data to AWS FlashMQ"
-    host: flashmq.aws.example.com
-    port: 1883
-    qos: 1
+    description: "Forward live sensor data to fractal-phil FlashMQ aws-sim (192.168.0.51:1884, wired)"
+    host: 192.168.0.51
+    port: 1884
+    qos: 0
     protocol_version: mqtt3.1.1
     tls: off
-    # remote_username: bridge_user
-    # remote_password: bridge_pass
-    # ca_file: /etc/flashmq/certs/aws-ca.pem
-    # clientid_prefix: site0-bridge
+    clientid_prefix: pd-bridge
     groups:
       - batteries_all
+      - ems_all
       - solar_all
+      - sync_heartbeat
 
   # Example: a second bridge to an internal monitoring system
   # monitoring:

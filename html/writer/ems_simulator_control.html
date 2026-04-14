@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EMS Simulator Control</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149; --orange: #e3b341;
+    --purple: #bc8cff;
+    --green-bg: #0d4429; --yellow-bg: #2d2000; --red-bg: #3d0a0a;
+    --blue-bg: #0c2d6b;
+    --code-bg: #21262d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif; padding: 16px; line-height: 1.5; }
+
+  /* ── top bar ── */
+  .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .topbar h1 { color: var(--accent); font-size: 1.3rem; }
+  .topbar input { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                  padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; width: 180px; }
+  .topbar input:focus { outline: none; border-color: var(--accent); }
+
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text);
+         padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 0.82rem;
+         transition: border-color .15s, color .15s, background .15s; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+  .btn.danger { border-color: #5a1515; }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn.primary:hover { background: var(--blue-bg); border-color: var(--accent); color: var(--accent); }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .dot.ok  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+  .dot.err { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+  .dot.off { background: var(--muted); }
+  #conn-status { font-size: 0.8rem; color: var(--muted); }
+
+  h2 { color: var(--accent); font-size: 0.95rem; margin: 20px 0 8px;
+       padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+
+  /* ── fleet overview bar ── */
+  .fleet-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
+  .fcard { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+           padding: 10px 12px; }
+  .fcard-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+                 letter-spacing: .05em; margin-bottom: 4px; }
+  .fcard-val { font-size: 1.3rem; font-weight: 700; color: var(--accent); font-family: 'Consolas', monospace; }
+  .fcard-sub  { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── mode controls panel ── */
+  .controls { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+              padding: 14px; margin-bottom: 16px; }
+  .ctrl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .ctrl-label { font-size: 0.82rem; color: var(--muted); min-width: 100px; }
+  .ctrl-row input[type=number] { width: 80px; background: var(--code-bg); border: 1px solid var(--border);
+    color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.82rem; }
+  .ctrl-row input[type=number]:focus { outline: none; border-color: var(--accent); }
+  .ctrl-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+  /* ── unit grid ── */
+  .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .ucard { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+           padding: 10px 12px; transition: border-color .2s; cursor: pointer; }
+  .ucard:hover { border-color: #444c57; }
+  .ucard.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent)22; }
+  .ucard.fault { border-color: var(--red) !important; }
+  .ucard.charging { border-left: 3px solid var(--green); }
+  .ucard.discharging { border-left: 3px solid var(--orange); }
+  .ucard.standby { border-left: 3px solid var(--muted); }
+  .ucard.offline { border-left: 3px solid var(--red); opacity: .7; }
+
+  .ucard-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .uid { font-family: 'Consolas', monospace; font-size: 0.82rem; color: var(--accent); }
+  .mode-badge { font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+  .mb-standby    { background: #21262d; color: var(--muted); }
+  .mb-charging   { background: var(--green-bg); color: var(--green); }
+  .mb-discharging{ background: #2a1e00; color: var(--orange); }
+  .mb-offline    { background: var(--red-bg); color: var(--red); }
+
+  .ucard-metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+  .um { font-size: 0.74rem; }
+  .um-k { color: var(--muted); font-size: 0.68rem; }
+  .um-v { font-family: 'Consolas', monospace; color: var(--text); font-size: 0.78rem; }
+  .um-v.ok   { color: var(--green); }
+  .um-v.warn { color: var(--yellow); }
+  .um-v.err  { color: var(--red); }
+
+  .soc-mini { height: 4px; border-radius: 2px; margin-top: 5px; overflow: hidden;
+              background: var(--border); }
+  .soc-mini-fill { height: 100%; border-radius: 2px; transition: width .5s; }
+
+  .fault-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+  .ftag { font-size: 0.65rem; padding: 1px 6px; border-radius: 8px;
+          background: var(--red-bg); color: var(--red); border: 1px solid #7a1515; }
+
+  .rack-bar { display: flex; gap: 3px; margin-top: 5px; }
+  .rack-seg { flex: 1; height: 6px; border-radius: 2px; }
+
+  /* ── event log ── */
+  #log { background: #0a0d11; border: 1px solid var(--border); border-radius: 6px;
+         padding: 10px 12px; font-family: 'Consolas', monospace; font-size: 0.78rem;
+         height: 160px; overflow-y: auto; color: var(--muted); }
+  #log .ev-sent   { color: var(--accent); }
+  #log .ev-recv   { color: #3d6b3d; }
+  #log .ev-fault  { color: var(--red); }
+  #log .ev-info   { color: var(--muted); }
+  #log .ev-ok     { color: var(--green); }
+
+  /* ── fault inject panel ── */
+  .fault-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+                 padding: 14px; margin-bottom: 16px; }
+  .fault-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 8px; }
+  .fbtn { border: 1px solid #5a1515; background: var(--red-bg); color: #ff8f8f;
+          padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+          transition: background .15s, border-color .15s; text-align: center; }
+  .fbtn:hover { background: #5a1515; border-color: var(--red); }
+  .fbtn .param-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .fbtn input { width: 60px; background: #21262d; border: 1px solid var(--border);
+                color: var(--text); padding: 2px 5px; border-radius: 3px; font-size: 0.78rem; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem;
+            padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .select-info { font-size: 0.78rem; color: var(--muted); }
+  select { background: var(--code-bg); border: 1px solid var(--border); color: var(--text);
+           padding: 4px 8px; border-radius: 4px; font-size: 0.82rem; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_code_review_3.html">Review 3</a>
+  <a href="writer_critical_fixes_3.html">Fixes 3</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="writer_diff_detector.html">Diff Detector</a>
+  <a href="writer_duck_diff_detector.html">DuckDB Diff</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="ems_simulator_control.html" class="here">Sim Control</a>
+  <a href="demo_influx_viewer.html">Demo InfluxDB</a>
+  <a href="demo_eval.html">Pipeline Eval</a>
+</div>
+
+<div style="background:#0a0d11;border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:14px;font-family:'Consolas',monospace;font-size:0.78rem;color:var(--muted);line-height:1.8">
+  <span style="color:var(--accent);font-weight:700">Quick start</span> — run on the target machine, then connect below:<br>
+  <span style="color:var(--green)">cd</span> ~/work/gen-ai/data_server/source/stress_runner<br>
+  <span style="color:var(--green)">./ems_site_simulator</span> <span style="color:var(--yellow)">--units 4 --rate 81420 --soc 50 --ws-port 8769</span>
+  <span style="color:#444c57">&nbsp;&nbsp;# 4 units, 1 s sweep, WebSocket on :8769</span><br>
+  <span style="color:var(--green)">./ems_site_simulator</span> <span style="color:var(--yellow)">--units 46 --rate 0 --soc 27</span>
+  <span style="color:#444c57">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# full Longbow site, max speed, post-discharge SOC</span>
+</div>
+
+<div class="topbar">
+  <h1>EMS Simulator Control</h1>
+  <span class="dot off" id="conn-dot"></span>
+  <span id="conn-status">disconnected</span>
+  <input id="ws-host" type="text" value="localhost" placeholder="host" style="width:130px">
+  <input id="ws-port" type="text" value="8769" placeholder="port" style="width:70px">
+  <button class="btn primary" id="conn-btn" onclick="toggleConnect()">Connect</button>
+</div>
+
+<!-- Fleet overview -->
+<div class="fleet-bar" id="fleet-bar">
+  <div class="fcard"><div class="fcard-label">Units</div><div class="fcard-val" id="f-units">—</div></div>
+  <div class="fcard"><div class="fcard-label">Target msg/s</div><div class="fcard-val" id="f-rate">—</div></div>
+  <div class="fcard"><div class="fcard-label">Published</div><div class="fcard-val" id="f-total">—</div></div>
+  <div class="fcard"><div class="fcard-label">Charging</div><div class="fcard-val" id="f-charging" style="color:var(--green)">—</div></div>
+  <div class="fcard"><div class="fcard-label">Faults</div><div class="fcard-val" id="f-faults" style="color:var(--red)">—</div></div>
+</div>
+
+<!-- Mode controls -->
+<h2>Mode Control</h2>
+<div class="controls">
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px">
+    <span class="ctrl-label">Target:</span>
+    <select id="target-sel" onchange="updateTargetLabel()">
+      <option value="ALL">All units</option>
+    </select>
+    <span class="select-info" id="target-info"></span>
+  </div>
+  <div class="ctrl-row">
+    <span class="ctrl-label">Target rate:</span>
+    <input type="number" id="rate-val" value="81420" min="0" max="2000000" step="1000">
+    <button class="btn" onclick="sendSetRate()">Set Rate</button>
+    <div class="ctrl-sep"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="smooth-burst-chk" checked onchange="sendSmoothBurst()">
+      Smooth slow signals (1 s)
+    </label>
+    <div class="ctrl-sep"></div>
+    <span class="ctrl-label" style="min-width:80px">Current (A):</span>
+    <input type="number" id="current-val" value="150" min="0" max="900" step="10">
+    <button class="btn" onclick="sendSetCurrent()">Set Current</button>
+  </div>
+  <div class="ctrl-row">
+    <span class="ctrl-label">Noise (%):</span>
+    <input type="number" id="noise-val" value="0" min="0" max="50" step="0.5" style="width:70px">
+    <input type="range"  id="noise-slider" min="0" max="20" step="0.5" value="0"
+           style="width:120px;accent-color:var(--purple)"
+           oninput="document.getElementById('noise-val').value=this.value">
+    <button class="btn" style="border-color:#5a3a7a;color:var(--purple)" onclick="sendNoise()">Set Noise</button>
+    <button class="btn" onclick="sendNoiseOff()">Off</button>
+    <span style="font-size:0.75rem;color:var(--muted);margin-left:4px">±% of signal value · fault flags unaffected</span>
+  </div>
+  <div class="ctrl-row">
+    <button class="btn" style="border-color:#1a6e3a" onclick="sendMode('charge')">⚡ Charge</button>
+    <button class="btn" style="border-color:#6e3a00" onclick="sendMode('discharge')">🔋 Discharge</button>
+    <button class="btn" onclick="sendMode('standby')">⏸ Standby</button>
+    <button class="btn danger" onclick="sendMode('offline')">✕ Offline</button>
+    <div class="ctrl-sep"></div>
+    <button class="btn" style="border-color:#1a6e3a" onclick="sendContactor(true)">🔌 Contactor Close</button>
+    <button class="btn danger" onclick="sendContactor(false)">⚡ Contactor Open</button>
+  </div>
+</div>
+
+<!-- Fault injection -->
+<h2>Fault Injection</h2>
+<div class="fault-panel">
+  <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+    Faults are injected on the selected target (dropdown above). <strong style="color:var(--text)">Clear Faults</strong> removes all injected state.
+  </div>
+  <div class="fault-grid">
+    <div class="fbtn" onclick="injectFault('overtemp',document.getElementById('ft-overtemp').value)">
+      🌡 Over-temperature
+      <div class="param-row"><label style="font-size:.72rem;color:#ff8f8f">Temp °C:</label>
+        <input type="number" id="ft-overtemp" value="55" min="40" max="90" onclick="e=>e.stopPropagation()"></div>
+    </div>
+    <div class="fbtn" onclick="injectFault('overcurrent',document.getElementById('ft-overcurr').value)">
+      ⚡ Over-current
+      <div class="param-row"><label style="font-size:.72rem;color:#ff8f8f">Amps:</label>
+        <input type="number" id="ft-overcurr" value="700" min="600" max="1200" onclick="e=>e.stopPropagation()"></div>
+    </div>
+    <div class="fbtn" onclick="injectFault('undervolt',0)">
+      🔋 Under-voltage<br>
+      <span style="font-size:.7rem;color:#ff8f8f88">(forces cell V &lt; 2.8 V)</span>
+    </div>
+    <div class="fbtn" onclick="injectFault('overvolt',0)">
+      ⚡ Over-voltage<br>
+      <span style="font-size:.7rem;color:#ff8f8f88">(flag override)</span>
+    </div>
+    <div class="fbtn" onclick="injectFault('low_soc',0)">
+      🪫 Low SOC<br>
+      <span style="font-size:.7rem;color:#ff8f8f88">(forces SOC to 8%)</span>
+    </div>
+    <div class="fbtn" onclick="injectFault('soc_imbalance',document.getElementById('ft-imbalance').value)">
+      📊 SOC Imbalance
+      <div class="param-row"><label style="font-size:.72rem;color:#ff8f8f">Spread %:</label>
+        <input type="number" id="ft-imbalance" value="40" min="5" max="90" onclick="e=>e.stopPropagation()"></div>
+    </div>
+  </div>
+  <div style="margin-top:10px">
+    <button class="btn active" onclick="clearFaults()">✓ Clear All Faults</button>
+  </div>
+</div>
+
+<!-- Unit grid -->
+<h2>Unit Status <span id="unit-count" style="font-size:0.78rem;color:var(--muted);font-weight:400"></span></h2>
+<div class="unit-grid" id="unit-grid">
+  <div style="color:var(--muted);font-size:.82rem;padding:12px">Connect to see unit status…</div>
+</div>
+
+<!-- real_writer reminder -->
+<h2>Run real_writer</h2>
+<div style="background:#0a0d11;border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:16px;font-family:'Consolas',monospace;font-size:0.78rem;color:var(--muted);line-height:1.9">
+  <span style="color:var(--accent);font-weight:700">One-time setup</span><br>
+  <span style="color:var(--green)">sudo</span> mkdir -p /srv/data/parquet-ems &amp;&amp; <span style="color:var(--green)">sudo</span> chown $USER /srv/data/parquet-ems<br>
+  <br>
+  <span style="color:var(--accent);font-weight:700">Start writer</span>
+  <span style="color:#444c57">&nbsp;&nbsp;# from repo root</span><br>
+  <span style="color:var(--green)">cd</span> source/parquet_writer_cpp<br>
+  <span style="color:var(--green)">./real_writer</span> <span style="color:var(--yellow)">--config real_writer_config.yaml</span>
+  <span style="color:#444c57">&nbsp;&nbsp;# subscribes unit/# · flushes every 60 s · health :8771</span><br>
+  <br>
+  <span style="color:var(--accent);font-weight:700">Check health</span><br>
+  <span style="color:var(--green)">curl</span> http://localhost:8771/health
+  <span style="color:#444c57">&nbsp;&nbsp;# msgs_received, flush_count, buffer_rows, last_flush_ms</span>
+</div>
+
+<!-- DuckDB verification -->
+<h2>Verify Parquet Output (DuckDB)</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+  <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">
+    After the first flush (60 s by default) run these queries on the writer machine to confirm rows are landing correctly.
+  </p>
+
+  <div style="margin-bottom:10px">
+    <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+      Parquet path &amp; site_id
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="dq-path"    value="/srv/data/parquet-ems" style="width:260px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:.82rem;font-family:'Consolas',monospace">
+      <input type="text" id="dq-site"    value="0215D1D8"              style="width:110px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:.82rem;font-family:'Consolas',monospace">
+      <input type="number" id="dq-limit" value="20" min="1" max="1000" style="width:70px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:.82rem">
+      <span style="font-size:.72rem;color:var(--muted)">rows</span>
+    </div>
+  </div>
+
+  <!-- Query cards -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Sample rows</div>
+      <pre id="dq-sample" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('sample')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Row count by unit</div>
+      <pre id="dq-count" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('count')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Latest value per signal</div>
+      <pre id="dq-latest" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('latest')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">SOC time-series for one unit</div>
+      <pre id="dq-soc" style="font-size:.74rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:0;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="margin-top:8px;font-size:.74rem" onclick="copyQuery('soc')">Copy</button>
+    </div>
+
+  </div>
+
+  <div style="background:#0a0d11;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.76rem;color:var(--muted)">
+    <strong style="color:var(--text)">Run from the writer machine:</strong>
+    <code style="color:var(--accent);margin-left:6px">duckdb -c "$(query)"</code>
+    &nbsp;·&nbsp; or paste into <code style="color:var(--accent)">duckdb</code> interactive shell
+    &nbsp;·&nbsp; install: <code style="color:var(--accent)">sudo apt install duckdb</code>
+    or <code style="color:var(--accent)">pip install duckdb</code>
+  </div>
+</div>
+
+<!-- Noise analysis queries -->
+<h2>Noise Analysis Queries (DuckDB)</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+  <p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">
+    Run these after injecting noise (<code style="font-size:.8rem">set_noise amplitude &gt; 0</code>) and collecting at least one flush.
+    Uses the same path/site/limit as the verification queries above.
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">1 — Coefficient of variation</span>
+        <span style="color:var(--muted);margin-left:6px">rank signals by noise level</span>
+      </div>
+      <pre id="nq-cv" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_cv')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">2 — Delta percentiles</span>
+        <span style="color:var(--muted);margin-left:6px">deadband sizing per signal</span>
+      </div>
+      <pre id="nq-delta" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_delta')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">3 — Frozen sensor detection</span>
+        <span style="color:var(--muted);margin-left:6px">stuck values / never-changing signals</span>
+      </div>
+      <pre id="nq-frozen" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_frozen')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">4 — Z-score outlier scan</span>
+        <span style="color:var(--muted);margin-left:6px">readings &gt; N sigma from mean</span>
+      </div>
+      <pre id="nq-zscore" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_zscore')">Copy</button>
+    </div>
+
+    <div style="background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:10px;grid-column:1/-1">
+      <div style="font-size:.72rem;margin-bottom:3px">
+        <span style="color:var(--orange);font-weight:700">5 — Physics consistency</span>
+        <span style="color:var(--muted);margin-left:6px">voltage vs SOC residual  (V − (1320 + 0.74×SOC)); outliers &gt; ±30 V</span>
+      </div>
+      <pre id="nq-physics" style="font-size:.72rem;white-space:pre-wrap;word-break:break-all;color:var(--accent);margin:4px 0 6px;background:none;border:none;padding:0"></pre>
+      <button class="btn" style="font-size:.72rem" onclick="copyQuery('nq_physics')">Copy</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Event log -->
+<h2>Event Log</h2>
+<div id="log"><span class="ev-info">Waiting for connection…</span></div>
+
+<script>
+'use strict';
+let ws = null;
+let lastStats = null;
+let selectedUnits = new Set(); // empty = ALL
+
+// ── connection ──────────────────────────────────────────────────────────────
+
+function toggleConnect() {
+  if (ws) {
+    ws.close(); ws = null;
+    return;
+  }
+  const host = document.getElementById('ws-host').value.trim() || 'localhost';
+  const port = document.getElementById('ws-port').value.trim() || '8769';
+  localStorage.setItem('ems_ws_host', host);
+  localStorage.setItem('ems_ws_port', port);
+  const url  = `ws://${host}:${port}`;
+  logEv('info', `Connecting to ${url}…`);
+  ws = new WebSocket(url);
+  ws.onopen    = () => {
+    setConn(true); logEv('ok', 'Connected');
+    send({type:'get_status'});
+    send({type:'set_smooth_burst', enabled: document.getElementById('smooth-burst-chk').checked});
+  };
+  ws.onclose   = () => { setConn(false); logEv('info', 'Disconnected'); ws = null; };
+  ws.onerror   = () => { setConn(false); logEv('fault','WebSocket error'); };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    logEv('recv', `← ${msg.type}  mps=${msg.mps??'?'}  units=${(msg.units||[]).length}`);
+    handleMsg(msg);
+  };
+}
+
+function setConn(ok) {
+  const dot = document.getElementById('conn-dot');
+  dot.className = `dot ${ok ? 'ok' : 'err'}`;
+  document.getElementById('conn-status').textContent = ok ? 'connected' : 'disconnected';
+  const btn = document.getElementById('conn-btn');
+  btn.textContent = ok ? 'Disconnect' : 'Connect';
+  btn.className   = ok ? 'btn danger'  : 'btn primary';
+}
+
+// ── message handling ────────────────────────────────────────────────────────
+
+function handleMsg(msg) {
+  if (msg.type !== 'status' && msg.type !== 'stats') return;
+  const firstConnect = !lastStats;
+  lastStats = msg;
+  updateFleet(msg);
+  updateUnitGrid(msg.units || []);
+  if (firstConnect) renderDuckQueries();  // refresh SOC query with real unit ID
+}
+
+// Normalise faults: server sends object {overtemp:bool,...}, we want array of names
+function faultArray(faults) {
+  if (!faults) return [];
+  if (Array.isArray(faults)) return faults;
+  return Object.entries(faults).filter(([,v])=>v).map(([k])=>k);
+}
+
+function updateFleet(msg) {
+  const units   = msg.units || [];
+  const rate    = msg.rate  ?? null;
+  const total   = msg.total_published || 0;
+  const charging= units.filter(u => u.mode === 'charging' || u.mode === 'CHARGING').length;
+  const faults  = units.reduce((n, u) => n + faultArray(u.faults).length, 0);
+
+  setText('f-units',    units.length);
+  setText('f-rate',     rate !== null ? (rate === 0 ? 'unlimited' : rate.toLocaleString()) : '—');
+  setText('f-total',    total >= 1e6 ? (total/1e6).toFixed(2)+'M' : total.toLocaleString());
+  setText('f-charging', charging);
+  setText('f-faults',   faults);
+
+  if (msg.smooth_burst !== undefined) {
+    document.getElementById('smooth-burst-chk').checked = msg.smooth_burst;
+  }
+
+
+  // Update target dropdown if unit list changed
+  const sel   = document.getElementById('target-sel');
+  const known = new Set(Array.from(sel.options).map(o=>o.value));
+  for (const u of units) {
+    if (!known.has(u.id)) {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.text = u.id;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+function updateUnitGrid(units) {
+  const grid = document.getElementById('unit-grid');
+  document.getElementById('unit-count').textContent = `(${units.length} units)`;
+
+  for (const u of units) {
+    let card = document.getElementById(`ucard-${u.id}`);
+    if (!card) {
+      card = document.createElement('div');
+      card.id = `ucard-${u.id}`;
+      card.className = 'ucard';
+      card.onclick   = () => toggleUnit(u.id);
+      grid.appendChild(card);
+    }
+    const mode   = (u.mode||'STANDBY').toLowerCase();
+    const faults = faultArray(u.faults);
+    const hasFault = faults.length > 0;
+
+    card.className = `ucard ${mode}${hasFault ? ' fault' : ''}${selectedUnits.has(u.id) ? ' selected' : ''}`;
+
+    // field names from server: current_a, temp_c (no charge_kwh in current build)
+    const current = u.current_a ?? u.current ?? 0;
+    const temp    = u.temp_c    ?? u.temp    ?? 0;
+    const socColor = u.soc < 15 ? 'err' : u.soc < 30 ? 'warn' : 'ok';
+    const socFill  = u.soc < 15 ? 'var(--red)' : u.soc < 30 ? 'var(--yellow)' : 'var(--green)';
+    const mbClass  = { charging:'mb-charging', discharging:'mb-discharging',
+                       standby:'mb-standby', offline:'mb-offline' }[mode] || 'mb-standby';
+
+    const rackBars = (u.racks||[]).map((r, i) => {
+      const c = r.soc < 15 ? 'var(--red)' : r.soc < 30 ? 'var(--yellow)' : 'var(--green)';
+      return `<div class="rack-seg" style="background:${c};opacity:.7" title="Rack${i} SOC ${r.soc?.toFixed(1)}%"></div>`;
+    }).join('');
+
+    const faultHtml = faults.map(f=>`<span class="ftag">${f}</span>`).join('');
+
+    card.innerHTML = `
+      <div class="ucard-head">
+        <span class="uid">${u.id}</span>
+        <span class="mode-badge ${mbClass}">${u.mode||'STANDBY'}</span>
+      </div>
+      <div class="ucard-metrics">
+        <div class="um"><div class="um-k">SOC</div><div class="um-v ${socColor}">${u.soc?.toFixed(1)}%</div></div>
+        <div class="um"><div class="um-k">Current</div><div class="um-v">${current.toFixed(0)} A</div></div>
+        <div class="um"><div class="um-k">Temp</div><div class="um-v ${temp>45?'err':temp>38?'warn':''}">${temp.toFixed(1)}°C</div></div>
+        <div class="um"><div class="um-k">Voltage</div><div class="um-v">${(u.voltage_v??0).toFixed(0)} V</div></div>
+        <div class="um"><div class="um-k">Contactor</div><div class="um-v ${u.contactor?'ok':'err'}">${u.contactor?'closed':'open'}</div></div>
+        ${(u.noise_pct??0)>0 ? `<div class="um"><div class="um-k">Noise</div><div class="um-v" style="color:var(--purple)">±${u.noise_pct.toFixed(1)}%</div></div>` : ''}
+      </div>
+      <div class="soc-mini"><div class="soc-mini-fill" style="width:${u.soc}%;background:${socFill}"></div></div>
+      ${rackBars ? `<div class="rack-bar">${rackBars}</div>` : ''}
+      ${faultHtml ? `<div class="fault-tags">${faultHtml}</div>` : ''}
+    `;
+  }
+}
+
+function toggleUnit(id) {
+  if (selectedUnits.has(id)) { selectedUnits.delete(id); }
+  else                       { selectedUnits.add(id); }
+  // Sync dropdown
+  const sel = document.getElementById('target-sel');
+  sel.value = selectedUnits.size === 1 ? [...selectedUnits][0] : 'ALL';
+  updateTargetLabel();
+  // Re-render cards for selection highlight
+  if (lastStats) updateUnitGrid(lastStats.units || []);
+}
+
+function updateTargetLabel() {
+  const sel = document.getElementById('target-sel');
+  const info = document.getElementById('target-info');
+  info.textContent = sel.value === 'ALL' ? 'all units' : `1 unit`;
+}
+
+// ── target resolution ────────────────────────────────────────────────────────
+
+function getTargetArray() {
+  const sel = document.getElementById('target-sel');
+  if (sel.value === 'ALL') return ['ALL'];
+  return [sel.value];
+}
+
+// ── commands ─────────────────────────────────────────────────────────────────
+
+function send(obj) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    logEv('fault', 'Not connected'); return;
+  }
+  ws.send(JSON.stringify(obj));
+}
+
+function sendMode(mode) {
+  const current_a = parseFloat(document.getElementById('current-val').value) || 0;
+  const targets = getTargetArray();
+  const cmd = { type:'set_mode', units: targets, mode, current_a };
+  logEv('sent', `set_mode → ${mode} @ ${current_a}A  target: ${cmd.units.join(',')}`);
+  send(cmd);
+  patchUnitCurrent(targets, current_a);
+}
+
+function sendContactor(closed) {
+  const cmd = { type:'set_contactor', units: getTargetArray(), closed };
+  logEv('sent', `set_contactor → ${closed}  target: ${cmd.units.join(',')}`);
+  send(cmd);
+}
+
+function sendSetRate() {
+  const rate = parseInt(document.getElementById('rate-val').value) || 0;
+  logEv('sent', `set_rate → ${rate.toLocaleString()} msg/s`);
+  send({ type:'set_rate', rate });
+}
+
+function sendSmoothBurst() {
+  const enabled = document.getElementById('smooth-burst-chk').checked;
+  logEv('sent', `set_smooth_burst → ${enabled ? 'smooth (1 s)' : 'burst (20 s)'}`);
+  send({ type:'set_smooth_burst', enabled });
+}
+
+function patchUnitCurrent(targets, current_a) {
+  if (!lastStats) return;
+  const all = targets.includes('ALL');
+  for (const u of lastStats.units || []) {
+    if (all || targets.includes(u.id)) u.current_a = current_a;
+  }
+  updateUnitGrid(lastStats.units);
+}
+
+function sendSetCurrent() {
+  const current_a = parseFloat(document.getElementById('current-val').value) || 0;
+  const targets = getTargetArray();
+  const cmd = { type:'set_current', units: targets, current_a };
+  logEv('sent', `set_current → ${current_a}A  target: ${cmd.units.join(',')}`);
+  send(cmd);
+  patchUnitCurrent(targets, current_a);
+}
+
+function injectFault(fault, value) {
+  const cmd = { type:'inject_fault', units: getTargetArray(), fault, value: parseFloat(value)||0 };
+  logEv('fault', `inject_fault → ${fault} value=${value}  target: ${cmd.units.join(',')}`);
+  send(cmd);
+}
+
+function clearFaults() {
+  const cmd = { type:'clear_faults', units: getTargetArray() };
+  logEv('ok', `clear_faults  target: ${cmd.units.join(',')}`);
+  send(cmd);
+}
+
+function sendNoise() {
+  const amp = parseFloat(document.getElementById('noise-val').value) || 0;
+  document.getElementById('noise-slider').value = Math.min(amp, 20);
+  const cmd = { type:'set_noise', units: getTargetArray(), amplitude: amp };
+  logEv('sent', `set_noise → ${amp}%  target: ${cmd.units.join(',')}`);
+  send(cmd);
+}
+
+function sendNoiseOff() {
+  document.getElementById('noise-val').value   = 0;
+  document.getElementById('noise-slider').value = 0;
+  const cmd = { type:'set_noise', units: getTargetArray(), amplitude: 0 };
+  logEv('sent', `set_noise → off  target: ${cmd.units.join(',')}`);
+  send(cmd);
+}
+
+// ── log ──────────────────────────────────────────────────────────────────────
+
+function logEv(cls, msg) {
+  const log  = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = `ev-${cls}`;
+  const ts = new Date().toISOString().slice(11,23);
+  line.textContent = `[${ts}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  // Keep last 200 lines
+  while (log.children.length > 200) log.removeChild(log.firstChild);
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+// ── DuckDB query builder ─────────────────────────────────────────────────────
+
+function dqGlob() {
+  const path = document.getElementById('dq-path').value.trim().replace(/\/$/, '');
+  const site = document.getElementById('dq-site').value.trim();
+  return `'${path}/unit/site=${site}/**/*.parquet'`;
+}
+
+function dqLimit() {
+  return parseInt(document.getElementById('dq-limit').value) || 20;
+}
+
+const QUERIES = {
+  sample: () =>
+    `SELECT unit_id, device, instance, point_name,\n` +
+    `       value_f, value_i,\n` +
+    `       epoch_ms(CAST(ts * 1000 AS BIGINT)) AS time\n` +
+    `FROM ${dqGlob()}\n` +
+    `LIMIT ${dqLimit()};`,
+
+  count: () =>
+    `SELECT unit_id, device,\n` +
+    `       COUNT(*) AS rows,\n` +
+    `       COUNT(DISTINCT point_name) AS signals,\n` +
+    `       MIN(epoch_ms(CAST(ts*1000 AS BIGINT))) AS first_ts,\n` +
+    `       MAX(epoch_ms(CAST(ts*1000 AS BIGINT))) AS last_ts\n` +
+    `FROM ${dqGlob()}\n` +
+    `GROUP BY unit_id, device\n` +
+    `ORDER BY unit_id, device;`,
+
+  latest: () =>
+    `SELECT unit_id, device, point_name,\n` +
+    `       COALESCE(value_f, CAST(value_i AS DOUBLE)) AS value,\n` +
+    `       epoch_ms(CAST(ts*1000 AS BIGINT)) AS time\n` +
+    `FROM (\n` +
+    `  SELECT *, ROW_NUMBER() OVER\n` +
+    `    (PARTITION BY unit_id, point_name ORDER BY ts DESC) AS rn\n` +
+    `  FROM ${dqGlob()}\n` +
+    `) WHERE rn = 1\n` +
+    `ORDER BY unit_id, device, point_name\n` +
+    `LIMIT ${dqLimit()};`,
+
+  soc: () => {
+    const uid = (lastStats && lastStats.units && lastStats.units[0])
+                  ? lastStats.units[0].id : '0215F5DD';
+    return (
+      `SELECT epoch_ms(CAST(ts*1000 AS BIGINT)) AS time,\n` +
+      `       value_f AS soc_pct\n` +
+      `FROM ${dqGlob()}\n` +
+      `WHERE unit_id = '${uid}'\n` +
+      `  AND point_name LIKE '%MBMS_SOC%'\n` +
+      `ORDER BY ts\n` +
+      `LIMIT ${dqLimit()};`
+    );
+  },
+
+  // ── Noise analysis queries ──────────────────────────────────────────────
+
+  nq_cv: () =>
+    `SELECT point_name, device,\n` +
+    `       ROUND(AVG(value_f), 4)    AS mean,\n` +
+    `       ROUND(STDDEV(value_f), 4) AS stddev,\n` +
+    `       ROUND(STDDEV(value_f) / NULLIF(ABS(AVG(value_f)), 0), 6) AS cv\n` +
+    `FROM ${dqGlob()}\n` +
+    `WHERE value_f IS NOT NULL\n` +
+    `GROUP BY point_name, device\n` +
+    `ORDER BY cv DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_delta: () =>
+    `WITH deltas AS (\n` +
+    `  SELECT point_name, device,\n` +
+    `         ABS(value_f - LAG(value_f) OVER\n` +
+    `           (PARTITION BY unit_id, point_name ORDER BY ts)) AS delta\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT point_name, device,\n` +
+    `       ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY delta), 4) AS p50,\n` +
+    `       ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY delta), 4) AS p95,\n` +
+    `       ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY delta), 4) AS p99,\n` +
+    `       ROUND(MAX(delta), 4) AS max_delta\n` +
+    `FROM deltas WHERE delta IS NOT NULL\n` +
+    `GROUP BY point_name, device\n` +
+    `ORDER BY p95 DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_frozen: () =>
+    `WITH runs AS (\n` +
+    `  SELECT unit_id, point_name, value_f,\n` +
+    `         ROW_NUMBER() OVER (PARTITION BY unit_id, point_name ORDER BY ts)\n` +
+    `       - ROW_NUMBER() OVER (PARTITION BY unit_id, point_name, value_f ORDER BY ts)\n` +
+    `         AS grp\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT unit_id, point_name,\n` +
+    `       value_f AS stuck_value,\n` +
+    `       COUNT(*) AS consecutive_count\n` +
+    `FROM runs\n` +
+    `GROUP BY unit_id, point_name, value_f, grp\n` +
+    `HAVING COUNT(*) > 20\n` +
+    `ORDER BY consecutive_count DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_zscore: () =>
+    `WITH stats AS (\n` +
+    `  SELECT point_name, device,\n` +
+    `         AVG(value_f) AS mu, STDDEV(value_f) AS sigma\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE value_f IS NOT NULL\n` +
+    `  GROUP BY point_name, device\n` +
+    `),\n` +
+    `scored AS (\n` +
+    `  SELECT d.unit_id, d.point_name, d.device, d.value_f,\n` +
+    `         epoch_ms(CAST(d.ts*1000 AS BIGINT)) AS time,\n` +
+    `         ABS(d.value_f - s.mu) / NULLIF(s.sigma, 0) AS z_score\n` +
+    `  FROM ${dqGlob()} d\n` +
+    `  JOIN stats s USING (point_name, device)\n` +
+    `  WHERE d.value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT * FROM scored\n` +
+    `WHERE z_score > 3\n` +
+    `ORDER BY z_score DESC\n` +
+    `LIMIT ${dqLimit()};`,
+
+  nq_physics: () =>
+    `WITH volt AS (\n` +
+    `  SELECT unit_id, ts, value_f AS voltage\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE point_name LIKE '%MBMS_Voltage%' AND value_f IS NOT NULL\n` +
+    `),\n` +
+    `soc AS (\n` +
+    `  SELECT unit_id, ts, value_f AS soc\n` +
+    `  FROM ${dqGlob()}\n` +
+    `  WHERE point_name LIKE '%MBMS_SOC%' AND value_f IS NOT NULL\n` +
+    `)\n` +
+    `SELECT v.unit_id,\n` +
+    `       epoch_ms(CAST(v.ts*1000 AS BIGINT)) AS time,\n` +
+    `       ROUND(v.voltage, 2)   AS voltage,\n` +
+    `       ROUND(s.soc, 2)       AS soc,\n` +
+    `       ROUND(v.voltage - (1320 + 0.74 * s.soc), 2) AS residual\n` +
+    `FROM volt v\n` +
+    `JOIN soc s ON v.unit_id = s.unit_id AND ABS(v.ts - s.ts) < 1\n` +
+    `WHERE ABS(v.voltage - (1320 + 0.74 * s.soc)) > 30\n` +
+    `ORDER BY ABS(v.voltage - (1320 + 0.74 * s.soc)) DESC\n` +
+    `LIMIT ${dqLimit()};`,
+};
+
+function queryEl(key) {
+  // handles both dq-sample (existing) and nq_cv → nq-cv (noise queries)
+  return document.getElementById(`dq-${key}`) ||
+         document.getElementById(key.replace(/_/g, '-'));
+}
+
+function renderDuckQueries() {
+  for (const [key, fn] of Object.entries(QUERIES)) {
+    const el = queryEl(key);
+    if (el) el.textContent = fn();
+  }
+}
+
+function copyQuery(key) {
+  const text = QUERIES[key]();
+  navigator.clipboard.writeText(text).then(() => {
+    logEv('ok', `Copied ${key} query to clipboard`);
+  }).catch(() => {
+    // fallback: select the pre text
+    const el = queryEl(key);
+    if (!el) return;
+    const range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+
+// Re-render queries when path/site/limit inputs change
+['dq-path','dq-site','dq-limit'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', renderDuckQueries);
+});
+
+// Restore host/port from localStorage, then auto-connect if URL has ?host=
+window.addEventListener('DOMContentLoaded', () => {
+  renderDuckQueries();
+  const saved_host = localStorage.getItem('ems_ws_host');
+  const saved_port = localStorage.getItem('ems_ws_port');
+  if (saved_host) document.getElementById('ws-host').value = saved_host;
+  if (saved_port) document.getElementById('ws-port').value = saved_port;
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('host')) {
+    document.getElementById('ws-host').value = p.get('host');
+    if (p.get('port')) document.getElementById('ws-port').value = p.get('port');
+  }
+  if (saved_host || p.get('host')) toggleConnect();
+});
+</script>
+</body>
+</html>

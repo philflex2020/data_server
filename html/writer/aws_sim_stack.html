@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AWS Simulation Stack</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d;
+  --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+  --green:#3fb950; --yellow:#d29922; --red:#f85149;
+  --orange:#e3b341; --purple:#bc8cff; --teal:#39d353; --pink:#ff7b72;
+  --code-bg:#21262d;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text);
+       font-family:'Segoe UI',system-ui,sans-serif;
+       padding:20px; max-width:1100px; margin:0 auto; }
+.nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+         padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+.nav a:hover { color:var(--accent); border-color:var(--accent); }
+h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+.subtitle { color:var(--muted); font-size:.85rem; margin-bottom:28px; }
+h2 { color:var(--orange); font-size:1rem; margin:32px 0 12px;
+     padding-bottom:5px; border-bottom:1px solid var(--border); }
+h3 { color:var(--accent); font-size:.9rem; margin:18px 0 8px; }
+p  { font-size:.85rem; line-height:1.65; margin-bottom:10px; color:var(--text); }
+ul { font-size:.85rem; line-height:1.65; margin:6px 0 10px 20px; }
+li { margin-bottom:3px; }
+pre, code { background:var(--code-bg); border-radius:4px; font-family:'Cascadia Code','Fira Code',monospace; }
+pre { border:1px solid var(--border); padding:12px 14px; font-size:.78rem;
+      line-height:1.6; overflow-x:auto; margin:8px 0; }
+code { padding:1px 5px; font-size:.82rem; }
+.cm  { color:var(--muted); }
+.kw  { color:var(--pink); }
+.st  { color:var(--green); }
+.val { color:var(--teal); }
+
+.card-row { display:flex; gap:12px; margin:12px 0; flex-wrap:wrap; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+        padding:14px 16px; flex:1; min-width:180px; }
+.card-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+              color:var(--muted); margin-bottom:4px; }
+.card-val   { font-size:1.3rem; font-weight:700; font-family:monospace; }
+.card-sub   { font-size:.72rem; color:var(--muted); margin-top:2px; }
+.c-blue  .card-val { color:var(--accent); }
+.c-green .card-val { color:var(--green); }
+.c-orange .card-val { color:var(--orange); }
+.c-purple .card-val { color:var(--purple); }
+.c-teal .card-val { color:var(--teal); }
+
+.cmp-table { width:100%; border-collapse:collapse; font-size:.82rem; margin:12px 0; }
+.cmp-table th { background:var(--surface2); color:var(--muted); font-size:.72rem;
+                text-transform:uppercase; letter-spacing:.06em; padding:7px 12px;
+                border-bottom:1px solid var(--border); text-align:left; }
+.cmp-table td { padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+.cmp-table tr:last-child td { border-bottom:none; }
+.cmp-table .metric { color:var(--muted); font-size:.78rem; }
+
+.tag { display:inline-block; padding:1px 7px; border-radius:3px; font-size:.7rem;
+       border:1px solid var(--border); color:var(--muted); margin-right:4px; }
+.tag-influx  { border-color:var(--accent);  color:var(--accent); }
+.tag-parquet { border-color:var(--orange);  color:var(--orange); }
+.tag-mqtt    { border-color:var(--green);   color:var(--green); }
+.tag-docker  { border-color:var(--purple);  color:var(--purple); }
+.tag-phase   { border-color:var(--teal);    color:var(--teal); }
+
+.phase-block { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+               padding:14px 16px; margin:10px 0; }
+.phase-block h3 { margin-top:0; }
+.phase-num { display:inline-block; background:var(--surface2); border:1px solid var(--teal);
+             color:var(--teal); border-radius:50%; width:22px; height:22px; font-size:.72rem;
+             font-weight:700; text-align:center; line-height:22px; margin-right:8px; }
+
+details { margin-bottom:10px; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+summary { padding:9px 14px; cursor:pointer; font-size:.88rem; font-weight:600;
+          background:var(--code-bg); list-style:none; display:flex; align-items:center;
+          gap:8px; user-select:none; }
+summary .arr { font-size:.75rem; }
+details[open] summary .arr::before { content:'▾'; }
+summary .arr::before { content:'▸'; }
+details > div { padding:12px 16px; }
+
+hr { border:none; border-top:1px solid var(--border); margin:24px 0; }
+
+/* SVG diagram shared styles */
+.diagram { margin:16px 0; background:var(--surface); border:1px solid var(--border);
+           border-radius:6px; padding:16px; overflow-x:auto; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← projects</a>
+  <a href="writer_compare_test.html">writer compare</a>
+  <a href="wide_parquet_writer.html">wide writer</a>
+  <a href="evelyn_container_design.html">container design</a>
+  <a href="subscriber_api_spec.html">subscriber api</a>
+</div>
+
+<h1>AWS Simulation Stack</h1>
+<p class="subtitle">Docker container that mirrors the cloud ingest path — FlashMQ → Telegraf → InfluxDB2 — alongside the parquet edge path, for side-by-side query and cost comparison.</p>
+
+<!-- ── OVERVIEW CARDS ── -->
+<div class="card-row">
+  <div class="card c-purple">
+    <div class="card-label">Container runtime</div>
+    <div class="card-val">Docker</div>
+    <div class="card-sub">single compose stack, local or gx10</div>
+  </div>
+  <div class="card c-green">
+    <div class="card-label">Ingest path</div>
+    <div class="card-val">MQTT → Telegraf → InfluxDB2</div>
+    <div class="card-sub">mirrors Longbow production today</div>
+  </div>
+  <div class="card c-orange">
+    <div class="card-label">Parallel path</div>
+    <div class="card-val">MQTT → parquet_writer</div>
+    <div class="card-sub">wide-pivot + norm-long on same stream</div>
+  </div>
+  <div class="card c-blue">
+    <div class="card-label">Query layer</div>
+    <div class="card-val">subscriber_api</div>
+    <div class="card-sub">real-time + history, DuckDB on parquet</div>
+  </div>
+</div>
+
+<!-- ── SYSTEM DIAGRAM ── -->
+<h2>System Architecture</h2>
+<div class="diagram">
+<svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg"
+     style="width:100%;max-width:900px;font-family:'Segoe UI',sans-serif">
+
+  <!-- background lanes -->
+  <rect x="0"   y="0"   width="900" height="420" fill="#161b22" rx="6"/>
+
+  <!-- lane labels -->
+  <text x="10" y="16" font-size="9" fill="#8b949e">EDGE (phil-dev / gx10)</text>
+  <rect x="0" y="20" width="900" height="1" fill="#30363d"/>
+  <text x="10" y="222" font-size="9" fill="#8b949e">DOCKER CONTAINER  (aws-sim)</text>
+  <rect x="0" y="226" width="900" height="1" fill="#30363d"/>
+  <text x="10" y="408" font-size="9" fill="#8b949e">QUERY LAYER</text>
+  <rect x="0" y="412" width="900" height="1" fill="#30363d"/>
+
+  <!-- ── EDGE LAYER ── -->
+
+  <!-- EMS Simulator -->
+  <rect x="20" y="30" width="110" height="50" rx="5" fill="#1c2128" stroke="#3fb950" stroke-width="1.2"/>
+  <text x="75" y="50" font-size="10" fill="#3fb950" text-anchor="middle" font-weight="600">EMS Simulator</text>
+  <text x="75" y="64" font-size="8.5" fill="#8b949e" text-anchor="middle">bench/#  MQTT QoS-0</text>
+  <text x="75" y="76" font-size="8" fill="#8b949e" text-anchor="middle">~1800 msg/s / unit</text>
+
+  <!-- arrow EMS → FlashMQ -->
+  <line x1="130" y1="55" x2="178" y2="55" stroke="#3fb950" stroke-width="1.2" marker-end="url(#arr-green)"/>
+
+  <!-- FlashMQ edge -->
+  <rect x="180" y="30" width="100" height="50" rx="5" fill="#1c2128" stroke="#3fb950" stroke-width="1.2"/>
+  <text x="230" y="49" font-size="10" fill="#3fb950" text-anchor="middle" font-weight="600">FlashMQ</text>
+  <text x="230" y="62" font-size="8.5" fill="#8b949e" text-anchor="middle">:1883  edge broker</text>
+  <text x="230" y="74" font-size="8" fill="#8b949e" text-anchor="middle">fanout → writers</text>
+
+  <!-- arrow FlashMQ → parquet_writer (wide) -->
+  <line x1="280" y1="48" x2="378" y2="48" stroke="#e3b341" stroke-width="1.2" marker-end="url(#arr-orange)"/>
+  <text x="328" y="44" font-size="8" fill="#e3b341" text-anchor="middle">sub bench/#</text>
+
+  <!-- arrow FlashMQ → parquet_writer (norm) -->
+  <line x1="280" y1="63" x2="378" y2="100" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#arr-blue)"/>
+
+  <!-- parquet_writer wide -->
+  <rect x="380" y="28" width="120" height="38" rx="5" fill="#1c2128" stroke="#e3b341" stroke-width="1.2"/>
+  <text x="440" y="44" font-size="9.5" fill="#e3b341" text-anchor="middle" font-weight="600">parquet_writer</text>
+  <text x="440" y="57" font-size="8" fill="#8b949e" text-anchor="middle">wide-pivot  time_window_ms:250</text>
+
+  <!-- parquet_writer norm -->
+  <rect x="380" y="88" width="120" height="38" rx="5" fill="#1c2128" stroke="#58a6ff" stroke-width="1.2"/>
+  <text x="440" y="104" font-size="9.5" fill="#58a6ff" text-anchor="middle" font-weight="600">parquet_writer</text>
+  <text x="440" y="117" font-size="8" fill="#8b949e" text-anchor="middle">norm-long / long+cmp</text>
+
+  <!-- parquet files wide -->
+  <rect x="530" y="28" width="110" height="38" rx="5" fill="#1c2128" stroke="#e3b341" stroke-width="1.2"/>
+  <text x="585" y="44" font-size="9" fill="#e3b341" text-anchor="middle" font-weight="600">Parquet files</text>
+  <text x="585" y="57" font-size="7.5" fill="#8b949e" text-anchor="middle">wide/site=S/YYYY/MM/DD/</text>
+  <line x1="500" y1="47" x2="528" y2="47" stroke="#e3b341" stroke-width="1.2" marker-end="url(#arr-orange)"/>
+
+  <!-- parquet files norm -->
+  <rect x="530" y="88" width="110" height="38" rx="5" fill="#1c2128" stroke="#58a6ff" stroke-width="1.2"/>
+  <text x="585" y="104" font-size="9" fill="#58a6ff" text-anchor="middle" font-weight="600">Parquet files</text>
+  <text x="585" y="117" font-size="7.5" fill="#8b949e" text-anchor="middle">norm-long/site=S/YYYY/MM/DD/</text>
+  <line x1="500" y1="107" x2="528" y2="107" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#arr-blue)"/>
+
+  <!-- rsync arrows down to container -->
+  <line x1="585" y1="126" x2="585" y2="234" stroke="#8b949e" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arr-muted)"/>
+  <text x="596" y="185" font-size="8" fill="#8b949e">rsync</text>
+
+  <!-- FlashMQ bridge arrow down -->
+  <line x1="230" y1="80" x2="230" y2="234" stroke="#3fb950" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-green)"/>
+  <text x="241" y="165" font-size="8" fill="#3fb950">bridge</text>
+  <text x="241" y="175" font-size="8" fill="#3fb950">or re-pub</text>
+
+  <!-- ── DOCKER LAYER ── -->
+
+  <!-- FlashMQ aws-sim -->
+  <rect x="160" y="234" width="110" height="50" rx="5" fill="#1c2128" stroke="#bc8cff" stroke-width="1.2"/>
+  <text x="215" y="253" font-size="10" fill="#bc8cff" text-anchor="middle" font-weight="600">FlashMQ</text>
+  <text x="215" y="266" font-size="8.5" fill="#8b949e" text-anchor="middle">:1884  aws-sim broker</text>
+  <text x="215" y="278" font-size="8" fill="#8b949e" text-anchor="middle">receives bridged topics</text>
+
+  <!-- arrow FlashMQ aws → Telegraf -->
+  <line x1="270" y1="258" x2="348" y2="258" stroke="#bc8cff" stroke-width="1.2" marker-end="url(#arr-purple)"/>
+  <text x="309" y="253" font-size="8" fill="#bc8cff" text-anchor="middle">sub bench/#</text>
+
+  <!-- Telegraf -->
+  <rect x="350" y="234" width="110" height="50" rx="5" fill="#1c2128" stroke="#bc8cff" stroke-width="1.2"/>
+  <text x="405" y="253" font-size="10" fill="#bc8cff" text-anchor="middle" font-weight="600">Telegraf</text>
+  <text x="405" y="266" font-size="8.5" fill="#8b949e" text-anchor="middle">mqtt_consumer input</text>
+  <text x="405" y="278" font-size="8" fill="#8b949e" text-anchor="middle">Longbow topic parser</text>
+
+  <!-- arrow Telegraf → InfluxDB2 -->
+  <line x1="460" y1="258" x2="538" y2="258" stroke="#bc8cff" stroke-width="1.2" marker-end="url(#arr-purple)"/>
+
+  <!-- InfluxDB2 -->
+  <rect x="540" y="234" width="110" height="50" rx="5" fill="#1c2128" stroke="#39d353" stroke-width="1.2"/>
+  <text x="595" y="253" font-size="10" fill="#39d353" text-anchor="middle" font-weight="600">InfluxDB2</text>
+  <text x="595" y="266" font-size="8.5" fill="#8b949e" text-anchor="middle">:8086  bucket: ems</text>
+  <text x="595" y="278" font-size="8" fill="#8b949e" text-anchor="middle">series per signal</text>
+
+  <!-- Parquet store in container -->
+  <rect x="700" y="234" width="110" height="50" rx="5" fill="#1c2128" stroke="#e3b341" stroke-width="1.2"/>
+  <text x="755" y="253" font-size="10" fill="#e3b341" text-anchor="middle" font-weight="600">Parquet store</text>
+  <text x="755" y="266" font-size="8.5" fill="#8b949e" text-anchor="middle">/data/parquet/</text>
+  <text x="755" y="278" font-size="8" fill="#8b949e" text-anchor="middle">rsynced from edge</text>
+  <line x1="640" y1="259" x2="698" y2="259" stroke="#8b949e" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arr-muted)"/>
+
+  <!-- ── QUERY LAYER ── -->
+
+  <!-- subscriber_api -->
+  <rect x="350" y="328" width="200" height="52" rx="5" fill="#1c2128" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="450" y="347" font-size="10.5" fill="#58a6ff" text-anchor="middle" font-weight="600">subscriber_api</text>
+  <text x="450" y="361" font-size="8.5" fill="#8b949e" text-anchor="middle">:8767 WebSocket  :8768 HTTP</text>
+  <text x="450" y="373" font-size="8" fill="#8b949e" text-anchor="middle">DuckDB on parquet  ·  Flux on InfluxDB2</text>
+
+  <!-- arrows down to subscriber_api -->
+  <line x1="595" y1="284" x2="530" y2="326" stroke="#39d353" stroke-width="1.2" marker-end="url(#arr-green)"/>
+  <text x="572" y="310" font-size="8" fill="#39d353" text-anchor="middle">Flux</text>
+  <line x1="755" y1="284" x2="590" y2="326" stroke="#e3b341" stroke-width="1.2" marker-end="url(#arr-orange)"/>
+  <text x="690" y="310" font-size="8" fill="#e3b341" text-anchor="middle">DuckDB</text>
+
+  <!-- Client -->
+  <rect x="680" y="328" width="100" height="52" rx="5" fill="#1c2128" stroke="#8b949e" stroke-width="1"/>
+  <text x="730" y="350" font-size="9.5" fill="#8b949e" text-anchor="middle" font-weight="600">Browser / client</text>
+  <text x="730" y="364" font-size="8" fill="#8b949e" text-anchor="middle">HTML dashboards</text>
+  <text x="730" y="377" font-size="8" fill="#8b949e" text-anchor="middle">real-time + history</text>
+  <line x1="550" y1="354" x2="678" y2="354" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#arr-blue)"/>
+
+  <!-- arrow markers -->
+  <defs>
+    <marker id="arr-green"  markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#3fb950"/></marker>
+    <marker id="arr-orange" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#e3b341"/></marker>
+    <marker id="arr-blue"   markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#58a6ff"/></marker>
+    <marker id="arr-purple" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#bc8cff"/></marker>
+    <marker id="arr-muted"  markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b949e"/></marker>
+  </defs>
+
+</svg>
+</div>
+
+<!-- ── COMPONENTS ── -->
+<h2>Components</h2>
+<table class="cmp-table">
+  <thead><tr><th>Component</th><th>Image / Binary</th><th>Port(s)</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="tag tag-docker">docker</span> FlashMQ aws-sim</td>
+      <td><code>flashmq:latest</code></td>
+      <td>1884</td>
+      <td>Receives bridged or re-published MQTT from edge broker. Telegraf subscribes here.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-docker">docker</span> Telegraf</td>
+      <td><code>telegraf:1.30</code></td>
+      <td>—</td>
+      <td>Subscribes to <code>bench/#</code>, parses Longbow-style topic, writes to InfluxDB2.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-docker">docker</span> InfluxDB2</td>
+      <td><code>influxdb:2.7</code></td>
+      <td>8086</td>
+      <td>Time-series store. Bucket <code>ems</code>, org <code>ems-org</code>. Flux + InfluxQL queries.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-parquet">parquet</span> Parquet store</td>
+      <td>host volume / rsync</td>
+      <td>—</td>
+      <td>Wide-pivot and norm-long parquet files rsynced from edge writer. Queried via DuckDB.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-influx">api</span> subscriber_api</td>
+      <td>Python / systemd or docker</td>
+      <td>8767 / 8768</td>
+      <td>WebSocket + HTTP query gateway. Routes real-time to InfluxDB2, history to DuckDB/parquet.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── TELEGRAF CONFIG ── -->
+<h2>Telegraf Configuration (Longbow-style)</h2>
+<p>The MQTT topic format published by the EMS simulator follows the bench topic scheme.
+Telegraf parses the topic segments into tags using <code>[[inputs.mqtt_consumer]]</code> with a
+topic parsing template matching the Longbow field layout.</p>
+
+<details>
+  <summary><span class="arr"></span> telegraf.conf — mqtt_consumer + influxdb_v2 output</summary>
+  <div>
+<pre><span class="cm"># ── MQTT input ─────────────────────────────────────────────────────────────</span>
+[[inputs.mqtt_consumer]]
+  servers          = [<span class="st">"tcp://flashmq-aws-sim:1884"</span>]
+  topics           = [<span class="st">"bench/#"</span>]
+  qos              = 0
+  client_id        = <span class="st">"telegraf-aws-sim"</span>
+  data_format      = <span class="st">"value"</span>
+  data_type        = <span class="st">"float"</span>
+
+  <span class="cm"># topic: bench/_/{unit_id}/{device_type}/{device}/{point_name}/{dtype_hint}</span>
+  topic_tag        = <span class="st">""</span>
+  [inputs.mqtt_consumer.topic_parsing]
+    topic          = <span class="st">"bench/+/+/+/+/+/+"</span>
+    measurement    = <span class="st">"_/_/_/_/_/_/_"</span>
+    tags           = <span class="st">"_/unit_id/device_type/device/point_name/dtype_hint"</span>
+    fields         = <span class="st">""</span>
+
+<span class="cm"># ── Filter A: drop string dtype rows ───────────────────────────────────────</span>
+[[processors.filter]]
+  order = 1
+  [processors.filter.tagdrop]
+    dtype_hint = [<span class="st">"string"</span>]
+
+<span class="cm"># ── InfluxDB2 output ────────────────────────────────────────────────────────</span>
+[[outputs.influxdb_v2]]
+  urls         = [<span class="st">"http://influxdb-aws-sim:8086"</span>]
+  token        = <span class="st">"ems-token-secret"</span>
+  organization = <span class="st">"ems-org"</span>
+  bucket       = <span class="st">"ems"</span></pre>
+  </div>
+</details>
+
+<details>
+  <summary><span class="arr"></span> docker-compose.yml skeleton</summary>
+  <div>
+<pre>services:
+
+  flashmq-aws-sim:
+    image: <span class="st">flashmq:latest</span>  <span class="cm"># or build from /tmp/FlashMQ/build/</span>
+    ports: [<span class="st">"1884:1883"</span>]
+    volumes: [<span class="st">"./flashmq.conf:/etc/flashmq/flashmq.conf"</span>]
+
+  telegraf:
+    image: <span class="st">telegraf:1.30</span>
+    depends_on: [flashmq-aws-sim, influxdb]
+    volumes: [<span class="st">"./telegraf.conf:/etc/telegraf/telegraf.conf:ro"</span>]
+
+  influxdb:
+    image: <span class="st">influxdb:2.7</span>
+    ports: [<span class="st">"8086:8086"</span>]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE:     setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpass1
+      DOCKER_INFLUXDB_INIT_ORG:      ems-org
+      DOCKER_INFLUXDB_INIT_BUCKET:   ems
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ems-token-secret
+    volumes: [<span class="st">"influx-data:/var/lib/influxdb2"</span>]
+
+  <span class="cm"># parquet store — bind-mounted from host rsync destination</span>
+  <span class="cm"># subscriber_api mounts same path</span>
+  parquet-store:
+    image: <span class="st">alpine</span>
+    volumes: [<span class="st">"/data/parquet-aws-sim:/data/parquet:ro"</span>]
+    command: <span class="st">tail -f /dev/null</span>  <span class="cm"># sidecar, keeps mount alive</span>
+
+volumes:
+  influx-data:</pre>
+  </div>
+</details>
+
+<!-- ── PHASES ── -->
+<h2>Implementation Phases</h2>
+
+<div class="phase-block">
+  <h3><span class="phase-num">1</span> Simulated AWS container <span class="tag tag-phase">current</span></h3>
+  <p>Stand up the Docker stack (FlashMQ + Telegraf + InfluxDB2). Bridge or re-publish the same
+  <code>bench/#</code> stream that feeds the parquet writers. Confirm Telegraf is ingesting and
+  InfluxDB2 is accumulating series at the expected rate.</p>
+  <ul>
+    <li>Write <code>docker/aws-sim/docker-compose.yml</code> + <code>telegraf.conf</code></li>
+    <li>Start script: <code>scripts/aws-sim-start.sh</code></li>
+    <li>Verify via InfluxDB2 UI at <code>:8086</code> and a simple Flux query</li>
+  </ul>
+</div>
+
+<div class="phase-block">
+  <h3><span class="phase-num">2</span> Parquet rsync into container</h3>
+  <p>Set up an rsync job (or inotify watch) to copy freshly flushed parquet files from the edge
+  writer output into a host directory that is bind-mounted into the container. The subscriber_api
+  can then query both InfluxDB2 (recent) and DuckDB-on-parquet (history) from the same process.</p>
+  <ul>
+    <li>rsync destination: <code>/data/parquet-aws-sim/</code></li>
+    <li>Cadence: every 60 s (matching flush_interval_seconds)</li>
+    <li>DuckDB glob: <code>parquet_scan('/data/parquet/**/*.parquet')</code></li>
+  </ul>
+</div>
+
+<div class="phase-block">
+  <h3><span class="phase-num">3</span> Real-time queries</h3>
+  <p>Extend <code>subscriber_api</code> (or add a new endpoint) to serve the latest N seconds of
+  data from InfluxDB2. Compare latency and schema against the same window from DuckDB parquet.</p>
+  <ul>
+    <li>Route <code>?mode=realtime&amp;window=30s</code> → Flux query on InfluxDB2</li>
+    <li>Route <code>?mode=realtime&amp;src=parquet</code> → DuckDB on latest flush file</li>
+    <li>WebSocket push for live updates</li>
+  </ul>
+</div>
+
+<div class="phase-block">
+  <h3><span class="phase-num">4</span> History queries</h3>
+  <p>Range queries spanning hours or days. DuckDB partition pruning on the
+  <code>site=S/YYYY/MM/DD/</code> directory layout makes this fast.
+  InfluxDB2 provides the comparison baseline.</p>
+  <ul>
+    <li>Route <code>?mode=history&amp;start=2026-04-10&amp;end=2026-04-11</code></li>
+    <li>Benchmark: query time, data scanned, memory usage</li>
+    <li>Output: rows in wide-pivot vs unpivoted long format</li>
+  </ul>
+</div>
+
+<div class="phase-block">
+  <h3><span class="phase-num">5</span> Cost &amp; performance comparison</h3>
+  <p>With identical data in both stores, measure the headline numbers that justify the
+  parquet path for long-term storage.</p>
+  <ul>
+    <li>Storage ratio: InfluxDB2 WAL+TSM vs snappy parquet</li>
+    <li>Query latency: Flux vs DuckDB for 1-hour and 24-hour range</li>
+    <li>Ingest CPU: Telegraf+InfluxDB2 vs parquet_writer</li>
+    <li>Schema evolution: adding a new signal</li>
+  </ul>
+</div>
+
+<!-- ── DATA FLOW DETAIL ── -->
+<h2>Data Flow Detail</h2>
+
+<div class="diagram">
+<svg viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg"
+     style="width:100%;max-width:860px;font-family:'Segoe UI',sans-serif">
+  <rect width="860" height="200" fill="#161b22" rx="6"/>
+
+  <!-- topic label -->
+  <text x="10" y="20" font-size="9" fill="#8b949e">MQTT topic:  bench / _ / {unit_id} / {device_type} / {device} / {point_name} / {dtype_hint}     payload: numeric value as string</text>
+  <line x1="0" y1="24" x2="860" y2="24" stroke="#30363d"/>
+
+  <!-- path A: Telegraf → InfluxDB2 -->
+  <text x="10" y="44" font-size="9" fill="#bc8cff" font-weight="600">PATH A — Telegraf → InfluxDB2</text>
+  <rect x="10" y="50" width="830" height="44" rx="4" fill="#1c2128" stroke="#bc8cff" stroke-width="1"/>
+  <text x="24" y="66" font-size="8.5" fill="#8b949e">measurement: mqtt_consumer</text>
+  <text x="24" y="79" font-size="8.5" fill="#8b949e">tags: unit_id, device_type, device, point_name, dtype_hint</text>
+  <text x="340" y="66" font-size="8.5" fill="#8b949e">field: value (float64)</text>
+  <text x="340" y="79" font-size="8.5" fill="#8b949e">series per unique tag combination → ~34 series/unit</text>
+  <text x="640" y="66" font-size="8.5" fill="#39d353">+  timestamp (ns)</text>
+  <text x="640" y="79" font-size="8.5" fill="#8b949e">1 point per message</text>
+
+  <!-- path B: parquet wide -->
+  <text x="10" y="114" font-size="9" fill="#e3b341" font-weight="600">PATH B — parquet_writer → wide-pivot parquet</text>
+  <rect x="10" y="120" width="830" height="44" rx="4" fill="#1c2128" stroke="#e3b341" stroke-width="1"/>
+  <text x="24" y="136" font-size="8.5" fill="#8b949e">columns: ts, unit_id, site, bms/bms_1/BMS_FaultCode, bms/bms_1/Batt1_Cell1_Voltage, …  (35 signal cols)</text>
+  <text x="24" y="149" font-size="8.5" fill="#8b949e">1 row per 250 ms window per unit — all signals coalesced</text>
+  <text x="620" y="136" font-size="8.5" fill="#e3b341">~55 rows / 60 s flush file</text>
+  <text x="620" y="149" font-size="8.5" fill="#8b949e">partitioned site={s}/YYYY/MM/DD/</text>
+
+  <!-- path C: parquet norm-long -->
+  <text x="10" y="178" font-size="9" fill="#58a6ff" font-weight="600">PATH C — parquet_writer → norm-long parquet</text>
+  <rect x="10" y="184" width="830" height="12" rx="3" fill="#1c2128" stroke="#58a6ff" stroke-width="1"/>
+  <text x="24" y="194" font-size="8" fill="#8b949e">columns: ts, unit_id, site, point_name, dtype_hint, value  ·  1 row per message  ·  partitioned site={s}/YYYY/MM/DD/</text>
+
+  <defs>
+    <marker id="a2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b949e"/></marker>
+  </defs>
+</svg>
+</div>
+
+<!-- ── KEY CONFIG ── -->
+<h2>Key Configuration Values</h2>
+<table class="cmp-table">
+  <thead><tr><th>Setting</th><th>Value</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td class="metric">InfluxDB2 token</td><td><code>ems-token-secret</code></td><td>Used by Telegraf output and subscriber_api Flux queries</td></tr>
+    <tr><td class="metric">InfluxDB2 org</td><td><code>ems-org</code></td><td></td></tr>
+    <tr><td class="metric">InfluxDB2 bucket</td><td><code>ems</code></td><td>All EMS signal data</td></tr>
+    <tr><td class="metric">FlashMQ aws-sim port</td><td><code>1884</code></td><td>Edge FlashMQ bridges to this</td></tr>
+    <tr><td class="metric">MQTT topic pattern</td><td><code>bench/#</code></td><td>Matches EMS simulator publish pattern</td></tr>
+    <tr><td class="metric">Parquet rsync src</td><td><code>/mnt/tort-sdi/bench/</code> (.34) or <code>/data/parquet-evelyn/</code> (gx10)</td><td></td></tr>
+    <tr><td class="metric">Parquet rsync dst</td><td><code>/data/parquet-aws-sim/</code></td><td>Bind-mounted into container</td></tr>
+    <tr><td class="metric">subscriber_api WebSocket</td><td><code>:8767</code></td><td></td></tr>
+    <tr><td class="metric">subscriber_api HTTP</td><td><code>:8768</code></td><td>Flux passthrough + DuckDB JSON</td></tr>
+  </tbody>
+</table>
+
+<hr>
+<p style="font-size:.78rem;color:var(--muted)">
+  Related pages:
+  <a href="writer_compare_test.html" style="color:var(--accent)">writer_compare_test</a> ·
+  <a href="evelyn_container_design.html" style="color:var(--accent)">evelyn container design</a> ·
+  <a href="subscriber_api_spec.html" style="color:var(--accent)">subscriber_api spec</a> ·
+  <a href="telegraf_configs.html" style="color:var(--accent)">telegraf configs</a>
+</p>
+
+<script>
+document.querySelectorAll('details').forEach(d => {
+  d.addEventListener('toggle', () => {
+    const a = d.querySelector('.arr');
+    if (a) a.style.setProperty('--open', d.open ? '1':'0');
+  });
+});
+</script>
+</body>
+</html>

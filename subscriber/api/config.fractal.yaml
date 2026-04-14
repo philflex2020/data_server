@@ -1,6 +1,6 @@
 # Subscriber API — fractal-phil sim (aws-sim side)
 # Real-time:  aiomqtt → FlashMQ aws-sim :1884
-# Historical: DuckDB → /srv/data/parquet-aws-sim  (rsync-sim + gap writer)
+# Historical: DuckDB → /srv/data/parquet-aws-sim  (rsync pull from phil-dev + gap writer)
 
 mqtt:
   host: localhost
@@ -42,11 +42,14 @@ s3:
   prefix:       ""
   sync_interval: 10   # seconds between upload sweeps
 
-# rsync control (parquet_monitor Start/Stop button)
+# rsync — dual-host push model:
+# phil-dev runs source/rsync_push/push_agent.py (:8770) and pushes to this host.
+# parquet_monitor.html controls push agent directly at cfg.host:8770 (not here).
+# This block kept for reference / fallback to pull mode.
 rsync:
-  src:      /srv/data/parquet/
+  src:      /srv/data/parquet-aws-sim/   # local — push agent writes here
   dst:      /srv/data/parquet-aws-sim/
-  interval: 5   # seconds between runs
+  interval: 5
 
 # Telegraf control (parquet_monitor buffer slider + restart)
 telegraf:
@@ -55,7 +58,19 @@ telegraf:
   org:       battery-org
   token:     battery-token-secret
 
+# Live-state gap fill — merge in-memory buffer into parquet query results,
+# covering the flush-interval window (~60 s) not yet written to disk.
+# Can also be toggled at runtime: {"type": "set_live_state", "enabled": true}
+live_state:
+  enabled: true
+
 # History query limits
 history:
   default_limit: 1000
   max_limit: 10000
+
+# Numpy ring buffer (gap-fill for recent data).
+# ~60 bytes/entry. At 24k msg/s: 8_640_000 ≈ 520 MB, covers ~6 min.
+# At  3k msg/s: 1_080_000 ≈  65 MB, covers ~6 min.
+buffer:
+  maxlen: 8640000

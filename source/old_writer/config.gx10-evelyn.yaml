@@ -1,0 +1,65 @@
+# real_writer config — gx10-d94c (.48), Evelyn site simulation
+#
+# Topology mirrors real Evelyn deployment:
+#   site_id:  0215D1D8
+#   46 units × 1770 points = 81,420 topics/sweep
+#   Expected rate: ~81,420 msg/s (1 sweep/sec)
+#
+# Companion publisher:
+#   cd source/stress_runner
+#   ./ems_site_simulator --host localhost --rate 81420 --ws-port 8769
+#
+# Start writer:
+#   cd source/parquet_writer_cpp
+#   ./real_writer --config config.gx10-evelyn.yaml
+
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: real-writer-evelyn
+  topic: "unit/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # 0: "unit" (literal)
+    - unit_id      # 1: hex unit serial  e.g. 0215F562
+    - device       # 2: bms / pcs / rack
+    - instance     # 3: bms_1 / pcs_1 / etc.
+    - point_name   # 4: Batt1_SBMU1_Current etc.
+    - dtype_hint   # 5: float / integer / boolean_integer
+
+  partition_field: site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+output:
+  base_path: /data/parquet-evelyn
+  project_id: 0
+  site_id: "0215D1D8"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 5
+  max_messages_per_part: 10000000
+  max_total_buffer_rows: 500000    # ~6s at 81k msg/s — matches flush interval
+
+wal:
+  enabled: true
+  # path: ""   # default: /data/parquet-evelyn/.wal/
+
+health:
+  enabled: true
+  port: 8771
+
+guard:
+  min_free_gb: 1.0
+
+compact:
+  enabled: false          # enable once baseline throughput confirmed
+  interval_seconds: 600
+  min_files: 3
+  min_age_seconds: 0

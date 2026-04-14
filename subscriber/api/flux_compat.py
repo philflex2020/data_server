@@ -210,7 +210,7 @@ async def _rsync_loop(src: str, dst: str, interval: int) -> None:
         t0 = time.monotonic()
         try:
             proc = await asyncio.create_subprocess_exec(
-                "rsync", "-a", "--delete", src, dst,
+                "rsync", "-a", src, dst,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             await proc.wait()

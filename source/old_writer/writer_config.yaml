@@ -1,0 +1,104 @@
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: parquet-writer   # ★ MUST BE UNIQUE per instance — duplicate IDs kick each other off the broker
+  topic: "#"                  # can be identical across instances; broker fans out independently to each
+  qos: 1
+
+  # Connection tuning — defaults work for local FlashMQ; adjust for WAN brokers.
+  # keepalive_seconds: 60       # MQTT keepalive interval sent to broker
+  # reconnect_min_seconds: 2    # exponential-backoff reconnect floor
+  # reconnect_max_seconds: 30   # exponential-backoff reconnect ceiling
+  # connect_retry_seconds: 5    # wait between initial connect attempts
+
+  # Maps topic kv key → row column name (all stored as int64).
+  # Omit to use the defaults below. Add or rename keys for other sensor topologies.
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+
+  # Which column (from topic_kv_map values) to use as the buffer partition key.
+  # Must match one of the values above and appear in the partitions path below.
+  partition_field: site_id
+
+output:
+  base_path: /srv/data/parquet  # ★ MUST BE UNIQUE per instance — two writers in the same dir race on filenames
+  project_id: 0
+  partitions:
+    - "project={project_id}"
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy          # snappy | zstd | gzip | none  — can differ between instances
+  flush_interval_seconds: 60
+  max_messages_per_part: 5000000
+  max_total_buffer_rows: 2000000  # ~25s at 80k msgs/sec
+
+  # Parquet write retry tuning
+  # flush_max_retries: 3          # attempts per partition before rows are lost
+  # flush_retry_base_seconds: 1   # backoff base: 1s, 2s, 4s per attempt
+
+  # Current-state file — one row per unique sensor, always the latest reading.
+  # Intended for the AWS writer instance: writer.cpp subscribes to the FlashMQ
+  # bridge on AWS and writes this file locally so DuckDB on AWS has sub-flush-
+  # interval current state without any rsync lag.  Leave empty to disable.
+  # ★ MUST BE UNIQUE (or empty) per instance if enabled.
+  current_state_path: ""
+
+  # Rolling hot file — flat parquet rewritten on every flush.
+  # Rsynced to S3 on a short cron (every 60-90s) to cover the gap between
+  # partitioned-file rsyncs for DuckDB near-real-time queries.
+  # Leave empty to disable.  Not recommended on memory-constrained targets.
+  # ★ MUST BE UNIQUE (or empty) per instance if enabled.
+  hot_file_path: ""
+
+wal:
+  enabled: false
+  # path defaults to {base_path}/.wal — unique automatically if base_path is unique.
+  # Only set explicitly if you need WAL on a different filesystem (e.g. faster SSD).
+  # ★ MUST BE UNIQUE per instance if set explicitly.
+  # path: ""
+
+health:
+  enabled: false
+  port: 8771  # ★ MUST BE UNIQUE per instance — two instances cannot bind the same port
+
+guard:
+  min_free_gb: 0.0  # 0 = disabled; checks base_path before each flush
+
+# ---------------------------------------------------------------------------
+# Multi-instance quick reference
+# ---------------------------------------------------------------------------
+#
+# Two or more writers can subscribe to the same MQTT stream without interfering
+# with each other or with publishers.  The broker fans out each message to every
+# subscriber independently.
+#
+# Minimum changes for a second instance (use --config or CLI flags):
+#
+#   mqtt.client_id   → parquet-writer-2      (★ required — must be unique)
+#   output.base_path → /srv/data/parquet-2   (★ required — must be unique)
+#   health.port      → 8772                  (★ required if health enabled)
+#
+# Everything else (host, port, topic, qos, compression, flush timing) can be
+# identical or different depending on what the second instance is for.
+#
+# Convenient one-liner using CLI overrides (no second config file needed):
+#
+#   ./parquet_writer \
+#       --client-id parquet-writer-2 \
+#       --output /srv/data/parquet-2 \
+#       --health-port 8772
+#
+# Topic splitting (each instance handles a subset of the stream):
+#   instance 1:  topic: "batteries/site=0/#"
+#   instance 2:  topic: "batteries/site=1/#"
+# This halves memory and CPU per instance but requires separate config files.
+#
+# QoS note: with qos: 1 and clean_session=false (hardcoded), the broker
+# maintains a separate offline queue per client_id.  At 80k msg/sec two
+# instances with qos: 1 doubles broker queuing load.  Use qos: 0 if you
+# don't need crash recovery on the MQTT side (WAL covers the parquet side).

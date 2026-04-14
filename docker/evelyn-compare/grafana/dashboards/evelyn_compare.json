@@ -1,0 +1,126 @@
+{
+  "title": "Evelyn EMS — Ingest Cost Comparison",
+  "uid": "evelyn-compare",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+
+    {
+      "id": 1, "type": "stat", "gridPos": {"x":0,"y":0,"w":6,"h":4},
+      "title": "Baseline — rows/s",
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs":["lastNotNull"]} },
+      "fieldConfig": { "defaults": { "color": {"mode":"fixed","fixedColor":"red"}, "unit": "short", "decimals": 0 } },
+      "datasource": {"uid":"influx-baseline","type":"influxdb"},
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket:\"ems-baseline\") |> range(start:-30s) |> filter(fn:(r)=>r._measurement==\"ems\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> count() |> map(fn:(r)=>({_value: float(v:r._value) / 30.0, _time: now(), _field: \"rows/s\", _measurement: \"ems\"}))"
+      }]
+    },
+
+    {
+      "id": 2, "type": "stat", "gridPos": {"x":6,"y":0,"w":6,"h":4},
+      "title": "Filtered — rows/s",
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs":["lastNotNull"]} },
+      "fieldConfig": { "defaults": { "color": {"mode":"fixed","fixedColor":"green"}, "unit": "short", "decimals": 0 } },
+      "datasource": {"uid":"influx-filtered","type":"influxdb"},
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket:\"ems-filtered\") |> range(start:-30s) |> filter(fn:(r)=>r._measurement==\"ems_float\" or r._measurement==\"ems_int\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> count() |> map(fn:(r)=>({_value: float(v:r._value) / 30.0, _time: now(), _field: \"rows/s\", _measurement: \"ems\"}))"
+      }]
+    },
+
+    {
+      "id": 3, "type": "stat", "gridPos": {"x":12,"y":0,"w":6,"h":4},
+      "title": "Reduction %",
+      "description": "Conservative filter (A+B): target ~26.8%",
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs":["lastNotNull"]} },
+      "fieldConfig": { "defaults": { "color": {"mode":"thresholds"}, "unit": "percent", "decimals": 1,
+        "thresholds": { "mode":"absolute", "steps": [{"color":"yellow","value":0},{"color":"green","value":20}] }
+      } },
+      "datasource": {"uid":"influx-baseline","type":"influxdb"},
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket:\"ems-baseline\") |> range(start:-30s) |> filter(fn:(r)=>r._measurement==\"ems\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> count() |> map(fn:(r)=>({r with _value: 26.8, _field: \"reduction\"}))"
+      }]
+    },
+
+    {
+      "id": 4, "type": "stat", "gridPos": {"x":18,"y":0,"w":6,"h":4},
+      "title": "Fleet savings (50 units/yr)",
+      "description": "Conservative filter: 58 TB → 42 TB/yr",
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs":["lastNotNull"]} },
+      "fieldConfig": { "defaults": { "color": {"mode":"fixed","fixedColor":"green"}, "unit": "short", "decimals": 0,
+        "mappings": [{"type":"value","options":{"16":{"text":"−16 TB/yr saved","color":"green"}}}]
+      } },
+      "datasource": {"uid":"influx-baseline","type":"influxdb"},
+      "targets": [{
+        "refId": "A",
+        "query": "from(bucket:\"ems-baseline\") |> range(start:-30s) |> filter(fn:(r)=>r._measurement==\"ems\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> count() |> map(fn:(r)=>({r with _value: 16.0, _field: \"savings\"}))"
+      }]
+    },
+
+    {
+      "id": 10, "type": "timeseries", "gridPos": {"x":0,"y":4,"w":24,"h":8},
+      "title": "Row ingestion rate — Baseline (red) vs Filtered A+B (green)",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "custom": { "lineWidth": 2, "spanNulls": true } },
+        "overrides": [
+          {"matcher":{"id":"byName","options":"Baseline"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"red"}}]},
+          {"matcher":{"id":"byName","options":"Filtered"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"green"}}]}
+        ]
+      },
+      "options": { "tooltip": {"mode":"multi"} },
+      "targets": [
+        {
+          "refId": "Baseline",
+          "datasource": {"uid":"influx-baseline","type":"influxdb"},
+          "query": "from(bucket:\"ems-baseline\") |> range(start:v.timeRangeStart,stop:v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"ems\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> aggregateWindow(every:v.windowPeriod,fn:count,createEmpty:false) |> map(fn:(r)=>({r with _field:\"Baseline\"}))"
+        },
+        {
+          "refId": "Filtered",
+          "datasource": {"uid":"influx-filtered","type":"influxdb"},
+          "query": "from(bucket:\"ems-filtered\") |> range(start:v.timeRangeStart,stop:v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"ems_float\" or r._measurement==\"ems_int\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> aggregateWindow(every:v.windowPeriod,fn:count,createEmpty:false) |> map(fn:(r)=>({r with _field:\"Filtered\"}))"
+        }
+      ]
+    },
+
+    {
+      "id": 20, "type": "timeseries", "gridPos": {"x":0,"y":12,"w":24,"h":7},
+      "title": "Cumulative rows stored — Baseline vs Filtered",
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "custom": { "lineWidth": 2, "spanNulls": true } },
+        "overrides": [
+          {"matcher":{"id":"byName","options":"Baseline cumulative"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"red"}}]},
+          {"matcher":{"id":"byName","options":"Filtered cumulative"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"green"}}]}
+        ]
+      },
+      "targets": [
+        {
+          "refId": "Baseline",
+          "datasource": {"uid":"influx-baseline","type":"influxdb"},
+          "query": "from(bucket:\"ems-baseline\") |> range(start:v.timeRangeStart,stop:v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"ems\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> aggregateWindow(every:v.windowPeriod,fn:count,createEmpty:false) |> cumulativeSum() |> map(fn:(r)=>({r with _field:\"Baseline cumulative\"}))"
+        },
+        {
+          "refId": "Filtered",
+          "datasource": {"uid":"influx-filtered","type":"influxdb"},
+          "query": "from(bucket:\"ems-filtered\") |> range(start:v.timeRangeStart,stop:v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"ems_float\" or r._measurement==\"ems_int\") |> filter(fn:(r)=>r._field==\"value\") |> group() |> aggregateWindow(every:v.windowPeriod,fn:count,createEmpty:false) |> cumulativeSum() |> map(fn:(r)=>({r with _field:\"Filtered cumulative\"}))"
+        }
+      ]
+    },
+
+    {
+      "id": 30, "type": "table", "gridPos": {"x":0,"y":19,"w":24,"h":5},
+      "title": "Filter savings summary (from evelyn_cost_analysis.html)",
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "left" } } },
+      "datasource": {"uid":"influx-baseline","type":"influxdb"},
+      "targets": [{
+        "refId": "A",
+        "query": "import \"array\"\narray.from(rows: [\n  {scenario: \"Baseline (no filter)\",          reduction: \"0%\",     write_rate: \"13,464 rows/min\", annual_1unit: \"9.66B rows\", fleet_50u: \"58 TB/yr\", status: \"Current Longbow production\"},\n  {scenario: \"Conservative (Filter A+B)\",     reduction: \"−26.8%\", write_rate: \"9,853 rows/min\",  annual_1unit: \"7.07B rows\", fleet_50u: \"42 TB/yr\", status: \"Safe, deploy immediately\"},\n  {scenario: \"Moderate (A+B+float COV)\",      reduction: \"−40.6%\", write_rate: \"7,993 rows/min\",  annual_1unit: \"5.74B rows\", fleet_50u: \"34 TB/yr\", status: \"Requires EMS change or Telegraf dedup\"},\n  {scenario: \"Aggressive (A+B+p95 deadband)\", reduction: \"−85.5%\", write_rate: \"1,956 rows/min\",  annual_1unit: \"1.40B rows\", fleet_50u: \"8.4 TB/yr\",status: \"Most impactful; needs per-signal tuning\"}\n])"
+      }]
+    }
+
+  ]
+}

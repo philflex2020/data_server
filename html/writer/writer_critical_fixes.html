@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>writer.cpp — Critical Fixes</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2128;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --critical: #f85149;
+    --green:    #3fb950;
+    --blue:     #58a6ff;
+    --yellow:   #e3b341;
+    --tag-crit: rgba(248,81,73,0.15);
+    --tag-ok:   rgba(63,185,80,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.6; padding: 2rem 1rem;
+  }
+  .page { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: .2rem; }
+  .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
+  .subtitle a { color: var(--blue); text-decoration: none; }
+  .subtitle a:hover { text-decoration: underline; }
+
+  /* nav pills */
+  .nav { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 2rem; }
+  .nav a {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 2em; padding: .25rem .8rem; font-size: .8rem;
+    color: var(--muted); text-decoration: none; transition: all .15s;
+  }
+  .nav a:hover { border-color: var(--critical); color: var(--critical); }
+
+  /* fix card */
+  .fix {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden;
+  }
+  .fix-header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .9rem 1.1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .fix-id {
+    background: var(--tag-crit); color: var(--critical);
+    border: 1px solid var(--critical); border-radius: 4px;
+    font-size: .75rem; font-weight: 800; padding: .2rem .55rem;
+    letter-spacing: .05em; flex-shrink: 0;
+  }
+  .fix-title { font-weight: 600; font-size: 1rem; flex: 1; }
+  .fix-lines { color: var(--muted); font-size: .8rem; font-weight: 400; margin-left: .4rem; }
+
+  .fix-body { padding: 1rem 1.1rem; }
+  .fix-body p { margin-bottom: .75rem; font-size: .9rem; }
+  .fix-body p:last-child { margin-bottom: 0; }
+
+  /* before/after blocks */
+  .diff { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin: .75rem 0; }
+  @media (max-width: 700px) { .diff { grid-template-columns: 1fr; } }
+
+  .code-block { border-radius: 6px; overflow: hidden; }
+  .code-label {
+    font-size: .7rem; font-weight: 700; letter-spacing: .08em;
+    padding: .3rem .75rem; text-transform: uppercase;
+  }
+  .code-label.before { background: rgba(248,81,73,.2);  color: var(--critical); }
+  .code-label.after  { background: rgba(63,185,80,.15); color: var(--green);    }
+  .code-label.note   { background: rgba(88,166,255,.1); color: var(--blue);     }
+
+  pre {
+    background: #010409; border: 1px solid var(--border);
+    border-top: none; padding: .75rem 1rem; overflow-x: auto;
+    font-family: "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-size: .78rem; line-height: 1.6; margin: 0;
+  }
+  .solo pre { border-top: 1px solid var(--border); border-radius: 6px; margin: .75rem 0; }
+  code {
+    background: rgba(255,255,255,.07); border-radius: 3px;
+    padding: .1em .35em; font-family: "SF Mono", Consolas, monospace; font-size: .85em;
+  }
+
+  /* applied badge */
+  .applied {
+    margin-left: auto; flex-shrink: 0;
+    background: rgba(63,185,80,.15); color: var(--green);
+    border: 1px solid var(--green); border-radius: 4px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .06em;
+    padding: .15rem .5rem; text-transform: uppercase;
+  }
+
+  /* C4 options table */
+  .options { display: flex; flex-direction: column; gap: .6rem; margin: .75rem 0; }
+  .option {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: .75rem 1rem;
+  }
+  .option-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+  .option-tag {
+    font-size: .72rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+    padding: .15rem .5rem; border-radius: 3px; flex-shrink: 0;
+  }
+  .opt-a { background: rgba(63,185,80,.15);   color: var(--green);  border: 1px solid var(--green);  }
+  .opt-b { background: rgba(227,179,65,.15);  color: var(--yellow); border: 1px solid var(--yellow); }
+  .opt-c { background: rgba(88,166,255,.15);  color: var(--blue);   border: 1px solid var(--blue);   }
+  .option-title { font-weight: 600; font-size: .92rem; }
+  .option-effort { margin-left: auto; color: var(--muted); font-size: .8rem; flex-shrink: 0; }
+  .option p { font-size: .88rem; color: var(--text); margin-bottom: .4rem; }
+  .option p:last-child { margin-bottom: 0; }
+  .option ul { font-size: .85rem; padding-left: 1.2rem; }
+  .option ul li { margin-bottom: .2rem; }
+  .pro  { color: var(--green);    }
+  .con  { color: var(--critical); }
+
+  /* minor badge variant */
+  .fix-id.min {
+    background: rgba(88,166,255,.12); color: var(--blue);
+    border-color: var(--blue);
+  }
+
+  /* major badge variant */
+  .fix-id.maj {
+    background: rgba(227,179,65,.15); color: var(--yellow);
+    border-color: var(--yellow);
+  }
+  h2.section {
+    font-size: 1.05rem; font-weight: 700; margin: 2.5rem 0 1rem;
+    text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: .4rem;
+  }
+
+  /* apply order */
+  .apply-order {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.1rem; margin-top: 2rem;
+  }
+  .apply-order h3 { font-size: .95rem; margin-bottom: .75rem; color: var(--text); }
+  .steps { display: flex; flex-direction: column; gap: .4rem; }
+  .step {
+    display: flex; align-items: flex-start; gap: .75rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: .5rem .8rem; font-size: .85rem;
+  }
+  .step-num {
+    background: rgba(88,166,255,.12); color: var(--blue);
+    border: 1px solid var(--blue); border-radius: 50%;
+    width: 1.4rem; height: 1.4rem; display: flex; align-items: center;
+    justify-content: center; font-size: .75rem; font-weight: 700; flex-shrink: 0;
+  }
+  .step-id { color: var(--critical); font-weight: 700; flex-shrink: 0; }
+  .step-desc { color: var(--text); }
+  .step-risk { margin-left: auto; flex-shrink: 0; font-size: .75rem; padding: .1rem .4rem;
+               border-radius: 3px; }
+  .risk-low  { background: var(--tag-ok);   color: var(--green);  }
+  .risk-med  { background: rgba(227,179,65,.15); color: var(--yellow); }
+  .risk-high { background: var(--tag-crit); color: var(--critical); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>writer.cpp — Critical, Major &amp; Minor Fixes</h1>
+  <p class="subtitle">
+    Companion to <a href="writer_code_review.html">writer_code_review.html</a> ·
+    6 critical · 14 major · 11 minor · before/after code and suggested fixes · sync-free analysis
+  </p>
+
+  <div class="nav">
+    <a href="#C1">C1 Signal handler UB</a>
+    <a href="#C2">C2 WAL abort-on-fail</a>
+    <a href="#C3">C3 WAL source_type</a>
+    <a href="#C4">C4 Lock contention</a>
+    <a href="#C5">C5 Health buffer_rows</a>
+    <a href="#C6">C6 WAL chunk(0)</a>
+    <a href="#sync-free">Sync-free operation</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  </div>
+
+  <!-- ── C1 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C1">
+    <div class="fix-header">
+      <span class="fix-id">C1</span>
+      <span class="fix-title">Signal handler calls <code>notify_all</code> on <code>condition_variable</code> — undefined behaviour
+        <span class="fix-lines">lines 917–920</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>condition_variable::notify_all()</code> acquires an internal mutex. If the signal fires while <code>g_mutex</code> is held by another thread, the signal handler deadlocks. Under POSIX only a small set of functions (<code>write</code>, <code>sem_post</code>, <code>_exit</code>…) are async-signal-safe.</p>
+      <p><strong>Fix:</strong> self-pipe pattern — write one byte to a pipe from the handler; the flush thread polls the pipe instead of blocking on the condvar.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — line 917</div>
+          <pre>static void handle_signal(int) {
+    g_shutdown = true;
+    g_flush_cv.notify_all(); // NOT safe
+}</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>// globals:
+static int g_signal_pipe[2] = {-1,-1};
+
+static void handle_signal(int) {
+    g_shutdown.store(true,
+        std::memory_order_relaxed);
+    char b = 1;
+    (void)write(g_signal_pipe[1], &b, 1);
+}</pre>
+        </div>
+      </div>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — flush_thread_fn wait</div>
+          <pre>g_flush_cv.wait_for(lock,
+    std::chrono::seconds(
+        g_cfg->flush_interval_seconds));</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — poll the pipe</div>
+          <pre>lock.unlock();
+struct pollfd pfd =
+    { g_signal_pipe[0], POLLIN, 0 };
+poll(&pfd, 1,
+    g_cfg->flush_interval_seconds * 1000);
+lock.lock();</pre>
+        </div>
+      </div>
+
+      <div class="solo">
+        <div class="code-label note" style="border-radius:6px 6px 0 0; padding:.3rem .75rem;">In main() — before mosquitto_lib_init()</div>
+        <pre>pipe(g_signal_pipe);  // or pipe2(..., O_CLOEXEC) on Linux</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C2 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C2">
+    <div class="fix-header">
+      <span class="fix-id">C2</span>
+      <span class="fix-title">WAL write failure silently proceeds to Parquet flush — crash safety guarantee void
+        <span class="fix-lines">lines 671–678, 511</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>When <code>write_wal_ipc</code> fails the code logs a warning and continues flushing Parquet. If the Parquet write then crashes, the data is gone with no WAL to recover from. Two fixes needed: abort the partition on WAL failure, and check <code>out->Close()</code>.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — do_flush() line 676</div>
+          <pre>if (!ws.ok())
+    std::cerr << "[wal] write failed ("
+              << ws.ToString()
+              << ") — proceeding without WAL\n";
+// falls through to Parquet flush!</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — abort this partition</div>
+          <pre>if (!ws.ok()) {
+    std::cerr << "[wal] write failed ("
+              << ws.ToString()
+              << ") — SKIPPING flush\n";
+    wal_file.clear();
+    continue; // skip to next partition
+}</pre>
+        </div>
+      </div>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — write_wal_ipc() line 511</div>
+          <pre>ARROW_RETURN_NOT_OK(writer->Close());
+return out->Close(); // Status ignored by caller</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — check both closes</div>
+          <pre>ARROW_RETURN_NOT_OK(writer->Close());
+ARROW_RETURN_NOT_OK(out->Close());
+return arrow::Status::OK();</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C3 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C3">
+    <div class="fix-header">
+      <span class="fix-id">C3</span>
+      <span class="fix-title">WAL replay hard-codes <code>source_type = "batteries"</code> — silent data misrouting
+        <span class="fix-lines">line 577</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>The WAL filename already encodes the source type: <code>{source_type}_{pval}_{ts}.wal.arrow</code>. The replay loop never parses it back — all recovered rows land in <code>batteries/</code> regardless of origin.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — line 577</div>
+          <pre>// hard-coded "batteries"
+parts[{"batteries", pval}]
+    .push_back(std::move(r));</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — parse from filename</div>
+          <pre>// Parse stem: "batteries_1_20260320T..."
+std::string stem = wf.stem().string();
+if (stem.size()>4 &&
+    stem.substr(stem.size()-4)==".wal")
+  stem = stem.substr(0, stem.size()-4);
+std::string source_type = "batteries";
+auto us = stem.find('_');
+if (us != std::string::npos)
+  source_type = stem.substr(0, us);
+
+parts[{source_type, pval}]
+    .push_back(std::move(r));</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C4 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C4">
+    <div class="fix-header">
+      <span class="fix-id">C4</span>
+      <span class="fix-title"><code>on_message</code> holds <code>g_mutex</code> for every message at 80k msg/sec — blocks MQTT thread
+        <span class="fix-lines">lines 878–900</span>
+      </span>
+    </div>
+    <div class="fix-body">
+      <p>The MQTT network thread calls <code>on_message</code> which locks <code>g_mutex</code> to insert into <code>g_buffers</code> and update <code>g_current_state</code>. The flush thread holds the <em>same</em> lock while copying <code>g_current_state</code> — up to 10k <code>std::map</code> entries with heap-allocated keys. During that O(N) copy every incoming message queues behind it. Three options in increasing order of effort:</p>
+
+      <div class="options">
+
+        <div class="option">
+          <div class="option-header">
+            <span class="option-tag opt-a">Option A — Chosen ✓</span>
+            <span class="option-title">Eliminate the <code>g_current_state</code> copy — <code>shared_ptr</code> move at flush time</span>
+            <span class="option-effort">Applied</span>
+          </div>
+          <p>The bottleneck is not the mutex itself but the O(N) map copy under the lock. Change <code>g_current_state</code> to a <code>std::shared_ptr&lt;StateMap&gt;</code>. The flush thread does <code>std::move</code> to take ownership and installs a fresh empty map — O(1) pointer swap under the lock. <code>on_message</code> writes through the pointer as before. Lock hold time in the flush thread drops from O(N) to O(1).</p>
+          <ul>
+            <li class="pro">✓ Minimal structural change — <code>g_buffers</code> swap loop untouched</li>
+            <li class="pro">✓ Safe to land immediately alongside C1–C6</li>
+            <li class="con">✗ <code>on_message</code> still runs on the mosquitto network thread — Python subscriber gets no benefit</li>
+          </ul>
+          <div class="diff" style="margin-top:.6rem;">
+            <div class="code-block">
+              <div class="code-label before">Before — O(N) copy under lock</div>
+              <pre>static std::map&lt;SensorKey,Row&gt;
+    g_current_state;
+
+// flush_thread_fn — holds g_mutex
+// for the entire map copy:
+auto cs_snap = g_current_state;
+// ↑ heap-allocates N entries
+//   while MQTT thread is blocked</pre>
+            </div>
+            <div class="code-block">
+              <div class="code-label after">After — O(1) pointer move under lock</div>
+              <pre>using StateMap = std::map&lt;SensorKey,Row&gt;;
+static std::shared_ptr&lt;StateMap&gt;
+    g_current_state{
+        std::make_shared&lt;StateMap&gt;()};
+
+// flush_thread_fn — O(1) move:
+auto cs_snap = std::move(g_current_state);
+g_current_state = std::make_shared&lt;StateMap&gt;();
+// lock released immediately after</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="option">
+          <div class="option-header">
+            <span class="option-tag opt-b">Option B</span>
+            <span class="option-title">Lock-free SPSC ring in writer.cpp — dedicated ingest thread</span>
+            <span class="option-effort">~1 week</span>
+          </div>
+          <p><code>on_message</code> pushes to a lock-free single-producer single-consumer ring queue (mosquitto uses one network thread — true SPSC). A dedicated ingest thread drains the queue, batches rows into <code>g_buffers</code>, and updates state — so the flush lock is never contended from the network thread at all.</p>
+          <ul>
+            <li class="pro">✓ MQTT network thread never blocks — keepalive risk eliminated</li>
+            <li class="pro">✓ Ring queue entries can be fixed-size (no heap per message)</li>
+            <li class="con">✗ <code>Row</code> struct still uses <code>std::map&lt;string,…&gt;</code> — heap allocations inside the ring entries</li>
+            <li class="con">✗ Python subscriber_api still parses MQTT on its own event loop</li>
+          </ul>
+        </div>
+
+        <div class="option">
+          <div class="option-header">
+            <span class="option-tag opt-c">Option C — Future</span>
+            <span class="option-title">Shared memory ring buffer — writer produces, Python consumes via <code>numpy.frombuffer</code></span>
+            <span class="option-effort">subscriber_api phase</span>
+          </div>
+          <p>An <code>mmap</code>-backed SPSC ring. Schema is stored in the ring header at startup (field names + types from config or first message — <strong>content-agnostic, not hardcoded</strong>). Each row is fixed-size, cache-line aligned, no heap. Python attaches the same <code>/dev/shm</code> region and reads via <code>numpy.frombuffer</code> — zero copy, no GIL, no MQTT parsing in Python.</p>
+          <div class="solo" style="margin:.6rem 0;">
+            <div class="code-label note" style="border-radius:6px 6px 0 0;">Ring layout (generic — field names from config)</div>
+            <pre>RingHeader [256 bytes, two cache lines]
+  write_seq  atomic&lt;uint64&gt;    // producer cursor
+  _pad       [56 bytes]
+  read_seq   atomic&lt;uint64&gt;    // consumer cursor
+  _pad       [56 bytes]
+  capacity   uint32
+  row_bytes  uint16            // fixed at startup
+  n_int_fields, n_float_fields uint8
+  field_names[32][16]          // generic field registry
+
+RingRow [fixed, aligned to 8 bytes]
+  ts_ns      int64
+  ints[]     int64  × n_int_fields
+  floats[]   double × n_float_fields</pre>
+          </div>
+          <div class="solo" style="margin:.6rem 0;">
+            <div class="code-label note" style="border-radius:6px 6px 0 0;">Python — build dtype from header, zero-copy read</div>
+            <pre>def dtype_from_header(hdr):
+    fields = [('ts_ns', np.int64)]
+    for i in range(hdr.n_int_fields):
+        fields.append((hdr.field_names[i], np.int64))
+    for i in range(hdr.n_float_fields):
+        fields.append((hdr.field_names[hdr.n_int_fields+i], np.float64))
+    return np.dtype(fields)
+
+ring = np.frombuffer(mm, dtype=dtype_from_header(hdr), offset=HEADER_SIZE)</pre>
+          </div>
+          <ul>
+            <li class="pro">✓ Solves writer C4 and subscriber_api M1 simultaneously</li>
+            <li class="pro">✓ mmap-backed — ring survives writer crash, replay on restart (replaces WAL for live window)</li>
+            <li class="pro">✓ Content-agnostic — works for any MQTT payload shape</li>
+            <li class="con">✗ <code>Row</code> struct (heap maps) must be replaced — touches <code>on_message</code>, <code>flush_partition</code>, <code>write_wal_ipc</code>, WAL replay</li>
+            <li class="con">✗ Schema must be fixed at startup — dynamic field discovery needs a two-pass init</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <p style="color:var(--muted); font-size:.85rem; margin-top:.5rem;"><strong style="color:var(--yellow)">Recommended path:</strong> Land Option A now (eliminates the O(N) copy bottleneck, one day's work). Build Option C as a separate feature targeting subscriber_api's Python ingest problem — fold writer C4 in when the ring is proven.</p>
+    </div>
+  </div>
+
+  <!-- ── C5 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C5">
+    <div class="fix-header">
+      <span class="fix-id">C5</span>
+      <span class="fix-title"><code>g_health_buffer_rows</code> not zeroed after flush — health endpoint reports stale count
+        <span class="fix-lines">lines 761–763 + check_disk_space</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>g_total_buffered</code> is reset to 0 after the buffer swap but <code>g_health_buffer_rows</code> (the atomic exposed via <code>/health</code>) is only written in <code>on_message</code>. Between a flush completing and the next message, the endpoint reports the old inflated count. Same function also never samples disk when the guard is disabled, so <code>disk_free_gb</code> always shows 0.0.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — flush_thread_fn lines 761–762</div>
+          <pre>auto to_flush    = std::exchange(g_buffers, {});
+g_total_buffered = 0;
+// g_health_buffer_rows never zeroed here</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>auto to_flush    = std::exchange(g_buffers, {});
+g_total_buffered = 0;
+g_health_buffer_rows.store(0); // fix C5</pre>
+        </div>
+      </div>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — check_disk_space line 441</div>
+          <pre>static bool check_disk_space(...) {
+    if (min_bytes == 0) return true; // exits before sampling
+    auto si = fs::space(path, ec);
+    g_disk_free_gb_x10.store(...);
+    ...</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — sample first, guard second</div>
+          <pre>static bool check_disk_space(...) {
+    auto si = fs::space(path, ec);
+    if (!ec)
+        g_disk_free_gb_x10.store(
+            si.available / (1024ULL*1024*1024/10));
+    if (min_bytes == 0) return true; // guard after sample
+    ...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── C6 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="C6">
+    <div class="fix-header">
+      <span class="fix-id">C6</span>
+      <span class="fix-title">WAL replay reads only <code>chunk(0)</code> — silently drops rows in multi-chunk tables
+        <span class="fix-lines">lines 537–541</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>Arrow <code>ChunkedArray</code> can hold multiple chunks when a table is assembled from multiple <code>RecordBatch</code>es via <code>Table::FromRecordBatches</code>. <code>chunk(0)</code> silently discards everything after the first chunk. The fix is <code>arrow::Concatenate</code> which is a no-op for single-chunk columns.</p>
+
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — line 537</div>
+          <pre>auto chunk0 = table->column(c)->chunk(0);
+// only first chunk — rest silently dropped
+if (tid == arrow::Type::INT64)
+    int_cols.emplace_back(name,
+        std::static_pointer_cast&lt;
+            arrow::Int64Array&gt;(chunk0));</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — Concatenate all chunks</div>
+          <pre>auto combined =
+    arrow::Concatenate(
+        table->column(c)->chunks());
+if (!combined.ok()) continue;
+auto arr = combined.ValueOrDie();
+if (tid == arrow::Type::INT64)
+    int_cols.emplace_back(name,
+        std::static_pointer_cast&lt;
+            arrow::Int64Array&gt;(arr));</pre>
+        </div>
+      </div>
+      <p style="color:var(--muted); font-size:.85rem;"><code>arrow::Concatenate</code> is in <code>&lt;arrow/compute/api.h&gt;</code> — already transitively included via <code>&lt;arrow/api.h&gt;</code>. Zero overhead for single-chunk arrays.</p>
+    </div>
+  </div>
+
+  <!-- ── Apply order ──────────────────────────────────────────────────────── -->
+  <div class="apply-order">
+    <h3>Apply order — status</h3>
+    <div class="steps">
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
+        <span class="step-id">C5</span>
+        <span class="step-desc">Two-line fix — health <code>buffer_rows</code> + <code>disk_free_gb</code> both correct immediately</span>
+        <span class="step-risk risk-low">done</span>
+      </div>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
+        <span class="step-id">C3</span>
+        <span class="step-desc">Parse <code>source_type</code> from WAL filename — no behaviour change for normal operation</span>
+        <span class="step-risk risk-low">done</span>
+      </div>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
+        <span class="step-id">C2</span>
+        <span class="step-desc">Abort partition flush if WAL write fails; <code>out-&gt;Close()</code> now checked</span>
+        <span class="step-risk risk-low">done</span>
+      </div>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
+        <span class="step-id">C6</span>
+        <span class="step-desc">Replace <code>chunk(0)</code> with <code>arrow::Concatenate</code> — all WAL chunks now replayed</span>
+        <span class="step-risk risk-low">done</span>
+      </div>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
+        <span class="step-id">C1</span>
+        <span class="step-desc">Self-pipe signal handler + <code>poll</code>-based flush wait — async-signal-safe</span>
+        <span class="step-risk risk-low">done</span>
+      </div>
+      <div class="step" style="opacity:.55;">
+        <span class="step-num" style="background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green);">✓</span>
+        <span class="step-id">C4</span>
+        <span class="step-desc">Option A applied — <code>shared_ptr&lt;StateMap&gt;</code> move eliminates O(N) copy under lock. Option C (shared memory ring) deferred to subscriber_api phase.</span>
+        <span class="step-risk risk-low">done</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <h2 class="section">Major Issues</h2>
+
+  <div class="nav">
+    <a href="#M1">M1 ✓ parse_payload default</a>
+    <a href="#M2">M2 ✓ sync first-session</a>
+    <a href="#M3">M3 ✓ schema duplication</a>
+    <a href="#M4">M4 ✓ flush-time date</a>
+    <a href="#M5">M5 ✓ fixed by C4-A</a>
+    <a href="#M6">M6 ✓ recv safety</a>
+    <a href="#M7">M7 ✓ health path parsing</a>
+    <a href="#M8">M8 ✓ fixed by C5</a>
+    <a href="#M9">M9 ✓ shutdown order</a>
+    <a href="#M10">M10 ✓ g_mosq data race</a>
+    <a href="#M11">M11 ✓ shutdown data loss</a>
+    <a href="#M12">M12 ✓ config validation</a>
+    <a href="#M13">M13 ✓ path traversal</a>
+    <a href="#M14">M14 ✓ int/float collision</a>
+  </div>
+
+  <!-- ── M1 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M1" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M1</span>
+      <span class="fix-title"><code>parse_payload</code> default-constructs <code>Config{}</code> — wrong config silently used
+        <span class="fix-lines">line 241</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>The <code>Config</code> parameter has a default argument of <code>Config{}</code>. Any call site that omits it silently uses a zero-value config — wrong <code>project_id</code>, wrong field mappings, no error. Already a latent bug in tests.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>static Row parse_payload(
+    const std::string& payload,
+    const TopicInfo& info,
+    const std::string& project_id,
+    const Config& cfg = Config{})  // ← silent wrong default</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — remove the default</div>
+          <pre>static Row parse_payload(
+    const std::string& payload,
+    const TopicInfo& info,
+    const std::string& project_id,
+    const Config& cfg)  // ← required, compiler catches omissions</pre>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid #f9a825;border-radius:3px;font-size:0.88em;">
+        <strong>&#9888; Subsequent change (Apr 2026):</strong> <code>project_id</code> was later
+        removed from the signature entirely. The current signature is:
+        <pre style="margin:6px 0 0;background:transparent;border:none;padding:0;">static Row parse_payload(
+    const std::string&amp; payload,
+    const TopicInfo&amp;   info,
+    const Config&amp;      cfg)</pre>
+        All call sites updated accordingly. <code>project_id</code> is now read
+        directly from <code>cfg.project_id</code> inside <code>parse_payload()</code>.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M2 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M2" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M2</span>
+      <span class="fix-title">First sync always reports OK — misleading when messages were dropped before it arrived
+        <span class="fix-lines">lines 823–824</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>On a new session start <code>g_received_since_sync</code> is a large leftover from the previous run. The cast to <code>int64_t</code> can wrap, and the sync logic skips the drop check for the first <code>_sync</code> of a session. Real drops before the first sync are silently declared "OK".</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — handle_sync_message</div>
+          <pre>// g_sync_session_id change detected:
+g_sync_session_id = new_session_id;
+// g_received_since_sync not reset —
+// carries value from previous session</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — reset counter on session change</div>
+          <pre>if (g_sync_session_id != new_session_id) {
+    g_sync_session_id = new_session_id;
+    g_received_since_sync = 0;  // ← fresh start
+    g_sync_drops_detected = 0;
+    std::cout &lt;&lt; "[sync] new session "
+              &lt;&lt; new_session_id &lt;&lt; "\n";
+    return;  // skip drop check for first sync
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M3 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M3" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M3</span>
+      <span class="fix-title"><code>flush_partition</code> and <code>write_wal_ipc</code> duplicate ~60 lines of schema-building code
+        <span class="fix-lines">lines 356–414 vs 472–512</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>Both functions independently collect all int/float field names, build Arrow arrays column-by-column, and assemble a table. The logic has already diverged in variable names and will drift further. Any schema change must be made in two places.</p>
+      <div class="solo">
+        <div class="code-label note" style="border-radius:6px 6px 0 0;">Fix — extract shared helper</div>
+        <pre>// New shared function:
+static arrow::Result&lt;std::shared_ptr&lt;arrow::Table&gt;&gt;
+rows_to_arrow_table(const std::vector&lt;Row&gt;& rows) {
+    // ... single copy of the field-collection + array-building logic ...
+}
+
+// flush_partition becomes:
+static arrow::Status flush_partition(...) {
+    ARROW_ASSIGN_OR_RAISE(auto table, rows_to_arrow_table(rows));
+    // ... open file, write table, close ...
+}
+
+// write_wal_ipc becomes:
+static arrow::Status write_wal_ipc(...) {
+    ARROW_ASSIGN_OR_RAISE(auto table, rows_to_arrow_table(rows));
+    // ... open IPC file, write table, close ...
+}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M4 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M4" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M4</span>
+      <span class="fix-title"><code>make_output_path</code> uses flush time — WAL-replayed data lands in today's date partition
+        <span class="fix-lines">lines 314–343</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>make_output_path</code> calls <code>system_clock::now()</code> internally. Data recovered from a WAL written two days ago is written into today's year/month/day directory. DuckDB queries scoped to historical date ranges will miss it.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>static std::string make_output_path(
+    const Config& cfg,
+    const std::string& source_type,
+    int partition_value) {
+    auto now = system_clock::now(); // ← always now</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — accept optional timestamp</div>
+          <pre>static std::string make_output_path(
+    const Config& cfg,
+    const std::string& source_type,
+    int partition_value,
+    std::optional&lt;system_clock::time_point&gt; ts = {}) {
+    auto t = ts.value_or(system_clock::now());</pre>
+        </div>
+      </div>
+      <p>In <code>replay_wal_files</code>, derive <code>min_ts</code> from the oldest row timestamp and pass it to <code>make_output_path</code>. Normal flush path passes no argument — behaviour unchanged.</p>
+    </div>
+  </div>
+
+  <!-- ── M5 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M5" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M5</span>
+      <span class="fix-title"><code>g_current_state</code> O(N) copy under <code>g_mutex</code> blocks MQTT thread
+        <span class="fix-lines">lines 762–763</span>
+      </span>
+      <span class="applied">✓ Fixed by C4-A</span>
+    </div>
+    <div class="fix-body">
+      <p>Resolved by the C4 Option A fix: <code>g_current_state</code> is now a <code>shared_ptr&lt;StateMap&gt;</code>; flush thread does an O(1) pointer move instead of an O(N) map copy under the lock.</p>
+    </div>
+  </div>
+
+  <!-- ── M6 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M6" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M6</span>
+      <span class="fix-title">Health thread: <code>recv</code> return ignored, buffer uninitialised, fragmented reads unhandled
+        <span class="fix-lines">line 617</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>recv</code> return value is discarded — a zero-byte or error read goes undetected and the uninitialised stack buffer is parsed as an HTTP request. A client that sends headers in two TCP segments gets a spurious 400 response.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>char buf[256];
+recv(client_fd, buf, sizeof(buf)-1, 0);
+// buf may be uninitialised on error
+buf[255] = '\0';</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>char buf[256] = {};   // zero-init
+auto n = recv(client_fd, buf,
+              sizeof(buf)-1, 0);
+if (n &lt;= 0) {
+    close(client_fd);
+    continue;
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M7 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M7" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M7</span>
+      <span class="fix-title">Health endpoint returns JSON 200 to any TCP connection — no path or method check
+        <span class="fix-lines">lines 617–633</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>Port scanners, load balancer probes, and keepalive connections all receive a full JSON health payload. No method or path is parsed — a <code>POST /exploit</code> gets the same 200 response as <code>GET /health</code>.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>// After recv — immediately send JSON:
+std::string resp = "HTTP/1.1 200 OK\r\n...";
+send(client_fd, resp.c_str(), ...);</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — check method and path</div>
+          <pre>std::string req(buf);
+bool ok = (req.rfind("GET ", 0) == 0
+    &amp;&amp; req.find(" /health ") != std::string::npos)
+       || (req.rfind("GET ", 0) == 0
+    &amp;&amp; req.find(" /health\r") != std::string::npos);
+if (!ok) {
+    std::string r404 =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n\r\n";
+    send(client_fd, r404.c_str(), r404.size(), 0);
+    close(client_fd); continue;
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M8 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M8" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M8</span>
+      <span class="fix-title"><code>check_disk_space</code> skips disk sampling when guard disabled — <code>disk_free_gb</code> always 0.0
+        <span class="fix-lines">lines 440–452</span>
+      </span>
+      <span class="applied">✓ Fixed by C5</span>
+    </div>
+    <div class="fix-body">
+      <p>Resolved by the C5 fix: the <code>min_bytes == 0</code> guard is now checked <em>after</em> the disk space sample, so <code>g_disk_free_gb_x10</code> is always populated regardless of config.</p>
+    </div>
+  </div>
+
+  <!-- ── M9 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M9" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M9</span>
+      <span class="fix-title">Wrong shutdown order — <code>mosquitto_disconnect</code> after <code>loop_stop</code>, DISCONNECT never sent
+        <span class="fix-lines">lines 1044–1046</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>mosquitto_loop_stop(force=true)</code> kills the network thread before <code>mosquitto_disconnect</code> is called. The broker never receives a DISCONNECT packet and retains the session — QoS state, will messages, and subscriptions persist until the broker-side keepalive timeout.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>flush_thread.join();
+mosquitto_loop_stop(g_mosq, true); // kills thread
+mosquitto_disconnect(g_mosq);      // ← packet never sent</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — disconnect first, then stop</div>
+          <pre>flush_thread.join();
+mosquitto_disconnect(g_mosq);      // sends DISCONNECT
+// give the network thread time to flush the packet:
+std::this_thread::sleep_for(
+    std::chrono::milliseconds(100));
+mosquitto_loop_stop(g_mosq, false); // clean stop</pre>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;">This also interacts with M11 — see M11 for the combined correct shutdown sequence.</p>
+    </div>
+  </div>
+
+  <!-- ── M10 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M10" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M10</span>
+      <span class="fix-title"><code>g_mosq</code> plain pointer — data race between main thread write and network thread reads
+        <span class="fix-lines">lines 1005, 1038</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>The main thread writes <code>g_mosq</code> at startup and during reconnect; mosquitto's network thread reads it in callbacks. Under the C++ memory model this is a data race — formally undefined behaviour, practically a torn pointer read on 32-bit ARM.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>static struct mosquitto* g_mosq = nullptr;</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>static std::atomic&lt;struct mosquitto*&gt;
+    g_mosq{nullptr};</pre>
+        </div>
+      </div>
+      <p>All <code>g_mosq</code> reads become <code>g_mosq.load()</code> — a trivial mechanical change throughout. Callbacks that receive <code>g_mosq</code> as a parameter are unaffected.</p>
+    </div>
+  </div>
+
+  <!-- ── M11 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M11" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M11</span>
+      <span class="fix-title">Final flush runs before <code>mosquitto_loop_stop</code> — guaranteed data loss window on shutdown
+        <span class="fix-lines">lines 1041–1044</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>The flush thread exits when it sees <code>g_shutdown</code>. <code>mosquitto_loop_stop</code> is called <em>after</em> the final flush. Any messages delivered between the flush thread's last drain and <code>loop_stop</code> are silently discarded. This happens on every graceful shutdown.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — wrong order</div>
+          <pre>g_shutdown = true;
+flush_thread.join();     // final flush here
+mosquitto_loop_stop(...);// messages still arrive
+mosquitto_disconnect(...);</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — stop ingest first</div>
+          <pre>g_shutdown.store(true);
+mosquitto_disconnect(g_mosq); // signal broker
+mosquitto_loop_stop(g_mosq, false); // drain network
+// NOW flush — catches everything:
+flush_thread.join();          // final flush</pre>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;">Combining M9 + M11: the correct shutdown sequence is <strong>set g_shutdown → disconnect → loop_stop → join flush thread</strong>.</p>
+    </div>
+  </div>
+
+  <!-- ── M12 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M12" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M12</span>
+      <span class="fix-title">No config validation — bad values cause spin-loops, silent drops, or wrong compression
+        <span class="fix-lines">lines 117–168</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>flush_interval_seconds &lt;= 0</code> spins the flush thread at 100% CPU. <code>max_total_buffer_rows &lt;= 0</code> drops every single message. An invalid <code>compression</code> string falls through silently to Snappy.</p>
+      <div class="solo">
+        <div class="code-label note" style="border-radius:6px 6px 0 0;">Fix — add validate_config() called from main()</div>
+        <pre>static bool validate_config(const Config& cfg) {
+    bool ok = true;
+    if (cfg.flush_interval_seconds &lt;= 0) {
+        std::cerr &lt;&lt; "[config] flush_interval_seconds must be &gt; 0\n"; ok = false;
+    }
+    if (cfg.max_total_buffer_rows &lt;= 0) {
+        std::cerr &lt;&lt; "[config] max_total_buffer_rows must be &gt; 0\n"; ok = false;
+    }
+    static const std::set&lt;std::string&gt; valid_compression{
+        "snappy","gzip","brotli","lz4","zstd","none"};
+    if (!valid_compression.count(cfg.compression)) {
+        std::cerr &lt;&lt; "[config] unknown compression: " &lt;&lt; cfg.compression &lt;&lt; "\n"; ok = false;
+    }
+    return ok;
+}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M13 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M13" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M13</span>
+      <span class="fix-title"><code>source_type</code> injected into filesystem paths without sanitisation — path traversal
+        <span class="fix-lines">line 334</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>A rogue MQTT publisher using a topic like <code>../../etc/cron.d/evil/…</code> causes the writer to create files anywhere the process can write. Real attack surface if the broker is reachable from untrusted clients.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — parse_topic()</div>
+          <pre>info.source_type = segment;
+// ← no validation, raw into fs path</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — sanitize on ingest</div>
+          <pre>// Reject traversal sequences and bare slashes
+static std::string sanitize_path_segment(
+        std::string s) {
+    // strip leading dots and slashes
+    auto bad = s.find_first_of("/\\");
+    if (bad != std::string::npos)
+        s = s.substr(0, bad);
+    if (s.empty() || s == "." || s == "..")
+        return "";
+    return s;
+}
+info.source_type =
+    sanitize_path_segment(segment);
+if (info.source_type.empty()) return std::nullopt;</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── M14 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="M14" style="opacity:.55;">
+    <div class="fix-header">
+      <span class="fix-id maj">M14</span>
+      <span class="fix-title">Integer scalars silently promoted to <code>double</code> — precision loss and duplicate Parquet columns
+        <span class="fix-lines">lines 289–292</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>In <code>parse_payload</code>, flat JSON integers not in the configured <code>int_cols</code> list fall through to the float path. Values &gt; 2<sup>53</sup> lose precision. Worse: if a JSON field name matches a topic-derived int column, the same field appears in both <code>row.ints</code> and <code>row.floats</code>, producing two Parquet columns with the same name.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — parse_payload float fallback</div>
+          <pre>// integer field not in int_cols:
+row.floats[key] = (double)int_val;
+// ← may duplicate row.ints[key]</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — skip if already in ints</div>
+          <pre>// integer field not in int_cols:
+if (row.ints.count(key) == 0)
+    row.floats[key] = (double)int_val;
+// else: already stored as int64 — skip</pre>
+        </div>
+      </div>
+      <p>For the precision issue: widen <code>int_cols</code> config or add a configurable threshold; values above 2<sup>53</sup> that must round-trip exactly should always be in <code>int_cols</code>.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <h2 class="section">Minor Issues</h2>
+
+  <div class="nav">
+    <a href="#m1">m1 magic numbers</a>
+    <a href="#m2">m2 overflow notify</a>
+    <a href="#m3">m3 column order</a>
+    <a href="#m4">m4 g_cfg raw ptr</a>
+    <a href="#m5">m5 create_directories</a>
+    <a href="#m6">m6 clock skew</a>
+    <a href="#m7">m7 first sync OK</a>
+    <a href="#m8">m8 duplicate KV</a>
+    <a href="#m9">m9 subscribe retry</a>
+    <a href="#m10">m10 recv buf size</a>
+    <a href="#m11">m11 lib_init unchecked</a>
+  </div>
+
+  <!-- ── m1 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m1">
+    <div class="fix-header">
+      <span class="fix-id min">m1</span>
+      <span class="fix-title">Magic numbers — keepalive, reconnect delays, retry counts all hardcoded; no CLI overrides
+        <span class="fix-lines">Config struct · load_config · main()</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>Added six configurable fields to <code>Config</code> with the current values as defaults (no behaviour change unless overridden). Also added five CLI flags that override config-file values without editing the file — useful when running multiple writers on the same box.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label after">Config fields added (config.yaml — commented-out defaults shown)</div>
+          <pre># mqtt section:
+# keepalive_seconds: 60
+# reconnect_min_seconds: 2
+# reconnect_max_seconds: 30
+# connect_retry_seconds: 5
+
+# output section:
+# flush_max_retries: 3
+# flush_retry_base_seconds: 1   # gives 1s / 2s / 4s backoff</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">CLI overrides added</div>
+          <pre>--host &lt;hostname&gt;        overrides mqtt.host
+--port &lt;n&gt;              overrides mqtt.port
+--output &lt;path&gt;         overrides output.base_path
+--health-port &lt;n&gt;       overrides health.port
+--flush-interval &lt;n&gt;    overrides output.flush_interval_seconds</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m2 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m2">
+    <div class="fix-header">
+      <span class="fix-id min">m2</span>
+      <span class="fix-title">Overflow <code>notify_one</code> is lost if flush thread is mid-flush — drops continue for full interval
+        <span class="fix-lines">lines 941–948</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>notify_one</code> only wakes the flush thread if it is blocked in <code>poll()</code>. If the flush thread is busy doing Parquet I/O (outside the poll), the notification is silently discarded. The next flush won't start until the full <code>flush_interval_seconds</code> has elapsed — all overflow drops in that window are unrecoverable.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>// on_message overflow path:
+g_flush_cv.notify_one(); // lost if thread is busy</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — sticky flush-needed flag</div>
+          <pre>// Global:
+static std::atomic&lt;bool&gt; g_flush_needed{false};
+
+// on_message overflow path:
+g_flush_needed.store(true);
+g_flush_cv.notify_one();
+
+// flush_thread_fn, top of loop — skip wait if flagged:
+if (!g_flush_needed.exchange(false)) {
+    lock.unlock();
+    poll(&amp;pfd, 1, g_cfg->flush_interval_seconds * 1000);
+    lock.lock();
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m3 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m3">
+    <div class="fix-header">
+      <span class="fix-id min">m3</span>
+      <span class="fix-title">Parquet column order non-deterministic across flush cycles
+        <span class="fix-lines">rows_to_arrow_table()</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>Column order is determined by which row is seen first in each flush batch. If the first row of one cycle lacks a field that later rows have, the column position shifts. DuckDB is unaffected but the files are confusing to inspect with <code>parquet-tools</code> or pandas.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — first-seen order</div>
+          <pre>std::map&lt;std::string, bool&gt; seen_i, seen_f;
+for (const auto& r : rows) {
+    for (auto& [k,_] : r.ints)
+        if (!seen_i[k]) { seen_i[k]=true; int_cols.push_back(k); }
+    for (auto& [k,_] : r.floats)
+        if (!seen_f[k]) { seen_f[k]=true; float_cols.push_back(k); }
+}</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — stable sorted order</div>
+          <pre>std::set&lt;std::string&gt; seen_i, seen_f;
+for (const auto& r : rows) {
+    for (auto& [k,_] : r.ints)   seen_i.insert(k);
+    for (auto& [k,_] : r.floats) seen_f.insert(k);
+}
+// std::set iteration is sorted — columns always alphabetical
+int_cols.assign(seen_i.begin(), seen_i.end());
+float_cols.assign(seen_f.begin(), seen_f.end());</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m4 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m4">
+    <div class="fix-header">
+      <span class="fix-id min">m4</span>
+      <span class="fix-title"><code>g_cfg</code> is a raw pointer to a stack <code>Config</code> — null dereference in tests
+        <span class="fix-lines">line 458</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>g_cfg</code> is <code>nullptr</code> until <code>main()</code> sets it. Any unit test that calls a function referencing <code>g_cfg</code> before <code>main()</code> runs will segfault. The fix is trivial: make it a pointer to a static default-constructed <code>Config</code>, never null.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>static const Config* g_cfg{nullptr};
+// nullptr until main() assigns &amp;cfg</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — never null</div>
+          <pre>static Config        g_cfg_storage{};
+static const Config* g_cfg{&amp;g_cfg_storage};
+
+// In main(), replace g_cfg = &amp;cfg with:
+g_cfg_storage = cfg;   // copy loaded config in</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m5 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m5">
+    <div class="fix-header">
+      <span class="fix-id min">m5</span>
+      <span class="fix-title"><code>wal_path_for</code> calls <code>create_directories</code> on every flush, every partition
+        <span class="fix-lines">wal_path_for() ~line 507</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>At 10k partitions and a 60-second flush cycle, that's 10k redundant <code>stat</code>+<code>mkdir</code> syscall sequences per flush. The WAL directory doesn't change between flushes.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — inside wal_path_for()</div>
+          <pre>static std::string wal_path_for(...) {
+    std::string wp = cfg.wal_path.empty()
+        ? cfg.base_path + "/.wal" : cfg.wal_path;
+    std::error_code ec;
+    fs::create_directories(wp, ec);  // ← every call
+    return wp + "/" + ...;
+}</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — create once at startup</div>
+          <pre>// In main(), after validate_config():
+if (cfg.wal_enabled) {
+    std::string wp = cfg.wal_path.empty()
+        ? cfg.base_path + "/.wal" : cfg.wal_path;
+    std::error_code ec;
+    fs::create_directories(wp, ec);
+    if (ec) { std::cerr &lt;&lt; "[wal] mkdir failed\n"; return 1; }
+}
+
+// wal_path_for() — just build the filename:
+static std::string wal_path_for(...) {
+    std::string wp = cfg.wal_path.empty()
+        ? cfg.base_path + "/.wal" : cfg.wal_path;
+    return wp + "/" + ...;   // no create_directories
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m6 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m6">
+    <div class="fix-header">
+      <span class="fix-id min">m6</span>
+      <span class="fix-title">WAL filename and Parquet filename can differ by one second at a clock boundary
+        <span class="fix-lines">time_suffix() vs make_output_path()</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>wal_path_for</code> calls <code>time_suffix()</code> and <code>make_output_path</code> calls <code>system_clock::now()</code> independently. If they straddle a second boundary the WAL file is named <code>…T120000Z.wal.arrow</code> while the Parquet file is named <code>…T120001Z.parquet</code>. The WAL cleanup logic that deletes the WAL on success still works (it holds the full path), but the filenames are confusing.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — two independent clock reads</div>
+          <pre>// do_flush():
+wal_file = wal_path_for(*g_cfg, ...); // calls now() internally
+auto path = make_output_path(...);    // calls now() independently</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — capture once, pass through</div>
+          <pre>// do_flush():
+auto flush_ts = std::chrono::system_clock::now(); // single clock read
+wal_file = wal_path_for(*g_cfg, ..., flush_ts);
+auto path = make_output_path(*g_cfg, ..., flush_ts);
+
+// Both functions accept time_point instead of calling now() themselves</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m7 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m7">
+    <div class="fix-header">
+      <span class="fix-id min">m7</span>
+      <span class="fix-title">First <code>_sync</code> of a new session always logs OK — drops before it arrived are invisible
+        <span class="fix-lines">handle_sync_message()</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>When a session change is detected the counters reset and the function returns early, skipping the drop check. This is correct — there's genuinely no prior sync to compare against. But messages dropped <em>between</em> session start and the first <code>_sync</code> of that session are permanently invisible. The current comment says "documented but not prominently".</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — silent gap</div>
+          <pre>if (session != g_sync_session_id) {
+    g_sync_session_id     = session;
+    g_received_since_sync = 0;
+    g_sync_drops_detected = 0;
+    return;  // drops before first sync never counted
+}</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — log the blind spot explicitly</div>
+          <pre>if (session != g_sync_session_id) {
+    if (!g_sync_session_id.empty())
+        std::cout &lt;&lt; "[sync] new session — drops before "
+                     "first _sync are not counted\n";
+    g_sync_session_id     = session;
+    g_received_since_sync = 0;
+    g_sync_drops_detected = 0;
+    return;
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m8 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m8">
+    <div class="fix-header">
+      <span class="fix-id min">m8</span>
+      <span class="fix-title"><code>parse_topic</code> silently overwrites duplicate key-value segments
+        <span class="fix-lines">lines 227–234</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>If a topic path contains <code>site=1/rack=2/site=3</code>, the second <code>site=3</code> silently overwrites the first with no warning. The resulting row has <code>site=3</code> with no indication that the topic was malformed.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before — silent overwrite</div>
+          <pre>try {
+    info.kv[segment.substr(0, eq)] =
+        std::stoi(segment.substr(eq + 1));
+} catch (...) {}</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — warn on duplicate</div>
+          <pre>std::string kv_key = segment.substr(0, eq);
+int kv_val;
+try { kv_val = std::stoi(segment.substr(eq + 1)); }
+catch (...) { continue; }
+if (info.kv.count(kv_key))
+    std::cerr &lt;&lt; "[topic] duplicate key '" &lt;&lt; kv_key
+              &lt;&lt; "' in topic: " &lt;&lt; topic &lt;&lt; "\n";
+info.kv[kv_key] = kv_val;</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m9 ──────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m9">
+    <div class="fix-header">
+      <span class="fix-id min">m9</span>
+      <span class="fix-title"><code>mosquitto_subscribe</code> failure in <code>on_connect</code> not retried — writer receives nothing
+        <span class="fix-lines">on_connect() ~line 802</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>If <code>mosquitto_subscribe</code> fails (e.g. broker ACL rejection, out of memory), the writer logs the error and continues. It is now connected to the broker but subscribed to nothing — it receives zero messages indefinitely with no further indication. The reconnect loop in <code>mosquitto_loop_start</code> only fires on TCP disconnect, not on subscribe failure.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>int sub_rc = mosquitto_subscribe(g_mosq.load(), nullptr,
+    g_cfg->mqtt_topic.c_str(), g_cfg->mqtt_qos);
+if (sub_rc != MOSQ_ERR_SUCCESS)
+    std::cerr &lt;&lt; "[mqtt] subscribe failed: "
+              &lt;&lt; mosquitto_strerror(sub_rc) &lt;&lt; "\n";
+// ← silently receives nothing</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — disconnect to force reconnect</div>
+          <pre>int sub_rc = mosquitto_subscribe(g_mosq.load(), nullptr,
+    g_cfg->mqtt_topic.c_str(), g_cfg->mqtt_qos);
+if (sub_rc != MOSQ_ERR_SUCCESS) {
+    std::cerr &lt;&lt; "[mqtt] subscribe failed ("
+              &lt;&lt; mosquitto_strerror(sub_rc)
+              &lt;&lt; ") — disconnecting to retry\n";
+    mosquitto_disconnect(g_mosq.load()); // triggers reconnect + on_connect
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m10 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m10">
+    <div class="fix-header">
+      <span class="fix-id min">m10</span>
+      <span class="fix-title">Health endpoint <code>recv</code> buffer 255 bytes — too small for Chrome/Firefox headers
+        <span class="fix-lines">health_thread_fn()</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p>Chrome and Firefox send 500–2000 byte GET headers (User-Agent, Accept, Cookie, etc.). The 255-byte buffer silently truncates the request. The path/method check added by M7 may fail to match <code>/health</code> if it falls beyond byte 255, causing spurious 404s from real browser requests.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>char buf[256] = {};
+auto n = recv(cli, buf, sizeof(buf) - 1, 0);</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After — 4 KB covers all realistic headers</div>
+          <pre>char buf[4096] = {};
+auto n = recv(cli, buf, sizeof(buf) - 1, 0);</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── m11 ─────────────────────────────────────────────────────────────── -->
+  <div class="fix" id="m11">
+    <div class="fix-header">
+      <span class="fix-id min">m11</span>
+      <span class="fix-title"><code>mosquitto_lib_init()</code> return value unchecked — crash if init fails
+        <span class="fix-lines">main() ~line 1064</span>
+      </span>
+      <span class="applied">✓ Applied</span>
+    </div>
+    <div class="fix-body">
+      <p><code>mosquitto_lib_init()</code> can return <code>MOSQ_ERR_UNKNOWN</code> if the underlying platform library fails to initialise. All subsequent mosquitto calls will produce undefined behaviour. <code>mosquitto_lib_cleanup()</code> is also called unconditionally in the shutdown path even if init failed.</p>
+      <div class="diff">
+        <div class="code-block">
+          <div class="code-label before">Before</div>
+          <pre>mosquitto_lib_init();  // return ignored</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-label after">After</div>
+          <pre>if (mosquitto_lib_init() != MOSQ_ERR_SUCCESS) {
+    std::cerr &lt;&lt; "[init] mosquitto_lib_init failed\n";
+    return 1;
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <h2 class="section" id="sync-free">Sync-free Operation</h2>
+
+  <div class="fix">
+    <div class="fix-header">
+      <span class="fix-id" style="background:rgba(88,166,255,.12);color:var(--blue);border-color:rgba(88,166,255,.3);">INFO</span>
+      <span class="fix-title">_sync messages are optional — writer operates correctly with zero sync traffic</span>
+    </div>
+    <div class="fix-body">
+      <p style="margin-bottom:.8rem">
+        Verified 2026-03-21. The <code>_sync</code> message path is a pure optional drop-detection
+        overlay. Every code path that matters for data integrity (parse → buffer → flush → WAL →
+        Parquet) is completely independent of sync.
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="text-align:left;padding:.4rem .6rem">Symbol</th>
+            <th style="text-align:left;padding:.4rem .6rem">Behaviour without sync</th>
+            <th style="text-align:left;padding:.4rem .6rem">Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem"><code>_sync</code> intercept<br><small style="color:var(--muted)">on_message line 910–913</small></td>
+            <td style="padding:.4rem .6rem">Branch never taken. All messages flow to normal parse path.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem"><code>g_received_since_sync</code><br><small style="color:var(--muted)">uint64_t, line 699 / incremented line 959</small></td>
+            <td style="padding:.4rem .6rem">Grows monotonically. Only read inside <code>handle_sync_message()</code>, which is never called. Wraps at 1.8×10¹⁹ — at 80k msg/sec that is ~7 billion years.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem"><code>g_sync_drops_detected</code><br><code>g_sync_session_id</code></td>
+            <td style="padding:.4rem .6rem">Stay at zero / empty string forever. Never written or read outside <code>handle_sync_message()</code>.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem">Health endpoint<br><small style="color:var(--muted)">/health JSON</small></td>
+            <td style="padding:.4rem .6rem">Reports <code>"sync_session": ""</code> and <code>"sync_drops": 0</code>. Valid JSON, not broken — just shows feature inactive.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+          <tr>
+            <td style="padding:.4rem .6rem">Flush / WAL / Parquet</td>
+            <td style="padding:.4rem .6rem">Completely unaffected. No flush, WAL write, or Parquet path reads any sync variable.</td>
+            <td style="padding:.4rem .6rem;color:var(--green)">None</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top:.9rem;color:var(--muted);font-size:.85rem">
+        The only effect of having no sync traffic is that drop detection is silent — there are no
+        false positives, no stalls, and no crashes. The feature simply contributes nothing until
+        a stress_runner that emits <code>_sync</code> messages is connected.
+      </p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

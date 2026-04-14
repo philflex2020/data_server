@@ -1,0 +1,29 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB-Baseline
+    uid: influx-baseline
+    type: influxdb
+    access: proxy
+    url: http://influxdb-baseline:8086
+    isDefault: true
+    jsonData:
+      version: Flux
+      organization: ems-org
+      defaultBucket: ems-baseline
+      tlsSkipVerify: true
+    secureJsonData:
+      token: ems-token-secret
+
+  - name: InfluxDB-Filtered
+    uid: influx-filtered
+    type: influxdb
+    access: proxy
+    url: http://influxdb-filtered:8086
+    jsonData:
+      version: Flux
+      organization: ems-org
+      defaultBucket: ems-filtered
+      tlsSkipVerify: true
+    secureJsonData:
+      token: ems-token-secret

@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Telegraf dedup float_epsilon — Contribution Plan</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+    --green-bg:#0d4429; --yellow-bg:#2d2000;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:20px; max-width:1100px; margin:0 auto; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+
+  h1 { color:var(--accent); font-size:1.3rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.84rem; margin-bottom:24px; }
+  h2 { color:var(--orange); font-size:.95rem; margin:28px 0 10px;
+       padding-bottom:5px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--accent); font-size:.85rem; margin:16px 0 8px; }
+
+  p { font-size:.84rem; line-height:1.65; color:var(--text); margin-bottom:10px; }
+  ul, ol { font-size:.84rem; line-height:1.7; padding-left:20px; margin-bottom:10px; }
+  li { margin-bottom:3px; }
+
+  code { background:var(--code-bg); border:1px solid var(--border); border-radius:3px;
+         padding:1px 5px; font-family:'Consolas',monospace; font-size:.82rem; color:var(--orange); }
+
+  pre { background:var(--code-bg); border:1px solid var(--border); border-radius:6px;
+        padding:14px 16px; font-family:'Consolas',monospace; font-size:.78rem; line-height:1.6;
+        overflow-x:auto; margin-bottom:14px; }
+
+  /* syntax highlight classes */
+  .kw  { color:#ff7b72; }   /* keywords */
+  .ty  { color:#ffa657; }   /* types */
+  .cm  { color:#444c57; }   /* comments */
+  .st  { color:#a5d6ff; }   /* strings */
+  .nu  { color:#79c0ff; }   /* numbers/literals */
+  .fn  { color:#d2a8ff; }   /* function names */
+  .pk  { color:var(--green); } /* package/import */
+  .add { display:block; background:#0d442922; border-left:3px solid var(--green); margin-left:-16px; padding-left:13px; }
+  .del { display:block; background:#2d000022; border-left:3px solid var(--red);   margin-left:-16px; padding-left:13px; }
+  .ctx { color:#444c57; }
+
+  /* plan steps */
+  .steps { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+  .step { display:flex; gap:14px; align-items:flex-start;
+          background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 16px; }
+  .step-num { width:26px; height:26px; border-radius:50%; display:flex; align-items:center;
+              justify-content:center; font-size:.8rem; font-weight:700; flex-shrink:0; margin-top:1px; }
+  .step-num.done   { background:var(--green-bg); color:var(--green); border:1px solid var(--green); }
+  .step-num.active { background:#0c2d6b44; color:var(--accent); border:1px solid var(--accent); }
+  .step-num.todo   { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .step-body h4 { font-size:.84rem; color:var(--text); margin-bottom:4px; }
+  .step-body p  { margin:0; font-size:.8rem; color:var(--muted); }
+  .step-body code { font-size:.78rem; }
+
+  /* callout boxes */
+  .callout { border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:.82rem; }
+  .callout.info   { background:#0c2d6b22; border-left:3px solid var(--accent);  color:var(--text); }
+  .callout.warn   { background:#2d200022; border-left:3px solid var(--yellow); color:var(--text); }
+  .callout.good   { background:#0d442922; border-left:3px solid var(--green);  color:var(--text); }
+
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+  @media(max-width:800px) { .two-col { grid-template-columns:1fr; } }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+  .card h3 { margin-top:0; }
+
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.72rem;
+           font-weight:700; font-family:'Consolas',monospace; vertical-align:middle; }
+  .badge.green  { background:var(--green-bg); color:var(--green); border:1px solid var(--green); }
+  .badge.blue   { background:#0c2d6b44; color:var(--accent); border:1px solid var(--accent); }
+  .badge.yellow { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  <a href="influx_viewer.html">InfluxDB Viewer</a>
+  <a href="telegraf_demo_control.html">Demo Control</a>
+  <a href="telegraf_dedup_float_plan.html" class="here">dedup float_epsilon plan</a>
+</div>
+
+<h1>Telegraf — <code>processors.dedup</code> float_epsilon contribution</h1>
+<p class="subtitle">
+  Adding epsilon-based float comparison to the existing dedup processor ·
+  Repo: <code>~/work/telegraf/telegraf</code> ·
+  Upstream: <code>github.com/influxdata/telegraf</code> (MIT)
+</p>
+
+<!-- ── Why ── -->
+<h2>Why this matters</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>The problem with exact float comparison</h3>
+    <p>The existing <code>processors.dedup</code> uses Go's <code>!=</code> operator for all field types.
+       For float64, this means a value that changes from <code>3.14159265</code> to <code>3.14159266</code>
+       due to sensor noise or ADC jitter passes through as a change — defeating dedup entirely for
+       high-precision float telemetry.</p>
+    <p>In the EMS / Evelyn use case, AC power signals (kW, kVAR, kVA) oscillate
+       continuously at the last digit. Without epsilon, <strong>zero rows are suppressed</strong>
+       for float fields.</p>
+  </div>
+  <div class="card">
+    <h3>What float_epsilon adds</h3>
+    <p>A single new config option <code>float_epsilon</code>. When set, float64 fields are
+       compared with an absolute tolerance instead of exact equality. All other field types
+       (integer, bool, string) continue to use exact comparison unchanged.</p>
+    <p>Default <code>0.0</code> preserves existing behavior exactly — fully backward compatible,
+       no behavior change for existing configs.</p>
+    <p>Expected reduction for EMS float signals: <strong>~23% additional row suppression</strong>
+       (matching our measured python float_dedup result).</p>
+  </div>
+</div>
+
+<div class="callout good">
+  <strong>Approach chosen: extend existing <code>processors.dedup</code></strong> rather than a new plugin.
+  One config block, one place to learn, backward compatible, smaller diff = higher chance of acceptance.
+</div>
+
+<!-- ── Current source ── -->
+<h2>Current source — the exact comparison (line 59)</h2>
+<p>File: <code>plugins/processors/dedup/dedup.go</code></p>
+<pre><span class="cm">// For each field compare value with the cached one</span>
+<span class="kw">for</span> _, f := <span class="kw">range</span> metric.<span class="fn">FieldList</span>() {
+    <span class="kw">if</span> value, ok := m.<span class="fn">GetField</span>(f.Key); ok {
+<span class="del">        if value != f.Value {    // ← exact comparison — breaks for floats</span>
+            changed = <span class="nu">true</span>
+            <span class="kw">break</span>
+        }
+    }
+}</pre>
+
+<!-- ── Code changes ── -->
+<h2>Proposed code changes</h2>
+
+<h3>1. Struct — add FloatEpsilon field</h3>
+<pre><span class="kw">type</span> <span class="ty">Dedup</span> <span class="kw">struct</span> {
+    DedupInterval <span class="ty">config.Duration</span> <span class="st">`toml:"dedup_interval"`</span>
+<span class="add">    FloatEpsilon  <span class="ty">float64</span>         <span class="st">`toml:"float_epsilon"`</span>   <span class="cm">// absolute tolerance for float fields</span></span>
+    Log           <span class="ty">telegraf.Logger</span> <span class="st">`toml:"-"`</span>
+
+    flushTime <span class="ty">time.Time</span>
+    cache     <span class="kw">map</span>[<span class="ty">uint64</span>]<span class="ty">telegraf.Metric</span>
+}</pre>
+
+<h3>2. Apply() — replace direct != with fieldsEqual()</h3>
+<pre><span class="kw">for</span> _, f := <span class="kw">range</span> metric.<span class="fn">FieldList</span>() {
+    <span class="kw">if</span> value, ok := m.<span class="fn">GetField</span>(f.Key); ok {
+<span class="del">        if value != f.Value {</span>
+<span class="add">        if !d.<span class="fn">fieldsEqual</span>(value, f.Value) {</span>
+            changed = <span class="nu">true</span>
+            <span class="kw">break</span>
+        }
+    }
+}</pre>
+
+<h3>3. New method — fieldsEqual()</h3>
+<pre><span class="cm">// fieldsEqual reports whether two field values are considered equal.
+// Float64 fields use FloatEpsilon when it is non-zero; all other types use ==.</span>
+<span class="kw">func</span> (d *<span class="ty">Dedup</span>) <span class="fn">fieldsEqual</span>(a, b <span class="kw">interface</span>{}) <span class="ty">bool</span> {
+    <span class="kw">if</span> d.FloatEpsilon > <span class="nu">0</span> {
+        af, aok := <span class="fn">asFloat64</span>(a)
+        bf, bok := <span class="fn">asFloat64</span>(b)
+        <span class="kw">if</span> aok && bok {
+            <span class="kw">return</span> math.<span class="fn">Abs</span>(af-bf) <= d.FloatEpsilon
+        }
+    }
+    <span class="kw">return</span> a == b
+}
+
+<span class="cm">// asFloat64 converts float32/float64 fields to float64; returns false for other types.</span>
+<span class="kw">func</span> <span class="fn">asFloat64</span>(v <span class="kw">interface</span>{}) (<span class="ty">float64</span>, <span class="ty">bool</span>) {
+    <span class="kw">switch</span> val := v.(<span class="kw">type</span>) {
+    <span class="kw">case</span> <span class="ty">float64</span>:
+        <span class="kw">return</span> val, <span class="nu">true</span>
+    <span class="kw">case</span> <span class="ty">float32</span>:
+        <span class="kw">return</span> <span class="ty">float64</span>(val), <span class="nu">true</span>
+    <span class="kw">default</span>:
+        <span class="kw">return</span> <span class="nu">0</span>, <span class="nu">false</span>
+    }
+}</pre>
+
+<h3>4. Import — add math</h3>
+<pre><span class="kw">import</span> (
+    _ <span class="st">"embed"</span>
+    <span class="st">"fmt"</span>
+<span class="add">    <span class="st">"math"</span></span>
+    <span class="st">"time"</span>
+    ...
+)</pre>
+
+<h3>5. sample.conf — document the new option</h3>
+<pre><span class="cm"># Filter metrics with repeating field values</span>
+[[processors.dedup]]
+  <span class="cm">## Maximum time to suppress output</span>
+  dedup_interval = <span class="st">"600s"</span>
+
+<span class="add">  ## Absolute epsilon for float64 field comparisons.
+  ## When non-zero, float fields within this tolerance are considered unchanged.
+  ## Default 0 preserves original exact-comparison behavior.
+  # float_epsilon = 0.0</span></pre>
+
+<!-- ── Tests ── -->
+<h2>Tests to add (dedup_test.go)</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>Test cases required</h3>
+    <ul>
+      <li><code>TestFloatEpsilonWithinTolerance</code> — value changes by &lt; epsilon → suppressed</li>
+      <li><code>TestFloatEpsilonExceedsTolerance</code> — value changes by &gt; epsilon → passes through</li>
+      <li><code>TestFloatEpsilonAtBoundary</code> — value change exactly equals epsilon → suppressed</li>
+      <li><code>TestFloatEpsilonZeroIsExact</code> — epsilon=0 → existing exact-match behavior unchanged</li>
+      <li><code>TestFloatEpsilonDoesNotAffectIntegers</code> — int fields unaffected when epsilon set</li>
+      <li><code>TestFloatEpsilonDoesNotAffectStrings</code> — string fields unaffected</li>
+      <li><code>TestFloatEpsilonHeartbeat</code> — value within epsilon still passes after dedup_interval expires</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Typical test pattern (matches existing style)</h3>
+    <pre style="font-size:.72rem"><span class="kw">func</span> <span class="fn">TestFloatEpsilonWithinTolerance</span>(t *testing.T) {
+    plugin := &<span class="ty">Dedup</span>{
+        DedupInterval: <span class="ty">config.Duration</span>(<span class="nu">10</span> * time.Minute),
+        FloatEpsilon:  <span class="nu">0.5</span>,
+        cache: <span class="fn">make</span>(<span class="kw">map</span>[<span class="ty">uint64</span>]<span class="ty">telegraf.Metric</span>),
+        flushTime: time.<span class="fn">Now</span>(),
+    }
+    m1 := testutil.<span class="fn">MustMetric</span>(<span class="st">"test"</span>,
+        <span class="kw">map</span>[<span class="ty">string</span>]<span class="ty">string</span>{},
+        <span class="kw">map</span>[<span class="ty">string</span>]<span class="kw">interface</span>{}{<span class="st">"kw"</span>: <span class="ty">float64</span>(<span class="nu">100.0</span>)},
+        time.<span class="fn">Now</span>())
+    m2 := testutil.<span class="fn">MustMetric</span>(<span class="st">"test"</span>,
+        <span class="kw">map</span>[<span class="ty">string</span>]<span class="ty">string</span>{},
+        <span class="kw">map</span>[<span class="ty">string</span>]<span class="kw">interface</span>{}{<span class="st">"kw"</span>: <span class="ty">float64</span>(<span class="nu">100.3</span>)}, <span class="cm">// &lt; 0.5 epsilon</span>
+        time.<span class="fn">Now</span>().<span class="fn">Add</span>(time.Second))
+
+    out1 := plugin.<span class="fn">Apply</span>(m1)
+    out2 := plugin.<span class="fn">Apply</span>(m2)
+    require.<span class="fn">Len</span>(t, out1, <span class="nu">1</span>) <span class="cm">// first always passes</span>
+    require.<span class="fn">Len</span>(t, out2, <span class="nu">0</span>) <span class="cm">// within epsilon → suppressed</span>
+}</pre>
+  </div>
+</div>
+
+<!-- ── EMS epsilon guidance ── -->
+<h2>Recommended epsilon values for EMS signals</h2>
+<p>Based on the Evelyn / Longbow signal characteristics:</p>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:.8rem;font-family:'Consolas',monospace">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border)">
+      <th style="text-align:left;padding:6px 10px;color:var(--muted)">Signal class</th>
+      <th style="text-align:left;padding:6px 10px;color:var(--muted)">Examples</th>
+      <th style="text-align:left;padding:6px 10px;color:var(--muted)">Typical range</th>
+      <th style="text-align:left;padding:6px 10px;color:var(--muted)">Suggested epsilon</th>
+      <th style="text-align:left;padding:6px 10px;color:var(--muted)">Rationale</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;color:var(--text)">AC power</td>
+      <td style="padding:6px 10px;color:var(--muted)">kW, kVAR, kVA, PF</td>
+      <td style="padding:6px 10px;color:var(--accent)">0 – 5000 kW</td>
+      <td style="padding:6px 10px;color:var(--green)">0.5</td>
+      <td style="padding:6px 10px;color:var(--muted)">ADC noise &lt;0.1%, 0.5 kW invisible on billing</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;color:var(--text)">DC voltage</td>
+      <td style="padding:6px 10px;color:var(--muted)">cell_v, pack_v</td>
+      <td style="padding:6px 10px;color:var(--accent)">2.5 – 4.2 V</td>
+      <td style="padding:6px 10px;color:var(--green)">0.005</td>
+      <td style="padding:6px 10px;color:var(--muted)">5 mV resolution typical; &lt;0.15% of range</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;color:var(--text)">DC current</td>
+      <td style="padding:6px 10px;color:var(--muted)">pack_i, cell_i</td>
+      <td style="padding:6px 10px;color:var(--accent)">-500 – 500 A</td>
+      <td style="padding:6px 10px;color:var(--green)">0.5</td>
+      <td style="padding:6px 10px;color:var(--muted)">0.1% of full scale, below current sensor noise</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;color:var(--text)">Temperature</td>
+      <td style="padding:6px 10px;color:var(--muted)">cell_temp, ambient</td>
+      <td style="padding:6px 10px;color:var(--accent)">-20 – 60 °C</td>
+      <td style="padding:6px 10px;color:var(--green)">0.1</td>
+      <td style="padding:6px 10px;color:var(--muted)">Sensor resolution 0.1 °C; 0.1 is 1 LSB</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 10px;color:var(--text)">SOC / SOH</td>
+      <td style="padding:6px 10px;color:var(--muted)">soc, soh</td>
+      <td style="padding:6px 10px;color:var(--accent)">0 – 100 %</td>
+      <td style="padding:6px 10px;color:var(--green)">0.1</td>
+      <td style="padding:6px 10px;color:var(--muted)">0.1% SOC is below any actionable threshold</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn" style="margin-top:12px">
+  <strong>Per-field epsilon would be ideal</strong> — a future extension could accept a
+  <code>float_epsilon</code> map keyed by field name. For an initial upstream PR, a single
+  global epsilon is simpler and far more likely to be merged. We can file a follow-up issue.
+</div>
+
+<!-- ── Implementation plan ── -->
+<h2>Implementation plan</h2>
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num done">1</div>
+    <div class="step-body">
+      <h4>Clone repo &amp; read existing plugin <span class="badge green">done</span></h4>
+      <p>Cloned to <code>~/work/telegraf/telegraf</code> (shallow). Read
+         <code>plugins/processors/dedup/dedup.go</code> — 162 lines, clean structure,
+         straightforward to extend.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num active">2</div>
+    <div class="step-body">
+      <h4>Create feature branch <span class="badge blue">next</span></h4>
+      <p><code>cd ~/work/telegraf/telegraf && git checkout -b feat/dedup-float-epsilon</code></p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num todo">3</div>
+    <div class="step-body">
+      <h4>Edit dedup.go</h4>
+      <p>Add <code>FloatEpsilon float64</code> to struct · add <code>math</code> import ·
+         replace <code>value != f.Value</code> with <code>!d.fieldsEqual(value, f.Value)</code> ·
+         add <code>fieldsEqual()</code> and <code>asFloat64()</code> helpers (~25 lines net new).</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num todo">4</div>
+    <div class="step-body">
+      <h4>Update sample.conf and README.md</h4>
+      <p>Add commented-out <code># float_epsilon = 0.0</code> with doc comment to sample.conf.
+         Add a row to the README config table and a float example to the Example diff section.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num todo">5</div>
+    <div class="step-body">
+      <h4>Write tests (dedup_test.go)</h4>
+      <p>7 test cases listed above. Run with:
+         <code>cd plugins/processors/dedup && go test ./...</code></p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num todo">6</div>
+    <div class="step-body">
+      <h4>Run full linter / CI checks</h4>
+      <p><code>make lint</code> — Telegraf uses golangci-lint. Check they don't require
+         a <code>CHANGELOG.md</code> entry (they do — add one under <code>Unreleased</code>).</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num todo">7</div>
+    <div class="step-body">
+      <h4>Open PR against influxdata/telegraf master</h4>
+      <p>Title: <em>"processors/dedup: add float_epsilon option for approximate float comparison"</em>.
+         Reference any existing issue if one exists. Include before/after row count from EMS test
+         as motivation in the PR description.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num todo">8</div>
+    <div class="step-body">
+      <h4>Validate locally against .46 EMS stack</h4>
+      <p>Build a local telegraf binary (<code>go build ./cmd/telegraf</code>) and drop it into the
+         demo stack in place of the installed binary. Compare row counts with and without
+         <code>float_epsilon = 0.5</code> on the kW/kVAR signals.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Files changed ── -->
+<h2>Files changed summary</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>Modified files (3)</h3>
+    <ul>
+      <li><code>plugins/processors/dedup/dedup.go</code> — struct field, fieldsEqual(), asFloat64(), math import (~+30 lines)</li>
+      <li><code>plugins/processors/dedup/sample.conf</code> — new commented option</li>
+      <li><code>plugins/processors/dedup/README.md</code> — config doc + example</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>New tests (1 file)</h3>
+    <ul>
+      <li><code>plugins/processors/dedup/dedup_test.go</code> — 7 new test functions appended to existing file</li>
+    </ul>
+    <h3 style="margin-top:12px">CHANGELOG</h3>
+    <ul>
+      <li><code>CHANGELOG.md</code> — one line under <code>## Unreleased</code>:
+          <em>Add <code>float_epsilon</code> option to <code>processors.dedup</code></em></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── Edge vs cloud ── -->
+<h2>Relationship to edge-filter architecture</h2>
+<div class="callout info">
+  Once this PR is merged, the edge-filter option becomes even cleaner: a single
+  <code>[[processors.dedup]]</code> block with <code>float_epsilon</code> handles all field types
+  (integer, bool, float) — no execd subprocess, no Python dependency, no per-message process
+  overhead. The Telegraf Edge node in the architecture becomes a ~20-line TOML config.
+</div>
+
+<p>Current workaround stack on .46:</p>
+<pre><span class="cm"># Today — three separate mechanisms for three field types</span>
+[[processors.dedup]]             <span class="cm"># handles int + bool</span>
+  dedup_interval = <span class="st">"60s"</span>
+
+[[processors.execd]]             <span class="cm"># handles float — external Python process</span>
+  command = [<span class="st">"python3"</span>, <span class="st">"/path/float_dedup.py"</span>]</pre>
+
+<p>After PR merged:</p>
+<pre><span class="cm"># One block handles everything</span>
+[[processors.dedup]]
+  dedup_interval  = <span class="st">"60s"</span>
+<span class="add">  float_epsilon   = <span class="nu">0.5</span>       <span class="cm"># covers kW, kVAR, kVA, PF in one line</span></span></pre>
+
+</body>
+</html>

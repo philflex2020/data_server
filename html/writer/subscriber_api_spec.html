@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>subscriber_api — Extended Spec</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+    --green-bg:#0d4429; --yellow-bg:#2d2000; --blue-bg:#0c2d6b44;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:20px; max-width:1200px; margin:0 auto; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:var(--blue-bg); }
+
+  h1 { color:var(--accent); font-size:1.3rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.84rem; margin-bottom:24px; }
+  h2 { color:var(--orange); font-size:.95rem; margin:28px 0 10px;
+       padding-bottom:5px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--accent); font-size:.85rem; margin:16px 0 8px; }
+  h4 { color:var(--text); font-size:.82rem; margin:12px 0 6px; }
+
+  p  { font-size:.83rem; line-height:1.65; margin-bottom:10px; }
+  ul, ol { font-size:.83rem; line-height:1.75; padding-left:20px; margin-bottom:10px; }
+
+  code { background:var(--code-bg); border:1px solid var(--border); border-radius:3px;
+         padding:1px 5px; font-family:'Consolas',monospace; font-size:.8rem; color:var(--orange); }
+  pre  { background:var(--code-bg); border:1px solid var(--border); border-radius:6px;
+         padding:14px 16px; font-family:'Consolas',monospace; font-size:.76rem; line-height:1.6;
+         overflow-x:auto; margin-bottom:14px; }
+
+  .kw  { color:#ff7b72; }
+  .ty  { color:#ffa657; }
+  .cm  { color:#444c57; }
+  .st  { color:#a5d6ff; }
+  .nu  { color:#79c0ff; }
+  .fn  { color:#d2a8ff; }
+  .add { display:block; background:#0d442918; border-left:3px solid var(--green); margin-left:-16px; padding-left:13px; }
+  .del { display:block; background:#2d000018; border-left:3px solid var(--red);   margin-left:-16px; padding-left:13px; }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:16px; }
+  @media(max-width:900px) { .grid2,.grid3 { grid-template-columns:1fr; } }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+  .card h3 { margin-top:0; }
+  .card.green  { border-left:3px solid var(--green); }
+  .card.blue   { border-left:3px solid var(--accent); }
+  .card.yellow { border-left:3px solid var(--yellow); }
+  .card.purple { border-left:3px solid var(--purple); }
+  .card.orange { border-left:3px solid var(--orange); }
+  .card.red    { border-left:3px solid var(--red); }
+
+  .callout { border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:.82rem; line-height:1.6; }
+  .callout.info   { background:var(--blue-bg); border-left:3px solid var(--accent); }
+  .callout.good   { background:#0d442922; border-left:3px solid var(--green); }
+  .callout.warn   { background:#2d200022; border-left:3px solid var(--yellow); }
+
+  /* phase steps */
+  .phase { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+           margin-bottom:12px; overflow:hidden; }
+  .phase-hdr { display:flex; align-items:center; gap:12px; padding:10px 16px;
+               border-bottom:1px solid var(--border); }
+  .phase-num { width:28px; height:28px; border-radius:50%; display:flex; align-items:center;
+               justify-content:center; font-size:.8rem; font-weight:700; flex-shrink:0; }
+  .phase-num.done   { background:var(--green-bg); color:var(--green); border:1px solid var(--green); }
+  .phase-num.active { background:var(--blue-bg); color:var(--accent); border:1px solid var(--accent); }
+  .phase-num.todo   { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .phase-title { font-size:.88rem; font-weight:700; }
+  .phase-body  { padding:12px 16px; }
+
+  /* use case cards */
+  .uc { display:flex; gap:14px; background:var(--surface); border:1px solid var(--border);
+        border-radius:8px; padding:12px 16px; margin-bottom:8px; align-items:flex-start; }
+  .uc-id { font-size:.72rem; font-weight:700; font-family:'Consolas',monospace;
+           color:var(--muted); background:var(--code-bg); border:1px solid var(--border);
+           border-radius:4px; padding:2px 7px; white-space:nowrap; flex-shrink:0; margin-top:2px; }
+  .uc-body h4 { margin:0 0 4px; font-size:.84rem; color:var(--text); }
+  .uc-body p  { margin:0; font-size:.78rem; color:var(--muted); }
+  .uc-backend { font-size:.72rem; font-weight:700; font-family:'Consolas',monospace;
+                margin-left:auto; flex-shrink:0; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+  .uc-backend.influx2 { background:var(--blue-bg); color:var(--accent); border:1px solid var(--accent); }
+  .uc-backend.influx3 { background:#1a0f2e44; color:var(--purple); border:1px solid var(--purple); }
+  .uc-backend.duckdb  { background:#0d442944; color:var(--green); border:1px solid var(--green); }
+  .uc-backend.union   { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow); }
+  .uc-backend.any     { background:#21262d; color:var(--muted); border:1px solid var(--border); }
+
+  /* test matrix */
+  table.matrix { width:100%; border-collapse:collapse; font-size:.78rem;
+                 font-family:'Consolas',monospace; margin-bottom:14px; }
+  table.matrix th { text-align:left; padding:6px 10px; color:var(--muted);
+                    font-weight:700; border-bottom:2px solid var(--border); }
+  table.matrix td { padding:5px 10px; border-bottom:1px solid var(--border); }
+  .t-pass { color:var(--green); font-weight:700; }
+  .t-warn { color:var(--yellow); }
+  .t-todo { color:var(--muted); }
+
+  /* backend comparison */
+  .backends { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
+  @media(max-width:800px){ .backends { grid-template-columns:1fr; } }
+
+  /* SVG arch */
+  .lbl-title  { fill:#c9d1d9; font-size:11px; font-weight:700; font-family:'Consolas',monospace; }
+  .lbl-sub    { fill:#8b949e; font-size:9px;  font-family:'Consolas',monospace; }
+  .lbl-accent { fill:#58a6ff; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .lbl-green  { fill:#3fb950; font-size:10px; font-family:'Consolas',monospace; }
+  .lbl-yellow { fill:#d29922; font-size:10px; font-family:'Consolas',monospace; }
+  .lbl-purple { fill:#bc8cff; font-size:10px; font-family:'Consolas',monospace; }
+  .lbl-orange { fill:#e3b341; font-size:10px; font-family:'Consolas',monospace; }
+  .diagram-wrap { background:var(--surface); border:1px solid var(--border);
+                  border-radius:8px; padding:16px; margin-bottom:16px; overflow-x:auto; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="influx_viewer.html">InfluxDB Viewer</a>
+  <a href="telegraf_demo_control.html">Demo Control</a>
+  <a href="telegraf_dedup_float_plan.html">dedup float_epsilon</a>
+  <a href="subscriber_api_spec.html" class="here">subscriber_api spec</a>
+</div>
+
+<h1>subscriber_api — Extended Architecture Spec</h1>
+<p class="subtitle">
+  Evolving from a 276-line MQTT→WebSocket bridge into a unified data access layer —
+  InfluxDB2 · InfluxDB3 · DuckDB/Parquet · seamless routing · archive · live feed
+</p>
+
+<!-- ── Architecture SVG ── -->
+<h2>Target Architecture</h2>
+<div class="diagram-wrap">
+<svg width="960" height="310" viewBox="0 0 960 310">
+  <defs>
+    <marker id="arr"      markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#30363d"/></marker>
+    <marker id="arrBlue"  markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#58a6ff88"/></marker>
+    <marker id="arrGreen" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3fb95088"/></marker>
+    <marker id="arrPurple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#bc8cff88"/></marker>
+    <marker id="arrOrange" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#e3b34188"/></marker>
+  </defs>
+
+  <!-- Clients (left) -->
+  <rect x="5" y="20" width="130" height="270" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="70" y="38" text-anchor="middle" class="lbl-sub">CLIENTS</text>
+  <rect x="15" y="45" width="110" height="38" rx="4" fill="#0c2d6b44" stroke="#58a6ff" stroke-width="1"/>
+  <text x="70" y="60" text-anchor="middle" class="lbl-accent">Browser / UI</text>
+  <text x="70" y="74" text-anchor="middle" class="lbl-sub">WebSocket</text>
+  <rect x="15" y="95" width="110" height="38" rx="4" fill="#0c2d6b44" stroke="#58a6ff" stroke-width="1"/>
+  <text x="70" y="110" text-anchor="middle" class="lbl-accent">Grafana</text>
+  <text x="70" y="124" text-anchor="middle" class="lbl-sub">HTTP JSON</text>
+  <rect x="15" y="145" width="110" height="38" rx="4" fill="#0c2d6b44" stroke="#58a6ff" stroke-width="1"/>
+  <text x="70" y="160" text-anchor="middle" class="lbl-accent">REST / curl</text>
+  <text x="70" y="174" text-anchor="middle" class="lbl-sub">HTTP JSON</text>
+  <rect x="15" y="195" width="110" height="38" rx="4" fill="#1a0f2e44" stroke="#bc8cff" stroke-width="1"/>
+  <text x="70" y="210" text-anchor="middle" class="lbl-purple">Live dashboard</text>
+  <text x="70" y="224" text-anchor="middle" class="lbl-sub">WS broadcast</text>
+  <rect x="15" y="245" width="110" height="38" rx="4" fill="#0d442944" stroke="#3fb950" stroke-width="1"/>
+  <text x="70" y="260" text-anchor="middle" class="lbl-green">Archive trigger</text>
+  <text x="70" y="274" text-anchor="middle" class="lbl-sub">HTTP POST</text>
+
+  <!-- subscriber_api (centre) -->
+  <rect x="175" y="10" width="290" height="290" rx="8" fill="#161b22" stroke="#e3b341" stroke-width="2"/>
+  <text x="320" y="30" text-anchor="middle" class="lbl-orange" style="font-size:12px;font-weight:700">subscriber_api</text>
+  <text x="320" y="44" text-anchor="middle" class="lbl-sub">source/subscriber_api/subscriber.py</text>
+
+  <!-- WS/HTTP servers -->
+  <rect x="185" y="52" width="125" height="48" rx="4" fill="#0c2d6b44" stroke="#58a6ff" stroke-width="1"/>
+  <text x="247" y="70" text-anchor="middle" class="lbl-accent">WebSocket :8767</text>
+  <text x="247" y="83" text-anchor="middle" class="lbl-sub">query_history · live</text>
+  <rect x="185" y="108" width="125" height="48" rx="4" fill="#0c2d6b44" stroke="#58a6ff" stroke-width="1"/>
+  <text x="247" y="126" text-anchor="middle" class="lbl-accent">HTTP :8768</text>
+  <text x="247" y="139" text-anchor="middle" class="lbl-sub">GET /query · POST /archive</text>
+
+  <!-- Router -->
+  <rect x="185" y="168" width="270" height="60" rx="4" fill="#2d200033" stroke="#d29922" stroke-width="1.5"/>
+  <text x="320" y="186" text-anchor="middle" class="lbl-yellow">Query Router</text>
+  <text x="320" y="200" text-anchor="middle" class="lbl-sub">from_ts ≥ cutoff → InfluxDB  |  to_ts &lt; cutoff → DuckDB</text>
+  <text x="320" y="213" text-anchor="middle" class="lbl-sub">spans boundary → UNION both  |  shadow mode → compare v2/v3</text>
+
+  <!-- Live feed -->
+  <rect x="320" y="52" width="135" height="48" rx="4" fill="#1a0f2e44" stroke="#bc8cff" stroke-width="1"/>
+  <text x="387" y="70" text-anchor="middle" class="lbl-purple">Live Feed</text>
+  <text x="387" y="83" text-anchor="middle" class="lbl-sub">FlashMQ MQTT</text>
+
+  <!-- Archive -->
+  <rect x="320" y="108" width="135" height="48" rx="4" fill="#0d442944" stroke="#3fb950" stroke-width="1"/>
+  <text x="387" y="126" text-anchor="middle" class="lbl-green">Archive Job</text>
+  <text x="387" y="139" text-anchor="middle" class="lbl-sub">extract → parquet → delete</text>
+
+  <!-- Arrow: clients → api -->
+  <line x1="125" y1="64" x2="173" y2="64" stroke="#58a6ff88" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrBlue)"/>
+  <line x1="125" y1="114" x2="173" y2="114" stroke="#58a6ff88" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrBlue)"/>
+  <line x1="125" y1="164" x2="173" y2="164" stroke="#58a6ff88" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrBlue)"/>
+  <line x1="125" y1="214" x2="173" y2="214" stroke="#bc8cff88" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrPurple)"/>
+  <line x1="125" y1="264" x2="173" y2="264" stroke="#3fb95088" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrGreen)"/>
+
+  <!-- Backends (right) -->
+  <!-- InfluxDB2 -->
+  <rect x="510" y="20" width="150" height="80" rx="6" fill="#0c2d6b44" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="585" y="42" text-anchor="middle" class="lbl-title">InfluxDB 2</text>
+  <text x="585" y="57" text-anchor="middle" class="lbl-accent">:8086</text>
+  <text x="585" y="71" text-anchor="middle" class="lbl-sub">Flux / InfluxQL</text>
+  <text x="585" y="85" text-anchor="middle" class="lbl-sub">hot — last 90 days</text>
+
+  <!-- InfluxDB3 -->
+  <rect x="510" y="118" width="150" height="80" rx="6" fill="#1a0f2e44" stroke="#bc8cff" stroke-width="1.5"/>
+  <text x="585" y="140" text-anchor="middle" class="lbl-title">InfluxDB 3</text>
+  <text x="585" y="155" text-anchor="middle" class="lbl-purple">SQL / Arrow Flight</text>
+  <text x="585" y="169" text-anchor="middle" class="lbl-sub">hot — last 90 days</text>
+  <text x="585" y="183" text-anchor="middle" class="lbl-sub">parquet native on S3</text>
+
+  <!-- DuckDB/Parquet -->
+  <rect x="510" y="216" width="150" height="80" rx="6" fill="#0d442944" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="585" y="238" text-anchor="middle" class="lbl-title">DuckDB + Parquet</text>
+  <text x="585" y="253" text-anchor="middle" class="lbl-green">S3 / local</text>
+  <text x="585" y="267" text-anchor="middle" class="lbl-sub">cold — archive</text>
+  <text x="585" y="281" text-anchor="middle" class="lbl-sub">date-partitioned</text>
+
+  <!-- NATS/MQTT -->
+  <rect x="700" y="20" width="140" height="55" rx="6" fill="#1a0f2e44" stroke="#bc8cff" stroke-width="1.5"/>
+  <text x="770" y="42" text-anchor="middle" class="lbl-title">FlashMQ (MQTT)</text>
+  <text x="770" y="56" text-anchor="middle" class="lbl-sub">live telemetry feed</text>
+  <text x="770" y="68" text-anchor="middle" class="lbl-purple">:1883 / :1884</text>
+
+  <!-- Router → backends arrows -->
+  <path d="M455,185 C480,185 490,60 508,60" stroke="#58a6ff88" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrBlue)"/>
+  <path d="M455,190 C485,190 490,158 508,158" stroke="#bc8cff88" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrPurple)"/>
+  <path d="M455,195 C480,195 490,256 508,256" stroke="#3fb95088" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrGreen)"/>
+
+  <!-- Live feed → NATS -->
+  <line x1="455" y1="76" x2="698" y2="46" stroke="#bc8cff88" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrPurple)"/>
+
+  <!-- Archive → DuckDB -->
+  <line x1="455" y1="132" x2="508" y2="256" stroke="#3fb95088" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrGreen)"/>
+
+  <!-- v2/v3 migration note -->
+  <rect x="700" y="110" width="245" height="55" rx="4" fill="#2d200033" stroke="#d29922" stroke-width="1"/>
+  <text x="822" y="130" text-anchor="middle" class="lbl-yellow">Shadow / migration mode</text>
+  <text x="822" y="144" text-anchor="middle" class="lbl-sub">run v2 + v3 in parallel, compare results</text>
+  <text x="822" y="156" text-anchor="middle" class="lbl-sub">flip router flag when validated</text>
+
+  <!-- current badge -->
+  <rect x="700" y="200" width="245" height="90" rx="4" fill="#0d442922" stroke="#3fb950" stroke-width="1"/>
+  <text x="822" y="220" text-anchor="middle" class="lbl-green">Current state (v0)</text>
+  <text x="822" y="235" text-anchor="middle" class="lbl-sub">✓ DuckDB → S3 parquet history</text>
+  <text x="822" y="249" text-anchor="middle" class="lbl-sub">✓ MQTT → WebSocket live</text>
+  <text x="822" y="263" text-anchor="middle" class="lbl-sub">✗ InfluxDB backend</text>
+  <text x="822" y="277" text-anchor="middle" class="lbl-sub">✗ HTTP endpoint  ✗ archive</text>
+</svg>
+</div>
+
+<!-- ── Performance expectations ── -->
+<h2>Performance Expectations</h2>
+
+<div class="callout warn" style="margin-bottom:1rem">
+  <strong>Key distinction:</strong> subscriber_api is a <em>query and live-dashboard</em> service —
+  it is never on the high-rate ingest path. The 81k msg/s write load goes
+  FlashMQ → Telegraf → InfluxDB directly. subscriber_api only touches FlashMQ
+  for live-dashboard subscriptions, which are scoped to specific units/topics.
+</div>
+
+<h3>Live Feed (MQTT → WebSocket broadcast)</h3>
+<table class="matrix">
+  <thead>
+    <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Raw broker ingest rate</td><td class="num">~81,420 msg/s</td><td>Full 46-unit Evelyn — never seen by subscriber_api</td></tr>
+    <tr><td>After edge filter A+B</td><td class="num">~59,000 msg/s</td><td>~27% fewer msgs reaching FlashMQ aws-sim</td></tr>
+    <tr><td><strong>subscriber_api subscription rate</strong></td><td class="num green"><strong>≤ 200 msg/s</strong></td><td>Per-unit or per-dashboard topic filter — e.g. <code>A/unit/3/#</code></td></tr>
+    <tr><td>Concurrent live-feed WS clients</td><td class="num">≤ 10</td><td>Operators / engineers watching live dashboards</td></tr>
+    <tr><td>Fan-out per message</td><td class="num">1 → ≤ 10</td><td>paho callback → asyncio broadcast to all connected WS clients</td></tr>
+    <tr><td>Acceptable live-feed latency</td><td class="num">≤ 200ms</td><td>MQTT receive → WS client receive</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn" style="margin-top:.75rem">
+  <strong>paho-mqtt performance note:</strong> paho-mqtt (Python) handles ~5,000–10,000 msg/s
+  comfortably in a background thread. At full broker rate (81k msg/s) it would
+  saturate and queue-drop. This is safe because subscriber_api <em>must never subscribe
+  to a wildcard that captures the full broker rate</em>. Topic filters in config are
+  mandatory — a bare <code>#</code> subscription is disallowed. If a use case genuinely
+  requires high-rate live streaming, that path should bypass subscriber_api and
+  connect to FlashMQ directly.
+</div>
+
+<h3>History Queries (InfluxDB2 / DuckDB)</h3>
+<table class="matrix">
+  <thead>
+    <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Concurrent history queries</td><td class="num">≤ 5</td><td>Typical: 1–2 (Grafana auto-refresh + one UI user)</td></tr>
+    <tr><td>Peak burst</td><td class="num">≤ 20</td><td>E.g. morning team review; DuckDB runs in ThreadPoolExecutor</td></tr>
+    <tr><td>Query time range — typical</td><td class="num">1 h – 7 days</td><td>Grafana dashboard, recent trend view</td></tr>
+    <tr><td>Query time range — max</td><td class="num">12 months</td><td>Engineering analysis / warranty; served from DuckDB cold path</td></tr>
+    <tr><td>Row limit per query</td><td class="num">50,000</td><td>Default 2,000 for UI; override to 50k for data export</td></tr>
+    <tr><td>Hot query latency target (InfluxDB2)</td><td class="num">≤ 500ms</td><td>Last 24h, single site, ≤ 2,000 rows</td></tr>
+    <tr><td>Cold query latency target (DuckDB)</td><td class="num">≤ 3s</td><td>30-day range, single site, S3 parquet</td></tr>
+    <tr><td>Union query latency target</td><td class="num">≤ 4s</td><td>Spans hot/cold boundary; both backends queried in parallel</td></tr>
+    <tr><td>Grafana auto-refresh interval</td><td class="num">30s – 5 min</td><td>Do not set below 30s — InfluxDB cardinality at 79,872 series</td></tr>
+  </tbody>
+</table>
+
+<h3>Load Summary</h3>
+<div class="grid2" style="margin-top:.75rem">
+  <div class="card green">
+    <h3>Within design envelope</h3>
+    <ul style="font-size:.85rem">
+      <li>Live feed: 1–3 operators watching unit-scoped dashboards</li>
+      <li>History: Grafana + 1–2 UI users, 30s+ refresh</li>
+      <li>Occasional engineering deep-dives (cold DuckDB, 1–2 concurrent)</li>
+      <li>Daily archive job (background, throttled)</li>
+    </ul>
+  </div>
+  <div class="card" style="border-color:var(--yellow)">
+    <h3 style="color:var(--yellow)">Out of scope — handle separately</h3>
+    <ul style="font-size:.85rem">
+      <li>High-rate live streaming of full broker traffic (≥ 1k msg/s per client)</li>
+      <li>Bulk data export (&gt; 50k rows) — use Athena direct / archive job output; subscriber_api row limit is 50k</li>
+      <li>Real-time alerting / threshold evaluation — use Telegraf processors</li>
+      <li>Multi-tenant isolation / auth — add API gateway in front if needed</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── Backend interface ── -->
+<h2>Backend Interface Contract</h2>
+<p>Every backend implements the same Python protocol. The router calls one function signature — callers never know which backend served the query.</p>
+<pre><span class="kw">class</span> <span class="ty">QueryBackend</span>(Protocol):
+    <span class="kw">def</span> <span class="fn">query</span>(
+        self,
+        site:     <span class="ty">str</span>,
+        instance: <span class="ty">str</span>,         <span class="cm"># unit/device within the site, e.g. "unit-3"</span>
+        from_ts:  <span class="ty">float</span>,        <span class="cm"># unix seconds UTC</span>
+        to_ts:    <span class="ty">float</span>,
+        limit:    <span class="ty">int</span>,
+        fields:   <span class="ty">list</span>[<span class="ty">str</span>] | <span class="nu">None</span> = <span class="nu">None</span>,   <span class="cm"># None = all</span>
+    ) -> tuple[<span class="ty">list</span>[<span class="ty">str</span>], <span class="ty">list</span>[<span class="ty">tuple</span>]]:
+        <span class="cm">"""Returns (column_names, rows). Raises on error."""</span>
+        ...
+
+    <span class="kw">def</span> <span class="fn">health</span>(self) -> <span class="ty">dict</span>:
+        <span class="cm">"""Returns {ok: bool, latency_ms: int, detail: str}"""</span>
+        ...
+
+<span class="cm"># Implemented by:</span>
+<span class="cm">#   InfluxDB2Backend   — Flux or InfluxQL over HTTP</span>
+<span class="cm">#   InfluxDB3Backend   — SQL over HTTP or Arrow Flight</span>
+<span class="cm">#   DuckDBBackend      — read_parquet() from S3 or local path  (dev / fractal-phil)</span>
+<span class="cm">#   AthenaBackend      — boto3 start_query_execution + poll     (AWS production)</span></pre>
+
+<!-- ── Router logic ── -->
+<h2>Query Router</h2>
+<pre><span class="kw">class</span> <span class="ty">QueryRouter</span>:
+    hot_backend:    <span class="ty">QueryBackend</span>   <span class="cm"># InfluxDB2 or InfluxDB3 (config-driven)</span>
+    cold_backend:   <span class="ty">QueryBackend</span>   <span class="cm"># DuckDB (dev/fractal-phil) or Athena (AWS prod)</span>
+    hot_window_days: <span class="ty">int</span>           <span class="cm"># default 90</span>
+    shadow_mode:    <span class="ty">bool</span>           <span class="cm"># run both hot backends, log diff</span>
+
+    <span class="kw">def</span> <span class="fn">query</span>(self, site, instance, from_ts, to_ts, limit, fields=<span class="nu">None</span>):
+        cutoff = time.time() - self.hot_window_days * <span class="nu">86400</span>
+
+        <span class="kw">if</span>   from_ts >= cutoff:               <span class="cm"># entirely hot</span>
+            <span class="kw">return</span> self.hot_backend.<span class="fn">query</span>(site, instance, ...)
+        <span class="kw">elif</span> to_ts   <  cutoff:               <span class="cm"># entirely cold</span>
+            <span class="kw">return</span> self.cold_backend.<span class="fn">query</span>(site, instance, ...)
+        <span class="kw">else</span>:                                  <span class="cm"># spans boundary — union</span>
+            cold = self.cold_backend.<span class="fn">query</span>(site, instance, ..., to_ts=cutoff)
+            hot  = self.hot_backend.<span class="fn">query</span>(site, instance, ..., from_ts=cutoff)
+            <span class="kw">return</span> <span class="fn">_merge</span>(cold, hot)           <span class="cm"># dedup on timestamp</span></pre>
+
+<div class="callout good">
+  <strong>Shadow mode</strong> — set <code>shadow: true</code> in config to run both InfluxDB2 and InfluxDB3 in parallel during migration.
+  Results are compared, discrepancies logged, but only the primary backend's result is returned to the client.
+  Flip <code>hot_backend: influxdb3</code> when the diff log is clean.
+</div>
+
+<!-- ── Wire protocol ── -->
+<h2>Wire Protocol</h2>
+<div class="grid2">
+  <div class="card blue">
+    <h3>WebSocket (existing, unchanged)</h3>
+    <pre style="font-size:.72rem"><span class="cm">// Client → Server</span>
+{
+  <span class="st">"type"</span>:       <span class="st">"query_history"</span>,
+  <span class="st">"query_id"</span>:   <span class="st">"1"</span>,
+  <span class="st">"site"</span>:       <span class="st">"evelyn"</span>,
+  <span class="st">"instance"</span>:   <span class="st">"unit-3"</span>,
+  <span class="st">"from_ts"</span>:    <span class="nu">1234567890.0</span>,
+  <span class="st">"to_ts"</span>:      <span class="nu">1234567999.0</span>,
+  <span class="st">"limit"</span>:      <span class="nu">2000</span>,
+  <span class="st">"fields"</span>:     [<span class="st">"kw"</span>, <span class="st">"kvar"</span>]   <span class="cm">// optional</span>
+}
+
+<span class="cm">// Server → Client</span>
+{
+  <span class="st">"type"</span>:       <span class="st">"history"</span>,
+  <span class="st">"query_id"</span>:   <span class="st">"1"</span>,
+  <span class="st">"columns"</span>:    [<span class="st">"timestamp"</span>, <span class="st">"kw"</span>, <span class="st">"kvar"</span>],
+  <span class="st">"rows"</span>:       [[<span class="nu">1234567890</span>, <span class="nu">1.5</span>, <span class="nu">0.3</span>], ...],
+  <span class="st">"total"</span>:      <span class="nu">142</span>,
+  <span class="st">"elapsed_ms"</span>: <span class="nu">38</span>,
+  <span class="st">"backend"</span>:    <span class="st">"influxdb2"</span>   <span class="cm">// new: which backend served it</span>
+}</pre>
+  </div>
+  <div class="card blue">
+    <h3>HTTP (new)</h3>
+    <pre style="font-size:.72rem"><span class="cm"># History query</span>
+GET /query?site=evelyn&instance=unit-3&from_ts=...&to_ts=...&limit=2000
+→ {"columns":[...],"rows":[...],"total":N,"elapsed_ms":N,"backend":"..."}
+
+<span class="cm"># Health check</span>
+GET /health
+→ {
+    "ok": true,
+    "hot_backend":  {"name":"influxdb2","ok":true,"latency_ms":4},
+    "cold_backend": {"name":"duckdb",   "ok":true,"latency_ms":1},
+    "hot_window_days": 90
+  }
+
+<span class="cm"># Archive trigger (idempotent)</span>
+POST /archive
+{"bucket":"ems-data","before":"2025-06-01","dry_run":true}
+→ {
+    "rows_found":   14200000,
+    "files_written": 31,
+    "bytes_written": 420000000,
+    "deleted":       false   <span class="cm">// dry_run=true</span>
+  }
+
+<span class="cm"># Live feed status</span>
+GET /live/status
+→ {"connected":true,"subject":"batteries.>","clients":3}</pre>
+  </div>
+</div>
+
+<!-- ── Use cases ── -->
+<h2>Use Cases</h2>
+
+<div class="uc">
+  <span class="uc-id">UC-01</span>
+  <div class="uc-body">
+    <h4>Real-time dashboard — last 60 seconds</h4>
+    <p>UI polls every 1s or holds WebSocket open for broadcast. Latency must be &lt;100ms.</p>
+  </div>
+  <span class="uc-backend influx2">InfluxDB2/3</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-02</span>
+  <div class="uc-body">
+    <h4>Trending — last 24 hours across one site</h4>
+    <p>Chart page loads, queries 24h of kW/kVAR/SoC. Expects &lt;2s response.</p>
+  </div>
+  <span class="uc-backend influx2">InfluxDB2/3</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-03</span>
+  <div class="uc-body">
+    <h4>Monthly report — 30-day range within hot window</h4>
+    <p>Ops team pulls a month of data for a customer report. Still within 90-day hot window.</p>
+  </div>
+  <span class="uc-backend influx2">InfluxDB2/3</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-04</span>
+  <div class="uc-body">
+    <h4>Historical analysis — data older than 90 days</h4>
+    <p>Engineering queries 6 months ago for a warranty claim or performance regression. Data in parquet archive.</p>
+  </div>
+  <span class="uc-backend duckdb">DuckDB</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-05</span>
+  <div class="uc-body">
+    <h4>Cross-boundary query — spans hot/cold cutoff</h4>
+    <p>Query from 120 days ago to now. Router splits at cutoff, runs both backends, merges on timestamp, returns unified result.</p>
+  </div>
+  <span class="uc-backend union">UNION</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-06</span>
+  <div class="uc-body">
+    <h4>Grafana data source — arbitrary time picker</h4>
+    <p>Grafana sends HTTP GET with whatever time range the user selects. Router handles transparently — Grafana doesn't know about backends.</p>
+  </div>
+  <span class="uc-backend any">any</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-07</span>
+  <div class="uc-body">
+    <h4>InfluxDB2 → InfluxDB3 migration validation</h4>
+    <p>Shadow mode: both backends queried, results diffed. Discrepancies logged with site/time/field detail. Flip hot_backend when diff rate &lt; threshold.</p>
+  </div>
+  <span class="uc-backend influx3">shadow v2/v3</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-08</span>
+  <div class="uc-body">
+    <h4>Archive old data from InfluxDB — reduce EFS bill</h4>
+    <p>POST /archive extracts data older than N days to date-partitioned parquet, verifies row counts, then calls InfluxDB delete API. Dry-run first.</p>
+  </div>
+  <span class="uc-backend duckdb">archive</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-09</span>
+  <div class="uc-body">
+    <h4>Live telemetry broadcast — FlashMQ (MQTT)</h4>
+    <p>Edge sends MQTT messages to FlashMQ; subscriber_api subscribes via paho-mqtt and broadcasts to all connected WebSocket clients. Same FlashMQ broker used for both edge data ingest and live-feed subscription.</p>
+  </div>
+  <span class="uc-backend any">live feed</span>
+</div>
+
+<div class="uc">
+  <span class="uc-id">UC-10</span>
+  <div class="uc-body">
+    <h4>Per-client config audit — join with client_db</h4>
+    <p>DuckDB can attach the SQLite client_db and join config data with telemetry. E.g. "which clients running old UI version have high kW variance?"</p>
+  </div>
+  <span class="uc-backend duckdb">DuckDB+SQLite</span>
+</div>
+
+<!-- ── Config ── -->
+<h2>Configuration</h2>
+<pre><span class="cm"># config.yaml</span>
+server:
+  host: <span class="st">"0.0.0.0"</span>
+  ws_port:   <span class="nu">8767</span>
+  http_port: <span class="nu">8768</span>
+
+router:
+  hot_window_days: <span class="nu">90</span>
+  hot_backend:  <span class="st">"influxdb2"</span>   <span class="cm"># influxdb2 | influxdb3</span>
+  cold_backend: <span class="st">"duckdb"</span>      <span class="cm"># duckdb (dev/fractal-phil) | athena (AWS prod)</span>
+  shadow_mode:  <span class="nu">false</span>         <span class="cm"># true during v2→v3 migration</span>
+
+influxdb2:
+  url:    <span class="st">"http://localhost:8086"</span>
+  token:  <span class="st">"ems-token-secret"</span>
+  org:    <span class="st">"ems-org"</span>
+  bucket: <span class="st">"ems-data"</span>
+
+influxdb3:
+  url:    <span class="st">"http://localhost:8087"</span>
+  token:  <span class="st">"ems-token-v3"</span>
+  database: <span class="st">"ems"</span>
+
+parquet:
+  path: <span class="st">"s3://ems-archive/parquet"</span>   <span class="cm"># or local /data/parquet-archive</span>
+  <span class="cm"># path layout: {bucket}/parquet/{site}/{instance}/{yyyy}/{mm}/{dd}/data.parquet</span>
+  s3:
+    region:     <span class="st">"us-east-1"</span>
+    access_key: <span class="st">"..."</span>
+    secret_key: <span class="st">"..."</span>
+
+athena:
+  database:      <span class="st">"ems_archive"</span>
+  workgroup:     <span class="st">"primary"</span>
+  output_bucket: <span class="st">"s3://ems-athena-results/"</span>
+  region:        <span class="st">"us-east-1"</span>
+  poll_interval_ms: <span class="nu">500</span>          <span class="cm"># boto3 poll cadence while query runs</span>
+  timeout_s:        <span class="nu">30</span>           <span class="cm"># fail if Athena hasn't finished in 30s</span>
+
+live:
+  backend: <span class="st">"mqtt"</span>
+  mqtt:
+    url:    <span class="st">"tcp://localhost:1883"</span>        <span class="cm"># :1884 for aws-sim FlashMQ</span>
+    topics: [<span class="st">"unit/#"</span>]                   <span class="cm"># A/unit/# B/unit/# etc for multi-sim</span></pre>
+
+<!-- ── Implementation phases ── -->
+<h2>Implementation Phases</h2>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num done">0</div>
+    <div class="phase-title" style="color:var(--green)">Current state — DuckDB/S3 + MQTT live feed
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">276 lines · working</span></div>
+  </div>
+  <div class="phase-body">
+    <p style="color:var(--muted);font-size:.8rem">✓ WebSocket server · ✓ DuckDB → S3 parquet history · ✓ MQTT → WS broadcast · ✓ Hour-partition query optimisation</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num active">1</div>
+    <div class="phase-title" style="color:var(--accent)">Add InfluxDB2 backend + router
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+150 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li>Define <code>QueryBackend</code> protocol, refactor existing DuckDB path to implement it</li>
+      <li>Implement <code>InfluxDB2Backend</code> — Flux query over HTTP, returns same <code>(cols, rows)</code> tuple</li>
+      <li>Implement <code>QueryRouter</code> — hot/cold/union dispatch based on <code>hot_window_days</code></li>
+      <li>Add <code>backend</code> field to WebSocket response</li>
+      <li><strong>Tests:</strong> mock both backends, assert router calls correct one for 6 time-range scenarios including boundary and union</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num todo">2</div>
+    <div class="phase-title">Add HTTP endpoint
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+80 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li><code>GET /query</code> — same params as WebSocket, JSON response</li>
+      <li><code>GET /health</code> — both backends + live feed status</li>
+      <li>Run alongside WebSocket server in same asyncio event loop (aiohttp or plain asyncio HTTP)</li>
+      <li><strong>Tests:</strong> curl /query with known data, assert columns + row count. curl /health, assert both backends report ok.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num todo">3</div>
+    <div class="phase-title">Archive job — POST /archive
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+150 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li>Extract from InfluxDB2 in monthly chunks → date-partitioned parquet via pyarrow</li>
+      <li>Verify row count parquet == InfluxDB before deleting</li>
+      <li>Call InfluxDB2 delete API only after verification passes</li>
+      <li><code>dry_run=true</code> default — must explicitly pass <code>dry_run=false</code> to delete</li>
+      <li><strong>Tests:</strong> dry run against fractal-phil InfluxDB, assert files written, assert nothing deleted. Then full run on a small test bucket, assert row counts match pre/post.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num todo">4</div>
+    <div class="phase-title">InfluxDB3 backend + shadow mode
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+100 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li>Implement <code>InfluxDB3Backend</code> — SQL over HTTP or Arrow Flight</li>
+      <li>Shadow mode: query both v2 + v3, diff result sets, log discrepancies with site/time/field</li>
+      <li>Config flag <code>hot_backend: influxdb3</code> to cut over with no code change</li>
+      <li><strong>Tests:</strong> run shadow mode against a dual-write test bucket (Telegraf writing to both v2 and v3 simultaneously), assert diff rate &lt;0.1% after 24h</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num todo">5</div>
+    <div class="phase-title">FlashMQ live feed
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+50 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li>Implement <code>MQTTLiveFeed</code> using paho-mqtt — subscribes to FlashMQ, broadcasts to WS clients</li>
+      <li>Config-driven topic filter — <code>unit/#</code> or <code>A/unit/#</code> etc for multi-sim namespaces</li>
+      <li>Auto-reconnect on broker restart — paho loop_start() handles this</li>
+      <li><strong>Tests:</strong> run local FlashMQ (or mosquitto), publish 100 test messages, assert all 100 broadcast to connected WS client within 50ms</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-hdr">
+    <div class="phase-num todo">6</div>
+    <div class="phase-title">Athena cold backend — AWS production
+      &nbsp;<span style="font-size:.75rem;color:var(--muted);font-weight:400">~+80 lines</span></div>
+  </div>
+  <div class="phase-body">
+    <ul style="font-size:.8rem;color:var(--muted)">
+      <li>Implement <code>AthenaBackend</code> — boto3 <code>start_query_execution</code> → poll → <code>get_query_results</code></li>
+      <li>Same SQL as DuckDB; plain path layout <code>{site}/{instance}/{yyyy}/{mm}/{dd}/</code> — no Hive key=value paths needed</li>
+      <li>Config flag <code>cold_backend: athena</code> to switch — zero caller change; DuckDB tests validate SQL first</li>
+      <li>Athena table uses <strong>partition projection</strong> (table property) — no Glue crawler, no <code>MSCK REPAIR TABLE</code>; Athena derives partitions from the path template at query time</li>
+      <li>Query result pagination: Athena returns max 1,000 rows per page; backend loops <code>get_query_results</code> with <code>NextToken</code> until <code>limit</code> reached</li>
+      <li><strong>Local simulation:</strong> DuckDB with identical SQL and partition layout — Phase 0 DuckDB tests are the Athena integration test proxy. If DuckDB passes, Athena will work.</li>
+      <li><strong>Tests:</strong> unit test with mock boto3 (moto library); integration test against real Athena on a small date-range once archive is in S3</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout good" style="margin-bottom:1.5rem">
+  <strong>DuckDB as local Athena simulator:</strong> plain path layout and SQL dialect are
+  identical between DuckDB and Athena. Write the archive files once; DuckDB queries them
+  locally during development and CI, Athena queries the same files in production.
+  Switch with one config line — no SQL changes, no file changes.
+  <br><br>
+  <strong>Path layout:</strong> <code>s3://ems-archive/parquet/{site}/{instance}/{yyyy}/{mm}/{dd}/data.parquet</code>
+  — simple, human-readable, no <code>key=value</code> segments required.
+  DuckDB uses a glob (<code>evelyn/unit-3/2025/06/**</code>); Athena uses partition projection with a
+  <code>storage.location.template</code> pointing at the same path pattern. No Glue crawler needed.
+  The <code>instance</code> level lets you query a single unit without scanning the whole site.
+</div>
+
+<h3>DuckDB vs Athena — cold backend comparison</h3>
+<table class="matrix" style="margin-bottom:1.5rem">
+  <thead>
+    <tr><th>Property</th><th>DuckDB (local / fractal-phil)</th><th>Athena (AWS production)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Query latency (30-day range, 1 site)</td><td class="num">≤ 3s</td><td class="num">5–15s</td></tr>
+    <tr><td>Cost per query</td><td class="num green">free</td><td class="num">~$0.005 (1 GB scanned × $5/TB)</td></tr>
+    <tr><td>Concurrent queries</td><td>limited by EC2 RAM</td><td>managed, scales automatically</td></tr>
+    <tr><td>External tool access</td><td>only via subscriber_api</td><td>Grafana, QuickSight, console SQL</td></tr>
+    <tr><td>SQL dialect</td><td>DuckDB SQL</td><td>Presto/Trino SQL — nearly identical</td></tr>
+    <tr><td>Partition pruning</td><td>✓ glob pattern on path</td><td>✓ partition projection (no Glue crawler)</td></tr>
+    <tr><td>Setup required</td><td>none — already running</td><td>Athena workgroup + one-time table DDL</td></tr>
+    <tr><td>When to use</td><td>dev, CI, fractal-phil queries</td><td>production AWS archive queries</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Test matrix ── -->
+<h2>Test Matrix</h2>
+<table class="matrix">
+  <thead>
+    <tr>
+      <th>Test</th><th>Phase</th><th>Method</th><th>Pass criteria</th><th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>DuckDB history query — S3 parquet</td><td>0</td><td>existing WS client</td><td>returns rows, correct columns</td><td class="t-pass">✓ passing</td></tr>
+    <tr><td>MQTT → WS broadcast latency</td><td>0</td><td>publish 1 msg, measure WS receive</td><td>&lt;50ms</td><td class="t-pass">✓ passing</td></tr>
+    <tr><td>Router: hot range → InfluxDB only</td><td>1</td><td>unit test, mock backends</td><td>cold backend never called</td><td class="t-todo">todo</td></tr>
+    <tr><td>Router: cold range → DuckDB only</td><td>1</td><td>unit test, mock backends</td><td>hot backend never called</td><td class="t-todo">todo</td></tr>
+    <tr><td>Router: union — result ordered by ts</td><td>1</td><td>unit test, mock backends</td><td>no duplicates at boundary, sorted</td><td class="t-todo">todo</td></tr>
+    <tr><td>InfluxDB2 backend — real query</td><td>1</td><td>integration vs fractal-phil :8086</td><td>row count matches Flux reference query</td><td class="t-todo">todo</td></tr>
+    <tr><td>HTTP GET /query — same result as WS</td><td>2</td><td>curl vs WS client, same params</td><td>identical columns + rows</td><td class="t-todo">todo</td></tr>
+    <tr><td>HTTP GET /health — both backends ok</td><td>2</td><td>curl</td><td>ok=true, latency_ms &lt;200</td><td class="t-todo">todo</td></tr>
+    <tr><td>Archive dry run — no data deleted</td><td>3</td><td>POST /archive dry_run=true</td><td>parquet files written, InfluxDB unchanged</td><td class="t-todo">todo</td></tr>
+    <tr><td>Archive row count integrity</td><td>3</td><td>archive + DuckDB count vs InfluxDB count</td><td>counts match within 0.01%</td><td class="t-todo">todo</td></tr>
+    <tr><td>Shadow mode diff rate</td><td>4</td><td>24h shadow on dual-write bucket</td><td>diff rate &lt;0.1%</td><td class="t-todo">todo</td></tr>
+    <tr><td>InfluxDB3 cutover — zero client impact</td><td>4</td><td>flip config, run existing test suite</td><td>all existing tests pass unchanged</td><td class="t-todo">todo</td></tr>
+    <tr><td>FlashMQ live broadcast — 100 messages</td><td>5</td><td>local FlashMQ, WS client</td><td>100/100 received, &lt;50ms each</td><td class="t-todo">todo</td></tr>
+    <tr><td>Live feed reconnect after broker restart</td><td>5</td><td>kill FlashMQ, restart, publish</td><td>reconnects within 10s, no missed msgs after reconnect</td><td class="t-todo">todo</td></tr>
+    <tr><td>Athena backend — mock boto3 (moto)</td><td>6</td><td>unit test, moto mock_athena</td><td>SQL correct, pagination loops until limit, timeout raises</td><td class="t-todo">todo</td></tr>
+    <tr><td>DuckDB ↔ Athena SQL parity</td><td>6</td><td>run same query on both, compare rows</td><td>identical result set (row count + values match)</td><td class="t-todo">todo</td></tr>
+    <tr><td>cold_backend switchover — no client change</td><td>6</td><td>flip config duckdb→athena, run existing cold tests</td><td>all Phase 0/1 cold-path tests pass unchanged</td><td class="t-todo">todo</td></tr>
+  </tbody>
+</table>
+
+<!-- ── File layout ── -->
+<h2>File Layout</h2>
+<pre>source/subscriber_api/
+  subscriber.py          <span class="cm"># main entry point — router, WS/HTTP servers, live feed</span>
+  backends/
+    __init__.py
+    base.py              <span class="cm"># QueryBackend protocol definition</span>
+    influxdb2.py         <span class="cm"># InfluxDB2Backend (Flux/InfluxQL)</span>
+    influxdb3.py         <span class="cm"># InfluxDB3Backend (SQL/Flight)</span>
+    duckdb_backend.py    <span class="cm"># DuckDBBackend (parquet, S3 or local) — local Athena simulator</span>
+    athena_backend.py    <span class="cm"># AthenaBackend (boto3, AWS production)</span>
+  router.py              <span class="cm"># QueryRouter — hot/cold/union dispatch</span>
+  archive.py             <span class="cm"># archive job — extract → parquet → delete</span>
+  live/
+    mqtt_feed.py         <span class="cm"># FlashMQ subscriber (paho-mqtt) → WS broadcast</span>
+  tests/
+    test_router.py       <span class="cm"># unit tests — mock backends</span>
+    test_backends.py     <span class="cm"># integration tests — real InfluxDB/DuckDB</span>
+    test_archive.py      <span class="cm"># archive dry-run + integrity tests</span>
+    test_http.py         <span class="cm"># HTTP endpoint tests</span>
+    test_live.py         <span class="cm"># live feed broadcast tests</span>
+  config.yaml            <span class="cm"># fractal-phil production config</span>
+  config.aws.yaml        <span class="cm"># AWS config</span>
+  config.test.yaml       <span class="cm"># local test config (points at test InfluxDB)</span></pre>
+
+<div class="callout warn">
+  <strong>Rule:</strong> no phase is considered done until its tests pass against a real backend instance
+  (not mocks alone). Integration tests run against fractal-phil or a local Docker InfluxDB.
+  Each phase adds tests before adding code — test first, then implement.
+</div>
+
+</body>
+</html>

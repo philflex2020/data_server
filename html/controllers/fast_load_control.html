@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fast Load Controller — Heltec LoRa32 I2S DMA</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --orange:#e3b341;
+    --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; max-width:860px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .btn-row { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+  .btn { display:inline-block; padding:8px 16px; border-radius:6px; font-size:.85rem;
+         font-weight:600; text-decoration:none; border:none; cursor:pointer; }
+  .btn-primary { background:#1f6feb; color:#fff; }
+  .btn-primary:hover { background:#388bfd; }
+  .btn-dl { background:var(--surface); color:var(--accent);
+             border:1px solid var(--accent); }
+  .btn-dl:hover { background:#0c2d6b44; }
+
+  table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+  th { text-align:left; color:var(--muted); font-weight:600; padding:6px 10px;
+       border-bottom:1px solid var(--border); }
+  td { padding:6px 10px; border-bottom:1px solid #21262d; }
+  td:first-child { color:var(--accent); font-family:monospace; white-space:nowrap; }
+
+  .tag { display:inline-block; font-size:.7rem; padding:1px 6px; border-radius:3px;
+         border:1px solid var(--border); color:var(--muted); margin-right:4px; }
+  .tag-ws  { border-color:var(--green); color:var(--green); }
+  .tag-fast { border-color:var(--yellow); color:var(--yellow); }
+
+  pre { background:var(--code-bg); padding:12px; border-radius:6px; font-size:.78rem;
+        overflow-x:auto; margin-top:8px; }
+
+  .diff-table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+  .diff-table th { text-align:left; color:var(--muted); font-weight:600; padding:6px 10px;
+                   border-bottom:1px solid var(--border); }
+  .diff-table td { padding:6px 10px; border-bottom:1px solid #21262d; vertical-align:top; }
+  .diff-table td:first-child { color:var(--muted); white-space:nowrap; width:160px; }
+  .old { color:var(--muted); }
+  .new { color:var(--green); font-weight:600; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Controller Projects</a>
+  <a href="load_controller.html">Load Controller</a>
+</div>
+
+<h1>Fast Load Controller — Heltec LoRa32</h1>
+<p class="subtitle">I2S DMA DAC variant — 5000 Hz output, 200 µs ramp steps, smooth waveform profiles</p>
+<span class="tag tag-ws">ws :81</span>
+<span class="tag tag-fast">5 kHz DMA</span>
+<span class="tag">Heltec LoRa32 V2</span>
+<span class="tag">LILYGO T-Display</span>
+<span class="tag">ESP32-S3 (PWM)</span>
+
+<div class="btn-row">
+  <a class="btn btn-primary" href="fast_load_ctrl.html">Open Sequence Control</a>
+  <a class="btn btn-dl" href="arduino/fast_load_control/fast_load_control.ino" download>Download fast_load_control.ino</a>
+</div>
+
+<h2>Overview</h2>
+<p style="font-size:.85rem;line-height:1.6;color:var(--muted)">
+  Drop-in replacement for <a href="load_controller.html" style="color:var(--accent)">load_controller_lora32</a>
+  with a high-speed I2S DMA DAC output path. On V2 (ESP32) and LILYGO T-Display, the ramp
+  interpolation runs inside a dedicated Core 0 task at 5000 Hz — giving 200 µs steps instead
+  of the original ~10 ms. All WebSocket commands, profile format, OTA, OLED/TFT display, and
+  CAN bus code are identical to the original.
+</p>
+
+<h2>What Changed vs load_controller_lora32</h2>
+<table class="diff-table">
+  <tr><th>Feature</th><th>load_controller_lora32</th><th>fast_load_control</th></tr>
+  <tr>
+    <td>DAC output method</td>
+    <td class="old">dacWrite() — ~100 Hz / 10 ms steps</td>
+    <td class="new">I2S DMA at 5000 Hz — 200 µs steps</td>
+  </tr>
+  <tr>
+    <td>Ramp execution</td>
+    <td class="old">loop() — delay(10)</td>
+    <td class="new">dacTask() on Core 0 — per-sample interpolation</td>
+  </tr>
+  <tr>
+    <td>Main loop delay</td>
+    <td class="old">delay(10)</td>
+    <td class="new">delay(1) — WiFi/WS unaffected</td>
+  </tr>
+  <tr>
+    <td>V3 / ESP32-S3</td>
+    <td class="old">PWM_FREQ default</td>
+    <td class="new">PWM_FREQ raised to SAMPLE_RATE (5000 Hz)</td>
+  </tr>
+  <tr>
+    <td>External parts needed</td>
+    <td class="old">None (V2) / RC filter (V3 PWM)</td>
+    <td class="new">None (V2 I2S) / RC filter still needed (V3 PWM)</td>
+  </tr>
+  <tr>
+    <td>Sequence persistence</td>
+    <td class="old">Lost on restart</td>
+    <td class="new">Saved to NVS — restored automatically on boot</td>
+  </tr>
+</table>
+
+<h2>Hardware (V2 / T-Display)</h2>
+<table>
+  <tr><th>Pin</th><th>Function</th><th>Notes</th></tr>
+  <tr><td>GPIO25 / DAC1</td><td>Voltage reference output</td><td>I2S RIGHT channel → 8-bit DAC</td></tr>
+  <tr><td>GPIO26 / DAC2</td><td>Current reference output</td><td>I2S LEFT channel → 8-bit DAC</td></tr>
+  <tr><td>GPIO36 / ADC1</td><td>Analog feedback input</td><td>WiFi-safe ADC1 channel</td></tr>
+  <tr><td>OLED (I2C)</td><td>Status display</td><td>IP, load bar, mode (V2) / TFT (T-Display)</td></tr>
+</table>
+
+<h2>I2S DMA Word Format (V2 / T-Display only)</h2>
+<pre>I2S_CHANNEL_FMT_RIGHT_LEFT + I2S_MODE_DAC_BUILT_IN
+Each 32-bit DMA word: [ LEFT16 | RIGHT16 ]
+  LEFT  → DAC2 (GPIO26, current channel)
+  RIGHT → DAC1 (GPIO25, voltage channel)
+Scale: dac_8bit → (uint16_t)(dac_8bit) << 8   (upper 8 bits used)</pre>
+
+<h2>WebSocket Commands (JSON, port 81)</h2>
+<pre>{"cmd": "set_voltage",   "value": 48.0}
+{"cmd": "set_current",   "value": 100.0}
+{"cmd": "set_dac",       "channel": 0, "value": 2048}
+{"cmd": "get_status"}
+{"cmd": "start_profile", "channel": "voltage"|"current"|"both"}
+{"cmd": "stop_profile",  "channel": "voltage"|"current"|"both"}
+
+// Load profile — both channels in ONE message (second call resets both):
+{"cmd": "load_profile",
+ "voltage": [
+   {"name": "step1", "value": 48.0,  "durationMs": 2000, "rampMs": 500},
+   {"name": "step2", "value": 24.0,  "durationMs": 1000, "rampMs": 200}
+ ],
+ "current": [
+   {"name": "step1", "value": 100.0, "durationMs": 2000, "rampMs": 500},
+   {"name": "step2", "value":  50.0, "durationMs": 1000, "rampMs": 200}
+ ]
+}
+// Limits: max 20 steps per channel (MAX_PROFILE_STEPS). Steps loop continuously
+// until stop_profile. voltage and current arrays run independently in dacTask().</pre>
+
+<h2>Status Response</h2>
+<pre>{"type":"status",
+ "voltage": 48.0,    // current output voltage (V)
+ "current": 100.0,   // current output current (A)
+ "dac1": 3276,       // raw 12-bit DAC1 value (0–4095)
+ "dac2": 3276,       // raw 12-bit DAC2 value (0–4095)
+ "profileV": true,   // voltage profile running
+ "profileC": true,   // current profile running
+ "sampleRate": 5000, // I2S sample rate (Hz)
+ "bufsPerSec": 78,   // DMA buffer writes/sec (5000/64 ≈ 78.1)
+ "stepsPerSec": 0    // profile step transitions/sec
+}</pre>
+
+<h2>Sequence Persistence (NVS)</h2>
+<p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">
+  Every <code>load_profile</code> command immediately saves both channels to ESP32 NVS
+  (non-volatile storage) using <code>Preferences</code>. On the next boot the sequence
+  is restored before WiFi connects — the device comes up ready with the last profile,
+  not in an empty state.
+</p>
+<table>
+  <tr><th>NVS key</th><th>Type</th><th>Contents</th></tr>
+  <tr><td><code>pVCount</code></td><td>int</td><td>Number of voltage steps saved</td></tr>
+  <tr><td><code>pVLoop</code></td><td>bool</td><td>Loop flag for voltage channel</td></tr>
+  <tr><td><code>pVSteps</code></td><td>bytes</td><td>Voltage step array (29 B × N steps)</td></tr>
+  <tr><td><code>pCCount</code></td><td>int</td><td>Number of current steps saved</td></tr>
+  <tr><td><code>pCLoop</code></td><td>bool</td><td>Loop flag for current channel</td></tr>
+  <tr><td><code>pCSteps</code></td><td>bytes</td><td>Current step array (29 B × N steps)</td></tr>
+</table>
+<p style="font-size:.8rem;color:var(--muted);margin-top:8px">
+  Max 100 steps per channel — 5.8 KB total, well within NVS limits.
+  Step names are stored as 16-char null-terminated strings. The sequence is <em>not</em>
+  auto-started on boot; send <code>start_profile</code> to begin execution.
+</p>
+
+<h2>Sequence JSON File Format</h2>
+<p style="font-size:.82rem;color:var(--muted);margin-bottom:6px">
+  Produced by <strong>↓ Save</strong> in fast_load_ctrl.html. Saved to
+  <code>waveform-YYYY-MM-DD_HHMM.json</code>. Reload with <strong>↑ Load</strong>.
+</p>
+<pre>{
+  "version": 1,
+  "blocks": {
+    "b1abc": {
+      "id": "b1abc",
+      "name": "Pulse",
+      "color": "#58a6ff",
+      "steps": [
+        { "vTarget": 48.0, "iTarget": 100.0, "rampMs": 500,  "holdMs": 2000 },
+        { "vTarget":  0.0, "iTarget":   0.0, "rampMs": 200,  "holdMs": 1000 }
+      ]
+    }
+  },
+  "sequence": [
+    { "blockId": "b1abc", "repeatCount": 3 }
+  ],
+  "loopSeq": false,
+  "sequences": {
+    "s1xyz": {
+      "id":      "s1xyz",
+      "name":    "Charge cycle",
+      "entries": [ { "blockId": "b1abc", "repeatCount": 3 } ],
+      "loopSeq": false
+    }
+  },
+  "activeSeqId": "s1xyz",
+  "colorIdx": 1
+}</pre>
+<p style="font-size:.82rem;color:var(--muted);margin-top:6px">
+  <strong>blocks</strong> is the block library (named reusable waveforms). Each block has N steps.
+  Each step has independent V and I targets; ramp and hold times are shared between channels.
+  <strong>sequence</strong> is the working playlist. <strong>sequences</strong> is the named-sequence store.
+</p>
+
+<h2>Pipeline: sequence → DMA buffer</h2>
+<p style="font-size:.82rem;color:var(--muted);margin-bottom:10px">
+  Six stages from UI block editor to GPIO voltage on the bench.
+</p>
+<pre style="line-height:1.7">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Stage 1 — compile()  (JS, browser)                                         │
+│                                                                             │
+│  sequence entries × repeatCount × block.steps → flat arrays                │
+│                                                                             │
+│  vSteps[i] = { targetVal: step.vTarget, rampMs, holdMs }                   │
+│  iSteps[i] = { targetVal: step.iTarget, rampMs, holdMs }                   │
+│  meta[i]   = { blockName, repIdx, stepIdx, tStart, tEnd, vStart, vEnd, … } │
+│                                                                             │
+│  A 2-block sequence with repeatCounts [2, 3] and 2 steps/block produces    │
+│  2×2 + 3×2 = 10 entries per channel.  Max firmware limit: 20.              │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │ JSON over WebSocket (port 81)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Stage 2 — sendProfile()  (JS, browser)                                     │
+│                                                                             │
+│  Maps compile() output to firmware field names in ONE message:              │
+│    targetVal → value                                                        │
+│    holdMs    → durationMs                                                   │
+│    adds name: "step1", "step2", …                                          │
+│                                                                             │
+│  { cmd: "load_profile",                                                     │
+│    voltage: [{name,value,durationMs,rampMs}, …],   // ≤ 20 entries        │
+│    current: [{name,value,durationMs,rampMs}, …] }                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Stage 3 — loadProfileFromJson()  (firmware, Core 1)                        │
+│                                                                             │
+│  portENTER_CRITICAL(&profileMux)                                            │
+│    profileVRunning = false; profileCRunning = false;                        │
+│    populate profileV[0..N-1] and profileC[0..N-1]                          │
+│      .value, .durationMs, .rampMs, .name                                   │
+│    profileVCount = N; profileCCount = M;                                    │
+│  portEXIT_CRITICAL(&profileMux)                                             │
+│                                                                             │
+│  Followed by start_profile to set profileVRunning / profileCRunning = true. │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │ mutex-protected read on each DMA buffer boundary (every 12.8 ms)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Stage 4 — dacTask()  (firmware, Core 0, priority 2)                        │
+│                                                                             │
+│  Runs a tight for(;;) loop filling 64-sample DMA buffers:                  │
+│                                                                             │
+│  dt_ms = 1000 / 5000 = 0.2 ms per sample                                   │
+│                                                                             │
+│  Per sample (i = 0..63):                                                    │
+│    elapsed_ms += 0.2                                                        │
+│    if in_ramp:                                                              │
+│      p = elapsed_ms / rampMs         (0.0 → 1.0)                           │
+│      now = start + (target − start) × p                                     │
+│    else (holding):                                                          │
+│      if elapsed_ms ≥ durationMs:                                            │
+│        step = (step + 1) % count     ← loops profile continuously          │
+│        reload start/target/rampMs/holdMs from profileV[step]               │
+│        in_ramp = (rampMs > 0)                                               │
+│                                                                             │
+│  Voltage and current ramps are independent — different rampMs/durationMs   │
+│  per channel are fully supported. Both channels computed per sample.       │
+│                                                                             │
+│  At end of each buffer (i == 63), push lv_now → voltageValue, dac1Value.   │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Stage 5 — I2S word packing                                                 │
+│                                                                             │
+│  12-bit dac values (0–4095) → 8-bit DAC:                                   │
+│    v8 = dac1Value >> 4    (drop 4 LSBs)                                     │
+│    c8 = dac2Value >> 4                                                      │
+│                                                                             │
+│  Stereo 32-bit word format:                                                 │
+│    bits [31:24]  LEFT  high byte → DAC2 / GPIO26 / current                 │
+│    bits [23:16]  LEFT  low byte  → 0                                       │
+│    bits [15: 8]  RIGHT high byte → DAC1 / GPIO25 / voltage                 │
+│    bits [ 7: 0]  RIGHT low byte  → 0                                       │
+│                                                                             │
+│    buf[i] = ((uint32_t)c8 << 24) | ((uint32_t)v8 << 8)                    │
+│                                                                             │
+│  4 DMA buffers × 64 words × 4 bytes = 1024 bytes total DMA memory.         │
+│  i2s_write() blocks until hardware DMA picks up the buffer (~12.8 ms).     │
+│  Write rate: 5000 ÷ 64 ≈ 78.1 buffers/sec  (shown as bufsPerSec in status) │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Stage 6 — ESP32 I2S / DAC hardware                                         │
+│                                                                             │
+│  I2S peripheral in I2S_MODE_DAC_BUILT_IN mode drives the ESP32's two       │
+│  8-bit R-2R DACs directly from DMA — no CPU intervention per sample.       │
+│  DAC output range: 0 V (code 0) → ~3.3 V (code 255).                       │
+│  External scaling: resistor divider / op-amp to reach 0–60 V / 0–200 A ref │
+└─────────────────────────────────────────────────────────────────────────────┘</pre>
+
+<h2>Timing Summary</h2>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+  <tr><td>SAMPLE_RATE</td><td>5 000 Hz</td><td>DAC update rate / DMA clock</td></tr>
+  <tr><td>Step resolution</td><td>0.2 ms</td><td>dt = 1 / 5 000 s</td></tr>
+  <tr><td>DMA buffer length</td><td>64 samples</td><td>I2S_DMA_BUF_LEN</td></tr>
+  <tr><td>DMA buffer count</td><td>4</td><td>I2S_DMA_BUF_COUNT</td></tr>
+  <tr><td>Buffer period</td><td>12.8 ms</td><td>64 / 5000 × 1000</td></tr>
+  <tr><td>Total DMA queue</td><td>51.2 ms</td><td>4 × 12.8 ms</td></tr>
+  <tr><td>Max profile steps</td><td>20 per channel</td><td>MAX_PROFILE_STEPS; truncated silently if exceeded</td></tr>
+  <tr><td>DAC resolution</td><td>8 bit</td><td>ESP32 built-in R-2R DAC; 12-bit internal → >>4</td></tr>
+  <tr><td>Step transitions</td><td>bufsPerSec × steps</td><td>stepsPerSec in status JSON</td></tr>
+</table>
+
+<h2>Board Selection</h2>
+<pre>HELTEC_V3       — ESP32-S3, PWM output (RC filter required on DAC pin)
+LILYGO_TDISPLAY — ESP32 + TFT_eSPI, I2S DMA DAC
+(default)       — Heltec LoRa32 V2 (ESP32), I2S DMA DAC</pre>
+
+<h2>Library Requirements</h2>
+<p style="font-size:.82rem;color:var(--muted)">ArduinoJson · WebSocketsServer · ArduinoOTA · Preferences · U8g2 (V2) or TFT_eSPI (T-Display) · driver/i2s.h (built-in) · driver/twai.h (built-in)</p>
+
+</body>
+</html>

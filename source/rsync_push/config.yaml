@@ -1,0 +1,10 @@
+# rsync push agent — runs on phil-dev
+# Pushes local Parquet files to fractal-phil (aws-sim)
+rsync:
+  src:      /srv/data/parquet/
+  dst:      phil@192.168.0.51:/srv/data/parquet-aws-sim/
+  interval: 5          # seconds between pushes
+  retain_hours: 4      # delete host files older than this (0 = keep forever)
+
+http:
+  port: 8770

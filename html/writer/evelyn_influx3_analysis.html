@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evelyn — InfluxDB 3 Analysis</title>
+<style>
+  :root {
+    --bg:#1a1a2e; --surface:#16213e; --surface2:#0d1117;
+    --border:#2a2a4a; --border2:#30363d;
+    --text:#e0e0e0; --muted:#abb2bf;
+    --h1:#61dafb; --h2:#e5c07b; --h3:#98c379; --h4:#56b6c2;
+    --kw:#56b6c2; --str:#98c379; --fn:#e5c07b; --cm:#5c6370; --num:#d19a66; --tag:#e06c75;
+    --green-bg:#1e4d1e; --yellow-bg:#4d4a1e; --red-bg:#4d1e1e;
+  }
+  body.light {
+    --bg:#f5f5f0; --surface:#ffffff; --surface2:#f0f0eb;
+    --border:#d0d0c0; --border2:#c0c0b0;
+    --text:#1a1a2e; --muted:#555566;
+    --h1:#0066aa; --h2:#8a6000; --h3:#2a6e2a; --h4:#006688;
+    --kw:#006688; --str:#2a6e2a; --fn:#8a6000; --cm:#888877; --num:#aa4400;
+    --green-bg:#d4f0d4; --yellow-bg:#f0f0d4; --red-bg:#f0d4d4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.6; padding: 0 0 60px 0; transition: background .2s, color .2s; }
+  h1 { font-size: 2em; color: var(--h1); padding: 40px 40px 10px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+  h2 { font-size: 1.4em; color: var(--h2); margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.1em; color: var(--h3); margin: 24px 0 8px; }
+  h4 { font-size: 1em; color: var(--h4); margin: 16px 0 6px; }
+  p { margin: 10px 0; max-width: 860px; }
+  ul, ol { margin: 10px 0 10px 24px; max-width: 860px; }
+  li { margin: 4px 0; }
+  .content { padding: 0 40px; }
+  pre { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; margin: 12px 0; max-width: 860px; }
+  code { background: var(--surface2); padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: var(--fn); }
+  .kw { color: var(--kw); } .str { color: var(--str); } .fn { color: var(--fn); }
+  .cm { color: var(--cm); font-style: italic; } .num { color: var(--num); } .tag { color: var(--tag); }
+  table { border-collapse: collapse; margin: 16px 0; max-width: 100%; width: 100%; }
+  th { background: var(--surface); color: var(--h1); padding: 8px 14px; text-align: left; border: 1px solid var(--border2); }
+  td { padding: 7px 14px; border: 1px solid var(--border); vertical-align: top; font-size: 14px; }
+  tr:nth-child(even) td { background: var(--surface); }
+  .check { color: var(--str); font-weight: bold; }
+  .cross { color: var(--tag); font-weight: bold; }
+  .warn-cell { color: var(--num); }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px 28px; margin: 20px 40px 30px; display: inline-block; min-width: 340px; }
+  .toc h2 { margin-top: 0; border: none; font-size: 1.1em; }
+  .toc ol { margin-left: 18px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: var(--h1); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+  .note  { background: var(--green-bg); border-left: 3px solid var(--str); padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .warn  { background: var(--yellow-bg); border-left: 3px solid var(--fn); padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .key   { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin: 12px 0; max-width: 860px; }
+  .theme-btn { position: fixed; top: 14px; right: 20px; background: var(--surface); border: 1px solid var(--border2); color: var(--muted); border-radius: 20px; padding: 5px 14px; cursor: pointer; font-size: 13px; z-index: 100; }
+  .theme-btn:hover { color: var(--text); border-color: var(--h4); }
+  .nav { padding: 14px 40px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: .82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--h1); border-color: var(--h1); }
+  .score-bar { display: inline-block; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="evelyn_real_time_data.html">Real-Time Data</a>
+  <a href="evelyn_kafka_analysis.html">Kafka Analysis</a>
+  <a href="evelyn_viz_comparison.html">Viz Comparison</a>
+  <a href="evelyn_container_design.html">Container Design</a>
+</div>
+
+<h1>InfluxDB 3 — Technical Analysis</h1>
+<p style="padding:0 40px;color:var(--muted);font-size:14px">Should we migrate from direct Parquet + DuckDB to InfluxDB 3? This document gives an honest technical answer.</p>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#summary">Executive Summary</a></li>
+    <li><a href="#influx3">What InfluxDB 3 Actually Is</a></li>
+    <li><a href="#current">Current Stack Architecture</a></li>
+    <li><a href="#tradeoffs">Core Trade-off Table</a></li>
+    <li><a href="#plusses">Plusses of InfluxDB 3</a></li>
+    <li><a href="#minuses">Minuses of InfluxDB 3</a></li>
+    <li><a href="#migration">Migration Options</a></li>
+    <li><a href="#queries">Query Capability Comparison</a></li>
+    <li><a href="#storage">Storage Cost Comparison</a></li>
+    <li><a href="#recommendation">Recommendation</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- 1 -->
+<h2 id="summary">1. Executive Summary</h2>
+<p>The company is evaluating InfluxDB 3. The current stack writes directly to Parquet (real_writer C++) and queries via DuckDB. <strong>InfluxDB 3 Core is built on Apache Arrow DataFusion and stores data natively as Parquet</strong> — the same format we already write. This changes the analysis significantly: InfluxDB 3 would add an ingestion layer to produce the same storage format we already have.</p>
+<p>InfluxDB 3 does bring real value in specific areas — Grafana integration, InfluxQL compatibility, managed cloud path, and Arrow Flight SQL for BI tools. But for the edge-deployed single-site case, those benefits don't outweigh the operational complexity added.</p>
+<p>The most honest answer: <strong>InfluxDB 3 is compelling at the cloud analytics tier</strong>, less so at the edge ingest tier where we've already solved the storage problem.</p>
+
+<hr>
+
+<!-- 2 -->
+<h2 id="influx3">2. What InfluxDB 3 Actually Is</h2>
+<p>InfluxDB 3 is a ground-up rewrite. It shares almost nothing with InfluxDB 2 architecturally:</p>
+<ul>
+  <li><strong>Written in Rust</strong> (not Go like v2)</li>
+  <li><strong>Query engine: Apache Arrow DataFusion</strong> — the same engine as DuckDB's cousin. Full SQL, columnar execution, vectorized.</li>
+  <li><strong>Storage format: Apache Parquet</strong> — yes, the same format real_writer already produces</li>
+  <li><strong>No TSM files</strong> — the cardinality limits and compaction pain of v2 are gone</li>
+  <li><strong>No Flux query language</strong> (InfluxQL still works, SQL is primary)</li>
+  <li><strong>Ingest: HTTP Line Protocol</strong> — same wire format as v2, so Telegraf configs still work</li>
+  <li><strong>Query protocol: Apache Arrow Flight SQL</strong> — industry standard, many BI tools support it</li>
+  <li><strong>Object storage: local disk, S3, GCS, Azure Blob</strong></li>
+  <li><strong>License: MIT</strong> (InfluxDB 3 Core, open-sourced 2025)</li>
+</ul>
+
+<pre>
+<span class="cm">── InfluxDB 3 internal data flow ──────────────────────────────</span>
+Line Protocol HTTP
+      │
+      ▼
+  WAL (write-ahead log, local disk)
+      │
+      ▼
+  In-memory buffer (Arrow RecordBatches)
+      │  periodic flush
+      ▼
+  Parquet files  ←── <span class="str">same format as real_writer output</span>
+  (object storage: local / S3 / GCS)
+      │
+      ▼
+  Arrow DataFusion query engine
+      │
+  Arrow Flight SQL  /  InfluxQL HTTP  /  SQL HTTP
+</pre>
+
+<div class="note"><strong>Key insight:</strong> InfluxDB 3's headline storage feature is Parquet. We already write Parquet. Adding InfluxDB 3 at the ingest layer is adding an intermediary to produce what we already produce directly.</div>
+
+<hr>
+
+<!-- 3 -->
+<h2 id="current">3. Current Stack Architecture</h2>
+<pre>
+EMS hardware / ems_site_simulator
+        │ MQTT QoS-0  ~81,420 msg/s
+        ▼
+FlashMQ :1883
+        │
+        ▼
+real_writer (C++)                    <span class="cm">← our ingest + storage engine</span>
+        │
+        ├── /data/parquet/YYYY/MM/DD/*.parquet   <span class="cm">← partitioned archive</span>
+        ├── /data/parquet/current_state.parquet  <span class="cm">← latest per sensor</span>
+        └── /data/parquet/hot.parquet            <span class="cm">← recent rows</span>
+        │
+DuckDB (in-process Python / DuckDB-WASM in browser)
+        │
+        ▼
+subscriber_api :8767  /  bridge_api :8772  /  browser direct query
+</pre>
+
+<p>Our Parquet schema per row: <code>ts</code> (epoch_ms), <code>mqtt_topic</code> (full string), <code>unit_id</code>, <code>point_name</code>, <code>value</code>, <code>dtype</code>, plus partition columns. The <code>mqtt_topic</code> column enables full MQTT replay — reconstruct and re-publish any historical message exactly as originally sent.</p>
+
+<hr>
+
+<!-- 4 -->
+<h2 id="tradeoffs">4. Core Trade-off Table</h2>
+<table>
+  <tr><th>Dimension</th><th>Direct Parquet (current)</th><th>InfluxDB 3</th></tr>
+  <tr><td>Storage format</td><td>Parquet (our schema)</td><td>Parquet (InfluxDB schema)</td></tr>
+  <tr><td>Ingest path</td><td>MQTT → real_writer (C++, &lt;1ms)</td><td>MQTT → Telegraf → Line Protocol HTTP → InfluxDB 3</td></tr>
+  <tr><td>Ingest latency</td><td>Sub-ms, in-process</td><td>~100ms+ (HTTP batching)</td></tr>
+  <tr><td>Query language</td><td>Full SQL (DuckDB)</td><td>SQL + InfluxQL (DataFusion)</td></tr>
+  <tr><td>Cardinality limit</td><td>None</td><td>None (fixed vs v2)</td></tr>
+  <tr><td>Schema flexibility</td><td>Our columns, including mqtt_topic</td><td>Line Protocol: measurement/tag/field</td></tr>
+  <tr><td>MQTT replay</td><td><span class="check">✓</span> mqtt_topic column preserved</td><td><span class="cross">✗</span> raw topic not stored</td></tr>
+  <tr><td>Parquet portability</td><td><span class="check">✓</span> rsync, S3, pandas, Spark</td><td><span class="warn-cell">⚠</span> managed internally, export needed</td></tr>
+  <tr><td>Browser queries</td><td>DuckDB-WASM (zero server)</td><td>Arrow Flight SQL (needs server)</td></tr>
+  <tr><td>Live streaming</td><td>FlashMQ WS + mqtt.js</td><td>Still needs same MQTT layer</td></tr>
+  <tr><td>Grafana integration</td><td><span class="warn-cell">⚠</span> community DuckDB plugin</td><td><span class="check">✓</span> native datasource</td></tr>
+  <tr><td>InfluxQL compatibility</td><td><span class="cross">✗</span></td><td><span class="check">✓</span></td></tr>
+  <tr><td>Operational complexity</td><td>1 binary (real_writer)</td><td>3+ services (Telegraf, InfluxDB3, WAL)</td></tr>
+  <tr><td>Docker image size</td><td>~50 MB</td><td>~200 MB+</td></tr>
+  <tr><td>Cloud managed option</td><td>DIY (S3 + Athena)</td><td>InfluxDB Cloud Serverless</td></tr>
+  <tr><td>InfluxDB 3 Core maturity</td><td>N/A</td><td>MIT OSS since 2025 — new</td></tr>
+</table>
+
+<hr>
+
+<!-- 5 -->
+<h2 id="plusses">5. Plusses of Moving to InfluxDB 3</h2>
+
+<h3>5a. Grafana First-Class Support</h3>
+<p>InfluxDB 3 has a native Grafana datasource with full SQL support. The community DuckDB plugin for Grafana works but is less mature, less supported, and not in the default Grafana plugin catalogue. If Grafana is the mandated visualization layer, InfluxDB 3 is the cleaner path.</p>
+
+<h3>5b. InfluxQL Compatibility</h3>
+<p>If the company has existing InfluxDB 2 dashboards, queries, or tooling, InfluxDB 3 runs InfluxQL with minimal migration. Our DuckDB approach requires rewriting any InfluxQL from scratch.</p>
+
+<h3>5c. Arrow Flight SQL — BI Tool Ecosystem</h3>
+<p>Arrow Flight SQL is supported by Tableau, Superset, DBeaver, and many enterprise BI tools natively. DuckDB-WASM is powerful but browser-only. For a company wanting customers to connect their own BI tools, Flight SQL is a better standard interface than custom HTTP endpoints.</p>
+
+<h3>5d. Managed Cloud Path</h3>
+<p>InfluxDB Cloud Serverless = same SQL/InfluxQL interface, S3-backed, zero ops. If the company wants to move edge data to a managed cloud analytics service, InfluxDB 3 self-hosted → InfluxDB Cloud is a direct lift-and-shift. Our parquet approach requires building that cloud pipeline ourselves (viable with S3 + Athena/DuckDB, but requires more engineering).</p>
+
+<h3>5e. Telegraf Input Ecosystem</h3>
+<p>Telegraf has 200+ input plugins. Any hardware or protocol that isn't MQTT can be added to the ingest pipeline by dropping in a Telegraf config, no code changes. Our real_writer currently only handles MQTT with a custom parser — other ingest sources require C++ work.</p>
+
+<hr>
+
+<!-- 6 -->
+<h2 id="minuses">6. Minuses of Moving to InfluxDB 3</h2>
+
+<h3>6a. We Already Write Parquet</h3>
+<div class="warn">This is the core irony. InfluxDB 3's headline architectural feature — "stores data as Parquet" — is something we already do. We would be adding an ingestion layer (Telegraf + HTTP + InfluxDB process) to produce the same storage format we produce directly today.</div>
+
+<h3>6b. mqtt_topic Column Lost</h3>
+<p>Our Parquet schema stores the full MQTT topic string (<code>unit/3/rack0/module2/cell41/soc</code>) as a column. This enables exact MQTT replay: read a historical Parquet row and re-publish it to any broker. InfluxDB 3 uses Line Protocol's <code>measurement,tag=value field=value timestamp</code> format — the raw MQTT topic is not stored. Once data goes through Telegraf → InfluxDB 3, the original topic is gone.</p>
+
+<h3>6c. Parquet Files Not Directly Accessible</h3>
+<p>When real_writer produces Parquet, those files can be: rsynced, copied to S3, opened in pandas, loaded into Spark, queried with any DuckDB instance anywhere. InfluxDB 3 manages its Parquet internally under its own directory layout — you query via Flight SQL. You can export, but it's not a simple file copy. This breaks the rsync-based push_agent architecture.</p>
+
+<h3>6d. Live Streaming Still Needs MQTT Layer</h3>
+<p>InfluxDB 3 is a time-series database, not a message broker. It does not provide live streaming to browsers. FlashMQ WebSocket + mqtt.js is still required regardless of whether InfluxDB 3 is used. InfluxDB 3 only helps with the historical query layer — not the live display layer.</p>
+
+<h3>6e. Operational Complexity at the Edge</h3>
+<p>Current edge deployment: copy one binary + config, run it. InfluxDB 3 edge stack: install InfluxDB 3 (~200 MB), install Telegraf, configure both, manage WAL path, object storage config, retention policies, two firewall ports. More moving parts, more failure modes, harder to support in the field.</p>
+
+<h3>6f. InfluxDB 3 Core Is Very New</h3>
+<p>InfluxDB 3 Core was open-sourced in 2025. Production deployments at scale are limited. DuckDB on Parquet is proven at petabyte scale across many production deployments. This is a real risk for a customer-facing product.</p>
+
+<hr>
+
+<!-- 7 -->
+<h2 id="migration">7. Migration Options (if chosen)</h2>
+<table>
+  <tr><th>Option</th><th>Description</th><th>Pros</th><th>Cons</th></tr>
+  <tr>
+    <td><strong>A — Parallel ingest</strong></td>
+    <td>Run real_writer (Parquet) AND Telegraf→InfluxDB3 simultaneously from the same FlashMQ topic</td>
+    <td>Parquet portability preserved; InfluxDB 3 for dashboards; gradual migration</td>
+    <td>~2× storage; two ingest pipelines to maintain</td>
+  </tr>
+  <tr>
+    <td><strong>B — InfluxDB 3 as query layer only</strong></td>
+    <td>Point InfluxDB 3 at existing Parquet files as object store; investigate schema compatibility</td>
+    <td>No ingest change; reuse existing files</td>
+    <td>Schema mismatch (our columns ≠ Line Protocol); may not work cleanly</td>
+  </tr>
+  <tr>
+    <td><strong>C — Full replace</strong></td>
+    <td>Replace real_writer with Telegraf→InfluxDB3; use InfluxDB 3 export for long-term Parquet</td>
+    <td>Single pipeline; InfluxDB 3 ecosystem</td>
+    <td>mqtt_topic column lost; rsync push_agent broken; sub-ms ingest lost; 3 services at edge</td>
+  </tr>
+</table>
+
+<p><strong>Recommendation if migrating:</strong> Option A (parallel) with a 6-month evaluation window. Keep real_writer for the primary Parquet archive. Add InfluxDB 3 as a dashboard-facing query layer. Evaluate whether the dashboard benefits justify the storage doubling cost before committing to Option C.</p>
+
+<hr>
+
+<!-- 8 -->
+<h2 id="queries">8. Query Capability: Side-by-Side SQL</h2>
+
+<h3>Latest value per sensor</h3>
+<pre>
+<span class="cm">-- InfluxDB 3 (SQL)</span>
+<span class="kw">SELECT</span> unit_id, point_name, <span class="fn">LAST</span>(value)
+<span class="kw">FROM</span> ems
+<span class="kw">GROUP BY</span> unit_id, point_name;
+
+<span class="cm">-- DuckDB on current_state.parquet (already computed by real_writer)</span>
+<span class="kw">SELECT</span> unit_id, point_name, value, dtype
+<span class="kw">FROM</span> <span class="fn">parquet_scan</span>(<span class="str">'/data/parquet/current_state.parquet'</span>)
+<span class="kw">ORDER BY</span> unit_id, point_name;
+</pre>
+
+<h3>Time range for one sensor</h3>
+<pre>
+<span class="cm">-- InfluxDB 3</span>
+<span class="kw">SELECT</span> time, value <span class="kw">FROM</span> ems
+<span class="kw">WHERE</span> unit_id = <span class="str">'3'</span> <span class="kw">AND</span> point_name = <span class="str">'soc'</span>
+  <span class="kw">AND</span> time >= <span class="str">'2026-03-01'</span> <span class="kw">AND</span> time &lt; <span class="str">'2026-03-02'</span>
+<span class="kw">ORDER BY</span> time;
+
+<span class="cm">-- DuckDB</span>
+<span class="kw">SELECT</span> ts, value <span class="kw">FROM</span> <span class="fn">parquet_scan</span>(<span class="str">'/data/parquet/2026/03/01/*.parquet'</span>)
+<span class="kw">WHERE</span> unit_id = <span class="str">'3'</span> <span class="kw">AND</span> point_name = <span class="str">'soc'</span>
+<span class="kw">ORDER BY</span> ts;
+</pre>
+
+<h3>Daily average SOC per unit</h3>
+<pre>
+<span class="cm">-- InfluxDB 3</span>
+<span class="kw">SELECT</span> <span class="fn">DATE_BIN</span>(<span class="str">'1 day'</span>, time, <span class="str">'1970-01-01'</span>) <span class="kw">AS</span> day,
+       unit_id, <span class="fn">AVG</span>(value) <span class="kw">AS</span> avg_soc
+<span class="kw">FROM</span> ems <span class="kw">WHERE</span> point_name = <span class="str">'soc'</span>
+<span class="kw">GROUP BY</span> day, unit_id <span class="kw">ORDER BY</span> day;
+
+<span class="cm">-- DuckDB</span>
+<span class="kw">SELECT</span> <span class="fn">DATE_TRUNC</span>(<span class="str">'day'</span>, <span class="fn">epoch_ms</span>(ts)) <span class="kw">AS</span> day,
+       unit_id, <span class="fn">AVG</span>(value) <span class="kw">AS</span> avg_soc
+<span class="kw">FROM</span> <span class="fn">parquet_scan</span>(<span class="str">'/data/parquet/**/*.parquet'</span>)
+<span class="kw">WHERE</span> point_name = <span class="str">'soc'</span>
+<span class="kw">GROUP BY</span> day, unit_id <span class="kw">ORDER BY</span> day;
+</pre>
+
+<h3>Anomaly detection — values exceeding threshold with context window</h3>
+<pre>
+<span class="cm">-- DuckDB (window functions — more powerful)</span>
+<span class="kw">SELECT</span> ts, unit_id, point_name, value,
+       <span class="fn">LAG</span>(value,  <span class="num">1</span>) <span class="kw">OVER</span> w <span class="kw">AS</span> prev_value,
+       <span class="fn">LEAD</span>(value, <span class="num">1</span>) <span class="kw">OVER</span> w <span class="kw">AS</span> next_value,
+       <span class="fn">AVG</span>(value) <span class="kw">OVER</span> (w <span class="kw">ROWS BETWEEN</span> <span class="num">5</span> <span class="kw">PRECEDING AND</span> <span class="num">5</span> <span class="kw">FOLLOWING</span>) <span class="kw">AS</span> rolling_avg
+<span class="kw">FROM</span> <span class="fn">parquet_scan</span>(<span class="str">'/data/parquet/**/*.parquet'</span>)
+<span class="kw">WHERE</span> point_name = <span class="str">'temp'</span> <span class="kw">AND</span> value > <span class="num">45.0</span>
+<span class="kw">WINDOW</span> w <span class="kw">AS</span> (<span class="kw">PARTITION BY</span> unit_id <span class="kw">ORDER BY</span> ts);
+
+<span class="cm">-- InfluxDB 3: window functions in DataFusion are limited;
+-- complex analytics like this typically require export to a separate tool</span>
+</pre>
+
+<div class="note">DuckDB is a full OLAP engine. For complex analytical queries (window functions, JOINs across tables, ML feature extraction), DuckDB on Parquet is materially more capable than InfluxDB 3's DataFusion-based SQL.</div>
+
+<hr>
+
+<!-- 9 -->
+<h2 id="storage">9. Storage Cost Comparison</h2>
+<table>
+  <tr><th>System</th><th>Bytes/point</th><th>vs Parquet</th><th>GB/day @ 81k msg/s</th></tr>
+  <tr><td>Raw MQTT (baseline)</td><td>~109 B</td><td>11.4×</td><td>~760 GB</td></tr>
+  <tr><td><strong>Our Parquet (Snappy)</strong></td><td><strong>~9.6 B</strong></td><td><strong>1×</strong></td><td><strong>~67 GB</strong></td></tr>
+  <tr><td>InfluxDB 2 TSM</td><td>~58.7 B</td><td>6.1×</td><td>~410 GB</td></tr>
+  <tr><td>InfluxDB 3 Parquet</td><td>~11–13 B est.</td><td>~1.2×</td><td>~80 GB est.</td></tr>
+  <tr><td>InfluxDB 3 + WAL overhead</td><td>~15–20 B est.</td><td>~1.6×</td><td>~110 GB est.</td></tr>
+</table>
+<p style="color:var(--muted);font-size:13px;margin-top:6px">InfluxDB 3 estimates based on Line Protocol tag overhead + WAL + metadata files. Actual numbers vary by schema.</p>
+<p>The measured 11.4× compression ratio (109 → 9.6 B/msg) comes from Snappy compression of our columnar schema. InfluxDB 3's Parquet will be similar in size but with additional overhead from the WAL and internal metadata files that we do not have.</p>
+
+<hr>
+
+<!-- 10 -->
+<h2 id="recommendation">10. Recommendation</h2>
+
+<div class="key">
+  <h3 style="margin-top:0">Choose InfluxDB 3 if:</h3>
+  <ul>
+    <li>The company already has InfluxDB 2 dashboards / Flux queries to preserve (InfluxQL compat)</li>
+    <li>Grafana is the mandated visualization layer and the community DuckDB plugin is unacceptable</li>
+    <li>Arrow Flight SQL access for enterprise BI tools (Tableau, Superset) is required</li>
+    <li>InfluxDB Cloud Serverless is attractive for reducing cloud ops burden</li>
+    <li>Multiple non-MQTT ingest sources are needed (Telegraf plugin ecosystem)</li>
+    <li>The team has existing InfluxDB operational experience</li>
+  </ul>
+</div>
+
+<div class="key">
+  <h3 style="margin-top:0">Stay with DuckDB-on-Parquet if:</h3>
+  <ul>
+    <li>Parquet portability is important (rsync, S3, pandas, Spark — all work today)</li>
+    <li>Edge deployment simplicity is a priority (1 binary vs 3 services)</li>
+    <li>Full MQTT replay capability must be preserved (mqtt_topic column)</li>
+    <li>DuckDB-WASM in-browser queries are valuable (zero server infrastructure)</li>
+    <li>Complex analytics (window functions, JOINs) are needed — DuckDB is more powerful</li>
+    <li>InfluxDB 3 Core maturity risk is unacceptable for a customer-facing product</li>
+  </ul>
+</div>
+
+<div class="key">
+  <h3 style="margin-top:0">Hybrid (Option A — Parallel ingest) if:</h3>
+  <ul>
+    <li>Dashboard tooling requires InfluxDB 3 / Grafana native datasource</li>
+    <li>Long-term Parquet archive and portability must be preserved</li>
+    <li>Willing to accept ~1.5× storage cost during transition period</li>
+    <li>Team wants to evaluate InfluxDB 3 in production before full commitment</li>
+  </ul>
+</div>
+
+<p style="margin-top:20px">Given the current architecture — edge-focused, parquet-native, 1-binary deployment — <strong>the default recommendation is to stay with DuckDB-on-Parquet and add InfluxDB 3 only as an optional cloud-tier analytics layer</strong> for customers who specifically need it. The real_writer + DuckDB path already delivers better query capability, lower storage overhead, and full MQTT replay — and InfluxDB 3's headline storage innovation (Parquet) is something we already have.</p>
+
+</div>
+</body>
+</html>

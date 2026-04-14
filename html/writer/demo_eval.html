@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pipeline Eval — Generator × Filter × Storage</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --cyan:#39d0d8;
+    --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:16px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:20px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--muted); font-size:.8rem; margin-bottom:8px; }
+
+  /* ── top controls ── */
+  .controls-bar {
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:10px 14px; margin-bottom:14px;
+    font-size:.82rem;
+  }
+  .controls-bar label { color:var(--muted); }
+  .controls-bar input, .controls-bar select {
+    background:var(--code-bg); border:1px solid var(--border);
+    color:var(--text); border-radius:4px; padding:3px 8px;
+    font-family:'Consolas',monospace; font-size:.8rem;
+  }
+  .btn {
+    background:var(--surface); border:1px solid var(--border);
+    color:var(--accent); border-radius:4px; padding:3px 10px;
+    cursor:pointer; font-size:.8rem;
+  }
+  .btn:hover { border-color:var(--accent); }
+  .btn.active { background:#0c2d6b44; }
+
+  /* ── generator status ── */
+  .gen-bar {
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:8px 14px; margin-bottom:14px;
+    font-size:.8rem;
+  }
+  .gen-dot { width:9px; height:9px; border-radius:50%; background:var(--muted); display:inline-block; }
+  .gen-dot.on  { background:var(--green); box-shadow:0 0 5px var(--green); }
+  .gen-dot.off { background:var(--red); }
+  .mode-badge {
+    padding:2px 8px; border-radius:10px; font-size:.72rem; font-weight:700;
+    font-family:'Consolas',monospace;
+  }
+  .mode-smooth { background:#0c2d6b44; border:1px solid var(--accent); color:var(--accent); }
+  .mode-burst  { background:#2d200044; border:1px solid var(--yellow); color:var(--yellow); }
+
+  /* ── matrix grid ── */
+  .matrix-section { margin-bottom:20px; }
+  .matrix-label {
+    font-size:.75rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--muted); margin-bottom:8px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .matrix-label::after {
+    content:''; flex:1; height:1px; background:var(--border);
+  }
+  .matrix-grid {
+    display:grid;
+    grid-template-columns: 110px 1fr 1fr 1fr;
+    gap:6px;
+  }
+  /* column headers */
+  .col-hdr {
+    border-radius:6px; padding:7px 10px; text-align:center;
+    font-size:.78rem; font-weight:700;
+  }
+  .col-hdr.unfiltered { background:#21262d; border:1px solid var(--border); color:var(--muted); }
+  .col-hdr.regdedup   { background:#0c2d6b22; border:1px solid var(--accent); color:var(--accent); }
+  .col-hdr.floatdedup { background:#0d442922; border:1px solid var(--green);  color:var(--green); }
+  .col-hdr.row-lbl    { background:none; border:none; }
+  .col-hdr small { display:block; font-size:.66rem; font-weight:400; color:var(--muted); margin-top:2px; }
+  /* metric cells */
+  .mcell {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; padding:8px 10px; font-size:.78rem;
+    min-height:90px; display:flex; flex-direction:column; gap:4px;
+  }
+  .mcell.row-lbl {
+    background:none; border:none; justify-content:center;
+    font-size:.75rem; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.05em; min-height:0;
+    padding:4px 0;
+  }
+  .mcell-metric { display:flex; justify-content:space-between; align-items:baseline; }
+  .mcell-k { color:var(--muted); font-size:.68rem; }
+  .mcell-v {
+    font-family:'Consolas',monospace; font-weight:700; font-size:.9rem;
+    color:var(--text);
+  }
+  .mcell-v.live { color:var(--green); }
+  .mcell-v.pending { color:var(--muted); font-size:.75rem; font-weight:400; }
+  /* status badges */
+  .status-badge {
+    display:inline-block; padding:1px 6px; border-radius:8px;
+    font-size:.65rem; font-family:'Consolas',monospace; font-weight:700;
+    margin-top:auto;
+  }
+  .s-ready   { background:#0d442944; border:1px solid var(--green);  color:var(--green); }
+  .s-planned { background:#21262d;   border:1px solid var(--border); color:var(--muted); }
+  .s-running { background:#0c2d6b44; border:1px solid var(--accent); color:var(--accent); }
+  .s-todo    { background:#2d000022; border:1px solid var(--red);    color:var(--red); }
+
+  /* ── legend ── */
+  .legend {
+    display:flex; flex-wrap:wrap; gap:10px; font-size:.74rem;
+    margin-bottom:16px;
+  }
+  .legend-item { display:flex; align-items:center; gap:5px; }
+  .legend-swatch { width:10px; height:10px; border-radius:3px; border:1px solid; }
+
+  /* ── notes section ── */
+  .notes-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:900px) { .notes-grid { grid-template-columns:1fr; } }
+  .note-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:12px 14px;
+  }
+  .note-card h3 { color:var(--accent); margin-bottom:8px; font-size:.82rem; }
+  .note-card ul { padding-left:16px; font-size:.78rem; line-height:1.7; color:var(--text); }
+  .note-card li { margin-bottom:3px; }
+  .note-card code {
+    font-family:'Consolas',monospace; font-size:.75rem;
+    background:var(--code-bg); padding:1px 4px; border-radius:3px;
+    color:var(--orange);
+  }
+  .note-card .green  { color:var(--green); }
+  .note-card .yellow { color:var(--yellow); }
+  .note-card .muted  { color:var(--muted); }
+
+  /* ── build checklist ── */
+  .checklist { font-size:.78rem; line-height:1.75; }
+  .checklist li { display:flex; gap:8px; align-items:baseline; }
+  .ck-done   { color:var(--green); }
+  .ck-todo   { color:var(--muted); }
+  .ck-icon   { font-family:'Consolas',monospace; font-size:.72rem; width:14px; flex-shrink:0; }
+
+  /* ── refresh indicator ── */
+  #refresh-status { font-size:.72rem; color:var(--muted); }
+  #refresh-status.live { color:var(--green); }
+
+  /* ── link btn ── */
+  .link-btn {
+    display:inline-block; font-size:.7rem; color:var(--accent);
+    border:1px solid var(--accent); border-radius:4px;
+    padding:2px 7px; text-decoration:none; margin-top:4px;
+  }
+  .link-btn:hover { background:#0c2d6b33; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="evelyn_live_compare.html">Live Compare</a>
+  <a href="demo_compare.html">Demo Compare</a>
+  <a href="demo2_compare.html">Demo2 Compare</a>
+  <a href="ems_simulator_control.html">Sim Control</a>
+  <a href="demo_influx_viewer.html">Demo InfluxDB</a>
+  <a href="demo_eval.html" class="here">Pipeline Eval</a>
+</div>
+
+<h1>Pipeline Evaluation — Generator × Filter × Storage</h1>
+<p class="subtitle">3 filter strategies × 2 storage backends — CPU, memory, rows/s, storage</p>
+
+<!-- Controls -->
+<div class="controls-bar">
+  <label>Host:</label>
+  <input id="host" value="192.168.86.48" style="width:140px;">
+  <label>Auto-refresh:</label>
+  <select id="refresh-sel" onchange="setRefresh()">
+    <option value="0">Off</option>
+    <option value="5000" selected>5 s</option>
+    <option value="15000">15 s</option>
+    <option value="30000">30 s</option>
+  </select>
+  <button class="btn" onclick="fetchAll()">Refresh now</button>
+  <span id="refresh-status">idle</span>
+  <span style="flex:1"></span>
+  <label style="color:var(--muted);font-size:.72rem;">InfluxDB token:</label>
+  <input id="token" value="ems-token-secret" style="width:160px;">
+  <label style="color:var(--muted);font-size:.72rem;">Org:</label>
+  <input id="org" value="ems-org" style="width:80px;">
+</div>
+
+<!-- Generator status bar -->
+<div class="gen-bar" id="gen-bar">
+  <span style="color:var(--muted);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">Generator</span>
+  <span class="gen-dot" id="gen-dot-a"></span>
+  <span id="gen-mode-a" style="color:var(--muted);font-family:'Consolas',monospace;font-size:.78rem;">sim-A: —</span>
+  <span id="gen-mps-a" style="color:var(--muted);font-family:'Consolas',monospace;font-size:.78rem;"></span>
+  <span style="color:var(--border);">|</span>
+  <span style="color:var(--muted);font-size:.74rem;">
+    Smooth: <code style="background:var(--code-bg);padding:1px 4px;border-radius:3px;font-size:.72rem;color:var(--accent);">g_slow_interval_ms=1000</code>
+    — every signal every 1 s (inflated dedup benefit)
+  </span>
+  <span style="color:var(--border);">|</span>
+  <span style="color:var(--muted);font-size:.74rem;">
+    Burst: <code style="background:var(--code-bg);padding:1px 4px;border-radius:3px;font-size:.72rem;color:var(--yellow);">g_slow_interval_ms=20000</code>
+    — real Evelyn cadence — <strong style="color:var(--yellow);">use for dedup eval</strong>
+  </span>
+  <span style="flex:1"></span>
+  <a href="ems_simulator_control.html" style="font-size:.72rem;color:var(--accent);">→ Sim Control</a>
+</div>
+
+<!-- ── InfluxDB matrix ── -->
+<h2>InfluxDB Paths</h2>
+<div class="matrix-section">
+  <div class="matrix-grid" id="influx-grid">
+    <!-- header row -->
+    <div class="col-hdr row-lbl"></div>
+    <div class="col-hdr unfiltered">
+      Unfiltered (A)<small>pivot only · all signals</small>
+    </div>
+    <div class="col-hdr regdedup">
+      Reg dedup (B)<small>dedup 60s · int/bool only</small>
+    </div>
+    <div class="col-hdr floatdedup">
+      float_dedup (C)<small>execd · all types · ε-threshold</small>
+    </div>
+
+    <!-- Telegraf -->
+    <div class="mcell row-lbl">Telegraf</div>
+    <div class="mcell" id="influx-a-tele">
+      <div class="mcell-metric"><span class="mcell-k">CPU</span><span class="mcell-v pending" id="ia-cpu">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">RSS MB</span><span class="mcell-v pending" id="ia-rss">—</span></div>
+      <span class="status-badge s-ready">ready</span>
+    </div>
+    <div class="mcell" id="influx-b-tele">
+      <div class="mcell-metric"><span class="mcell-k">CPU</span><span class="mcell-v pending" id="ib-cpu">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">RSS MB</span><span class="mcell-v pending" id="ib-rss">—</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+    <div class="mcell" id="influx-c-tele">
+      <div class="mcell-metric"><span class="mcell-k">CPU</span><span class="mcell-v pending" id="ic-cpu">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">RSS MB</span><span class="mcell-v pending" id="ic-rss">—</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+
+    <!-- InfluxDB -->
+    <div class="mcell row-lbl">InfluxDB</div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">Rows/s</span><span class="mcell-v" id="ia-rps">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Storage MB</span><span class="mcell-v pending" id="ia-stor">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Port</span><span class="mcell-v pending">:8096</span></div>
+      <a href="demo_influx_viewer.html" class="link-btn">→ InfluxDB Viewer</a>
+    </div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">Rows/s</span><span class="mcell-v pending" id="ib-rps">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Storage MB</span><span class="mcell-v pending" id="ib-stor">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Port</span><span class="mcell-v pending">:8097</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">Rows/s</span><span class="mcell-v pending" id="ic-rps">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Storage MB</span><span class="mcell-v pending" id="ic-stor">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Port</span><span class="mcell-v pending">:8098</span></div>
+      <span class="status-badge s-todo">needs build</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Parquet matrix ── -->
+<h2>Parquet Paths</h2>
+
+<!-- Filter source selectors for parquet B and C -->
+<div style="display:grid;grid-template-columns:110px 1fr 1fr 1fr;gap:6px;margin-bottom:6px;font-size:.74rem;">
+  <div></div>
+  <div></div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;">
+    <div style="color:var(--muted);margin-bottom:5px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;">Filter source B</div>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:3px;">
+      <input type="radio" name="fsrc-b" value="sim" onchange="updateParquetHdr('b',this.value)" checked>
+      <span style="color:var(--yellow);">Sim burst mode</span>
+      <span style="color:var(--muted);font-size:.68rem;">— natural 20s cadence</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+      <input type="radio" name="fsrc-b" value="tele" onchange="updateParquetHdr('b',this.value)">
+      <span style="color:var(--accent);">Telegraf bridge</span>
+      <span style="color:var(--muted);font-size:.68rem;">— mqtt→dedup→mqtt</span>
+    </label>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;">
+    <div style="color:var(--muted);margin-bottom:5px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;">Filter source C</div>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:3px;">
+      <input type="radio" name="fsrc-c" value="sim" onchange="updateParquetHdr('c',this.value)" checked>
+      <span style="color:var(--yellow);">Sim burst mode</span>
+      <span style="color:var(--muted);font-size:.68rem;">— cadence only (no ε)</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+      <input type="radio" name="fsrc-c" value="tele" onchange="updateParquetHdr('c',this.value)">
+      <span style="color:var(--green);">Telegraf bridge</span>
+      <span style="color:var(--muted);font-size:.68rem;">— mqtt→float_dedup→mqtt</span>
+    </label>
+  </div>
+</div>
+
+<div class="matrix-section">
+  <div class="matrix-grid" id="parquet-grid">
+    <!-- header row -->
+    <div class="col-hdr row-lbl"></div>
+    <div class="col-hdr unfiltered">
+      Unfiltered (A)<small>raw MQTT → parquet direct</small>
+    </div>
+    <div class="col-hdr regdedup" id="phdr-b">
+      Reg dedup (B)<small id="phdr-b-sub">sim burst — 20s cadence dedup</small>
+    </div>
+    <div class="col-hdr floatdedup" id="phdr-c">
+      float_dedup (C)<small id="phdr-c-sub">sim burst — cadence only (no ε-threshold)</small>
+    </div>
+
+    <!-- Writer -->
+    <div class="mcell row-lbl">Writer</div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">CPU</span><span class="mcell-v pending" id="pa-cpu">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">RSS MB</span><span class="mcell-v pending" id="pa-rss">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Health</span><span class="mcell-v pending">:8881</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">CPU</span><span class="mcell-v pending" id="pb-cpu">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">RSS MB</span><span class="mcell-v pending" id="pb-rss">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Health</span><span class="mcell-v pending">:8882</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">CPU</span><span class="mcell-v pending" id="pc-cpu">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">RSS MB</span><span class="mcell-v pending" id="pc-rss">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Health</span><span class="mcell-v pending">:8883</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+
+    <!-- Parquet storage -->
+    <div class="mcell row-lbl">Storage</div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">Rows written</span><span class="mcell-v pending" id="pa-rows">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">File MB</span><span class="mcell-v pending" id="pa-files">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Flush/s</span><span class="mcell-v pending" id="pa-flush">—</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">Rows written</span><span class="mcell-v pending" id="pb-rows">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">File MB</span><span class="mcell-v pending" id="pb-files">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Flush/s</span><span class="mcell-v pending" id="pb-flush">—</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+    <div class="mcell">
+      <div class="mcell-metric"><span class="mcell-k">Rows written</span><span class="mcell-v pending" id="pc-rows">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">File MB</span><span class="mcell-v pending" id="pc-files">—</span></div>
+      <div class="mcell-metric"><span class="mcell-k">Flush/s</span><span class="mcell-v pending" id="pc-flush">—</span></div>
+      <span class="status-badge s-planned">planned</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── InfluxDB rows/s live query ── -->
+<h2>InfluxDB Live — Rows/s (last 30 s)</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px;">Baseline :8096 <code style="font-size:.68rem;color:var(--muted);">ems-baseline</code></div>
+    <div style="font-family:'Consolas',monospace;font-size:1.6rem;font-weight:700;color:var(--accent);" id="live-rps-a">—</div>
+    <div style="font-size:.68rem;color:var(--muted);margin-top:2px;">rows/s</div>
+    <canvas id="chart-a" width="260" height="50" style="margin-top:8px;display:block;"></canvas>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px;">Dedup :8097 <code style="font-size:.68rem;color:var(--muted);">ems-dedup</code></div>
+    <div style="font-family:'Consolas',monospace;font-size:1.6rem;font-weight:700;color:var(--accent);" id="live-rps-b">—</div>
+    <div style="font-size:.68rem;color:var(--muted);margin-top:2px;">rows/s <span style="color:var(--muted);">— planned</span></div>
+    <canvas id="chart-b" width="260" height="50" style="margin-top:8px;display:block;"></canvas>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px;">float_dedup :8098 <code style="font-size:.68rem;color:var(--muted);">ems-floatdedup</code></div>
+    <div style="font-family:'Consolas',monospace;font-size:1.6rem;font-weight:700;color:var(--green);" id="live-rps-c">—</div>
+    <div style="font-size:.68rem;color:var(--muted);margin-top:2px;">rows/s <span style="color:var(--red);">— needs build</span></div>
+    <canvas id="chart-c" width="260" height="50" style="margin-top:8px;display:block;"></canvas>
+  </div>
+</div>
+
+<!-- ── notes / context ── -->
+<h2>Notes &amp; Context</h2>
+<div class="notes-grid">
+  <div class="note-card">
+    <h3>Generator modes</h3>
+    <ul>
+      <li><span class="green">Burst</span> (<code>g_slow_interval_ms=20000</code>) mirrors real Evelyn — slow signals every 20 s in a burst; fast signals every second</li>
+      <li><span class="yellow">Smooth</span> (<code>g_slow_interval_ms=1000</code>) publishes every signal every second — inflates dedup benefit, use only for baseline load tests</li>
+      <li><strong>Use burst mode for dedup evaluation</strong></li>
+      <li>Both modes use the same 46-unit Evelyn dataset (<code>ems_topic_template.json</code>)</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>Filter definitions</h3>
+    <ul>
+      <li><span class="muted">Unfiltered (A):</span> <code>processors.pivot</code> only — mirrors Longbow production today</li>
+      <li><span class="green" style="color:var(--accent);">Reg dedup (B):</span> <code>processors.dedup dedup_interval=60s</code> — int/bool only via <code>tagpass</code></li>
+      <li><span class="green">float_dedup (C):</span> <code>[[processors.execd]]</code> — all types: float by ε-threshold (default 0.5), int/bool/string by exact-match, 60 s heartbeat</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>Parquet filter options (B &amp; C)</h3>
+    <ul>
+      <li><span class="yellow">Sim burst mode</span> — run generator with <code>g_slow_interval_ms=20000</code>; slow signals naturally publish every 20s — no extra bridge needed; parquet writer subscribes same :11888 topic</li>
+      <li><span class="yellow">Burst caveat C</span> — sim burst alone gives cadence dedup but not ε-threshold on floats; float values still written on every publish even if unchanged</li>
+      <li><span class="green" style="color:var(--accent);">Telegraf bridge B</span> — <code>inputs.mqtt_consumer</code> → <code>processors.dedup 60s</code> → <code>outputs.mqtt</code> to a second topic; parquet writer subscribes filtered topic</li>
+      <li><span class="green">Telegraf bridge C</span> — same but with <code>processors.execd float_dedup</code>; gives full ε-threshold dedup on all types</li>
+      <li>Parquet writer binary unmodified for either approach</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>Expected reductions</h3>
+    <ul>
+      <li>Unfiltered: baseline — 100%</li>
+      <li>Reg dedup: est. <span class="yellow">−23%</span> rows (int/bool only)</li>
+      <li>float_dedup: est. <span class="green">−40–60%</span> rows (all types)</li>
+      <li>Parquet compression independent — typically 10–15× vs raw MQTT</li>
+      <li>Run for ≥10 min in burst mode before capturing metrics</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── build status ── -->
+<h2>Build Status</h2>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;">
+  <ul class="checklist">
+    <li><span class="ck-icon ck-done">[x]</span> <span><code>ems_site_simulator</code> smooth/burst toggle</span></li>
+    <li><span class="ck-icon ck-done">[x]</span> <span>Telegraf-A config (unfiltered → :8096)</span></li>
+    <li><span class="ck-icon ck-done">[x]</span> <span><code>float_dedup</code> binary (<code>source/telegraf_plugins/float_dedup/</code>)</span></li>
+    <li><span class="ck-icon ck-done">[x]</span> <span>parquet_writer (<code>real_writer</code> binary, gx10)</span></li>
+    <li><span class="ck-icon ck-done">[x]</span> <span>Demo InfluxDB Viewer page</span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">Telegraf-B config (reg dedup → :8097)</span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">Telegraf-C config (float_dedup execd → :8098)</span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">InfluxDB :8098 instance — extend <code>evelyn-compare-native-start.sh</code></span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">Telegraf MQTT bridge configs for parquet paths B &amp; C</span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">3× parquet_writer YAML configs (<code>/data/parquet-eval/{a,b,c}/</code>, health :8881/8882/8883)</span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">CPU/RSS fields in parquet_writer health endpoint (or sidecar stats)</span></li>
+    <li><span class="ck-icon ck-todo">[ ]</span> <span class="ck-todo">Stats collection script on gx10 (polls 6× process metrics, serves JSON)</span></li>
+  </ul>
+</div>
+
+<script>
+// ── config ──────────────────────────────────────────────────────────────────
+
+const INFLUX_PORTS   = { a: 8096, b: 8097, c: 8098 };
+const INFLUX_BUCKETS = { a: 'ems-baseline', b: 'ems-dedup', c: 'ems-floatdedup' };
+const WRITER_PORTS   = { a: 8881, b: 8882, c: 8883 };
+const SIM_WS_PORT    = 8769;   // sim-A
+
+const LS_DEMO = 'demo_compare_stats';
+
+// sparkline history (row counts)
+const rpsHistory = { a: [], b: [], c: [] };
+const MAX_HIST = 30;
+
+// ── init ────────────────────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadHostFromDemo();
+  fetchAll();
+  setRefresh();
+  watchSimStatus();
+});
+
+function loadHostFromDemo() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_DEMO) || '{}');
+    if (s.host) document.getElementById('host').value = s.host;
+  } catch(e) {}
+}
+
+// ── refresh ──────────────────────────────────────────────────────────────────
+
+let refreshTimer = null;
+
+// ── Parquet header update ─────────────────────────────────────────────────────
+
+const PARQUET_SUBTITLES = {
+  b: {
+    sim:  'sim burst — 20s cadence dedup',
+    tele: 'Telegraf mqtt→dedup 60s→mqtt bridge',
+  },
+  c: {
+    sim:  'sim burst — cadence only (no ε-threshold)',
+    tele: 'Telegraf mqtt→float_dedup execd→mqtt bridge',
+  },
+};
+
+function updateParquetHdr(side, src) {
+  const el = document.getElementById(`phdr-${side}-sub`);
+  if (el) el.textContent = PARQUET_SUBTITLES[side][src];
+}
+
+function setRefresh() {
+  clearInterval(refreshTimer);
+  const ms = parseInt(document.getElementById('refresh-sel').value);
+  if (ms > 0) {
+    refreshTimer = setInterval(fetchAll, ms);
+    document.getElementById('refresh-status').textContent = `auto ${ms/1000}s`;
+    document.getElementById('refresh-status').className = 'live';
+  } else {
+    document.getElementById('refresh-status').textContent = 'manual';
+    document.getElementById('refresh-status').className = '';
+  }
+}
+
+function fetchAll() {
+  const host  = document.getElementById('host').value.trim();
+  const token = document.getElementById('token').value.trim();
+  const org   = document.getElementById('org').value.trim();
+  fetchInfluxRps(host, token, org, 'a');
+  fetchInfluxRps(host, token, org, 'b');
+  fetchInfluxRps(host, token, org, 'c');
+  fetchWriterHealth(host, 'a');
+  fetchWriterHealth(host, 'b');
+  fetchWriterHealth(host, 'c');
+}
+
+// ── InfluxDB rows/s query ────────────────────────────────────────────────────
+
+async function fetchInfluxRps(host, token, org, side) {
+  const port   = INFLUX_PORTS[side];
+  const bucket = INFLUX_BUCKETS[side];
+  const flux = `
+from(bucket: "${bucket}")
+  |> range(start: -30s)
+  |> filter(fn: (r) => r._field == "float" or r._field == "integer" or r._field == "boolean_integer" or r._field == "string")
+  |> count()
+  |> sum()
+`.trim();
+
+  const url = `http://${host}:${port}/api/v2/query?org=${encodeURIComponent(org)}`;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/vnd.flux',
+        'Accept': 'application/csv',
+      },
+      body: flux,
+    });
+    if (!resp.ok) {
+      setRps(side, null);
+      return;
+    }
+    const text = await resp.text();
+    const match = text.match(/,(\d+)\s*$/m);
+    if (match) {
+      const count = parseInt(match[1]);
+      const rps   = Math.round(count / 30);
+      setRps(side, rps);
+    } else {
+      setRps(side, 0);
+    }
+  } catch(e) {
+    setRps(side, null);
+  }
+}
+
+function setRps(side, val) {
+  const el   = document.getElementById(`live-rps-${side}`);
+  const matEl = document.getElementById(`i${side}-rps`);
+  if (val === null) {
+    el.textContent = '—';
+    el.style.color = 'var(--muted)';
+    if (matEl) { matEl.textContent = '—'; matEl.classList.add('pending'); }
+  } else {
+    el.textContent = val.toLocaleString();
+    el.style.color = val > 0 ? 'var(--green)' : 'var(--muted)';
+    if (matEl) {
+      matEl.textContent = val.toLocaleString();
+      matEl.classList.remove('pending');
+      matEl.classList.add('live');
+    }
+    const hist = rpsHistory[side];
+    hist.push(val);
+    if (hist.length > MAX_HIST) hist.shift();
+    drawSparkline(side);
+  }
+}
+
+// ── Parquet writer health ────────────────────────────────────────────────────
+
+async function fetchWriterHealth(host, side) {
+  const port = WRITER_PORTS[side];
+  try {
+    const resp = await fetch(`http://${host}:${port}/health`, { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) return;
+    const j = await resp.json();
+    // rows/s approximation: total_rows_written / uptime not available — show total
+    setVal(`p${side}-rows`,  j.total_rows_written != null ? j.total_rows_written.toLocaleString() : '—');
+    setVal(`p${side}-flush`, j.flush_count != null ? j.flush_count : '—');
+    // CPU and RSS not yet in endpoint
+    setVal(`p${side}-cpu`, j.cpu_pct != null ? j.cpu_pct.toFixed(1) + '%' : '—');
+    setVal(`p${side}-rss`, j.rss_mb  != null ? j.rss_mb.toFixed(0)       : '—');
+  } catch(e) { /* writer not reachable yet */ }
+}
+
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  if (val !== '—') { el.classList.remove('pending'); el.classList.add('live'); }
+}
+
+// ── Sparklines ───────────────────────────────────────────────────────────────
+
+const CHART_COLORS = { a: '#58a6ff', b: '#58a6ff', c: '#3fb950' };
+
+function drawSparkline(side) {
+  const canvas = document.getElementById(`chart-${side}`);
+  if (!canvas) return;
+  const ctx  = canvas.getContext('2d');
+  const data = rpsHistory[side];
+  const W    = canvas.width;
+  const H    = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (data.length < 2) return;
+  const mx = Math.max(...data, 1);
+  ctx.beginPath();
+  ctx.strokeStyle = CHART_COLORS[side];
+  ctx.lineWidth   = 1.5;
+  data.forEach((v, i) => {
+    const x = (i / (MAX_HIST - 1)) * W;
+    const y = H - (v / mx) * (H - 4) - 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // fill
+  ctx.lineTo((data.length - 1) / (MAX_HIST - 1) * W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = CHART_COLORS[side] + '22';
+  ctx.fill();
+}
+
+// ── Generator WebSocket status ────────────────────────────────────────────────
+
+let genWs = null;
+
+function watchSimStatus() {
+  const host = document.getElementById('host').value.trim();
+  connectGenWs(host);
+}
+
+function connectGenWs(host) {
+  if (genWs) { try { genWs.close(); } catch(e){} }
+  try {
+    genWs = new WebSocket(`ws://${host}:${SIM_WS_PORT}`);
+    genWs.onopen = () => {
+      genWs.send(JSON.stringify({ cmd: 'get_status' }));
+    };
+    genWs.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        updateGenBar(d);
+      } catch(err) {}
+    };
+    genWs.onclose = () => {
+      setGenOffline();
+      setTimeout(() => connectGenWs(document.getElementById('host').value.trim()), 10000);
+    };
+    genWs.onerror = () => { setGenOffline(); };
+  } catch(err) { setGenOffline(); }
+}
+
+function updateGenBar(d) {
+  const dot  = document.getElementById('gen-dot-a');
+  const mode = document.getElementById('gen-mode-a');
+  const mps  = document.getElementById('gen-mps-a');
+
+  dot.className = 'gen-dot on';
+  const smooth  = d.smooth_burst === true || d.mode === 'smooth';
+  const modeStr = smooth ? 'smooth' : 'burst';
+  mode.innerHTML = `sim-A: <span class="mode-badge mode-${modeStr}">${modeStr}</span>`;
+
+  const rps = d.msgs_per_sec ?? d.mps ?? d.rate ?? null;
+  mps.textContent = rps != null ? `${Math.round(rps).toLocaleString()} msg/s` : '';
+}
+
+function setGenOffline() {
+  const dot  = document.getElementById('gen-dot-a');
+  const mode = document.getElementById('gen-mode-a');
+  dot.className = 'gen-dot off';
+  mode.textContent = 'sim-A: offline';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Writer vs InfluxDB2 — Storage Cost Comparison</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background:#f8fafc; color:#1e293b; margin:0; padding:24px; max-width:960px; margin:0 auto; padding:24px; }
+  h1 { font-size:1.5rem; color:#0369a1; margin-bottom:4px; }
+  h2 { font-size:1.1rem; color:#0f4c81; margin:32px 0 10px; border-bottom:1px solid #bfdbfe; padding-bottom:6px; }
+  h3 { font-size:0.95rem; color:#334155; margin:18px 0 8px; }
+  .subtitle { color:#64748b; font-size:0.85rem; margin-bottom:24px; }
+  .card { background:#fff; border:1px solid #bfdbfe; border-radius:8px; padding:18px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .box { background:#f0f9ff; border:1px solid #7dd3fc; border-radius:6px; padding:12px 16px; font-size:0.83rem; color:#0c4a6e; margin-bottom:16px; }
+  .box.warn { background:#fff7ed; border-color:#fdba74; color:#7c2d12; }
+  .box.green { background:#f0fdf4; border-color:#86efac; color:#14532d; }
+  .box.amber { background:#fefce8; border-color:#fde047; color:#713f12; }
+  .box.red { background:#fff1f2; border-color:#fca5a5; color:#7f1d1d; }
+  table { width:100%; border-collapse:collapse; font-size:0.82rem; margin-bottom:4px; }
+  th { background:#e0f2fe; color:#0369a1; text-align:left; padding:7px 10px; font-weight:600; }
+  td { padding:6px 10px; border-bottom:1px solid #e2e8f0; color:#334155; }
+  tr:last-child td { border-bottom:none; }
+  .val { font-weight:700; color:#0f172a; }
+  .good { color:#059669; font-weight:700; }
+  .bad  { color:#dc2626; font-weight:700; }
+  .mid  { color:#d97706; font-weight:700; }
+  .chart-wrap { position:relative; height:320px; margin:16px 0; }
+  .legend { display:flex; gap:20px; flex-wrap:wrap; font-size:0.8rem; margin-bottom:12px; }
+  .legend-item { display:flex; align-items:center; gap:6px; }
+  .legend-dot { width:14px; height:14px; border-radius:3px; flex-shrink:0; }
+  .tbd { background:#f8fafc; border:2px dashed #94a3b8; border-radius:8px; padding:20px; color:#64748b; font-size:0.85rem; margin-top:24px; }
+  .tbd h3 { color:#475569; margin-top:0; }
+  code { background:#f1f5f9; padding:1px 5px; border-radius:3px; font-size:0.85em; color:#0c4a6e; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:600; }
+  .pill-green { background:#dcfce7; color:#15803d; }
+  .pill-red   { background:#fee2e2; color:#b91c1c; }
+  .pill-blue  { background:#dbeafe; color:#1d4ed8; }
+  .pill-amber { background:#fef9c3; color:#92400e; }
+  footer { margin-top:40px; font-size:0.75rem; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:12px; }
+</style>
+</head>
+<body>
+
+<div style="background:#0f172a;color:#e2e8f0;border-radius:8px;padding:18px 24px;margin-bottom:24px;font-size:0.85rem;line-height:1.7">
+  <div style="font-size:1rem;font-weight:700;color:#38bdf8;margin-bottom:8px">Summary — Parquet/S3 vs InfluxDB2 for Long-Term Site Storage</div>
+  <ul style="margin:0;padding-left:18px;color:#cbd5e1">
+    <li>Wide Pivot Parquet on S3 is <strong style="color:#4ade80">12–25× cheaper</strong> than InfluxDB2 on EBS for long-term storage at an Evelyn site (12 units, 34 signals, 1 Hz).</li>
+    <li>At 10 years, InfluxDB2 costs <strong style="color:#f87171">~$7,250/year in storage alone</strong> vs <strong style="color:#4ade80">~$285/year</strong> for tuned Wide Parquet on S3.</li>
+    <li>InfluxDB2 also requires an <strong style="color:#f87171">always-on EC2 instance (~$730–1,500/year)</strong> — Parquet writer can run on-premises at zero AWS compute cost.</li>
+    <li>Wide Pivot chosen over Norm-Long for this comparison — dashboard-friendly column format, ~25% larger on S3 but native Grafana/BI compatibility.</li>
+    <li><strong style="color:#4ade80">Hybrid option:</strong> add 1-week InfluxDB retention alongside Parquet/S3 — keeps all existing Grafana dashboards, drops storage cost by 98%, 10-year total ~$4,000–6,000 (87–91% cheaper than InfluxDB2 long-term).</li>
+  </ul>
+</div>
+
+<h1>Parquet Writer vs InfluxDB2 — Storage Cost per Site</h1>
+<div class="subtitle">Wide Pivot Parquet on S3 vs current FlashMQ → Telegraf → InfluxDB2 on EC2/EBS · 1, 2, 5, 10 year retention</div>
+
+<!-- Assumptions -->
+<div class="card">
+  <h3 style="margin-top:0;color:#0369a1">Site topology &amp; assumptions</h3>
+  <div class="grid2">
+    <table>
+      <tr><td>Units per site</td><td class="val">12</td></tr>
+      <tr><td>Signals per unit</td><td class="val">34 (24 float + 10 int)</td></tr>
+      <tr><td>Message rate</td><td class="val">408 msg/s (1 Hz sweep)</td></tr>
+      <tr><td>Messages per year</td><td class="val">12.87 billion</td></tr>
+      <tr><td>Compression</td><td class="val">Snappy (parquet) / TSM (InfluxDB)</td></tr>
+    </table>
+    <table>
+      <tr><td>InfluxDB2 storage efficiency</td><td class="val bad">58.7 B/point</td></tr>
+      <tr><td>Wide Parquet (current config)</td><td class="val mid">16.3 B/msg</td></tr>
+      <tr><td>Wide Parquet (tuned — fix <code>max_messages_per_part</code>)</td><td class="val good">~8 B/msg</td></tr>
+      <tr><td>EBS gp3 price</td><td class="val">$0.08 / GB / month</td></tr>
+      <tr><td>S3 Standard price</td><td class="val">$0.023 / GB / month</td></tr>
+    </table>
+  </div>
+  <div class="box amber" style="margin-top:10px;margin-bottom:0">
+    <strong>Wide Pivot (tuned)</strong> requires raising <code>max_messages_per_part</code> to ≥ 250,000 in the wide writer config so time-based flush controls file boundaries.
+    Current config produces 21 files/unit (28 rows/file) due to max_messages_per_part firing on raw MQTT count — tuned produces ~1 file/unit (600 rows/file) with much lower column metadata overhead.
+    See <a href="wide_parquet_writer.html">wide_parquet_writer.html</a> for full benchmark detail.
+  </div>
+</div>
+
+<!-- Storage Volume Chart -->
+<h2>Storage Volume</h2>
+<p style="font-size:0.82rem;color:#64748b;margin:0 0 8px">Cumulative GB stored at each retention horizon for one site.</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>InfluxDB2 on EBS</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Wide Parquet on S3 (current config)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Wide Parquet on S3 (tuned)</div>
+</div>
+<div class="chart-wrap">
+  <canvas id="sizeChart"></canvas>
+</div>
+
+<div class="card" style="margin-top:8px">
+  <table>
+    <thead>
+      <tr>
+        <th>Schema / Storage</th>
+        <th>Rate (GB/yr)</th>
+        <th>1 year</th>
+        <th>2 years</th>
+        <th>5 years</th>
+        <th>10 years</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>InfluxDB2 on EBS <span class="pill pill-red">current AWS</span></td>
+        <td class="val bad">755 GB/yr</td>
+        <td class="bad">755 GB</td>
+        <td class="bad">1,510 GB</td>
+        <td class="bad">3,775 GB</td>
+        <td class="bad">7,550 GB</td>
+      </tr>
+      <tr>
+        <td>Wide Parquet on S3 — current config <span class="pill pill-amber">28 rows/file</span></td>
+        <td class="val mid">210 GB/yr</td>
+        <td class="mid">210 GB</td>
+        <td class="mid">420 GB</td>
+        <td class="mid">1,050 GB</td>
+        <td class="mid">2,100 GB</td>
+      </tr>
+      <tr>
+        <td>Wide Parquet on S3 — tuned <span class="pill pill-green">600 rows/file</span></td>
+        <td class="val good">~103 GB/yr</td>
+        <td class="good">~103 GB</td>
+        <td class="good">~206 GB</td>
+        <td class="good">~515 GB</td>
+        <td class="good">~1,030 GB</td>
+      </tr>
+      <tr style="color:#64748b;font-size:0.78rem">
+        <td>Norm-Long on S3 (reference — smallest)</td>
+        <td>82 GB/yr</td>
+        <td>82 GB</td>
+        <td>164 GB</td>
+        <td>410 GB</td>
+        <td>820 GB</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Annual Cost Chart -->
+<h2>Annual Storage Bill</h2>
+<p style="font-size:0.82rem;color:#64748b;margin:0 0 8px">
+  Ongoing annual storage cost at each retention horizon (accumulated data × $/GB/year).
+  InfluxDB2 on EBS at $0.96/GB/yr · Parquet on S3 Standard at $0.276/GB/yr.
+</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>InfluxDB2 on EBS</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Wide Parquet on S3 (current)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Wide Parquet on S3 (tuned)</div>
+</div>
+<div class="chart-wrap">
+  <canvas id="costChart"></canvas>
+</div>
+
+<div class="card" style="margin-top:8px">
+  <table>
+    <thead>
+      <tr>
+        <th>Schema / Storage</th>
+        <th>1 year</th>
+        <th>2 years</th>
+        <th>5 years</th>
+        <th>10 years</th>
+        <th>Saving vs InfluxDB (10yr)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>InfluxDB2 on EBS <span class="pill pill-red">current AWS</span></td>
+        <td class="bad">$725 / yr</td>
+        <td class="bad">$1,450 / yr</td>
+        <td class="bad">$3,624 / yr</td>
+        <td class="bad">$7,248 / yr</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>Wide Parquet on S3 — current config</td>
+        <td class="mid">$58 / yr</td>
+        <td class="mid">$116 / yr</td>
+        <td class="mid">$290 / yr</td>
+        <td class="mid">$580 / yr</td>
+        <td class="good">−92% ($6,668 / yr saved)</td>
+      </tr>
+      <tr>
+        <td>Wide Parquet on S3 — tuned</td>
+        <td class="good">$28 / yr</td>
+        <td class="good">$57 / yr</td>
+        <td class="good">$142 / yr</td>
+        <td class="good">$284 / yr</td>
+        <td class="good">−96% ($6,964 / yr saved)</td>
+      </tr>
+      <tr style="color:#64748b;font-size:0.78rem">
+        <td>Norm-Long on S3 (reference)</td>
+        <td>$23 / yr</td>
+        <td>$45 / yr</td>
+        <td>$113 / yr</td>
+        <td>$226 / yr</td>
+        <td>−97%</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Compute costs -->
+<h2>Compute Costs</h2>
+<div class="grid2">
+  <div class="card" style="border-color:#fca5a5">
+    <div style="font-weight:700;color:#b91c1c;margin-bottom:10px">InfluxDB2 path — always-on EC2 required</div>
+    <table>
+      <tr><td>FlashMQ + Telegraf</td><td class="val">t3.small · ~$182/yr</td></tr>
+      <tr><td>InfluxDB2</td><td class="val">t3.large · ~$730/yr</td></tr>
+      <tr><td>EBS storage I/O</td><td class="val">included in gp3</td></tr>
+      <tr><td><strong>Total compute</strong></td><td class="bad"><strong>~$912–1,500 / yr</strong></td></tr>
+    </table>
+    <div class="box warn" style="margin-top:10px;margin-bottom:0;font-size:0.78rem">
+      EC2 compute cost does not reduce with retention — it's fixed overhead regardless of how much data is stored.
+      At 10 years: $9,120–15,000 in compute alone on top of $7,248 in storage.
+    </div>
+  </div>
+  <div class="card" style="border-color:#86efac">
+    <div style="font-weight:700;color:#15803d;margin-bottom:10px">Parquet / S3 path — writer placement options</div>
+    <table>
+      <tr><td>On-premises writer</td><td class="good">$0 AWS compute</td></tr>
+      <tr><td>EC2 writer (t3.small, stoppable)</td><td class="val">~$182/yr max</td></tr>
+      <tr><td>S3 PUT requests (12.87B/yr @ $0.005/1k)</td><td class="val">~$64/yr</td></tr>
+      <tr><td>S3 GET requests (queries)</td><td class="val">~$4–20/yr typical</td></tr>
+      <tr><td><strong>Total compute (on-prem writer)</strong></td><td class="good"><strong>~$68–84 / yr</strong></td></tr>
+    </table>
+    <div class="box green" style="margin-top:10px;margin-bottom:0;font-size:0.78rem">
+      DuckDB queries run anywhere — laptop, on-prem server, or EC2 — reading directly from S3.
+      No always-on query server needed for historical data access.
+    </div>
+  </div>
+</div>
+
+<!-- 10-year total -->
+<h2>10-Year Total Cost Comparison (storage + compute)</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th>Storage (10yr)</th>
+        <th>Compute (10yr)</th>
+        <th>S3 requests (10yr)</th>
+        <th style="color:#0369a1">Total (10yr)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>InfluxDB2 on EC2/EBS <span class="pill pill-red">current</span></td>
+        <td class="bad">~$36,250 <small style="color:#94a3b8;font-weight:400">(sum of annual bills)</small></td>
+        <td class="bad">~$9,120</td>
+        <td>—</td>
+        <td class="bad"><strong>~$45,370</strong></td>
+      </tr>
+      <tr>
+        <td>Wide Parquet on S3 — tuned, on-prem writer</td>
+        <td class="good">~$1,561 <small style="color:#94a3b8;font-weight:400">(sum of annual bills)</small></td>
+        <td class="good">$0</td>
+        <td class="val">~$640</td>
+        <td class="good"><strong>~$2,201</strong></td>
+      </tr>
+      <tr>
+        <td>Wide Parquet on S3 — tuned, EC2 writer</td>
+        <td class="good">~$1,561</td>
+        <td class="val">~$1,820</td>
+        <td class="val">~$640</td>
+        <td class="good"><strong>~$4,021</strong></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="box green" style="margin-top:12px;margin-bottom:0">
+    <strong>On-prem writer + S3:</strong> 10-year total ~$2,200 vs ~$45,400 for InfluxDB2 path — <strong>a 20× cost reduction per site</strong>.
+    Multiply by fleet size to get full programme savings.
+  </div>
+</div>
+
+<!-- S3 tiering note -->
+<div class="box" style="margin-top:0">
+  <strong>S3 storage class options</strong> — costs above use S3 Standard throughout.
+  For data older than 90 days, S3 Intelligent-Tiering automatically moves infrequently accessed data to cheaper tiers.
+  For data older than 1 year, S3 Glacier Instant Retrieval ($0.004/GB/month = $0.048/GB/yr) reduces storage cost by a further 83%.
+  10-year wide parquet cost with tiering: estimated <strong>&lt;$1,000 total</strong>.
+</div>
+
+<!-- Hybrid Real-Time Tier -->
+<h2>Hybrid Architecture — InfluxDB as Short-Term Real-Time Tier</h2>
+<p style="font-size:0.82rem;color:#64748b;margin:0 0 14px">
+  Instead of choosing between InfluxDB (expensive long-term) and Parquet/S3 (no real-time dashboard),
+  use both: InfluxDB handles the last 7 days for live dashboards; Parquet/S3 handles the archive.
+  The two write paths run in parallel from the same MQTT stream.
+</p>
+
+<div class="box green">
+  <strong>Key insight:</strong> InfluxDB's cost problem is almost entirely caused by <em>years of accumulating data on EBS</em>.
+  Cut retention to 1 week and storage drops from $7,248/yr to <strong>under $15/yr flat</strong> — it never grows.
+  EC2 compute is what remains, or eliminate that too by running InfluxDB on the edge server alongside the parquet writer.
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;color:#0369a1">InfluxDB storage at 1-week retention — flat, never grows</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Configuration</th>
+        <th>B / point</th>
+        <th>1-week data size</th>
+        <th>Annual EBS cost</th>
+        <th>vs InfluxDB2 long-term @ Y10</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>InfluxDB2 long-term <span class="pill pill-red">current</span></td>
+        <td class="bad">58.7 B</td>
+        <td class="bad">755 GB/yr added → 7,550 GB at Y10</td>
+        <td class="bad">$725 → $7,248 / yr</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>InfluxDB2, 1-week retention</td>
+        <td>58.7 B</td>
+        <td class="good">~14.5 GB (flat)</td>
+        <td class="good">~$14 / yr</td>
+        <td class="good">−98%</td>
+      </tr>
+      <tr>
+        <td>InfluxDB3 Core, 1-week retention</td>
+        <td class="good">~11–13 B</td>
+        <td class="good">~2.5 GB (flat)</td>
+        <td class="good">~$2 / yr</td>
+        <td class="good">−99.7%</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>10-Year Total — Hybrid vs Current Paths</h2>
+<p style="font-size:0.82rem;color:#64748b;margin:0 0 8px">
+  Hybrid paths add a 1-week InfluxDB real-time tier to the Parquet/S3 archive (tuned config).
+  Stacked by cost component.
+</p>
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Storage (S3 + EBS)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>EC2 Compute</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#94a3b8"></div>S3 Requests</div>
+</div>
+<div class="chart-wrap">
+  <canvas id="totalChart"></canvas>
+</div>
+
+<div class="card" style="margin-top:8px">
+  <table>
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th>Storage (10yr)</th>
+        <th>EC2 Compute (10yr)</th>
+        <th>S3 Requests (10yr)</th>
+        <th style="color:#0369a1">Total (10yr)</th>
+        <th>vs InfluxDB2</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>InfluxDB2 long-term <span class="pill pill-red">current</span></td>
+        <td class="bad">~$36,250 EBS</td>
+        <td class="bad">~$9,120</td>
+        <td>—</td>
+        <td class="bad"><strong>~$45,370</strong></td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>InfluxDB2 (1-wk, EC2 t3.medium) + Parquet/S3</td>
+        <td>~$1,701 <small style="color:#94a3b8">($140 EBS + $1,561 S3)</small></td>
+        <td>~$3,650</td>
+        <td>~$640</td>
+        <td class="mid"><strong>~$5,991</strong></td>
+        <td class="good">−87%</td>
+      </tr>
+      <tr>
+        <td>InfluxDB3 (1-wk, EC2 t3.small) + Parquet/S3</td>
+        <td>~$1,585 <small style="color:#94a3b8">($24 EBS + $1,561 S3)</small></td>
+        <td>~$1,820</td>
+        <td>~$640</td>
+        <td class="good"><strong>~$4,045</strong></td>
+        <td class="good">−91%</td>
+      </tr>
+      <tr>
+        <td>InfluxDB on edge server + Parquet/S3</td>
+        <td class="good">~$1,561 S3</td>
+        <td class="good">$0</td>
+        <td>~$640</td>
+        <td class="good"><strong>~$2,201</strong></td>
+        <td class="good">−95%</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="box green" style="margin-top:12px;margin-bottom:0">
+    <strong>Even adding InfluxDB (1-week) on a cloud EC2:</strong> 10-year cost drops from ~$45,400 to ~$4,000–6,000 — an 87–91% reduction.
+    Running the writer and InfluxDB on the edge server brings this to ~$2,200 — real-time Grafana dashboards at no extra AWS cost.
+    <strong>subscriber_api</strong> (DuckDB historical query service) can co-locate on the same EC2 instance or edge server — no additional compute cost in either case.
+  </div>
+</div>
+
+<!-- What you get -->
+<h3>What a 1-week InfluxDB tier provides</h3>
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Need</th><th>Covered?</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Live needle / gauge (&lt; 1s)</td><td><span class="mid">Partial</span></td><td>InfluxDB polls at ~1 Hz; sub-second still needs direct MQTT (FlashMQ already provides this)</td></tr>
+      <tr><td>Last-minute / last-hour dashboard</td><td><span class="good">✓ Yes</span></td><td>Standard Grafana + InfluxDB datasource query</td></tr>
+      <tr><td>Last 7 days trend</td><td><span class="good">✓ Yes</span></td><td>Full retention window available</td></tr>
+      <tr><td>Historical query &gt; 1 week</td><td><span class="bad">✗ InfluxDB only</span></td><td>Requires <strong>subscriber_api</strong> (DuckDB service) reading from Parquet/S3 — runs on-prem or on the same EC2 instance as InfluxDB</td></tr>
+      <tr><td>Grafana dashboards</td><td><span class="good">✓ Yes</span></td><td>Native InfluxDB datasource; no extra plugin needed</td></tr>
+      <tr><td>SQL / InfluxQL queries</td><td><span class="good">✓ Yes</span></td><td>InfluxDB3 adds full SQL; InfluxDB2 uses Flux/InfluxQL</td></tr>
+      <tr><td>Alerting rules</td><td><span class="good">✓ Yes</span></td><td>InfluxDB2 Flux alerts or Grafana alerting on top</td></tr>
+      <tr><td>Long-term data portability</td><td><span class="good">✓ Yes</span></td><td>Parquet/S3 provides open-format, DuckDB-queryable archive independent of InfluxDB</td></tr>
+      <tr><td>Gap recovery on writer restart</td><td><span class="mid">Partial</span></td><td>Kafka (7-day offset replay) covers this cleanly — see <a href="evelyn_kafka_analysis.html#realtime">Kafka analysis</a></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Pragmatic path -->
+<div class="box amber">
+  <strong>Pragmatic migration path — minimum change, maximum saving:</strong>
+  Keep the existing Telegraf → InfluxDB2 write path unchanged and
+  <strong>set <code>retention_period = 7d</code> on the InfluxDB2 bucket</strong> — a single config change.
+  Add the parquet writer in parallel for the long-term archive.
+  Storage cost drops from $7,248/yr to $14/yr immediately. All existing dashboards and alerts keep working.
+  Evaluate InfluxDB3 or on-prem placement as a separate step once the parquet archive is validated.
+</div>
+
+<!-- Architecture diagram -->
+<div class="card" style="margin-top:0">
+  <h3 style="margin-top:0;color:#0369a1">Dual-write architecture — three query tiers</h3>
+  <pre style="font-size:0.78rem;line-height:1.6;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px;overflow-x:auto">
+Edge site
+  MQTT hardware → FlashMQ :1883
+                      │
+           ┌──────────┴───────────────────────┐
+           │                                  │
+    Telegraf (existing)                parquet_writer (new)
+           │                                  │
+    InfluxDB2/3                        S3 parquet archive
+    retention = 7d   ← recent data     (years of history)
+           │                                  │
+    Grafana / alerts               subscriber_api (DuckDB)
+    (last 7 days)                  (historical queries &gt; 7 days)
+                                          │
+                                   Grafana / custom UI
+                                   (date-range, trends,
+                                    exports, BI tools)
+
+  Live sub-second feed: browser → FlashMQ WebSocket (MQTT, unchanged)
+  Recent 1 min – 7 days: Grafana → InfluxDB
+  Historical &gt; 7 days:   Grafana / UI → subscriber_api → DuckDB → S3</pre>
+
+  <div class="box" style="margin-top:12px;margin-bottom:0">
+    <strong>subscriber_api placement:</strong> subscriber_api is a lightweight Python/DuckDB service —
+    it can run on the same EC2 instance as InfluxDB (no extra cost), on-prem on the edge server ($0 AWS),
+    or via <strong>AWS Athena</strong> (serverless, ~$5/TB scanned, no always-on server needed).
+    DuckDB queries S3 parquet files directly, so there is no separate database to provision or maintain.
+  </div>
+</div>
+
+<footer>
+  Benchmark data: 12 units × 34 signals · 408 msg/s · 600-sweep run · phil-dev 2026-04-08 ·
+  InfluxDB2 efficiency: 58.7 B/point (measured) · Wide Parquet: 16.3 B/msg current / ~8 B/msg tuned (estimated) ·
+  AWS pricing: us-east-1 on-demand 2026-04 · S3 Standard $0.023/GB/mo · EBS gp3 $0.08/GB/mo
+</footer>
+
+<script>
+const years = ['1 year', '2 years', '5 years', '10 years'];
+
+// Storage volume chart
+new Chart(document.getElementById('sizeChart'), {
+  type: 'bar',
+  data: {
+    labels: years,
+    datasets: [
+      {
+        label: 'InfluxDB2 on EBS',
+        data: [755, 1510, 3775, 7550],
+        backgroundColor: '#ef4444cc',
+        borderColor: '#ef4444',
+        borderWidth: 1,
+      },
+      {
+        label: 'Wide Parquet on S3 (current)',
+        data: [210, 420, 1050, 2100],
+        backgroundColor: '#7c3aedcc',
+        borderColor: '#7c3aed',
+        borderWidth: 1,
+      },
+      {
+        label: 'Wide Parquet on S3 (tuned)',
+        data: [103, 206, 515, 1030],
+        backgroundColor: '#2563ebcc',
+        borderColor: '#2563eb',
+        borderWidth: 1,
+      },
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()} GB`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { display: false } },
+      y: {
+        title: { display: true, text: 'Cumulative storage (GB)', font: { size: 11 } },
+        ticks: { callback: v => v.toLocaleString() + ' GB' }
+      }
+    }
+  }
+});
+
+// Annual cost chart
+new Chart(document.getElementById('costChart'), {
+  type: 'bar',
+  data: {
+    labels: years,
+    datasets: [
+      {
+        label: 'InfluxDB2 on EBS',
+        data: [725, 1450, 3624, 7248],
+        backgroundColor: '#ef4444cc',
+        borderColor: '#ef4444',
+        borderWidth: 1,
+      },
+      {
+        label: 'Wide Parquet on S3 (current)',
+        data: [58, 116, 290, 580],
+        backgroundColor: '#7c3aedcc',
+        borderColor: '#7c3aed',
+        borderWidth: 1,
+      },
+      {
+        label: 'Wide Parquet on S3 (tuned)',
+        data: [28, 57, 142, 284],
+        backgroundColor: '#2563ebcc',
+        borderColor: '#2563eb',
+        borderWidth: 1,
+      },
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: $${ctx.raw.toLocaleString()} / yr`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { display: false } },
+      y: {
+        title: { display: true, text: 'Annual storage cost (USD)', font: { size: 11 } },
+        ticks: { callback: v => '$' + v.toLocaleString() }
+      }
+    }
+  }
+});
+
+// 10-year total cost — stacked bar chart
+new Chart(document.getElementById('totalChart'), {
+  type: 'bar',
+  data: {
+    labels: [
+      'InfluxDB2\nlong-term',
+      'InfluxDB2 (1-wk)\n+ Parquet/S3',
+      'InfluxDB3 (1-wk)\n+ Parquet/S3',
+      'On-prem writer\n+ Parquet/S3'
+    ],
+    datasets: [
+      {
+        label: 'Storage (S3 + EBS)',
+        data: [36250, 1701, 1585, 1561],
+        backgroundColor: '#ef4444cc',
+        borderColor: '#ef4444',
+        borderWidth: 1,
+      },
+      {
+        label: 'EC2 Compute',
+        data: [9120, 3650, 1820, 0],
+        backgroundColor: '#f97316cc',
+        borderColor: '#f97316',
+        borderWidth: 1,
+      },
+      {
+        label: 'S3 Requests',
+        data: [0, 640, 640, 640],
+        backgroundColor: '#94a3b8cc',
+        borderColor: '#94a3b8',
+        borderWidth: 1,
+      },
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: $${ctx.raw.toLocaleString()}`,
+          footer: items => {
+            const total = items.reduce((s, i) => s + i.raw, 0);
+            return `Total: $${total.toLocaleString()}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false } },
+      y: {
+        stacked: true,
+        title: { display: true, text: '10-year total cost (USD)', font: { size: 11 } },
+        ticks: { callback: v => '$' + v.toLocaleString() }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>

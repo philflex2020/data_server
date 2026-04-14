@@ -1,0 +1,86 @@
+# real_stress_runner config — replicates Longbow production EMS topology
+#
+# At 4 units × 1770 topics = 7,080 msgs/sweep at 1s interval = ~7k msgs/sec
+# At 46 units × 1770 topics = 81,420 msgs/sweep at 1s interval = ~81k msgs/sec
+#   (matches full Longbow site; real avg frame ~166 B → ~17× parquet ratio)
+#
+# Set num_units or provide explicit unit_ids list.
+# unit_ids overrides num_units if both are set.
+
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: real-stress-runner
+  username: ""
+  password: ""
+
+websocket:
+  host: 0.0.0.0
+  port: 8769
+
+# Topic template extracted from real Longbow recording
+# (same dir as this file — 1770 unique ems/ topics per unit)
+template_file: ""   # empty = auto-detect (ems_topic_template.json in script dir)
+
+# Site ID from real recording
+site_id: "0215D1D8"
+
+# How many synthetic units to simulate (generates hex IDs like 0215F5DD, 0215F5DE, ...)
+# Ignored if unit_ids is set.
+num_units: 4
+
+# Uncomment to use exact unit IDs from the real recording (46 units = full site)
+# unit_ids:
+#   - "0215F562"
+#   - "0215F5A0"
+#   - "0215F5BF"
+#   - "0215F5CF"
+#   - "0215F5D6"
+#   - "0215F5DD"
+#   - "0215F5DF"
+#   - "0215F5E3"
+#   - "0215F5E7"
+#   - "0215F5F5"
+#   - "0215F5FE"
+#   - "0215F60B"
+#   - "0215F60D"
+#   - "0215F625"
+#   - "0215F63C"
+#   - "0215F662"
+#   - "0215F6B1"
+#   - "0215F6BF"
+#   - "0215F6FD"
+#   - "0215F708"
+#   - "0215F70F"
+#   - "0215F734"
+#   - "0215F849"
+#   - "0215F87A"
+#   - "0227C829"
+#   - "0227C82A"
+#   - "0227C82B"
+#   - "0227C838"
+#   - "0227C842"
+#   - "0227C84E"
+#   - "0227C86B"
+#   - "0227C86E"
+#   - "02281632"
+#   - "02281634"
+#   - "02281636"
+#   - "02281646"
+#   - "02281656"
+#   - "0228165D"
+#   - "0228165E"
+#   - "02281660"
+#   - "02281663"
+#   - "02281683"
+#   - "02281684"
+#   - "0228168A"
+#   - "0228168E"
+#   - "02285B20"
+
+# Seconds between each full publish sweep across all topics
+publish_interval_seconds: 1.0
+
+# _sync heartbeat interval (chain-of-custody)
+sync_interval_seconds: 10.0
+

@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Writer Schema Comparison Test</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d;
+  --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+  --green:#3fb950; --yellow:#d29922; --red:#f85149;
+  --orange:#e3b341; --purple:#bc8cff; --teal:#39d353; --pink:#ff7b72;
+  --code-bg:#21262d;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text);
+       font-family:'Segoe UI',system-ui,sans-serif;
+       padding:20px; max-width:1100px; margin:0 auto; }
+.nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+         padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+.nav a:hover { color:var(--accent); border-color:var(--accent); }
+h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+.subtitle { color:var(--muted); font-size:.85rem; margin-bottom:28px; }
+h2 { color:var(--orange); font-size:1rem; margin:32px 0 12px;
+     padding-bottom:5px; border-bottom:1px solid var(--border); }
+h3 { color:var(--accent); font-size:.9rem; margin:18px 0 8px; }
+p  { font-size:.85rem; line-height:1.65; margin-bottom:10px; color:var(--text); }
+pre, code { background:var(--code-bg); border-radius:4px; font-family:'Cascadia Code','Fira Code',monospace; }
+pre { border:1px solid var(--border); padding:12px 14px; font-size:.78rem;
+      line-height:1.6; overflow-x:auto; margin:8px 0; }
+code { padding:1px 5px; font-size:.82rem; }
+.kw  { color:var(--pink); }
+.cm  { color:var(--muted); }
+.st  { color:var(--green); }
+.val { color:var(--teal); }
+.nm  { color:var(--orange); }
+
+/* cards */
+.card-row { display:flex; gap:12px; margin:12px 0; flex-wrap:wrap; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+        padding:14px 16px; flex:1; min-width:200px; }
+.card-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+              color:var(--muted); margin-bottom:4px; }
+.card-val   { font-size:1.4rem; font-weight:700; font-family:monospace; }
+.card-sub   { font-size:.72rem; color:var(--muted); margin-top:2px; }
+.c-blue  .card-val { color:var(--accent); }
+.c-green .card-val { color:var(--green); }
+.c-orange.card-val, .c-orange .card-val { color:var(--orange); }
+.c-purple .card-val { color:var(--purple); }
+
+/* comparison table */
+.cmp-table { width:100%; border-collapse:collapse; font-size:.82rem; margin:12px 0; }
+.cmp-table th { background:var(--surface2); color:var(--muted); font-size:.72rem;
+                text-transform:uppercase; letter-spacing:.06em; padding:7px 12px;
+                border-bottom:1px solid var(--border); text-align:left; }
+.cmp-table td { padding:7px 12px; border-bottom:1px solid var(--border); }
+.cmp-table tr:last-child td { border-bottom:none; }
+.cmp-table .metric { color:var(--muted); font-size:.78rem; }
+.cmp-table .best { color:var(--green); font-weight:600; }
+.cmp-table .worst { color:var(--red); }
+.cmp-table .mid { color:var(--yellow); }
+.bar-cell { padding:4px 12px; }
+.bar-wrap { background:var(--border); border-radius:2px; height:8px; }
+.bar-fill { height:100%; border-radius:2px; }
+.bar-norm { background:var(--accent); }
+.bar-cmp  { background:var(--green); }
+.bar-wide { background:var(--orange); }
+
+/* step blocks */
+.steps { display:flex; flex-direction:column; gap:0; margin:12px 0; }
+.step  { display:flex; gap:14px; align-items:flex-start; padding:10px 0;
+         border-bottom:1px solid var(--border); }
+.step:last-child { border-bottom:none; }
+.step-num { width:26px; height:26px; border-radius:50%; background:var(--surface2);
+            border:1px solid var(--accent); color:var(--accent); font-size:.78rem;
+            font-weight:700; display:flex; align-items:center; justify-content:center;
+            flex-shrink:0; }
+.step-body { flex:1; }
+.step-title { font-size:.85rem; font-weight:600; color:var(--text); margin-bottom:3px; }
+.step-desc  { font-size:.78rem; color:var(--muted); line-height:1.5; }
+
+/* result panels */
+.result-panel { background:var(--surface2); border:1px solid var(--border);
+                border-radius:6px; padding:16px; margin:12px 0; }
+.result-panel.success { border-color:var(--green); }
+.result-panel.pending { border-color:var(--yellow); }
+.result-panel.error   { border-color:var(--red); }
+
+/* connect row */
+.conn-row { display:flex; gap:8px; align-items:center; margin:10px 0; }
+.conn-row input { background:var(--bg); border:1px solid var(--border); color:var(--text);
+                  border-radius:4px; padding:5px 10px; font-size:.82rem; width:220px; }
+.conn-row input:focus { outline:none; border-color:var(--accent); }
+.btn { background:var(--surface); border:1px solid var(--border); color:var(--text);
+       border-radius:4px; padding:5px 14px; font-size:.82rem; cursor:pointer; }
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.btn.primary { border-color:var(--accent); color:var(--accent); }
+.btn.go { border-color:var(--green); color:var(--green); }
+.status-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.status-dot.ok    { background:var(--green); box-shadow:0 0 5px var(--green); }
+.status-dot.error { background:var(--red); }
+.tag { display:inline-block; padding:1px 7px; border-radius:3px; font-size:.7rem;
+       border:1px solid var(--border); color:var(--muted); }
+.tag-wide  { border-color:var(--orange); color:var(--orange); }
+.tag-influx { border-color:var(--purple); color:var(--purple); }
+.tag-long  { border-color:var(--accent); color:var(--accent); }
+.tag-cmp   { border-color:var(--green);  color:var(--green); }
+#log-out { background:var(--bg); border:1px solid var(--border); border-radius:4px;
+           padding:10px; font-size:.72rem; font-family:monospace; line-height:1.6;
+           max-height:320px; overflow-y:auto; white-space:pre-wrap; color:var(--muted); }
+.sparkline { display:flex; gap:2px; align-items:flex-end; height:24px; }
+.spark-bar { width:6px; background:var(--accent); border-radius:1px; min-height:2px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← projects</a>
+  <a href="wide_parquet_writer.html">wide writer</a>
+  <a href="writer_design.html">writer design</a>
+  <a href="parquet_writer_options.html">writer options</a>
+</div>
+
+<h1>Writer Schema Comparison Test</h1>
+<p class="subtitle">Benchmarks four storage strategies against the same MQTT stream — norm-long, long+compound, wide-pivot (coalesced), and InfluxDB2 via Telegraf</p>
+
+<!-- ── COALESCING NOTE ── -->
+<div style="background:var(--code-bg);border-left:3px solid var(--teal);border-radius:4px;
+     padding:12px 16px;margin-bottom:20px;font-size:.82rem;line-height:1.6">
+  <strong style="color:var(--teal)">Time coalescing</strong> — an optional wide-pivot feature
+  controlled by <code>time_window_ms</code> in the writer config. When enabled, all MQTT messages
+  arriving within the same time window (e.g. 250 ms) are assigned an identical normalised timestamp
+  and then merged into a single row, one column per signal. The result is one dense row per sweep
+  rather than one sparse row per message. Without coalescing each message produces its own row with
+  all other signal columns null. Set <code>time_window_ms: 0</code> to disable.
+</div>
+
+<!-- ── SIGNAL FILTER ── -->
+<details style="margin-bottom:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+<summary style="padding:10px 14px;cursor:pointer;background:var(--surface);font-size:.85rem;
+                color:var(--orange);font-weight:600;list-style:none">
+  ▶ Signal Filtering — 5 signals dropped (true monotonics only); 30 constants retained via null_fill
+</summary>
+<div style="padding:14px 16px;font-size:.8rem;line-height:1.6">
+  <p style="color:var(--muted);margin-bottom:10px">
+    When running with <code>--csv</code>, signals are pre-filtered before being published to MQTT.
+    Only true monotonics (unbounded counters, heartbeats, internal timestamps) are dropped at the
+    writer level — they have maximum entropy and actively harm compression. Constants are now
+    <em>retained</em> and compressed by <code>null_fill_unchanged</code>, which writes null for any
+    column whose value hasn't changed since the last flush. An hourly reset (<code>null_fill_reset_interval_seconds: 3600</code>)
+    ensures each compact window is self-contained. Identified from 200-sample analysis of SBESS3 UC 61B5 real data.
+  </p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <div style="color:var(--red);font-weight:600;margin-bottom:6px">Dropped — True Monotonics (5 point names)</div>
+      <table style="border-collapse:collapse;width:100%;font-size:.75rem">
+        <thead><tr>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Signal</th>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Reason</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_SysHB, SysHB</td><td style="padding:2px 8px;color:var(--muted)">heartbeat counter +1/s — max entropy</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">Counter (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">sweep counter +1/s — max entropy</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">ItemDeletionTime (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">internal Unix timestamp — max entropy</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">TS (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">monotonic source timestamp — redundant</td></tr>
+        </tbody>
+      </table>
+      <div style="color:var(--yellow);font-weight:600;margin:10px 0 6px">Retained via null_fill_unchanged — Constants (30)</div>
+      <p style="color:var(--muted);font-size:.75rem;margin-bottom:6px">
+        Written on first occurrence and on hourly reset; null-filled otherwise. 97–99% null in
+        compacted files — compresses to near zero. Preserved for schema completeness and
+        change detection.
+      </p>
+      <table style="border-collapse:collapse;width:100%;font-size:.75rem">
+        <thead><tr>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Signal</th>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Typical value</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:2px 8px;color:var(--text)">AvgCellT, BMS_AvgCellT</td><td style="padding:2px 8px;color:var(--muted)">0.0 (sensor offline)</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_ChaCurrLimit / DischCurrLimit</td><td style="padding:2px 8px;color:var(--muted)">±652 A fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">ChaCurrLimit / DischCurrLimit</td><td style="padding:2px 8px;color:var(--muted)">±3912 A fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_MaxP_Bus1/2/3, BMS_MinP_Bus1/2/3</td><td style="padding:2px 8px;color:var(--muted)">±1304 kW fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_MaxCellT, MaxCellT, MinCellT</td><td style="padding:2px 8px;color:var(--muted)">27/29/23 °C fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_RackCount, RackCount</td><td style="padding:2px 8px;color:var(--muted)">8 / 48 fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">BMS_SysSOH, SysSOH</td><td style="padding:2px 8px;color:var(--muted)">100% fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">ConnectingStatus</td><td style="padding:2px 8px;color:var(--muted)">3030 fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">SN (bms + pcs)</td><td style="padding:2px 8px;color:var(--muted)">200 fixed</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">ACBreaker, Bank1/2/3Enable</td><td style="padding:2px 8px;color:var(--muted)">1 (always closed/enabled)</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--text)">DisableEvenBMS, DisableOddBMS</td><td style="padding:2px 8px;color:var(--muted)">0 (never disabled)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div style="color:var(--green);font-weight:600;margin-bottom:6px">Kept — Analytical signals (63)</div>
+      <table style="border-collapse:collapse;width:100%;font-size:.75rem">
+        <thead><tr>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Signal</th>
+          <th style="text-align:left;padding:2px 8px;color:var(--muted);border-bottom:1px solid var(--border)">Range</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_AvgCellV, AvgCellV</td><td style="padding:2px 8px;color:var(--muted)">3.367–3.372 V</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_MaxCellV, MaxCellV</td><td style="padding:2px 8px;color:var(--muted)">3.374–3.382 V</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_MinCellV, MinCellV</td><td style="padding:2px 8px;color:var(--muted)">3.358–3.364 V</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_MinCellT</td><td style="padding:2px 8px;color:var(--muted)">24–25 °C</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_SysCurrent, SysCurrent</td><td style="padding:2px 8px;color:var(--muted)">−226 to −165 A</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_SysSOC, SysSOC</td><td style="padding:2px 8px;color:var(--muted)">81–82 %</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">BMS_SysVoltage, SysVoltage</td><td style="padding:2px 8px;color:var(--muted)">1151–1153 V</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">Hz</td><td style="padding:2px 8px;color:var(--muted)">59.96–60.04 Hz</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">DCA, DCV, DCkW</td><td style="padding:2px 8px;color:var(--muted)">DC bus measurements</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">PCS_P, PCS_Q, kW, kVA, kVAR</td><td style="padding:2px 8px;color:var(--muted)">AC power measurements</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">AphA, AphB, AphC</td><td style="padding:2px 8px;color:var(--muted)">phase currents</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">PhVphA, PhVphB, PhVphC</td><td style="padding:2px 8px;color:var(--muted)">phase voltages</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">PCS_MaxP, PCS_MinP</td><td style="padding:2px 8px;color:var(--muted)">power limits (vary)</td></tr>
+          <tr><td style="padding:2px 8px;color:var(--teal)">PF, WatchdogResponse</td><td style="padding:2px 8px;color:var(--muted)">power factor / watchdog</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</details>
+
+<!-- ── TOPOLOGY ── -->
+<h2>Test Topology</h2>
+<div class="card-row">
+  <div class="card c-blue">
+    <div class="card-label">Units</div>
+    <div class="card-val">12</div>
+    <div class="card-sub">hex IDs 0215D1D8 … 0215D1E3</div>
+  </div>
+  <div class="card c-orange">
+    <div class="card-label">Signals / unit</div>
+    <div class="card-val">34</div>
+    <div class="card-sub">24 float + 10 integer</div>
+  </div>
+  <div class="card c-green">
+    <div class="card-label">Sweep rate</div>
+    <div class="card-val">1 Hz</div>
+    <div class="card-sub">600 sweeps = 10 min</div>
+  </div>
+  <div class="card c-purple">
+    <div class="card-label">Total messages</div>
+    <div class="card-val">244,800</div>
+    <div class="card-sub">12 × 34 × 600</div>
+  </div>
+</div>
+
+<h3>Signal set</h3>
+<pre>
+bms/bms_1:  Batt1_Cell[1-10]_Voltage  Batt1_Cell[1-5]_Temperature
+            Pack_Current  Pack_Voltage  Pack_SOC  Pack_SOH
+            Pack_ContactorState  Batt1_CellBalancing  BMS_FaultCode  BMS_WarningCode
+pcs/pcs_1:  GridFrequency  ActivePower  ReactivePower  DCBusVoltage  OutputCurrent
+            PCS_State  PCS_FaultCode  GridConnected  AlarmActive
+rack/rack_1: Rack_FanState  Rack_DoorOpen
+</pre>
+
+<h3>Burst model</h3>
+<p>Each sweep publishes all 63 analytical signals per unit in a randomised burst of <code>50–200 ms</code>
+(well inside the <code>time_window_ms: 250</code> coalesce window). The wide writer
+coalesces each burst into one row — target ~1 row/sweep/unit.</p>
+
+<!-- ── SCHEMAS ── -->
+<h2>Writer Schemas</h2>
+
+<div class="card-row">
+  <div class="card">
+    <span class="tag tag-long">norm-long</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      One row per signal per sweep.<br>
+      <span style="color:var(--muted)">8 columns: ts, value, device, device_type, dtype_hint, point_name, unit_id, site</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      ~248k rows · 1.6 MB · 3–10 ms flush
+    </div>
+  </div>
+  <div class="card">
+    <span class="tag tag-cmp">long+cmp</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      One row per signal. Point name compounded: <code>unit/device/instance/signal</code>.<br>
+      <span style="color:var(--muted)">5 columns: ts, value, dtype_hint, point_name, site</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      ~248k rows · 1.7 MB · 2–5 ms flush
+    </div>
+  </div>
+  <div class="card">
+    <span class="tag tag-wide">wide-pivot</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      One row per sweep per unit. Each signal is a column. Burst-coalesced.<br>
+      <span style="color:var(--muted)">~68 columns: ts + 63 signals + dtype_hint + unit_id + site; constants null_fill_unchanged</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      ~7.2k rows · 4.1 MB · 19–36 ms flush
+    </div>
+  </div>
+</div>
+
+<!-- ── INFLUX SCHEMA CARD ── -->
+<div class="card-row" style="margin-top:8px">
+  <div class="card">
+    <span class="tag tag-influx">influx2 / telegraf</span>
+    <div style="margin-top:8px;font-size:.82rem;color:var(--text)">
+      Narrow tag schema. One row per signal change (COV-filtered by publisher).<br>
+      <span style="color:var(--muted)">measurement=<code>bench</code> · tags: unit_id, device, instance, point_name · field: value</span>
+    </div>
+    <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+      COV-rate rows only · TSM storage · Flux/InfluxQL query
+    </div>
+  </div>
+  <div class="card" style="flex:2">
+    <div style="font-size:.82rem;color:var(--text);margin-bottom:6px">COV behaviour at the MQTT layer</div>
+    <p style="font-size:.78rem;color:var(--muted);margin:0">
+      The publisher runs <code>--cov</code>, so only changed values arrive at MQTT.
+      Constant signals (SOH=100, RackCount=8, etc.) publish once on startup then go silent
+      until <code>--cov-reset 300</code> fires every 5 min. Telegraf stores exactly what it
+      receives — no null-fill, no repeat rows. A Flux <code>fill(usePrevious:true)</code>
+      forward-fills at query time. Storage cost scales with signal <em>change rate</em>, not
+      absolute signal count.
+    </p>
+  </div>
+</div>
+
+<!-- ── INFLUX DETAIL SECTION ── -->
+<h2 id="influx-schema">InfluxDB2 via Telegraf</h2>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0">
+<div>
+<h3>Schema</h3>
+<pre><span class="cm"># measurement (table)</span>
+bench
+
+<span class="cm"># tags  (indexed, string)</span>
+unit_id    = "0215D1D8"
+device     = "bms"
+instance   = "bms_1"
+point_name = "SysSOC"
+
+<span class="cm"># field</span>
+value      = 81.5   <span class="cm"># float64</span>
+
+<span class="cm"># timestamp — from payload ts field (ISO 8601)</span>
+_time      = 2026-04-13T16:43:39Z</pre>
+</div>
+<div>
+<h3>Storage path</h3>
+<pre><span class="cm"># TSM engine — on-disk</span>
+/var/lib/influxdb/engine/data/
+  sbess3/
+    autogen/
+      &lt;shard-id&gt;/
+        000000001-000000001.tsm
+
+<span class="cm"># Disk use after run</span>
+du -sh /var/lib/influxdb/engine/data/
+
+<span class="cm"># Series count</span>
+influx query --org longbow \
+  'import "influxdata/influxdb/schema"
+   schema.measurementTagValues(
+     bucket: "sbess3",
+     measurement: "bench",
+     tag: "point_name"
+   )'</pre>
+</div>
+</div>
+
+<h3>Telegraf config</h3>
+<pre><span class="cm"># /home/phil/data_server/source/telegraf/telegraf-sbess3.conf</span>
+
+<span class="kw">[[inputs.mqtt_consumer]]</span>
+  servers   = [<span class="st">"tcp://localhost:1883"</span>]
+  topics    = [<span class="st">"bench/#"</span>]
+  topic_tag = <span class="st">""</span>          <span class="cm"># suppress raw topic tag</span>
+  data_format = <span class="st">"json_v2"</span>
+
+  <span class="kw">[[inputs.mqtt_consumer.json_v2]]</span>
+    measurement_name = <span class="st">"bench"</span>
+    timestamp_path   = <span class="st">"ts"</span>
+    timestamp_format = <span class="st">"RFC3339"</span>
+    <span class="kw">[[inputs.mqtt_consumer.json_v2.field]]</span>
+      path = <span class="st">"value"</span>; type = <span class="st">"float"</span>
+
+  <span class="kw">[[inputs.mqtt_consumer.topic_parsing]]</span>
+    topic = <span class="st">"bench/+/+/+/+/+"</span>
+    tags  = <span class="st">"_/unit_id/device/instance/point_name/_"</span>
+
+<span class="kw">[[outputs.influxdb_v2]]</span>
+  urls = [<span class="st">"http://localhost:8086"</span>]; organization = <span class="st">"longbow"</span>; bucket = <span class="st">"sbess3"</span>
+  token = <span class="st">"&lt;token&gt;"</span></pre>
+
+<h3>Start / check</h3>
+<pre><span class="cm"># InfluxDB is enabled at boot (systemd) — check:</span>
+sudo systemctl status influxdb
+
+<span class="cm"># Start Telegraf</span>
+nohup telegraf --config /home/phil/data_server/source/telegraf/telegraf-sbess3.conf \
+  &gt; /tmp/telegraf.log 2&gt;&amp;1 &amp;
+tail -f /tmp/telegraf.log
+
+<span class="cm"># Verify data is arriving (last 2 minutes)</span>
+influx query --org longbow --token '&lt;token&gt;' \
+  'from(bucket:"sbess3") |&gt; range(start:-2m) |&gt; limit(n:5)'
+
+<span class="cm"># Disk use</span>
+du -sh /var/lib/influxdb/engine/data/</pre>
+
+<h3>Flux query examples</h3>
+<pre><span class="cm">// All signals for one unit, last 10 minutes</span>
+from(bucket: <span class="st">"sbess3"</span>)
+  |&gt; range(start: -10m)
+  |&gt; filter(fn: (r) =&gt; r.unit_id == <span class="st">"0215D1D8"</span>)
+
+<span class="cm">// Single signal — forward-fill COV gaps</span>
+from(bucket: <span class="st">"sbess3"</span>)
+  |&gt; range(start: -10m)
+  |&gt; filter(fn: (r) =&gt; r.unit_id == <span class="st">"0215D1D8"</span> and r.point_name == <span class="st">"SysSOC"</span>)
+  |&gt; fill(usePrevious: true)
+
+<span class="cm">// 1-minute mean for all signals on one unit</span>
+from(bucket: <span class="st">"sbess3"</span>)
+  |&gt; range(start: -1h)
+  |&gt; filter(fn: (r) =&gt; r.unit_id == <span class="st">"0215D1D8"</span>)
+  |&gt; aggregateWindow(every: 1m, fn: mean, createEmpty: false)</pre>
+
+<h3>Parquet wide-pivot vs InfluxDB2</h3>
+<table class="cmp-table">
+  <thead><tr>
+    <th>Aspect</th>
+    <th><span class="tag tag-wide">wide-pivot parquet</span></th>
+    <th><span class="tag tag-influx">influx2 / telegraf</span></th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="metric">Storage model</td>
+      <td>Columnar Parquet on local/NFS disk</td>
+      <td>TSM (Time-Structured Merge tree) on local disk</td>
+    </tr>
+    <tr>
+      <td class="metric">Row shape</td>
+      <td>1 row/sweep/unit — 64 columns</td>
+      <td>1 row/signal/change — 4 tags + 1 field</td>
+    </tr>
+    <tr>
+      <td class="metric">COV handling</td>
+      <td>Publisher COV + optional <code>null_fill_unchanged</code></td>
+      <td>Publisher COV only — Influx stores what arrives</td>
+    </tr>
+    <tr>
+      <td class="metric">Get all signals at time T</td>
+      <td class="best">Single row read — no join</td>
+      <td class="worst">63-series fan-out + fill(usePrevious:true)</td>
+    </tr>
+    <tr>
+      <td class="metric">Multi-unit range scan</td>
+      <td>One file per unit per day</td>
+      <td class="best">Single measurement, filter by unit_id tag</td>
+    </tr>
+    <tr>
+      <td class="metric">Schema evolution</td>
+      <td>New column on first message (dynamic)</td>
+      <td class="best">No schema — new point_name = new series</td>
+    </tr>
+    <tr>
+      <td class="metric">Compression</td>
+      <td>Snappy columnar — excellent for static columns</td>
+      <td>TSM RLE — good for repeated tag combos</td>
+    </tr>
+    <tr>
+      <td class="metric">Retention / TTL</td>
+      <td>Manual file deletion</td>
+      <td class="best">Built-in retention policy per bucket</td>
+    </tr>
+    <tr>
+      <td class="metric">Query language</td>
+      <td class="best">DuckDB SQL — portable, familiar</td>
+      <td>Flux (functional) or InfluxQL — Influx-specific</td>
+    </tr>
+    <tr>
+      <td class="metric">Estimated write CPU</td>
+      <td>~3–6% (parquet_writer process)</td>
+      <td>telegraf ~1% + influxd ~5–15% during TSM compaction</td>
+    </tr>
+    <tr>
+      <td class="metric">Portability</td>
+      <td class="best">Standard Parquet — DuckDB, Spark, Pandas, Arrow</td>
+      <td>Influx-native — export needed for external tools</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<!-- ── STORAGE COMPARISON ── -->
+<h2 id="storage-comparison">Live Storage Comparison</h2>
+<p style="font-size:.8rem;color:var(--muted);margin:0 0 10px">
+  Reads live disk stats from bench_server <code>:8780/api/storage</code>.
+  Parquet = all <code>.parquet</code> files under <code>bench-wide/</code>.
+  Influx = TSM&nbsp;+&nbsp;WAL bytes reported by <code>/metrics</code>.
+  Both on the same drive (<code>/mnt/tort-sdi</code>).
+</p>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+  <button class="btn primary" onclick="fetchStorageStats()" style="font-size:.75rem">⟳ Fetch Storage Stats</button>
+  <label style="font-size:.75rem;color:var(--muted)">Host
+    <input id="storage-host" type="text" value="192.168.86.34"
+      style="margin-left:4px;width:130px;background:var(--bg);border:1px solid var(--border);
+      color:var(--text);border-radius:3px;padding:2px 6px;font-size:.78rem">
+  </label>
+  <span id="storage-status" style="font-size:.75rem;color:var(--muted)">—</span>
+</div>
+
+<div id="storage-cards" style="display:none">
+  <div class="card-row" id="storage-card-row"></div>
+  <table class="cmp-table" id="storage-table" style="margin-top:12px">
+    <thead><tr>
+      <th>Metric</th>
+      <th><span class="tag tag-wide">wide-pivot parquet</span></th>
+      <th><span class="tag tag-influx">influx2 / telegraf</span></th>
+    </tr></thead>
+    <tbody id="storage-body"></tbody>
+  </table>
+  <p id="storage-note" style="font-size:.72rem;color:var(--muted);margin-top:6px;max-width:820px"></p>
+</div>
+
+<script>
+(function() {
+
+function fmtBytes(b) {
+  if (b == null) return '—';
+  if (b === 0) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(2) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+function fmtNum(n) { return (n == null) ? '—' : Math.round(n).toLocaleString(); }
+function fmtTs(s)  { return s ? s.replace('T',' ').slice(0,19) + ' Z' : '—'; }
+
+window.fetchStorageStats = async function() {
+  const host = (document.getElementById('storage-host') || document.getElementById('host-in')).value.trim() || '192.168.86.34';
+  const stat = document.getElementById('storage-status');
+  stat.style.color = 'var(--muted)';
+  stat.textContent = 'fetching…';
+  try {
+    const r = await fetch('http://' + host + ':8780/api/storage', {cache:'no-cache'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    stat.textContent = 'updated ' + new Date().toLocaleTimeString();
+    stat.style.color = 'var(--green)';
+    renderStorageStats(d);
+  } catch(e) {
+    stat.textContent = 'error: ' + e.message;
+    stat.style.color = 'var(--red)';
+  }
+};
+
+function renderStorageStats(d) {
+  const pq  = d.parquet || {};
+  const inf = d.influx  || {};
+  const el  = document.getElementById('storage-cards');
+  el.style.display = 'block';
+
+  const SIGNALS = 63;  // signals per wide-pivot row
+  const ratio    = (pq.bytes && inf.bytes)  ? (inf.bytes / pq.bytes).toFixed(2)          : null;
+  const bprPq    = (pq.bytes  && pq.rows)   ? (pq.bytes  / pq.rows).toFixed(1)           : null;
+  const bprInf   = (inf.bytes && inf.rows)  ? (inf.bytes / inf.rows).toFixed(1)           : null;
+  const bpsvPq   = (pq.bytes  && pq.rows)   ? (pq.bytes  / (pq.rows * SIGNALS)).toFixed(3) : null;
+  const bpsvInf  = (inf.bytes && inf.rows)  ? (inf.bytes / inf.rows).toFixed(3)           : null;
+
+  // ratio card colour: green = parquet wins (ratio > 1 means influx is bigger)
+  const rFloat   = ratio ? parseFloat(ratio) : 0;
+  const ratioCol = rFloat > 1.5 ? 'var(--green)' : rFloat > 1 ? 'var(--yellow)' : 'var(--red)';
+
+  document.getElementById('storage-card-row').innerHTML =
+    '<div class="card c-orange">' +
+      '<div class="card-label">Parquet disk</div>' +
+      '<div class="card-val">' + fmtBytes(pq.bytes) + '</div>' +
+      '<div class="card-sub">' + fmtNum(pq.files) + ' files · ' + fmtNum(pq.rows) + ' rows</div>' +
+    '</div>' +
+    '<div class="card c-purple">' +
+      '<div class="card-label">InfluxDB2 disk (TSM+WAL)</div>' +
+      '<div class="card-val">' + fmtBytes(inf.bytes) + '</div>' +
+      '<div class="card-sub">' + fmtNum(inf.rows) + ' rows</div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-label">Influx / Parquet ratio</div>' +
+      '<div class="card-val" style="color:' + ratioCol + '">' + (ratio ? ratio + '×' : '—') + '</div>' +
+      '<div class="card-sub">influx bytes ÷ parquet bytes</div>' +
+    '</div>' +
+    '<div class="card c-blue">' +
+      '<div class="card-label">Bytes / signal-value</div>' +
+      '<div class="card-val" style="font-size:1rem">' +
+        '<span style="color:var(--orange)">' + (bpsvPq  ? bpsvPq  + ' B' : '—') + '</span>' +
+        ' <span style="color:var(--muted);font-size:.7rem">pq</span>' +
+        ' &nbsp; ' +
+        '<span style="color:var(--purple)">' + (bpsvInf ? bpsvInf + ' B' : '—') + '</span>' +
+        ' <span style="color:var(--muted);font-size:.7rem">inf</span>' +
+      '</div>' +
+      '<div class="card-sub">parquet: bytes ÷ (rows×' + SIGNALS + ' signals)</div>' +
+    '</div>';
+
+  const rows = [
+    ['Disk bytes',           fmtBytes(pq.bytes),                 fmtBytes(inf.bytes)],
+    ['Rows stored',          fmtNum(pq.rows),                    fmtNum(inf.rows)],
+    ['Row ratio (influx/pq)','—',                           ratio ? ratio + '× more rows' : '—'],
+    ['Bytes / row',          bprPq  ? bprPq  + ' B' : '—', bprInf  ? bprInf  + ' B' : '—'],
+    ['Bytes / signal-value', bpsvPq ? bpsvPq + ' B' : '—', bpsvInf ? bpsvInf + ' B' : '—'],
+    ['Files / shards',       fmtNum(pq.files),                   'WAL + TSM shards'],
+    ['First timestamp',      fmtTs(pq.first_ts),                 fmtTs(inf.first_ts)],
+    ['Last  timestamp',      fmtTs(pq.last_ts),                  fmtTs(inf.last_ts)],
+  ];
+
+  document.getElementById('storage-body').innerHTML = rows.map(function(r) {
+    return '<tr><td class="metric">' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td></tr>';
+  }).join('');
+
+  document.getElementById('storage-note').textContent =
+    '“Bytes / signal-value” normalises both systems to the same unit: cost per ' +
+    'single (timestamp, signal, value) triple. Parquet divides total bytes by rows×' + SIGNALS +
+    ' because each wide-pivot row holds ' + SIGNALS + ' signals at once, all compressed together ' +
+    'in the same column stripe. Influx stores each signal as a separate row, so bytes/row = bytes/signal-value directly. ' +
+    'Parquet wins on this metric because correlated float columns compress far better than independent TSM series.';
+}
+
+})();
+</script>
+
+<!-- ── SETUP ── -->
+<details style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+  <summary style="padding:10px 14px;cursor:pointer;font-size:1rem;font-weight:600;
+    background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+    <span class="det-arrow" style="font-size:.8rem">▸</span> Setup on Target Machine (.34)
+  </summary>
+  <div style="padding:14px 16px">
+  <div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Install systemd service</div>
+      <div class="step-desc">Copy service file and reload systemd</div>
+      <pre>cd ~/data_server
+git pull
+sudo cp scripts/writer-compare-test.service /etc/systemd/system/
+sudo systemctl daemon-reload</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Verify output drive is mounted</div>
+      <div class="step-desc">The script auto-detects <code>/mnt/tort-sdi</code> on .34</div>
+      <pre>df -h /mnt/tort-sdi
+<span class="cm"># should show ~870 GB free</span>
+ls /mnt/tort-sdi/</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Start FlashMQ broker</div>
+      <pre>sudo systemctl start flashmq
+sudo systemctl status flashmq</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Run the test</div>
+      <div class="step-desc">Via systemctl (recommended — captured in journal)</div>
+      <pre>sudo systemctl start writer-compare-test
+journalctl -u writer-compare-test -f</pre>
+      <div class="step-desc" style="margin-top:6px">Or directly (useful for debugging)</div>
+      <pre>bash scripts/writer_compare_test.sh --sweeps 600 --outdir /mnt/tort-sdi/bench</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">View results</div>
+      <div class="step-desc">Results JSON written to the output dir. Fetch it here using the panel below.</div>
+      <pre>cat /mnt/tort-sdi/bench/results.json
+ls  /mnt/tort-sdi/bench/wide/</pre>
+    </div>
+  </div>
+  </div>
+  </div>
+</details>
+
+<!-- ── MANUAL RUN ── -->
+<details style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+  <summary style="padding:10px 14px;cursor:pointer;font-size:1rem;font-weight:600;
+    background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+    <span class="det-arrow" style="font-size:.8rem">▸</span> Run Without systemctl
+  </summary>
+  <div style="padding:14px 16px">
+  <p>For a quick ad-hoc run with custom options:</p>
+  <pre>
+<span class="cm"># standard 600-sweep run</span>
+bash scripts/writer_compare_test.sh
+
+<span class="cm"># change-on-value mode (realistic publish gaps)</span>
+bash scripts/writer_compare_test.sh --cov
+
+<span class="cm"># short smoke test</span>
+bash scripts/writer_compare_test.sh --sweeps 60
+
+<span class="cm"># explicit output dir (e.g. secondary tort drive)</span>
+bash scripts/writer_compare_test.sh --outdir /mnt/tort-sdf/bench
+</pre>
+  <p>Script auto-detects the repo root, resolves the writer binary, installs Python deps into
+  <code>.venv</code>, starts FlashMQ if needed, generates all three YAML configs, runs
+  <code>compare_run.py</code>, and writes <code>results.json</code> + <code>status.json</code>
+  to the output dir.</p>
+  </div>
+</details>
+
+<!-- ── RESULTS VIEWER ── -->
+<h2>Results Viewer</h2>
+<p>Load results from a completed run. Enter the host where the test ran and click Fetch,
+or paste <code>results.json</code> content directly.</p>
+
+<div class="conn-row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
+  <span style="font-size:.75rem;color:var(--muted);margin-right:2px">Preset:</span>
+  <button class="btn preset-btn" onclick="applyPreset('34-bench')"   title="phil-256g .34 — bench compare test">.34 bench</button>
+  <button class="btn preset-btn" onclick="applyPreset('48-bench')"   title="gx10 .48 — bench compare test">.48 bench</button>
+  <button class="btn preset-btn" onclick="applyPreset('48-a')"       title="gx10 .48 slice A — health :8771, parquet /data/parquet-evelyn/a">.48 A</button>
+  <button class="btn preset-btn" onclick="applyPreset('48-b')"       title="gx10 .48 slice B — health :8772, parquet /data/parquet-evelyn/b">.48 B</button>
+  <button class="btn preset-btn" onclick="applyPreset('48-c')"       title="gx10 .48 slice C — health :8773, parquet /data/parquet-evelyn/c">.48 C</button>
+  <button class="btn preset-btn" onclick="applyPreset('48-d')"       title="gx10 .48 slice D — health :8774, parquet /data/parquet-evelyn/d">.48 D</button>
+</div>
+<div class="conn-row">
+  <input id="host-in" type="text" value="192.168.86.34" placeholder="host">
+  <input id="port-in" type="text" value="8780" placeholder="port" style="width:70px">
+  <input id="path-in" type="text" value="/mnt/tort-sdi/bench/results.json" placeholder="results path" style="width:300px">
+  <button class="btn primary" onclick="fetchResults()">Fetch</button>
+  <button class="btn" onclick="document.getElementById('paste-in').style.display='block'">Paste JSON</button>
+  <button class="btn" id="restart-btn" onclick="restartTest()" style="background:var(--orange);color:#000;border-color:var(--orange)">↺ Restart</button>
+  <div class="status-dot" id="fetch-dot"></div>
+  <span id="fetch-status" style="font-size:.75rem;color:var(--muted)">—</span>
+</div>
+<div id="health-tile" style="display:none;margin-top:6px;font-size:.75rem;font-family:monospace;
+     background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 10px;
+     align-items:center;gap:8px;flex-wrap:wrap">
+  <span id="health-dot" class="status-dot"></span>
+  <span id="health-label" style="color:var(--orange);font-weight:600">Health</span>
+  <span id="health-body" style="color:var(--muted)">—</span>
+  <button class="btn" style="font-size:.7rem;padding:2px 8px;margin-left:auto"
+          onclick="const p=PRESETS[_activePreset];if(p?.healthPort)pollHealth(p.host,p.healthPort)">↻</button>
+</div>
+<div id="run-status-bar" style="display:none;margin-top:6px;font-size:.75rem;font-family:monospace;
+     background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;
+     display:flex;gap:16px;align-items:center">
+  <span id="run-state-dot" class="status-dot warn"></span>
+  <span id="run-state-label" style="color:var(--muted)">—</span>
+  <span id="run-elapsed" style="color:var(--teal)"></span>
+  <span id="run-number" style="color:var(--muted)"></span>
+  <span style="flex:1"></span>
+  <span id="run-sweep-est" style="color:var(--muted);font-size:.7rem"></span>
+</div>
+<textarea id="paste-in" placeholder="Paste results.json here and click Load"
+  style="display:none;width:100%;height:100px;background:var(--bg);border:1px solid var(--border);
+         color:var(--text);border-radius:4px;padding:8px;font-family:monospace;font-size:.75rem;
+         margin:6px 0;resize:vertical"
+  oninput="tryLoadPasted()"></textarea>
+
+<div id="results-section" style="display:none">
+
+  <h3>Summary</h3>
+  <div class="card-row" id="summary-cards"></div>
+
+  <h3>Comparison
+    <span style="float:right;display:flex;gap:4px">
+      <button id="btn-raw"      class="btn primary" onclick="setView('raw')"      style="font-size:.7rem;padding:3px 10px">Raw flushes</button>
+      <button id="btn-compacted" class="btn"        onclick="setView('compacted')" style="font-size:.7rem;padding:3px 10px">Compacted</button>
+    </span>
+  </h3>
+  <p id="compact-note" style="display:none;font-size:.72rem;color:var(--teal);margin:0 0 6px">
+    One file per leaf partition directory — all flush files merged. Same rows, fewer files, marginally smaller size (better column encoding across larger batches).
+  </p>
+  <table class="cmp-table" id="cmp-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th><span class="tag tag-long">norm-long</span></th>
+        <th><span class="tag tag-cmp">long+cmp</span></th>
+        <th><span class="tag tag-wide">wide-pivot</span></th>
+      </tr>
+    </thead>
+    <tbody id="cmp-body"></tbody>
+  </table>
+
+  <h3>Flush times (ms per flush)</h3>
+  <div id="flush-charts" style="display:flex;gap:24px;flex-wrap:wrap;margin:10px 0"></div>
+
+  <details style="margin-top:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:.85rem;font-weight:600;
+      background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+      <span class="det-arrow" style="font-size:.8rem">▸</span>
+      norm-long schema <span id="nl-col-count" style="font-size:.72rem;font-weight:400;color:var(--muted)"></span>
+    </summary>
+    <div style="padding:10px 14px;background:var(--code-bg)">
+      <div id="nl-schema" style="font-size:.75rem;font-family:monospace;columns:2;column-gap:24px"></div>
+    </div>
+  </details>
+
+  <details style="margin-top:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:.85rem;font-weight:600;
+      background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+      <span class="det-arrow" style="font-size:.8rem">▸</span>
+      long+cmp schema <span id="lc-col-count" style="font-size:.72rem;font-weight:400;color:var(--muted)"></span>
+    </summary>
+    <div style="padding:10px 14px;background:var(--code-bg)">
+      <div id="lc-schema" style="font-size:.75rem;font-family:monospace;columns:2;column-gap:24px"></div>
+    </div>
+  </details>
+
+  <details style="margin-top:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+    <summary style="padding:8px 12px;cursor:pointer;font-size:.85rem;font-weight:600;
+      background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+      <span class="det-arrow" style="font-size:.8rem">▸</span>
+      wide-pivot schema <span id="wide-col-count" style="font-size:.72rem;font-weight:400;color:var(--muted)"></span>
+    </summary>
+    <div style="padding:10px 14px;background:var(--code-bg)">
+      <p style="font-size:.75rem;color:var(--muted);margin:0 0 4px">Hover a column to see sample values.</p>
+      <p id="wide-ts-range" style="font-size:.72rem;font-family:monospace;color:var(--teal);margin:0 0 8px;display:none">
+        <span style="color:var(--muted)">first row ts:</span> <span id="wide-first-ts">—</span>
+        &nbsp;&nbsp;<span style="color:var(--muted)">last row ts:</span> <span id="wide-last-ts">—</span>
+      </p>
+      <div id="wide-schema" style="font-size:.75rem;font-family:monospace;columns:2;column-gap:24px"></div>
+    </div>
+  </details>
+
+  <style>
+  .col-row { display:flex; align-items:baseline; gap:6px; padding:2px 0;
+             border-bottom:1px solid transparent; position:relative; }
+  .col-row:hover { border-bottom-color:var(--border); }
+  .col-name { color:var(--teal); white-space:nowrap; overflow:hidden;
+              text-overflow:ellipsis; max-width:220px; }
+  .col-type { color:var(--muted); font-size:.65rem; flex-shrink:0; }
+  .col-meta .col-name { color:var(--muted); }
+
+  /* tooltip */
+  .col-row .tt { display:none; position:fixed; z-index:999;
+    background:#1a1f2e; border:1px solid var(--border); border-radius:6px;
+    padding:8px 10px; min-width:200px; max-width:320px;
+    font-size:.72rem; font-family:monospace; pointer-events:none;
+    box-shadow:0 4px 16px rgba(0,0,0,.5); }
+  .col-row:hover .tt { display:block; }
+  .tt-name  { color:var(--teal); margin-bottom:4px; font-size:.78rem; }
+  .tt-stats { color:var(--muted); margin-bottom:6px; }
+  .tt-bars  { display:flex; align-items:flex-end; gap:2px; height:28px; }
+  .tt-bar   { width:5px; background:var(--teal); border-radius:1px; }
+  .tt-vals  { display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; }
+  .tt-val   { background:var(--border); border-radius:3px; padding:1px 4px; color:var(--text); }
+  </style>
+
+</div>
+
+<!-- ── 24-HR ESTIMATES ── -->
+<div id="estimates-section" style="display:none">
+<h2>24-Hour Estimates</h2>
+<p style="font-size:.8rem;color:var(--muted);margin:0 0 10px">
+  Extrapolated from the benchmark run. Units input scales to fleet size.
+  <label style="margin-left:16px">Units: <input id="est-units" type="number" value="12" min="1"
+    style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    border-radius:3px;padding:2px 4px" oninput="updateEstimates()"></label>
+</p>
+
+<div id="est-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+<table class="cmp-table" id="est-table">
+  <thead><tr><th>Metric</th><th>norm-long</th><th>long+cmp</th><th>wide-pivot</th></tr></thead>
+  <tbody id="est-body"></tbody>
+</table>
+
+<h3 style="margin-top:16px">CPU Usage
+  <span style="font-size:.72rem;font-weight:400;color:var(--muted)">— per writer process</span>
+</h3>
+<div id="cpu-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px"></div>
+</div><!-- end estimates-section -->
+
+<hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+
+<!-- ── HOW TO RUN THE TEST ── -->
+<details style="margin-bottom:16px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+  <summary style="padding:10px 14px;cursor:pointer;font-size:1rem;font-weight:600;
+    background:var(--code-bg);list-style:none;display:flex;align-items:center;gap:8px;
+    user-select:none">
+    <span class="det-arrow" style="font-size:.8rem">▸</span> How to Run the Test
+  </summary>
+  <div style="padding:14px 16px;background:var(--code-bg)">
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <label style="font-size:.8rem;color:var(--muted)">Host
+      <input id="run-host" type="text" value="192.168.86.34"
+        style="margin-left:6px;width:140px;background:var(--bg);border:1px solid var(--border);
+        color:var(--text);border-radius:3px;padding:3px 6px;font-size:.8rem">
+    </label>
+    <label style="font-size:.8rem;color:var(--muted)">Sweeps
+      <input id="run-sweeps" type="number" value="600" min="60"
+        style="margin-left:6px;width:70px;background:var(--bg);border:1px solid var(--border);
+        color:var(--text);border-radius:3px;padding:3px 6px;font-size:.8rem">
+    </label>
+    <label style="font-size:.8rem;color:var(--muted)">
+      <input id="run-loop" type="checkbox">
+      <span style="margin-left:4px">Loop</span>
+    </label>
+    <label style="font-size:.8rem;color:var(--muted)">Interval (s)
+      <input id="run-interval" type="number" value="30" min="5"
+        style="margin-left:6px;width:55px;background:var(--bg);border:1px solid var(--border);
+        color:var(--text);border-radius:3px;padding:3px 6px;font-size:.8rem">
+    </label>
+  </div>
+  <pre id="run-cmd" style="margin:0;font-size:.75rem;color:var(--teal);white-space:pre-wrap;word-break:break-all"></pre>
+  <div style="margin-top:8px;font-size:.72rem;color:var(--muted)">
+    To follow live: <code style="color:var(--text)">journalctl -u writer-compare-test -f</code>
+    &nbsp;·&nbsp; Results auto-update each run — just hit Fetch again above.
+  </div>
+  </div>
+</details>
+
+<!-- ── WHAT TO LOOK FOR ── -->
+<h2>What to Look For</h2>
+<table class="cmp-table">
+  <thead><tr><th>Aspect</th><th>Favours</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Storage size</td><td class="best">long+cmp</td><td>Column compression works better on high-cardinality repeated strings in one column</td></tr>
+    <tr><td>Flush latency</td><td class="best">long+cmp</td><td>No pivot/coalesce work; writer just appends rows</td></tr>
+    <tr><td>Single-unit range query</td><td class="best">wide-pivot</td><td>All signals in one row — no UNPIVOT or GROUP BY needed</td></tr>
+    <tr><td>Coalesce quality</td><td class="best">wide-pivot</td><td>1 row/sweep/unit = perfect if bursts stay inside time_window_ms</td></tr>
+    <tr><td>File count</td><td class="best">norm/long</td><td>Wide partitions per unit_id → 12× more files</td></tr>
+    <tr><td>Schema flexibility</td><td class="best">norm-long</td><td>Adding new signals = new rows only; wide needs new column (schema evolution)</td></tr>
+  </tbody>
+</table>
+
+<h2>Output Paths on .34</h2>
+<pre>
+/mnt/tort-sdi/bench/
+  norm-long/bench/site=SITE_A/2026/04/DD/          <span class="cm"># normalised long</span>
+  long-cmp/bench/site=SITE_A/2026/04/DD/            <span class="cm"># compact long</span>
+  wide/bench/site=SITE_A/2026/04/DD/                <span class="cm"># wide pivot (per-unit files)</span>
+  results.json                                       <span class="cm"># benchmark results</span>
+  status.json                                        <span class="cm"># pass/fail + timestamps</span>
+/data/logs/YYYY/MM/DD/writer_compare_test.log       <span class="cm"># full run log</span>
+</pre>
+
+<!-- ── FILE BROWSER ── -->
+<h2>File Browser</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+  <button class="btn primary" onclick="loadDir('')" style="font-size:.75rem">⟳ Refresh</button>
+  <span id="fb-path" style="font-size:.75rem;color:var(--teal);font-family:monospace">/</span>
+</div>
+<div style="display:flex;gap:12px;min-height:320px">
+
+  <!-- tree panel -->
+  <div id="fb-tree" style="width:280px;flex-shrink:0;background:var(--code-bg);
+       border:1px solid var(--border);border-radius:4px;overflow-y:auto;
+       font-size:.75rem;font-family:monospace"></div>
+
+  <!-- data panel -->
+  <div id="fb-data" style="flex:1;background:var(--code-bg);border:1px solid var(--border);
+       border-radius:4px;overflow:auto;font-size:.72rem;font-family:monospace;padding:10px;
+       color:var(--muted)">Click a .parquet file to view its contents.</div>
+</div>
+
+<!-- ── COMPACTOR LOG ── -->
+<h2>Compactor Log</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+  <button class="btn primary" onclick="loadCompactLog()" style="font-size:.75rem">⟳ Refresh</button>
+  <span id="clog-status" style="font-size:.75rem;color:var(--muted)">not loaded</span>
+</div>
+<div id="clog-table" style="overflow-x:auto;font-size:.75rem;font-family:monospace">
+  <span style="color:var(--muted)">Click Refresh to load.</span>
+</div>
+
+<style>
+.fb-row { display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;
+          border-bottom:1px solid transparent; }
+.fb-row:hover { background:rgba(255,255,255,.05); }
+.fb-row.selected { background:rgba(100,180,255,.1);border-left:2px solid var(--teal); }
+.fb-dir  { color:var(--muted); }
+.fb-file { color:var(--text); }
+.fb-file.parquet { color:var(--teal); }
+.fb-size { margin-left:auto;color:var(--muted);font-size:.65rem; }
+.fb-indent { display:inline-block; }
+
+/* parquet data table */
+#fb-data table { border-collapse:collapse;width:100%; }
+#fb-data th { position:sticky;top:0;background:var(--code-bg);color:var(--muted);
+              font-size:.68rem;text-align:left;padding:3px 8px;
+              border-bottom:1px solid var(--border);white-space:nowrap; }
+#fb-data td { padding:2px 8px;border-bottom:1px solid rgba(255,255,255,.04);
+              white-space:nowrap;color:var(--text); }
+#fb-data tr:hover td { background:rgba(255,255,255,.03); }
+</style>
+
+<script>
+// ── host presets ──────────────────────────────────────────────────────────────
+// File browser (api/ls, api/parquet) requires bench_server.py on port 8780.
+// Health-only endpoints (8771-8774) serve /health but not the file API.
+// On .34: python3 scripts/bench_server.py --port 8780 --directory /mnt/tort-sdi
+// On .48: python3 scripts/bench_server.py --port 8780 --directory /data
+const PRESETS = {
+  '34-bench': { host:'192.168.86.34', port:'8780', path:'bench/34/results.json',
+                rootDir:'bench/34', fallbackRootDir:'bench', fallbackPath:'bench/results.json', healthPort: null, label:'.34 bench compare' },
+  '48-bench': { host:'192.168.86.48', port:'8780', path:'bench/48/results.json',
+                rootDir:'bench/48', fallbackRootDir:'bench', fallbackPath:'bench/results.json', healthPort: null, label:'.48 bench compare' },
+  '48-a':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/a',
+                rootDir:'parquet-evelyn/a', healthPort:8771, label:'.48 slice A (units 0-11)'  },
+  '48-b':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/b',
+                rootDir:'parquet-evelyn/b', healthPort:8772, label:'.48 slice B (units 12-23)' },
+  '48-c':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/c',
+                rootDir:'parquet-evelyn/c', healthPort:8773, label:'.48 slice C (units 24-34)' },
+  '48-d':     { host:'192.168.86.48', port:'8780', path:'parquet-evelyn/d',
+                rootDir:'parquet-evelyn/d', healthPort:8774, label:'.48 slice D (units 35-45)' },
+};
+
+let _activePreset = null;
+
+function applyPreset(key) {
+  const p = PRESETS[key];
+  if (!p) return;
+  _activePreset = key;
+  document.getElementById('host-in').value = p.host;
+  document.getElementById('port-in').value = p.port;
+  document.getElementById('path-in').value = p.path;
+  // sync the "How to Run" host field too
+  const rh = document.getElementById('run-host');
+  if (rh) rh.value = p.host;
+  // highlight active preset button
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('go'));
+  event.target.classList.add('go');
+  document.getElementById('fetch-status').textContent = p.label;
+  // show/hide health tile
+  const ht = document.getElementById('health-tile');
+  if (p.healthPort) {
+    ht.style.display = 'flex';
+    document.getElementById('health-label').textContent = `Health :${p.healthPort}`;
+    pollHealth(p.host, p.healthPort);
+  } else {
+    ht.style.display = 'none';
+  }
+  // reload file browser for the new root — fall back if primary rootDir missing
+  _fbExpanded = new Set();
+  loadDirWithFallback(p.rootDir, p.fallbackRootDir);
+  loadCompactLog();
+}
+
+async function pollHealth(host, port) {
+  const dot  = document.getElementById('health-dot');
+  const body = document.getElementById('health-body');
+  if (!dot || !body) return;
+  try {
+    const r = await fetch(`http://${host}:${port}/health`, {cache:'no-cache'});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    const rows = [
+      ['msgs', (j.msgs_received ?? 0).toLocaleString()],
+      ['buf rows', (j.buffer_rows ?? 0).toLocaleString()],
+      ['written', (j.total_rows_written ?? 0).toLocaleString()],
+      ['flushes', j.flush_count ?? '—'],
+      ['last flush', j.last_flush_ms != null ? `${j.last_flush_ms} ms` : '—'],
+      ['drops', j.overflow_drops ?? 0],
+      ['disk free', j.disk_free_gb != null ? `${j.disk_free_gb.toFixed(1)} GB` : '—'],
+    ];
+    body.innerHTML = rows.map(([k,v]) =>
+      `<span style="color:var(--muted)">${k}:</span> <span style="color:var(--teal)">${v}</span>`
+    ).join(' &nbsp;|&nbsp; ');
+    dot.className = 'status-dot ok';
+  } catch(e) {
+    body.textContent = String(e.message || e);
+    dot.className = 'status-dot error';
+  }
+}
+
+async function fetchResults() {
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  const path = document.getElementById('path-in').value.trim();
+  const dot  = document.getElementById('fetch-dot');
+  const stat = document.getElementById('fetch-status');
+  dot.className = 'status-dot';
+  stat.textContent = 'fetching…';
+
+  const base  = `http://${host}:${port}`;
+
+  // ── for live writer presets (.48 A/B/C/D) — poll health, skip results.json ─
+  const preset = _activePreset ? PRESETS[_activePreset] : null;
+  if (preset?.healthPort) {
+    await pollHealth(preset.host, preset.healthPort);
+    const ok   = document.getElementById('health-dot')?.classList.contains('ok');
+    dot.className = ok ? 'status-dot ok' : 'status-dot error';
+    stat.textContent = ok
+      ? `writer running on ${preset.host}:${preset.healthPort} — use file browser to view parquet files`
+      : `cannot reach health endpoint ${preset.host}:${preset.healthPort}`;
+    return;
+  }
+
+  // ── try results.json (primary path, then fallback) ───────────────────────
+  const tryPaths = [path];
+  if (preset?.fallbackPath) tryPaths.push(preset.fallbackPath);
+
+  let resultsErr = '';
+  for (const tryPath of tryPaths) {
+    try {
+      const r = await fetch(`${base}/${tryPath}`, {cache: 'no-cache'});
+      if (r.ok) {
+        const data = await r.json();
+        dot.className = 'status-dot ok';
+        const tag = tryPath === path ? '' : ' (legacy path)';
+        stat.textContent = `loaded from ${base}/${tryPath}${tag}`;
+        renderResults(data);
+        return;
+      }
+      resultsErr = `HTTP ${r.status}`;
+    } catch(e) {
+      resultsErr = e.message;
+    }
+  }
+
+  // ── also check status.json at both locations ──────────────────────────────
+  const statusPaths = [path.replace('results.json','status.json')];
+  if (preset?.fallbackPath) statusPaths.push(preset.fallbackPath.replace('results.json','status.json'));
+
+  // ── try status.json at all candidate paths ───────────────────────────────
+  let statusResp = null;
+  for (const sp of statusPaths) {
+    try { const r = await fetch(`${base}/${sp}`, {cache:'no-cache'}); if (r.ok) { statusResp = r; break; } } catch(_) {}
+  }
+  try {
+    const rs = statusResp || await fetch(`${base}/status.json`, {cache:'no-cache'});
+    if (rs.ok) {
+      const s = await rs.json();
+      if (s.status === 'running' || s.status === 'started') {
+        dot.className = 'status-dot warn';
+        const run = s.run ? ` (run #${s.run})` : '';
+        stat.textContent = `★ test running${run} — started ${s.ts || ''}. Try again in a moment.`;
+      } else if (s.status === 'complete') {
+        dot.className = 'status-dot error';
+        stat.textContent = `test complete but results.json fetch failed: ${resultsErr} — check server on ${base}`;
+      } else if (s.status === 'failed') {
+        dot.className = 'status-dot error';
+        stat.textContent = `test failed (exit ${s.exit ?? '?'}) — check log on host`;
+      } else {
+        dot.className = 'status-dot warn';
+        stat.textContent = `status: ${s.status} — results.json not yet available`;
+      }
+      return;
+    }
+  } catch(_) {}
+
+  // ── check if bench dir is at least reachable ──────────────────────────────
+  try {
+    const rp = await fetch(`${base}/`, {cache:'no-cache'});
+    if (rp.ok) {
+      dot.className = 'status-dot warn';
+      stat.textContent = `server reachable but no results.json at ${tryPaths.join(' or ')} — run the test first`;
+      return;
+    }
+  } catch(_) {}
+
+  // ── nothing reachable ─────────────────────────────────────────────────────
+  dot.className = 'status-dot error';
+  stat.textContent = `cannot reach ${base} — start bench_server: python3 scripts/bench_server.py --port ${port} --directory /mnt/tort-sdi/bench`;
+}
+
+function tryLoadPasted() {
+  const txt = document.getElementById('paste-in').value.trim();
+  if (!txt) return;
+  try {
+    const data = JSON.parse(txt);
+    document.getElementById('fetch-dot').className = 'status-dot ok';
+    document.getElementById('fetch-status').textContent = 'loaded from paste';
+    renderResults(data);
+  } catch(_) {}
+}
+
+function renderResults(d) {
+  _lastResults = d;
+  document.getElementById('results-section').style.display = 'block';
+  if (new URLSearchParams(location.search).get('show') === 'estimates') {
+    document.getElementById('estimates-section').style.display = 'block';
+    setTimeout(updateEstimates, 0);
+  }
+
+  const topo = d.topology || {};
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="card c-blue"><div class="card-label">Units</div>
+      <div class="card-val">${topo.units||'—'}</div>
+      <div class="card-sub">${topo.signals||'—'} signals each</div></div>
+    <div class="card c-orange"><div class="card-label">Messages</div>
+      <div class="card-val">${(topo.total_msgs||0).toLocaleString()}</div>
+      <div class="card-sub">${topo.sweeps||'—'} sweeps × 1 Hz</div></div>
+    <div class="card c-green"><div class="card-label">Norm-long size</div>
+      <div class="card-val">${kb(d.norm_long?.size_bytes)}</div>
+      <div class="card-sub">${(d.norm_long?.rows||0).toLocaleString()} rows</div></div>
+    <div class="card c-purple"><div class="card-label">Wide size</div>
+      <div class="card-val">${kb(d.wide_pivot?.size_bytes)}</div>
+      <div class="card-sub">${(d.wide_pivot?.rows||0).toLocaleString()} rows · ${d.wide_pivot?.cols||0} cols</div></div>`;
+
+  // comparison table
+  const nl = d.norm_long  || {};
+  const lc = d.long_cmp   || {};
+  const wp = d.wide_pivot || {};
+
+  // build table — called by setView()
+  window._cmpData = d;
+  setView('raw');
+
+  const fmax  = [nl,lc,wp].map(x=>(x.flush_ms||[]).length ? Math.max(...x.flush_ms) : 0);
+  const favg  = [nl,lc,wp].map(x=>(x.flush_ms||[]).length ? Math.round(x.flush_ms.reduce((a,b)=>a+b,0)/x.flush_ms.length) : 0);
+
+  // flush sparklines
+  const fc = document.getElementById('flush-charts');
+  fc.innerHTML = '';
+  [['norm-long', nl, 'var(--accent)'],
+   ['long+cmp',  lc, 'var(--green)'],
+   ['wide-pivot',wp, 'var(--orange)']].forEach(([name, src, color]) => {
+    const times = src.flush_ms || [];
+    if (!times.length) return;
+    const mx = Math.max(...times);
+    const div = document.createElement('div');
+    div.innerHTML = `<div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">${name}
+      <span style="color:${color}">max ${mx}ms avg ${Math.round(times.reduce((a,b)=>a+b,0)/times.length)}ms</span></div>
+      <div class="sparkline">${times.map(v=>`<div class="spark-bar" style="height:${Math.max(2,Math.round(v/mx*24))}px;background:${color}"></div>`).join('')}</div>`;
+    fc.appendChild(div);
+  });
+
+  // norm-long schema
+  const nlcols = (d.norm_long?.schema || []);
+  document.getElementById('nl-col-count').textContent = nlcols.length ? `— ${nlcols.length} cols` : '';
+  document.getElementById('nl-schema').innerHTML = nlcols.length
+    ? nlcols.map(c => `<div class="col-row"><span class="col-name" title="${c.name}">${c.name}</span>
+        <span class="col-type">${c.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></div>`).join('')
+    : '<span style="color:var(--muted)">no data</span>';
+
+  // long+cmp schema
+  const lccols = (d.long_cmp?.schema || []);
+  document.getElementById('lc-col-count').textContent = lccols.length ? `— ${lccols.length} cols` : '';
+  document.getElementById('lc-schema').innerHTML = lccols.length
+    ? lccols.map(c => `<div class="col-row"><span class="col-name" title="${c.name}">${c.name}</span>
+        <span class="col-type">${c.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></div>`).join('')
+    : '<span style="color:var(--muted)">no data</span>';
+
+  // wide-pivot schema — hover tooltip list
+  const ws      = document.getElementById('wide-schema');
+  const allcols = wp.schema || [];
+  const META    = new Set(['ts','unit_id','site']);
+  const SUPPRESS = new Set(['dtype_hint']);
+  const sigcols = allcols.filter(c => !META.has(c.name) && !SUPPRESS.has(c.name));
+  const metacols= allcols.filter(c =>  META.has(c.name));
+  document.getElementById('wide-col-count').textContent =
+    `— ${sigcols.length} signal cols + ${metacols.length} meta`;
+
+  if (!allcols.length) {
+    ws.innerHTML = '<span style="color:var(--muted)">no results loaded</span>';
+    return;
+  }
+
+  // fetch column_samples once, then build all tooltips
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  fetch(`http://${host}:${port}/column_samples.json`, {cache:'no-cache'})
+    .then(r => r.ok ? r.json() : {})
+    .catch(() => ({}))
+    .then(samples => {
+      if (samples._first_ts) {
+        document.getElementById('wide-first-ts').textContent = samples._first_ts;
+        document.getElementById('wide-last-ts').textContent  = samples._last_ts || '—';
+        document.getElementById('wide-ts-range').style.display = 'block';
+      }
+      buildColList(ws, metacols, sigcols, samples);
+    });
+}
+
+function ttContent(name, type, vals) {
+  if (!vals || !vals.length)
+    return `<div class="tt-name">${name}</div><div class="tt-stats" style="color:var(--muted)">${type}<br>no sample data</div>`;
+  const nums = vals.filter(v => v != null && !isNaN(+v)).map(Number);
+  if (nums.length) {
+    const mn = Math.min(...nums), mx = Math.max(...nums);
+    const avg = nums.reduce((a,b)=>a+b,0)/nums.length;
+    const bars = nums.slice(0,40).map(v => {
+      const h = Math.max(2, Math.round((v-mn)/(mx-mn||1)*26));
+      return `<div class="tt-bar" style="height:${h}px" title="${v.toFixed(4)}"></div>`;
+    }).join('');
+    return `<div class="tt-name">${name}</div>
+      <div class="tt-stats">${type} &nbsp;·&nbsp; n=${vals.length}<br>
+        min <span style="color:var(--green)">${mn.toFixed(3)}</span> &nbsp;
+        max <span style="color:var(--orange)">${mx.toFixed(3)}</span> &nbsp;
+        avg <span style="color:var(--teal)">${avg.toFixed(3)}</span></div>
+      <div class="tt-bars">${bars}</div>`;
+  } else {
+    const uniq = [...new Set(vals.map(String))].slice(0,12);
+    return `<div class="tt-name">${name}</div>
+      <div class="tt-stats">${type} &nbsp;·&nbsp; ${uniq.length} unique values</div>
+      <div class="tt-vals">${uniq.map(v=>`<span class="tt-val">${v}</span>`).join('')}</div>`;
+  }
+}
+
+function buildColList(ws, metacols, sigcols, samples) {
+  const makeRow = (c, isMeta) => {
+    const tt = ttContent(c.name, c.type, samples[c.name]);
+    return `<div class="col-row${isMeta?' col-meta':''}">
+      <span class="col-name" title="${c.name}">${c.name}</span>
+      <span class="col-type">${c.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span>
+      <div class="tt" style="top:0;left:0" onmouseenter="positionTT(this)">${tt}</div>
+    </div>`;
+  };
+  ws.innerHTML =
+    metacols.map(c => makeRow(c, true)).join('') +
+    (metacols.length ? '<div style="border-top:1px solid var(--border);margin:4px 0 6px"></div>' : '') +
+    sigcols.map(c => makeRow(c, false)).join('');
+}
+
+// cache for column data (set in renderResults)
+let _lastResults = null;
+
+function setView(mode) {
+  const d = window._cmpData; if (!d) return;
+  document.getElementById('btn-raw').className       = mode==='raw'       ? 'btn primary' : 'btn';
+  document.getElementById('btn-compacted').className  = mode==='compacted'  ? 'btn primary' : 'btn';
+  document.getElementById('compact-note').style.display = mode==='compacted' ? 'block' : 'none';
+
+  const nl = d.norm_long  || {}, lc = d.long_cmp || {}, wp = d.wide_pivot || {};
+  const src = mode==='compacted'
+    ? [nl.compacted||{}, lc.compacted||{}, wp.compacted||{}]
+    : [nl, lc, wp];
+
+  const hasCompacted = nl.compacted || lc.compacted || wp.compacted;
+  if (mode==='compacted' && !hasCompacted) {
+    document.getElementById('cmp-body').innerHTML =
+      `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:12px">
+        Compacted stats not available — re-run test to generate them.</td></tr>`;
+    return;
+  }
+
+  const sizes = src.map(s => s.size_bytes||0);
+  const rows  = src.map(s => s.rows||0);
+  const files = src.map(s => s.files||0);
+  const cols  = [nl.cols||0, lc.cols||0, wp.cols||0];
+  const bpr   = sizes.map((s,i) => rows[i] ? Math.round(s/rows[i]) : 0);
+  const fmax  = [nl,lc,wp].map(x=>(x.flush_ms||[]).length ? Math.max(...x.flush_ms) : 0);
+  const favg  = [nl,lc,wp].map(x=>(x.flush_ms||[]).length ? Math.round(x.flush_ms.reduce((a,b)=>a+b,0)/x.flush_ms.length) : 0);
+
+  const tbody = document.getElementById('cmp-body');
+  tbody.innerHTML = '';
+  const addRow = (label, vals, fmtFn, lowerBetter=true) => {
+    const nums = vals.map(v => typeof v==='string' ? parseFloat(v)||0 : v);
+    const best = lowerBetter ? Math.min(...nums) : Math.max(...nums);
+    const worst= lowerBetter ? Math.max(...nums) : Math.min(...nums);
+    const cls  = v => v===best?'best':v===worst?'worst':'mid';
+    const tr   = document.createElement('tr');
+    tr.innerHTML = `<td class="metric">${label}</td>`+
+      vals.map((v,i)=>`<td class="${cls(nums[i])}">${fmtFn(v)}</td>`).join('');
+    tbody.appendChild(tr);
+  };
+  const addBarRow = (label, vals, max) => {
+    const tr = document.createElement('tr');
+    const bars = ['bar-norm','bar-cmp','bar-wide'];
+    tr.innerHTML = `<td class="metric">${label}</td>` +
+      vals.map((v,i)=>`<td class="bar-cell">
+        <div class="bar-wrap"><div class="bar-fill ${bars[i]}" style="width:${max?v/max*100:0}%"></div></div>
+        <span style="font-size:.7rem;color:var(--muted)">${v.toLocaleString()}</span></td>`).join('');
+    tbody.appendChild(tr);
+  };
+
+  if (mode==='compacted') {
+    // show raw vs compacted file delta
+    const rawFiles = [nl.files||0, lc.files||0, wp.files||0];
+    addRow('Files (raw)',       rawFiles, v=>v.toLocaleString());
+    addRow('Files (compacted)', files,   v=>v.toLocaleString());
+    addRow('File reduction',    rawFiles.map((r,i)=>files[i]?Math.round(100*(1-files[i]/r)):0),
+           v=>v+'%', false);
+  } else {
+    addRow('Parquet files', files, v=>v.toLocaleString());
+  }
+
+  addRow('Rows',          rows,  v=>v.toLocaleString());
+  addBarRow('Size (bytes)', sizes, Math.max(...sizes));
+  addRow('Size (KB)',      sizes.map(s=>Math.round(s/1024)), v=>v.toLocaleString()+' KB');
+  addRow('Columns',        cols,  v=>String(v), false);
+  addRow('Bytes / row',    bpr,   v=>v+' B');
+  if (mode==='raw') {
+    addRow('Flush max (ms)', fmax, v=>v+'ms');
+    addRow('Flush avg (ms)', favg, v=>v+'ms');
+  }
+  if (sizes[0]) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="metric">vs norm-long</td>
+      <td class="best">baseline</td>
+      <td class="${sizes[1]>sizes[0]?'worst':'best'}">${pct(sizes[1],sizes[0])}</td>
+      <td class="${sizes[2]>sizes[0]?'worst':'best'}">${pct(sizes[2],sizes[0])}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// position tooltip near the hovered row, keeping it on-screen
+function positionTT(tt) {
+  const row  = tt.parentElement;
+  const rect = row.getBoundingClientRect();
+  tt.style.top  = Math.min(rect.top, window.innerHeight - 200) + 'px';
+  tt.style.left = (rect.right + 8) + 'px';
+  // flip left if off right edge
+  if (rect.right + 8 + 320 > window.innerWidth)
+    tt.style.left = (rect.left - 328) + 'px';
+}
+
+function kb(v)  { return v ? Math.round(v/1024).toLocaleString()+' KB' : '—'; }
+function pct(v,base) { const p=100*(v-base)/base; return (p>=0?'+':'')+p.toFixed(1)+'%'; }
+function gbFmt(gb) { return gb < 1 ? (gb*1000).toFixed(0)+' MB' : gb.toFixed(2)+' GB'; }
+
+// ── 24-hour estimates ─────────────────────────────────────────────────────────
+function updateEstimates() {
+  const d = _lastResults; if (!d) return;
+  const unitScale = parseInt(document.getElementById('est-units').value) || 12;
+  const srcUnits  = d.topology?.units || 12;
+  const simSec    = d.topology?.sim_seconds || 600;
+  const scale     = (86400 / simSec) * (unitScale / srcUnits);
+
+  const KEYS   = ['norm_long','long_cmp','wide_pivot'];
+  const LABELS = ['norm-long','long+cmp','wide-pivot'];
+  const COLORS = ['var(--accent)','var(--green)','var(--orange)'];
+
+  const sizes24 = KEYS.map(k => (d[k]?.size_bytes || 0) * scale);
+  const rows24  = KEYS.map(k => Math.round((d[k]?.rows || 0) * scale));
+  const gb24    = sizes24.map(b => b / 1e9);
+
+  // summary cards
+  document.getElementById('est-cards').innerHTML = KEYS.map((k,i) =>
+    `<div class="card" style="border-top:3px solid ${COLORS[i]};min-width:160px">
+      <div class="card-label">${LABELS[i]} / 24 hr</div>
+      <div class="card-val" style="font-size:1.4rem">${gbFmt(gb24[i])}</div>
+      <div class="card-sub">${rows24[i].toLocaleString()} rows · ${unitScale} units</div>
+    </div>`).join('');
+
+  // estimates table
+  const eb = document.getElementById('est-body'); eb.innerHTML = '';
+  const addE = (label, vals, fmt) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="metric">${label}</td>` + vals.map(v=>`<td>${fmt(v)}</td>`).join('');
+    eb.appendChild(tr);
+  };
+  addE('Data / 24 hr', gb24, v => gbFmt(v));
+  addE('Data / month', gb24.map(g=>g*30), v => gbFmt(v));
+  addE('Data / year',  gb24.map(g=>g*365), v => gbFmt(v));
+  addE('Rows / 24 hr', rows24, v => v.toLocaleString());
+
+  // CPU
+  renderCPU(d, unitScale, srcUnits);
+}
+
+
+function renderCPU(d, unitScale, srcUnits) {
+  const KEYS   = ['norm_long','long_cmp','wide_pivot'];
+  const LABELS = ['norm-long','long+cmp','wide-pivot'];
+  const COLORS = ['var(--accent)','var(--green)','var(--orange)'];
+
+  const cpus = KEYS.map(k => d[k]?.cpu || {});
+  const hasCPU = cpus.some(c => c.avg_pct != null);
+
+  const cc = document.getElementById('cpu-cards');
+  if (!hasCPU) {
+    cc.innerHTML = '<span style="color:var(--muted);font-size:.8rem">CPU data not available — re-run test with psutil installed</span>';
+    document.getElementById('cpu-table').style.display = 'none';
+    return;
+  }
+  document.getElementById('cpu-table').style.display = '';
+
+  cc.innerHTML = KEYS.map((k,i) => {
+    const c = cpus[i];
+    const avg = c.avg_pct ?? 0, peak = c.peak_pct ?? 0;
+    const pctBar = Math.min(100, avg);
+    return `<div class="card" style="border-top:3px solid ${COLORS[i]};min-width:170px">
+      <div class="card-label">${LABELS[i]} CPU</div>
+      <div class="card-val" style="font-size:1.3rem">${avg}%</div>
+      <div class="card-sub">peak ${peak}% · 1 core = 100%</div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:6px">
+        <div style="height:4px;width:${pctBar}%;background:${COLORS[i]};border-radius:2px"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+}
+
+// ── file browser ─────────────────────────────────────────────────────────────
+let _fbExpanded = new Set();
+
+function apiBase() {
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  return `http://${host}:${port}`;
+}
+
+async function loadDir(path, depth=0) {
+  const base = apiBase();
+  try {
+    const r = await fetch(`${base}/api/ls?path=${encodeURIComponent(path)}`, {cache:'no-cache'});
+    if (!r.ok) return false;
+    const entries = await r.json();
+    if (depth === 0) {
+      // full rebuild
+      document.getElementById('fb-tree').innerHTML = '';
+      document.getElementById('fb-path').textContent = '/';
+    }
+    renderDir(path, entries, depth);
+    return entries.length > 0;
+  } catch(e) {
+    document.getElementById('fb-tree').innerHTML =
+      `<div style="padding:10px;color:var(--muted)">Cannot reach server — is bench_server.py running?</div>`;
+    return false;
+  }
+}
+
+// Try primary rootDir; if it returns nothing, fall back to fallbackRootDir.
+async function loadDirWithFallback(rootDir, fallbackRootDir) {
+  const found = await loadDir(rootDir);
+  if (!found && fallbackRootDir && fallbackRootDir !== rootDir) {
+    await loadDir(fallbackRootDir);
+  }
+}
+
+function renderDir(path, entries, depth) {
+  const tree = document.getElementById('fb-tree');
+  // remove old children of this path
+  const old = tree.querySelectorAll(`[data-parent="${path}"]`);
+  old.forEach(el => el.remove());
+
+  // cursor tracks where to insert next — advances after each row so order is preserved
+  let cursor = path ? tree.querySelector(`[data-path="${path}"]`) : null;
+
+  const dirRows = [];
+  entries.forEach(e => {
+    const row = document.createElement('div');
+    row.className = `fb-row ${e.type==='dir' ? 'fb-dir' : 'fb-file' + (e.name.endsWith('.parquet') ? ' parquet' : '')}`;
+    row.dataset.path   = e.path;
+    row.dataset.parent = path;
+    row.dataset.type   = e.type;
+
+    const icon = e.type==='dir' ? (_fbExpanded.has(e.path) ? '▾' : '▸') : '·';
+    const size = e.size != null ? fmtSize(e.size) : '';
+    row.style.paddingLeft = (depth * 14 + 6) + 'px';
+    row.innerHTML = `<span class="fb-indent" style="margin-right:5px">${icon}</span>
+      <span>${e.name}</span>
+      <span class="fb-size">${size}</span>`;
+
+    row.onclick = () => {
+      if (e.type === 'dir') toggleDir(e.path, depth+1, row);
+      else if (e.name.endsWith('.parquet')) loadParquet(e.path, e.size);
+    };
+
+    if (cursor) { cursor.insertAdjacentElement('afterend', row); cursor = row; }
+    else tree.appendChild(row);
+
+    if (e.type === 'dir') dirRows.push({entry: e, row});
+  });
+
+  // auto-expand if there is exactly one subdirectory
+  if (dirRows.length === 1) {
+    const {entry: onlyDir, row: rowEl} = dirRows[0];
+    toggleDir(onlyDir.path, depth + 1, rowEl);
+  }
+}
+
+async function toggleDir(path, depth, rowEl) {
+  if (_fbExpanded.has(path)) {
+    // collapse — remove all descendants
+    _fbExpanded.delete(path);
+    document.querySelectorAll(`[data-parent]`).forEach(el => {
+      if (isDescendant(el.dataset.parent, path)) el.remove();
+    });
+    rowEl.querySelector('.fb-indent').textContent = '▸';
+  } else {
+    _fbExpanded.add(path);
+    rowEl.querySelector('.fb-indent').textContent = '▾';
+    await loadDir(path, depth);
+  }
+}
+
+function isDescendant(parent, ancestor) {
+  return parent === ancestor || parent.startsWith(ancestor + '/');
+}
+
+async function loadParquet(path, size) {
+  // highlight selected
+  document.querySelectorAll('.fb-row').forEach(r => r.classList.remove('selected'));
+  const sel = document.querySelector(`[data-path="${path}"]`);
+  if (sel) sel.classList.add('selected');
+  document.getElementById('fb-path').textContent = '/' + path;
+
+  const panel = document.getElementById('fb-data');
+  panel.innerHTML = '<span style="color:var(--muted)">loading…</span>';
+
+  const base = apiBase();
+  try {
+    const r = await fetch(`${base}/api/parquet?path=${encodeURIComponent(path)}&rows=200`, {cache:'no-cache'});
+    const d = await r.json();
+    if (d.error) { panel.innerHTML = `<span style="color:var(--orange)">${d.error}</span>`; return; }
+
+    const HIDE_COLS = new Set(['dtype_hint']);
+    const schema = d.schema.filter(c => !HIDE_COLS.has(c.name));
+    const shown = d.shown, total = d.total_rows, sz = fmtSize(d.size_bytes);
+    let html = `<div style="margin-bottom:6px;color:var(--muted)">
+      <span style="color:var(--teal)">${path.split('/').pop()}</span>
+      &nbsp;·&nbsp; ${sz} &nbsp;·&nbsp; ${total.toLocaleString()} rows total
+      ${shown < total ? `<span style="color:var(--orange)"> (showing first ${shown})</span>` : ''}
+      &nbsp;·&nbsp; ${schema.length} cols
+    </div><div style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:4px"><table><thead><tr>`;
+
+    schema.forEach(col => {
+      html += `<th title="${col.type}">${col.name}<br><span style="font-size:.6rem;font-weight:400">${col.type.replace('dictionary<values=string, indices=int32, ordered=0>','dict')}</span></th>`;
+    });
+    html += '</tr></thead><tbody>';
+    d.rows.forEach(row => {
+      html += '<tr>';
+      schema.forEach(col => {
+        const v = row[col.name];
+        const disp = v == null ? '<span style="color:var(--border)">null</span>'
+                   : String(v).length > 28 ? String(v).slice(0,26)+'…' : String(v);
+        html += `<td title="${v ?? ''}">${disp}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    panel.innerHTML = html;
+  } catch(e) {
+    panel.innerHTML = `<span style="color:var(--orange)">Error: ${e.message}</span>`;
+  }
+}
+
+function fmtSize(b) {
+  if (b == null) return '';
+  if (b < 1024) return b+'B';
+  if (b < 1048576) return (b/1024).toFixed(0)+'KB';
+  return (b/1048576).toFixed(1)+'MB';
+}
+
+// load file tree on page load (after host field is set)
+document.addEventListener('DOMContentLoaded', () => setTimeout(()=>loadDir(''), 200));
+
+// ── compactor log ─────────────────────────────────────────────────────────────
+async function loadCompactLog() {
+  const base   = apiBase();
+  const status = document.getElementById('clog-status');
+  const table  = document.getElementById('clog-table');
+  status.textContent = 'loading…';
+  try {
+    // Try rootDir/compact.log first, then legacy bare compact.log
+    const preset   = _activePreset ? PRESETS[_activePreset] : null;
+    const rootDir  = preset?.rootDir ?? '';
+    const tryUrls  = rootDir
+      ? [`${base}/${rootDir}/compact.log`, `${base}/compact.log`]
+      : [`${base}/compact.log`];
+    // also try fallbackPath dir (legacy bench/ on .34)
+    if (preset?.fallbackPath) {
+      const fbDir = preset.fallbackPath.split('/').slice(0,-1).join('/');
+      if (fbDir) tryUrls.push(`${base}/${fbDir}/compact.log`);
+    }
+    let r = null;
+    for (const url of tryUrls) {
+      try { const res = await fetch(url, {cache:'no-cache'}); if (res.ok) { r = res; break; } } catch(_) {}
+    }
+    if (!r) { status.textContent = 'compact.log not found — run not started yet'; return; }
+    const text = await r.text();
+    const lines = text.trim().split('\n').filter(l => l.trim());
+    if (!lines.length) { status.textContent = 'log empty'; table.innerHTML = ''; return; }
+
+    const entries = lines.map(l => { try { return JSON.parse(l); } catch(_){ return null; } })
+                         .filter(Boolean)
+                         .reverse();  // newest first
+
+    // ── summary ──────────────────────────────────────────────────────────────
+    const totalSrc  = entries.reduce((s,e) => s + (e.source_bytes||0), 0);
+    const totalCmp  = entries.reduce((s,e) => s + (e.size_bytes||0),   0);
+    const totalRows = entries.reduce((s,e) => s + (e.rows||0),         0);
+    const totalSrc2 = entries.reduce((s,e) => s + (e.sources||0),      0);
+    const avgNull   = entries.length ? entries.reduce((s,e) => s + (e.null_pct||0), 0) / entries.length : 0;
+    const overallRatio = totalCmp ? (totalSrc / totalCmp).toFixed(1) : '?';
+    const saved = totalSrc - totalCmp;
+
+    // per-schema breakdown
+    const bySchema = {};
+    entries.forEach(e => {
+      const s = (e.schema||'unknown').replace('pw-bench-','');
+      if (!bySchema[s]) bySchema[s] = {count:0, src:0, cmp:0, rows:0};
+      bySchema[s].count++; bySchema[s].src += e.source_bytes||0;
+      bySchema[s].cmp += e.size_bytes||0; bySchema[s].rows += e.rows||0;
+    });
+
+    let summary = `<div style="display:flex;gap:24px;flex-wrap:wrap;padding:10px 4px;margin-bottom:12px;border-bottom:1px solid var(--border)">`;
+    const stat = (label, val, color='var(--text)') =>
+      `<div><div style="font-size:.65rem;color:var(--muted);margin-bottom:2px">${label}</div>
+       <div style="font-size:.95rem;font-weight:600;color:${color}">${val}</div></div>`;
+    summary += stat('Compactions', entries.length);
+    summary += stat('Files merged', totalSrc2);
+    summary += stat('Total rows', totalRows.toLocaleString());
+    summary += stat('Uncompacted', fmtSize(totalSrc), 'var(--muted)');
+    summary += stat('Compacted', fmtSize(totalCmp), 'var(--accent)');
+    summary += stat('Overall ratio', overallRatio+'×', 'var(--green)');
+    summary += stat('Space saved', fmtSize(saved), 'var(--green)');
+    summary += stat('Avg null%', avgNull.toFixed(1)+'%', avgNull>50?'var(--green)':'var(--yellow)');
+    summary += `</div>`;
+
+    // per-schema mini table
+    summary += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">`;
+    Object.entries(bySchema).forEach(([schema, d]) => {
+      const r = d.cmp ? (d.src/d.cmp).toFixed(1) : '?';
+      summary += `<div style="background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:.75rem">
+        <div style="color:var(--teal);font-weight:600;margin-bottom:4px">${schema}</div>
+        <div style="color:var(--muted)">${d.count} compactions · ${d.rows.toLocaleString()} rows</div>
+        <div>${fmtSize(d.src)} → <span style="color:var(--accent)">${fmtSize(d.cmp)}</span>
+          <span style="color:var(--green);margin-left:6px">${r}×</span></div>
+      </div>`;
+    });
+    summary += `</div>`;
+
+    status.textContent = `${entries.length} compaction${entries.length===1?'':'s'}`;
+
+    let html = summary + `<table style="border-collapse:collapse;width:100%">
+      <thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:4px 8px">Time</th>
+        <th style="text-align:left;padding:4px 8px">Schema</th>
+        <th style="text-align:left;padding:4px 8px">Dir</th>
+        <th style="text-align:right;padding:4px 8px">Sources</th>
+        <th style="text-align:right;padding:4px 8px">Rows</th>
+        <th style="text-align:right;padding:4px 8px">Uncompacted</th>
+        <th style="text-align:right;padding:4px 8px">Compacted</th>
+        <th style="text-align:right;padding:4px 8px">Ratio</th>
+        <th style="text-align:right;padding:4px 8px">Null%</th>
+        <th style="text-align:left;padding:4px 8px">Output</th>
+      </tr></thead><tbody>`;
+
+    entries.forEach(e => {
+      const raw = (e.ts||'').replace(/ZZ?$/,'');
+      const t = raw.length===15 ? raw.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,'$1-$2-$3 $4:$5:$6') : raw.replace('T',' ');
+      const srcSz  = e.source_bytes ? fmtSize(e.source_bytes) : '?';
+      const sz     = e.size_bytes   ? fmtSize(e.size_bytes)   : '?';
+      const ratio  = e.source_bytes && e.size_bytes
+                     ? (e.source_bytes / e.size_bytes).toFixed(1) + '×' : '?';
+      const schema = (e.schema||'').replace('pw-bench-','');
+      const nullPct = e.null_pct != null ? e.null_pct.toFixed(1)+'%' : '?';
+      const nullColor = e.null_pct > 50 ? 'var(--green)' : e.null_pct > 20 ? 'var(--yellow)' : 'var(--muted)';
+      html += `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:3px 8px;color:var(--muted)">${t}</td>
+        <td style="padding:3px 8px;color:var(--teal)">${schema}</td>
+        <td style="padding:3px 8px;color:var(--muted)">${e.dir||''}</td>
+        <td style="padding:3px 8px;text-align:right">${e.sources||0}</td>
+        <td style="padding:3px 8px;text-align:right">${(e.rows||0).toLocaleString()}</td>
+        <td style="padding:3px 8px;text-align:right;color:var(--muted)">${srcSz}</td>
+        <td style="padding:3px 8px;text-align:right;color:var(--accent)">${sz}</td>
+        <td style="padding:3px 8px;text-align:right;color:var(--green)">${ratio}</td>
+        <td style="padding:3px 8px;text-align:right;color:${nullColor}">${nullPct}</td>
+        <td style="padding:3px 8px;color:var(--muted);font-size:.65rem">${e.out||''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    table.innerHTML = html;
+  } catch(e) {
+    status.textContent = 'error: ' + e.message;
+  }
+}
+
+// ── restart & live status ─────────────────────────────────────────────────────
+let _pollTimer   = null;
+let _elapsedTimer= null;
+let _runStartTs  = null;   // ISO string from status.json
+let _lastStatus  = null;
+
+async function restartTest() {
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  const btn  = document.getElementById('restart-btn');
+  btn.disabled = true;
+  btn.textContent = '…restarting';
+
+  // Write a restart-request file the server can pick up, OR just tell user
+  // (we can't SSH from browser — generate the command and show it)
+  const sweeps   = document.getElementById('run-sweeps')?.value || '600';
+  const loop     = document.getElementById('run-loop')?.checked;
+  const interval = document.getElementById('run-interval')?.value || '30';
+
+  // Try to hit a /restart endpoint (not available by default),
+  // fall back to showing the command prominently
+  const cmd = `ssh phil@${host} 'echo phil | sudo -S systemctl restart writer-compare-test'`;
+  const stat = document.getElementById('fetch-status');
+  stat.innerHTML = `<span style="color:var(--orange)">Cannot SSH from browser — run:</span>
+    <code style="color:var(--teal);margin-left:6px">${cmd}</code>`;
+  btn.disabled = false;
+  btn.textContent = '↺ Restart';
+
+  // Start polling status immediately
+  startStatusPoll();
+}
+
+function startStatusPoll() {
+  if (_pollTimer) clearInterval(_pollTimer);
+  pollStatus();
+  _pollTimer = setInterval(pollStatus, 3000);
+}
+
+async function pollStatus() {
+  const host = document.getElementById('host-in').value.trim();
+  const port = document.getElementById('port-in').value.trim();
+  const bar  = document.getElementById('run-status-bar');
+
+  // ── live writer preset (.48 A/B/C/D) — show health in status bar ──────────
+  const preset = _activePreset ? PRESETS[_activePreset] : null;
+  if (preset?.healthPort) {
+    try {
+      const r = await fetch(`http://${preset.host}:${preset.healthPort}/health`, {cache:'no-cache'});
+      if (!r.ok) { bar.style.display='none'; return; }
+      const j = await r.json();
+      bar.style.display = 'flex';
+      const dot   = document.getElementById('run-state-dot');
+      const label = document.getElementById('run-state-label');
+      const runN  = document.getElementById('run-number');
+      const est   = document.getElementById('run-sweep-est');
+      dot.className = 'status-dot ok';
+      label.textContent = `★ writer running — ${(j.msgs_received||0).toLocaleString()} msgs`;
+      runN.textContent  = `${(j.total_rows_written||0).toLocaleString()} rows written`;
+      est.textContent   = j.flush_count != null ? `${j.flush_count} flushes` : '';
+    } catch(_) {
+      bar.style.display = 'none';
+    }
+    return;
+  }
+
+  // ── bench compare test — poll status.json (try machine-tagged path first) ──
+  const sPaths = preset?.fallbackPath
+    ? [preset.path.replace('results.json','status.json'),
+       preset.fallbackPath.replace('results.json','status.json'),
+       'status.json']
+    : [`${host}:${port}/status.json`];
+  let statusR = null;
+  for (const sp of sPaths) {
+    try { const r = await fetch(`http://${host}:${port}/${sp}`, {cache:'no-cache'}); if (r.ok) { statusR = r; break; } } catch(_) {}
+  }
+  try {
+    const r = statusR;
+    if (!r) { bar.style.display='none'; return; }
+    const s = await r.json();
+    _lastStatus = s;
+    bar.style.display = 'flex';
+
+    const dot   = document.getElementById('run-state-dot');
+    const label = document.getElementById('run-state-label');
+    const runN  = document.getElementById('run-number');
+    const est   = document.getElementById('run-sweep-est');
+
+    if (s.status === 'running') {
+      dot.className = 'status-dot warn';
+      label.textContent = '★ running';
+      if (!_runStartTs || _runStartTs !== s.ts) {
+        _runStartTs = s.ts;
+        startElapsedClock(s.ts, s.sweeps);
+      }
+      runN.textContent = s.run ? `run #${s.run}` : '';
+    } else if (s.status === 'complete') {
+      dot.className = 'status-dot ok';
+      label.textContent = 'complete';
+      runN.textContent = s.run ? `run #${s.run}` : '';
+      est.textContent = '';
+      stopElapsedClock();
+      // auto-fetch results if we just completed
+      if (_lastStatus?.status !== 'complete') fetchResults();
+    } else if (s.status === 'failed') {
+      dot.className = 'status-dot error';
+      label.textContent = `failed (exit ${s.exit ?? '?'})`;
+      stopElapsedClock();
+    }
+  } catch(_) {
+    document.getElementById('run-status-bar').style.display = 'none';
+  }
+}
+
+function startElapsedClock(startIso, totalSweeps) {
+  stopElapsedClock();
+  const start = new Date(startIso);
+  const sweepSec = totalSweeps || 600;
+
+  function tick() {
+    const elapsed = (Date.now() - start) / 1000;
+    const mm = Math.floor(elapsed/60), ss = Math.floor(elapsed%60);
+    const pct = Math.min(100, Math.round(elapsed/sweepSec*100));
+    document.getElementById('run-elapsed').textContent =
+      `${mm}m ${ss.toString().padStart(2,'0')}s  (${pct}%)`;
+    const remain = sweepSec - elapsed;
+    document.getElementById('run-sweep-est').textContent =
+      remain > 0 ? `~${Math.ceil(remain/60)}m remaining` : 'finishing…';
+  }
+  tick();
+  _elapsedTimer = setInterval(tick, 1000);
+}
+
+function stopElapsedClock() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+}
+
+// start polling as soon as the page loads
+document.addEventListener('DOMContentLoaded', startStatusPoll);
+
+// ── run command builder ───────────────────────────────────────────────────────
+function updateRunCmd() {
+  const host     = document.getElementById('run-host').value.trim() || '192.168.86.34';
+  const sweeps   = document.getElementById('run-sweeps').value || '600';
+  const loop     = document.getElementById('run-loop').checked;
+  const interval = document.getElementById('run-interval').value || '30';
+  const loopEnv  = loop
+    ? `sudo systemctl set-environment LOOP=1 INTERVAL=${interval}\n` : '';
+  document.getElementById('run-cmd').textContent =
+    `# on ${host}:\n` +
+    `cd ~/data_server && git pull\n` +
+    `sudo cp scripts/writer-compare-test.service /etc/systemd/system/\n` +
+    `sudo systemctl daemon-reload\n` +
+    `sudo systemctl set-environment SWEEPS=${sweeps}\n` +
+    loopEnv +
+    `sudo systemctl restart writer-compare-test`;
+}
+['run-host','run-sweeps','run-loop','run-interval'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateRunCmd);
+  document.getElementById(id)?.addEventListener('change', updateRunCmd);
+});
+// initialise on load
+document.addEventListener('DOMContentLoaded', () => {
+  updateRunCmd();
+  document.querySelectorAll('details').forEach(det => {
+    det.addEventListener('toggle', () => {
+      const arrow = det.querySelector('.det-arrow, #run-arrow');
+      if (arrow) arrow.textContent = det.open ? '▾' : '▸';
+    });
+  });
+  // show estimates section immediately if ?show=estimates
+  if (new URLSearchParams(location.search).get('show') === 'estimates') {
+    document.getElementById('estimates-section').style.display = 'block';
+  }
+});
+</script>
+</body>
+</html>

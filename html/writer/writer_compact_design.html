@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parquet Writer — Compact Process Design</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --pre-bg: #0d1117; --th-bg: #21262d; --tr-alt: #0d1117;
+  }
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+  }
+  @media print {
+    body { --bg:#fff; --surface:#f6f8fa; --border:#c8d1d9; --text:#1f2328;
+           --muted:#57606a; --accent:#0550ae; --green:#1a7f37; --yellow:#9a6700;
+           --orange:#953800; --purple:#6639ba; --code-bg:#eaeef2; --code-text:#1f2328;
+           --pre-bg:#f6f8fa; --th-bg:#eaeef2; --tr-alt:#f6f8fa; }
+    .theme-toggle, .nav { display:none; }
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif;
+         padding:32px; line-height:1.7; max-width:1100px; margin:0 auto; }
+  h1 { color:var(--accent); font-size:1.7rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.88rem; margin-bottom:32px; }
+  h2 { color:var(--accent); font-size:1.15rem; margin:36px 0 12px;
+       padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--orange); font-size:.95rem; margin:20px 0 8px; }
+  p  { margin-bottom:10px; font-size:.88rem; }
+  ul, ol { padding-left:22px; margin-bottom:10px; }
+  li { font-size:.88rem; margin-bottom:4px; }
+  .section { background:var(--surface); border:1px solid var(--border);
+             border-radius:8px; padding:22px 24px; margin-bottom:20px; }
+  pre, code { font-family:'Consolas','Courier New',monospace; }
+  code { background:var(--code-bg); border:1px solid var(--border); padding:1px 5px;
+         border-radius:4px; font-size:.82rem; color:var(--code-text); }
+  pre  { background:var(--pre-bg); border:1px solid var(--border); border-radius:6px;
+         padding:14px; font-size:.82rem; line-height:1.6; overflow-x:auto;
+         color:var(--code-text); margin:10px 0; }
+  table { width:100%; border-collapse:collapse; font-size:.84rem; margin:10px 0; }
+  th { background:var(--th-bg); color:var(--accent); text-align:left;
+       padding:7px 12px; border:1px solid var(--border); }
+  td { padding:6px 12px; border:1px solid var(--border); vertical-align:top; }
+  tr:nth-child(even) td { background:var(--tr-alt); }
+  .ok   { color:var(--green); }
+  .warn { color:var(--yellow); }
+  .err  { color:var(--red); }
+  .dim  { color:var(--muted); }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+            padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .theme-toggle { position:fixed; top:16px; right:16px; background:var(--surface);
+                  border:1px solid var(--border); border-radius:6px; padding:5px 12px;
+                  color:var(--muted); cursor:pointer; font-size:.8rem; }
+  .flow { display:flex; align-items:center; gap:0; flex-wrap:wrap; margin:16px 0; }
+  .flow-box { background:var(--code-bg); border:1px solid var(--border);
+              border-radius:6px; padding:8px 14px; font-size:.82rem;
+              font-family:monospace; color:var(--code-text); white-space:nowrap; }
+  .flow-arrow { color:var(--muted); padding:0 6px; font-size:1.1rem; }
+  .flow-box.green { border-color:var(--green); color:var(--green); }
+  .flow-box.orange { border-color:var(--orange); color:var(--orange); }
+  .flow-box.red { border-color:var(--red); color:var(--red); }
+  .flow-box.blue { border-color:var(--accent); color:var(--accent); }
+  .badge { display:inline-block; padding:1px 7px; border-radius:10px;
+           font-size:.75rem; font-weight:600; margin-left:6px; }
+  .badge-green { background:#1a3a1f; color:var(--green); border:1px solid var(--green); }
+  .badge-orange { background:#3a2a0a; color:var(--orange); border:1px solid var(--orange); }
+  .badge-red { background:#3a0d0a; color:var(--red); border:1px solid var(--red); }
+  .badge-blue { background:#0d2044; color:var(--accent); border:1px solid var(--accent); }
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="document.body.classList.toggle('light')">☀ / ☾</button>
+
+<div class="nav">
+  <a href="writer_design.html">Writer Design</a>
+  <a href="writer_code_review.html">Code Review</a>
+  <a href="writer_query_design.html">Query Design</a>
+  <a href="parquet_writer_options.html">Writer Options</a>
+  <a href="writer_compact_design.html">Compact Design</a>
+</div>
+
+<h1>Parquet Writer — Compact Process Design</h1>
+<p class="subtitle">How flush files are merged, what survives, and how the two compact paths interact &mdash; <code>source/parquet_writer/parquet_writer.cpp</code></p>
+
+<!-- ═══════════════════════════════════════════════════════ Overview -->
+<div class="section">
+<h2>Overview</h2>
+<p>The parquet writer produces one <em>flush file</em> per partition per flush interval.
+Over time these accumulate into many small files. The compact process merges them into
+a single <code>compact_*.parquet</code> file per directory, reducing file count and
+improving query performance.</p>
+<p>There are <strong>two independent compact paths</strong>:</p>
+<table>
+  <tr><th>Path</th><th>Where</th><th>How triggered</th><th>Suitable for</th></tr>
+  <tr>
+    <td><strong>C++ compact thread</strong></td>
+    <td><code>parquet_writer.cpp</code><br><span class="dim">compact_thread_fn()</span></td>
+    <td>Automatic background thread, runs every <code>compact_interval_seconds</code></td>
+    <td>Live production / bench writers — runs continuously</td>
+  </tr>
+  <tr>
+    <td><strong>Python compact script</strong></td>
+    <td><code>scripts/compact_parquet.py</code></td>
+    <td>Manual CLI invocation only — not automated</td>
+    <td>One-off cleanup, post-run compaction of stopped writers</td>
+  </tr>
+</table>
+<p class="warn">⚠ Do not run <code>compact_parquet.py</code> on a directory where the C++ compact thread is active — no locking exists between them.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ File Naming -->
+<div class="section">
+<h2>File Naming Conventions</h2>
+<table>
+  <tr><th>Pattern</th><th>Type</th><th>Example</th><th>Eligible for compaction?</th></tr>
+  <tr>
+    <td><code>YYYYMMDDTHHMMSSZ.parquet</code></td>
+    <td>Flush file</td>
+    <td><code>20260411T130051Z.parquet</code></td>
+    <td><span class="ok">✓ Yes</span> — primary compaction source</td>
+  </tr>
+  <tr>
+    <td><code>{unit_id}_YYYYMMDDTHHMMSSZ.parquet</code></td>
+    <td>Partitioned flush file</td>
+    <td><code>0215D1E1_20260411T130051Z.parquet</code></td>
+    <td><span class="ok">✓ Yes</span> — digit-prefix detected</td>
+  </tr>
+  <tr>
+    <td><code>compact_YYYYMMDDTHHMMSSZ.parquet</code></td>
+    <td>Compact output</td>
+    <td><code>compact_20260411T130851Z.parquet</code></td>
+    <td><span class="err">✗ No</span> — final, never re-compacted <span class="badge badge-green">fixed Apr 2026</span></td>
+  </tr>
+  <tr>
+    <td><code>compact_*.parquet.tmp</code></td>
+    <td>In-progress write</td>
+    <td><code>compact_20260411T130851Z.parquet.tmp</code></td>
+    <td><span class="err">✗ No</span> — skipped (temp file)</td>
+  </tr>
+</table>
+<p>Flush files are identified by a leading digit in the filename. The C++ thread uses this to distinguish them from compact outputs.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ C++ Config -->
+<div class="section">
+<h2>C++ Compact Thread — Configuration</h2>
+<p>Configured under the <code>compact:</code> key in the writer YAML config. All fields are optional.</p>
+<pre>compact:
+  enabled: true                 # false = thread not started (default: false)
+  interval_seconds: 600         # how often the thread scans for eligible files (default: 600)
+  min_files: 3                  # minimum files in a directory to trigger compaction (default: 3)
+  min_age_seconds: 0            # min file age to be eligible; 0 = 2 × flush_interval_seconds
+  log_path: ""                  # JSON-lines compact log; default = {base_path}/compact.log</pre>
+
+<h3>Config Parameters</h3>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Effect</th></tr>
+  <tr>
+    <td><code>enabled</code></td>
+    <td><code>false</code></td>
+    <td>Must be <code>true</code> to start the compact background thread. Safe to leave off for writers where external compaction is preferred.</td>
+  </tr>
+  <tr>
+    <td><code>interval_seconds</code></td>
+    <td><code>600</code></td>
+    <td>Sleep interval between scan cycles. Lower values mean more frequent compaction but higher CPU overhead.</td>
+  </tr>
+  <tr>
+    <td><code>min_files</code></td>
+    <td><code>3</code></td>
+    <td>A directory is skipped unless it contains at least this many eligible flush files. Prevents compacting a single file needlessly.</td>
+  </tr>
+  <tr>
+    <td><code>min_age_seconds</code></td>
+    <td><code>0</code></td>
+    <td>Only files older than this are eligible. <code>0</code> auto-sets to <code>2 × flush_interval_seconds</code>, ensuring the active flush file is never touched.</td>
+  </tr>
+  <tr>
+    <td><code>log_path</code></td>
+    <td><code>{base_path}/compact.log</code></td>
+    <td>Append-only JSON-lines log. One entry per directory compacted. See log format below.</td>
+  </tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ Thread Flow -->
+<div class="section">
+<h2>C++ Compact Thread — Execution Flow</h2>
+
+<h3>Per-cycle steps</h3>
+<ol>
+  <li>Sleep for <code>interval_seconds</code> (interruptible on shutdown)</li>
+  <li>Compute <code>cutoff = now − min_age_seconds</code></li>
+  <li>Walk <code>base_path</code> recursively — collect all <code>.parquet</code> files where:
+    <ul>
+      <li>filename starts with a digit (flush file)</li>
+      <li>file mtime &lt; cutoff</li>
+    </ul>
+    Group by parent directory.
+  </li>
+  <li>For each directory: skip if <code>file_count &lt; min_files</code></li>
+  <li>Call <code>compact_directory()</code> on eligible directories</li>
+</ol>
+
+<h3>compact_directory() steps</h3>
+<div class="flow">
+  <div class="flow-box blue">Read all source files</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">Inject unit_id column<br><span class="dim">(wide-pivot only)</span></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">ConcatenateTables<br><span class="dim">(unify schemas)</span></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box orange">Write tmp file<br>compact_T.parquet.tmp</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box green">Atomic rename<br>→ compact_T.parquet</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">Verify row count</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box red">Delete source files<br><span class="dim">(if verified)</span></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">Append to compact.log</div>
+</div>
+
+<h3>Atomicity &amp; safety</h3>
+<ul>
+  <li>Output is written to a <code>.tmp</code> file then renamed — readers never see a partial compact</li>
+  <li>Source files are only deleted <strong>after</strong> the output is verified (row count check)</li>
+  <li>If any source file fails to read, the entire directory is skipped — no partial compaction</li>
+  <li>If verification fails, source files are kept and the corrupt output is left for inspection</li>
+</ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ Compact Files -->
+<div class="section">
+<h2>Compact File Behaviour <span class="badge badge-green">Updated Apr 2026</span></h2>
+<p>Prior to April 2026, compact files were included as sources in subsequent compaction cycles
+(<code>is_compact</code> flag). This caused each compact to replace the previous one,
+with no accumulation of history. The directory would cycle endlessly with the same row count.</p>
+
+<h3>Before fix (behaviour)</h3>
+<div class="flow">
+  <div class="flow-box">83 flush files<br>+ compact_T1</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box orange">compact_T2 written</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box red">compact_T1 deleted ✗</div>
+</div>
+<p class="warn">Result: compact files were temporary — replaced every <code>interval_seconds</code>. Row count stayed constant.</p>
+
+<h3>After fix (current behaviour)</h3>
+<div class="flow">
+  <div class="flow-box">83 flush files<br><span class="dim">(compact_T1 ignored)</span></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box green">compact_T2 written</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">flush files deleted</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box green">compact_T1 survives ✓</div>
+</div>
+<p class="ok">Result: compact files accumulate — one per compaction cycle. The directory grows, preserving full history.</p>
+
+<h3>Code change</h3>
+<pre><span style="color:var(--red)">- bool is_compact = fname.size() > 8 && fname.substr(0, 8) == "compact_";
+- if (!is_flush && !is_compact) continue;  // compact files were re-consumed</span>
+<span style="color:var(--green)">+ // compact_ files are final — never re-compact them
++ if (!is_flush) continue;</span></pre>
+<p>Commit <code>6ad3bf0</code> on branch <code>03202026_run_with_real_data</code>.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ Compact Log -->
+<div class="section">
+<h2>Compact Log Format</h2>
+<p>Each compaction appends one JSON line to <code>{base_path}/compact.log</code>:</p>
+<pre>{
+  "ts":           "20260411T130851Z",   // UTC timestamp of compact run
+  "schema":       "pw-bench-wide",      // writer schema/client_id
+  "dir":          "bench/2026/04/11",   // directory relative to base_path
+  "sources":      84,                   // number of source files consumed
+  "source_bytes": 1373560,              // total bytes of source files
+  "rows":         5028,                 // rows in compact output
+  "size_bytes":   377456,               // compressed output size
+  "null_pct":     30.8,                 // null density (wide format expected)
+  "out":          "compact_20260411T130851Z.parquet"
+}</pre>
+<p>The log is append-only and never rotated. Monitor it to verify compaction is running and healthy.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ Python Script -->
+<div class="section">
+<h2>Python compact_parquet.py — Manual Script</h2>
+<p>Located at <code>scripts/compact_parquet.py</code>. Run manually for one-off compaction after a writer has stopped, or for initial cleanup of legacy data.</p>
+
+<pre>python3 scripts/compact_parquet.py &lt;base_dir&gt; [--dry-run] [--chunk-minutes N] [--compression snappy|zstd|gzip|none]
+
+# Examples:
+python3 scripts/compact_parquet.py /mnt/tort-sdi/bench/bench-wide
+python3 scripts/compact_parquet.py /mnt/tort-sdi/bench/bench-norm-long --dry-run
+python3 scripts/compact_parquet.py /mnt/tort-sdi/bench/bench-wide --compression zstd</pre>
+
+<table>
+  <tr><th>Option</th><th>Default</th><th>Effect</th></tr>
+  <tr><td><code>--dry-run</code></td><td>off</td><td>Print what would be done; no files written or deleted</td></tr>
+  <tr><td><code>--chunk-minutes N</code></td><td>0</td><td>Group files into N-minute chunks; 0 = one file per leaf directory</td></tr>
+  <tr><td><code>--compression</code></td><td>snappy</td><td>Output compression codec</td></tr>
+</table>
+
+<h3>Key differences from C++ thread</h3>
+<table>
+  <tr><th></th><th>C++ thread</th><th>Python script</th></tr>
+  <tr><td>Triggered by</td><td>Automatic (timer)</td><td>Manual CLI only</td></tr>
+  <tr><td>Re-compacts compact_* files</td><td><span class="ok">No (after fix)</span></td><td><span class="ok">No (always excluded)</span></td></tr>
+  <tr><td>Schema unification</td><td>Yes (Arrow ConcatenateTables)</td><td>Yes (PyArrow concat_tables)</td></tr>
+  <tr><td>unit_id injection</td><td>Yes (wide-pivot mode)</td><td>No</td></tr>
+  <tr><td>Verification step</td><td>Yes (row count check)</td><td>No</td></tr>
+  <tr><td>Compact log</td><td>Yes (JSON-lines)</td><td>No</td></tr>
+  <tr><td>Conflict risk with C++ thread</td><td>N/A</td><td><span class="warn">Yes — do not run simultaneously</span></td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ Directory Layout -->
+<div class="section">
+<h2>Expected Directory Layout After Compaction</h2>
+<pre>/mnt/tort-sdi/bench/bench-wide/bench/2026/04/11/
+  compact_20260411T120527Z.parquet   ← cycle 1  (accumulates)
+  compact_20260411T121601Z.parquet   ← cycle 2
+  compact_20260411T122634Z.parquet   ← cycle 3
+  ...
+  compact_20260411T130851Z.parquet   ← latest cycle
+  0215D1E1_20260411T131024Z.parquet  ← new flush files accumulating
+  0215D1E1_20260411T131125Z.parquet
+  0215D1E2_20260411T131024Z.parquet
+  ...</pre>
+<p>Between compaction cycles the directory contains the previous compact files plus flush files that have not yet reached <code>min_files</code> or <code>min_age_seconds</code>.</p>
+</div>
+
+</body>
+</html>

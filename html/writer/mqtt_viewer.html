@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MQTT Live Viewer</title>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --green-bg: #0d4429; --code-bg: #21262d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif; padding: 14px; }
+
+  /* ── top bar ── */
+  .topbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .topbar h1 { color: var(--accent); font-size: 1.2rem; margin-right: 4px; }
+  input[type=text], input[type=number] {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 8px; border-radius: 4px; font-size: 0.82rem; }
+  input:focus { outline: none; border-color: var(--accent); }
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text);
+         padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.82rem;
+         transition: border-color .15s, color .15s; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.ok  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .dot.err { background: var(--red);   box-shadow: 0 0 5px var(--red); }
+  .dot.off { background: var(--muted); }
+  #conn-label { font-size: 0.8rem; color: var(--muted); }
+
+  /* ── stats bar ── */
+  .stats-bar { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin-bottom: 10px; }
+  .scard { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+           padding: 7px 10px; }
+  .scard-k { font-size: 0.68rem; color: var(--muted); text-transform: uppercase;
+             letter-spacing: .05em; }
+  .scard-v { font-size: 1.1rem; font-weight: 700; color: var(--accent);
+             font-family: 'Consolas', monospace; }
+
+  /* ── layout ── */
+  .layout { display: grid; grid-template-columns: 220px 1fr; gap: 10px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* ── unit list ── */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+           padding: 10px; overflow-y: auto; max-height: calc(100vh - 200px); }
+  .panel-title { font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+                 letter-spacing: .05em; margin-bottom: 8px; display: flex;
+                 justify-content: space-between; align-items: center; }
+  .unit-item { padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+               font-family: 'Consolas', monospace; display: flex; justify-content: space-between;
+               align-items: center; margin-bottom: 2px; }
+  .unit-item:hover { background: var(--code-bg); }
+  .unit-item.active { background: #0c2d6b44; color: var(--accent); }
+  .unit-item .umps { font-size: 0.68rem; color: var(--muted); }
+  .unit-item .uactive { width: 6px; height: 6px; border-radius: 50%;
+                        background: var(--green); flex-shrink: 0; }
+
+  /* ── right side ── */
+  .right { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── filter / topic feed ── */
+  .feed-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .topic-filter { width: 220px; }
+  .device-btns { display: flex; gap: 4px; }
+  .dbtn { font-size: 0.72rem; padding: 2px 8px; border-radius: 10px;
+          border: 1px solid var(--border); background: var(--surface);
+          color: var(--muted); cursor: pointer; }
+  .dbtn:hover, .dbtn.on { border-color: var(--accent); color: var(--accent); background: #0c2d6b22; }
+  .dbtn.on { font-weight: 700; }
+
+  /* ── message feed ── */
+  #feed { background: #0a0d11; border: 1px solid var(--border); border-radius: 6px;
+          padding: 6px 10px; font-family: 'Consolas', monospace; font-size: 0.76rem;
+          height: 260px; overflow-y: auto; }
+  .msg-row { display: grid; grid-template-columns: 420px 1fr auto; gap: 8px;
+             padding: 2px 0; border-bottom: 1px solid #1c2128; align-items: baseline; }
+  .msg-row:last-child { border: none; }
+  .msg-topic { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg-topic .seg-site { color: var(--yellow); }
+  .msg-topic .seg-unit { color: var(--accent); }
+  .msg-topic .seg-dev  { color: var(--purple); }
+  .msg-topic .seg-point{ color: var(--text); }
+  .msg-val   { color: var(--green); }
+  .msg-ts    { color: #444c57; font-size: 0.68rem; white-space: nowrap; }
+
+  /* ── signal table (selected unit) ── */
+  .sig-section { background: var(--surface); border: 1px solid var(--border);
+                 border-radius: 8px; padding: 10px; }
+  .sig-section h3 { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px;
+                    display: flex; justify-content: space-between; }
+  .sig-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 6px; }
+  .sig-card { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+              padding: 8px 10px; }
+  .sig-name { font-size: 0.68rem; color: var(--muted); white-space: nowrap;
+              overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+  .sig-val  { font-family: 'Consolas', monospace; font-size: 0.95rem; color: var(--accent); }
+  .sig-sub  { font-size: 0.65rem; color: var(--muted); margin-top: 1px; }
+  /* sparkline canvas */
+  canvas.spark { display: block; margin-top: 4px; width: 100%; height: 30px; }
+
+  /* ── device breakdown ── */
+  .dev-row { display: flex; justify-content: space-between; align-items: center;
+             font-size: 0.8rem; padding: 3px 0; border-bottom: 1px solid #21262d; }
+  .dev-row:last-child { border: none; }
+  .dev-name { font-family: 'Consolas', monospace; color: var(--purple); }
+  .dev-count { color: var(--muted); font-size: 0.72rem; }
+  .dev-bar-wrap { flex: 1; margin: 0 10px; background: var(--border);
+                  border-radius: 2px; height: 6px; overflow: hidden; }
+  .dev-bar { height: 100%; border-radius: 2px; background: var(--purple); opacity: .6; }
+
+  /* ── checkbox dropdown ── */
+  .chk-dropdown { position: relative; display: inline-block; }
+  .chk-btn { display: flex; align-items: center; gap: 5px; white-space: nowrap;
+             border: 1px solid var(--border); background: var(--surface); color: var(--text);
+             padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.82rem;
+             transition: border-color .15s; user-select: none; }
+  .chk-btn:hover, .chk-btn.open { border-color: var(--accent); color: var(--accent); }
+  .chk-btn .badge { background: var(--accent); color: #0d1117; border-radius: 8px;
+                    padding: 0 5px; font-size: 0.68rem; font-weight: 700; }
+  .chk-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 200;
+               background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+               min-width: 280px; max-width: 400px; box-shadow: 0 8px 24px #00000066;
+               display: none; flex-direction: column; }
+  .chk-panel.open { display: flex; }
+  .chk-search { margin: 8px 8px 4px; background: var(--code-bg); border: 1px solid var(--border);
+                color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;
+                width: calc(100% - 16px); }
+  .chk-search:focus { outline: none; border-color: var(--accent); }
+  .chk-actions { display: flex; gap: 6px; padding: 4px 8px;
+                 border-bottom: 1px solid var(--border); }
+  .chk-actions button { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;
+                        border: 1px solid var(--border); background: none; color: var(--muted);
+                        cursor: pointer; }
+  .chk-actions button:hover { color: var(--accent); border-color: var(--accent); }
+  .chk-list { overflow-y: auto; max-height: 280px; padding: 4px 0; }
+  .chk-item { display: flex; align-items: center; gap: 7px; padding: 3px 10px;
+              cursor: pointer; font-size: 0.78rem; font-family: 'Consolas', monospace; }
+  .chk-item:hover { background: var(--code-bg); }
+  .chk-item input[type=checkbox] { accent-color: var(--accent); flex-shrink: 0; }
+  .chk-item .ci-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .chk-item .ci-count { color: var(--muted); font-size: 0.68rem; flex-shrink: 0; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem;
+           padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here  { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  /* ── tabs ── */
+  .tab-bar { display:flex; gap:4px; margin-bottom:14px;
+             border-bottom:1px solid var(--border); padding-bottom:0; }
+  .tab-btn { background:none; border:none; border-bottom:2px solid transparent;
+             color:var(--muted); font-size:.85rem; padding:6px 14px 8px;
+             cursor:pointer; font-family:inherit; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-pane { display:none; }
+  .tab-pane.active { display:block; }
+
+  /* ── parquet/replay tab ── */
+  .qbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+          background:var(--surface); border:1px solid var(--border);
+          border-radius:8px; padding:8px 12px; margin-bottom:10px; }
+  .qbar label { color:var(--muted); font-size:.78rem; white-space:nowrap; }
+  .qbar input[type=text] { background:var(--code-bg); border:1px solid var(--border);
+                           color:var(--text); border-radius:4px; padding:4px 8px;
+                           font-family:'Consolas',monospace; font-size:.82rem; }
+  .qbar input[type=datetime-local] { background:var(--code-bg); border:1px solid var(--border);
+                                     color:var(--text); border-radius:4px; padding:4px 8px;
+                                     font-family:'Consolas',monospace; font-size:.78rem; }
+  .btn-range { background:var(--code-bg); color:var(--muted); border:1px solid var(--border);
+               border-radius:4px; padding:4px 8px; font-size:.75rem; cursor:pointer; }
+  .btn-range:hover { color:var(--accent); border-color:var(--accent); }
+  .btn-qrun  { background:var(--accent); color:#000; border:none; border-radius:4px;
+               padding:5px 14px; font-size:.8rem; cursor:pointer; font-weight:600; }
+  .btn-qrun:hover { opacity:.85; }
+  .btn-qcsv  { background:transparent; color:var(--green); border:1px solid var(--green);
+               border-radius:4px; padding:5px 12px; font-size:.8rem; cursor:pointer; }
+  .btn-qcsv:hover { background:#3fb95022; }
+  .btn-qmqtt { background:transparent; color:var(--purple); border:1px solid var(--purple);
+               border-radius:4px; padding:5px 12px; font-size:.8rem; cursor:pointer; }
+  .btn-qmqtt:hover { background:#bc8cff22; }
+  .q-status { font-size:.78rem; color:var(--yellow); font-family:'Consolas',monospace; margin-bottom:6px; }
+  .q-error  { font-size:.78rem; color:var(--red);    font-family:'Consolas',monospace; margin-bottom:6px; }
+  .qtable-wrap { background:var(--surface); border:1px solid var(--border);
+                 border-radius:8px; padding:10px 12px; overflow-x:auto; }
+  .qtable-note { font-size:.72rem; color:var(--muted); margin-bottom:6px; }
+  .qtable-wrap table { width:100%; border-collapse:collapse; font-size:.75rem; }
+  .qtable-wrap th { color:var(--muted); text-align:left; padding:4px 10px; font-weight:600;
+                    font-size:.68rem; border-bottom:1px solid var(--border); }
+  .qtable-wrap td { padding:3px 10px; border-bottom:1px solid var(--border);
+                    font-family:'Consolas',monospace; }
+  .qtable-wrap tr:last-child td { border-bottom:none; }
+  .qtable-wrap tr:hover td { background:#ffffff08; }
+  .qtopic-cell { font-size:.68rem; color:var(--muted); max-width:320px;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qsummary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .qscard { background:var(--surface); border:1px solid var(--border);
+            border-radius:6px; padding:6px 10px; }
+  .qscard-k { font-size:.6rem; color:var(--muted); text-transform:uppercase; margin-bottom:1px; }
+  .qscard-v { font-size:.9rem; font-weight:700; font-family:'Consolas',monospace; color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="projects.html">← Projects</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  <a href="mqtt_viewer.html" class="here">MQTT Viewer</a>
+  <a href="evelyn_docker_34.html">← Evelyn .34 Live</a>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showMqttTab('live',this)">MQTT Live</button>
+  <button class="tab-btn"        onclick="showMqttTab('parquet',this)">Parquet / Replay</button>
+</div>
+
+<div id="mqtab-live" class="tab-pane active">
+<div class="topbar">
+  <h1>MQTT Live Viewer</h1>
+  <span class="dot off" id="conn-dot"></span>
+  <span id="conn-label">disconnected</span>
+  <input type="text" id="broker-host" value="192.168.86.46" style="width:130px" placeholder="host" onchange="saveMqttPrefs()">
+  <input type="number" id="broker-port" value="8083" style="width:70px" placeholder="port" onchange="saveMqttPrefs()">
+  <input type="text" id="sub-topic" value="ems/#" style="width:140px" placeholder="topic filter" onchange="saveMqttPrefs()">
+  <button class="btn" id="conn-btn" onclick="toggleConnect()">Connect</button>
+  <button class="btn danger" onclick="clearAll()">Clear</button>
+  <label style="font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:4px">
+    <input type="checkbox" id="pause-chk"> Pause feed
+  </label>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+  <span style="color:var(--muted);font-size:.82rem;font-weight:600">Site:</span>
+  <select id="site-sel" onchange="onSiteChange()"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);
+                 padding:3px 8px;border-radius:4px;font-size:.82rem;font-family:Consolas,monospace;min-width:140px">
+    <option value="">all</option>
+  </select>
+  <span style="color:var(--muted);font-size:.82rem;font-weight:600">Unit:</span>
+  <select id="unit-sel" onchange="applyUnitSub()"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);
+                 padding:3px 8px;border-radius:4px;font-size:.82rem;font-family:Consolas,monospace;min-width:150px">
+    <option value="">all</option>
+  </select>
+  <span style="font-size:.75rem;color:var(--muted)" id="sub-display"></span>
+</div>
+
+<!-- Stats bar -->
+<div class="stats-bar">
+  <div class="scard"><div class="scard-k">Total rx</div><div class="scard-v" id="s-total">0</div></div>
+  <div class="scard"><div class="scard-k">Msg/s</div><div class="scard-v" id="s-mps">0</div></div>
+  <div class="scard"><div class="scard-k">Units seen</div><div class="scard-v" id="s-units">0</div></div>
+  <div class="scard"><div class="scard-k">Topics seen</div><div class="scard-v" id="s-topics">0</div></div>
+  <div class="scard"><div class="scard-k">Devices</div><div class="scard-v" id="s-devs">0</div></div>
+  <div class="scard"><div class="scard-k">Dropped</div><div class="scard-v" id="s-dropped" style="color:var(--yellow)">0</div></div>
+</div>
+
+<div class="layout">
+  <!-- Unit list -->
+  <div class="panel" id="unit-panel">
+    <div class="panel-title">
+      <span>Units</span>
+      <button class="btn" style="font-size:.7rem;padding:1px 7px" onclick="selectUnit(null)">All</button>
+    </div>
+    <div id="unit-list"><span style="color:var(--muted);font-size:.8rem">waiting…</span></div>
+  </div>
+
+  <!-- Right column -->
+  <div class="right">
+
+    <!-- Feed -->
+    <div class="sig-section">
+      <div class="feed-head">
+        <input type="text" id="topic-filter" class="topic-filter" placeholder="filter topics…" oninput="applyFilter()">
+        <button class="btn" id="topic-fmt-btn" onclick="toggleTopicFmt()" title="Toggle full/brief topic">Brief</button>
+        <div class="device-btns" id="dev-btns">
+          <span class="dbtn on" data-dev="all" onclick="setDevFilter(this)">all</span>
+          <span class="dbtn" data-dev="bms"  onclick="setDevFilter(this)">bms</span>
+          <span class="dbtn" data-dev="pcs"  onclick="setDevFilter(this)">pcs</span>
+          <span class="dbtn" data-dev="rack" onclick="setDevFilter(this)">rack</span>
+        </div>
+        <!-- Point name checkbox dropdown -->
+        <div class="chk-dropdown" id="point-dropdown">
+          <div class="chk-btn" id="point-btn" onclick="togglePointDropdown()">
+            Points <span class="badge" id="point-badge">all</span> ▾
+          </div>
+          <div class="chk-panel" id="point-panel">
+            <input class="chk-search" id="point-search" type="text" placeholder="search point names…"
+                   oninput="renderPointList()" onclick="event.stopPropagation()">
+            <div class="chk-actions">
+              <button onclick="selectAllPoints();event.stopPropagation()">Select all</button>
+              <button onclick="clearAllPoints();event.stopPropagation()">Clear all</button>
+              <button onclick="invertPoints();event.stopPropagation()">Invert</button>
+            </div>
+            <div class="chk-list" id="point-list"></div>
+          </div>
+        </div>
+
+        <label style="font-size:.75rem;color:var(--muted);display:flex;align-items:center;gap:4px;margin-left:auto">
+          Max rows: <input type="number" id="max-rows" value="200" style="width:60px" min="20" max="2000">
+        </label>
+      </div>
+      <div id="feed"></div>
+    </div>
+
+    <!-- Selected unit signal table -->
+    <div class="sig-section" id="sig-section" style="display:none">
+      <h3>
+        <span id="sig-title">Unit signals</span>
+        <span style="color:var(--muted);font-weight:400;font-size:.72rem" id="sig-count"></span>
+        <label style="font-size:.75rem;color:var(--muted);font-weight:400;display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="sig-graphs-toggle" onchange="onSigGraphsToggle()"> Show graphs
+        </label>
+      </h3>
+      <!-- Instance filter (bms_1, bms_2 etc) -->
+      <div id="inst-filter-row" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.75rem;color:var(--muted)">
+        <span>Instance:</span>
+        <span class="dbtn on" data-inst="all" onclick="setInstFilter(this)">all</span>
+      </div>
+      <div class="sig-grid" id="sig-grid" style="display:none"></div>
+    </div>
+
+    <!-- Device breakdown -->
+    <div class="sig-section" id="dev-section">
+      <h3><span>Topic breakdown by device</span></h3>
+      <div id="dev-breakdown"><span style="color:var(--muted);font-size:.8rem">no data yet</span></div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- /mqtab-live -->
+
+<!-- Parquet / Replay tab -->
+<div id="mqtab-parquet" class="tab-pane">
+
+  <div class="qbar">
+    <label>Host</label>
+    <input id="pq-host" type="text" value="192.168.86.34" placeholder="host" style="width:140px">
+    <label>Signal</label>
+    <input id="pq-sig" type="text" list="pq-sig-list" placeholder="point_name" style="width:200px">
+    <datalist id="pq-sig-list"></datalist>
+    <label>Range</label>
+    <button class="btn-range" onclick="pqSetRange(5)">5m</button>
+    <button class="btn-range" onclick="pqSetRange(30)">30m</button>
+    <button class="btn-range" onclick="pqSetRange(60)">1h</button>
+    <button class="btn-range" onclick="pqSetRange(360)">6h</button>
+    <button class="btn-range" onclick="pqSetRange(1440)">24h</button>
+    <label>From</label>
+    <input id="pq-from" type="datetime-local">
+    <label>To</label>
+    <input id="pq-to" type="datetime-local">
+    <button class="btn-qrun"  onclick="pqRunQuery()">Query</button>
+    <button class="btn-qcsv"  id="pq-btn-csv"  onclick="pqExportCsv()"  disabled>CSV</button>
+    <button class="btn-qmqtt" id="pq-btn-mqtt" onclick="pqExportJson()" disabled>MQTT JSON</button>
+  </div>
+
+  <div id="pq-status" class="q-status" style="display:none"></div>
+  <div id="pq-error"  class="q-error"  style="display:none"></div>
+
+  <div id="pq-summary" class="qsummary" style="display:none">
+    <div class="qscard"><div class="qscard-k">Signal</div><div class="qscard-v" id="pqs-signal">—</div></div>
+    <div class="qscard"><div class="qscard-k">Points</div><div class="qscard-v" id="pqs-count">—</div></div>
+    <div class="qscard"><div class="qscard-k">Min</div><div class="qscard-v" id="pqs-min">—</div></div>
+    <div class="qscard"><div class="qscard-k">Max</div><div class="qscard-v" id="pqs-max">—</div></div>
+    <div class="qscard"><div class="qscard-k">Avg</div><div class="qscard-v" id="pqs-avg">—</div></div>
+  </div>
+
+  <div id="pq-results" class="qtable-wrap" style="display:none">
+    <div class="qtable-note" id="pq-table-note"></div>
+    <table><thead id="pq-thead"></thead><tbody id="pq-tbody"></tbody></table>
+  </div>
+
+</div><!-- /mqtab-parquet -->
+
+<script>
+'use strict';
+
+// ── state ───────────────────────────────────────────────────────────────────
+let client      = null;
+let totalRx     = 0;
+let dropped     = 0;
+let lastTotal   = 0;
+let mps         = 0;
+let selectedUnit= null;
+let devFilter   = 'all';
+let topicFilter = '';
+
+let sigGraphsEnabled = false;
+let instFilter = 'all';  // instance filter (e.g. bms_1, bms_2, all)
+
+// unit → { id, count, lastSeen, signals: Map<shortname, {val, ts, history:[]}> }
+const units     = new Map();
+// siteId → Set of unit IDs seen on that site
+const sites     = new Map();
+// topic → count
+const topicCounts = new Map();
+// device → count
+const devCounts   = new Map();
+// point name → count  (5th topic segment)
+const pointCounts = new Map();
+// Set of selected point names; null = all selected
+let selectedPoints = null;
+
+const FEED_MAX   = 500;   // internal buffer
+const SPARK_LEN  = 60;    // history points per sparkline
+
+// ── connection ───────────────────────────────────────────────────────────────
+
+function toggleConnect() {
+  if (client && client.connected) { client.end(); return; }
+  const host  = document.getElementById('broker-host').value.trim();
+  const port  = parseInt(document.getElementById('broker-port').value) || 8083;
+  const topic = document.getElementById('sub-topic').value.trim() || 'unit/#';
+  const url   = `ws://${host}:${port}/mqtt`;
+
+  setConn('connecting');
+  client = mqtt.connect(url, { clientId: 'mqv-' + Math.random().toString(16).slice(2,8) });
+
+  client.on('connect', () => {
+    setConn(true);
+    client.subscribe(topic, { qos: 0 });
+    document.getElementById('conn-btn').textContent = 'Disconnect';
+  });
+  client.on('close',   () => { setConn(false); document.getElementById('conn-btn').textContent = 'Connect'; });
+  client.on('error',   (e) => { setConn(false); console.error(e); });
+  client.on('message', onMessage);
+}
+
+function setConn(state) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  if (state === true)          { dot.className='dot ok';  lbl.textContent='connected'; }
+  else if (state==='connecting'){ dot.className='dot warn';lbl.textContent='connecting…'; }
+  else                          { dot.className='dot err'; lbl.textContent='disconnected'; }
+}
+
+// ── topic parser — handles production ems/site/... and legacy unit/... ────────
+
+function parseTopic(topic) {
+  const p = topic.split('/');
+
+  // Production: ems/site/{site_id}/...
+  if (p[0] === 'ems' && p[1] === 'site' && p.length >= 6) {
+    const siteId = p[2];
+
+    // 9-seg: ems/site/{site}/unit/{uid}/{dev}/{inst}/{point}/{dtype}
+    if (p[3] === 'unit' && p.length === 9)
+      return { siteId, uid: p[4], device: p[5], instance: p[6], point: p[7], dtype: p[8] };
+
+    // 8-seg: ems/site/{site}/unit/{uid}/root/{point}/{dtype}
+    if (p[3] === 'unit' && p.length === 8)
+      return { siteId, uid: p[4], device: 'root', instance: 'root', point: p[6], dtype: p[7] };
+
+    // 7-seg: ems/site/{site}/{meas}/{dev_id}/{point}/{dtype}  (meter/rtac/pcs)
+    if (p[3] !== 'unit' && p.length === 7)
+      return { siteId, uid: `site:${siteId}`, device: p[3], instance: p[4], point: p[5], dtype: p[6] };
+
+    // 6-seg: ems/site/{site}/root/{point}/{dtype}
+    if (p[3] === 'root' && p.length === 6)
+      return { siteId, uid: `site:${siteId}`, device: 'root', instance: 'root', point: p[4], dtype: p[5] };
+  }
+
+  // Legacy: unit/{uid}/{device}/{instance}/{point}/{dtype}
+  if (p[0] === 'unit' && p.length >= 5)
+    return { siteId: null, uid: p[1], device: p[2]||'unknown', instance: p[3]||'', point: p[4]||'', dtype: p[5]||'' };
+
+  return null;
+}
+
+// ── message handler ──────────────────────────────────────────────────────────
+
+function onMessage(topic, payload) {
+  totalRx++;
+
+  const parsed = parseTopic(topic);
+  if (!parsed) return;
+  const { siteId, uid, device, instance, point, dtype } = parsed;
+
+  // Track site → unit mapping and populate site/unit selects
+  if (siteId !== null && !uid.startsWith('site:')) {
+    const siteKey   = siteId || '(no site)';
+    const siteLabel = siteId || '(no site)';
+    if (!sites.has(siteKey)) {
+      sites.set(siteKey, new Set());
+      addSelectOption('site-sel', siteKey, siteLabel);
+    }
+    if (!sites.get(siteKey).has(uid)) {
+      sites.get(siteKey).add(uid);
+      const curSite = document.getElementById('site-sel').value;
+      if (!curSite || curSite === siteKey) addSelectOption('unit-sel', uid, uid);
+    }
+  }
+  const shortname = `${device}/${instance}/${point}`;
+
+  let value = null, ts = null;
+  try {
+    const msg = JSON.parse(payload.toString());
+    value = msg.value;
+    ts    = msg.ts;
+  } catch(e) { dropped++; return; }
+
+  // Unit tracking
+  if (!units.has(uid)) units.set(uid, { id: uid, count: 0, lastSeen: 0, signals: new Map() });
+  const u = units.get(uid);
+  u.count++;
+  u.lastSeen = Date.now();
+
+  // Signal history
+  if (!u.signals.has(shortname)) u.signals.set(shortname, { val: value, ts, history: [] });
+  const sig = u.signals.get(shortname);
+  sig.val = value; sig.ts = ts;
+  if (typeof value === 'number') {
+    sig.history.push(value);
+    if (sig.history.length > SPARK_LEN) sig.history.shift();
+  }
+
+  // Topic / device / point counts
+  topicCounts.set(topic, (topicCounts.get(topic)||0) + 1);
+  devCounts.set(device, (devCounts.get(device)||0) + 1);
+  const isNew = !pointCounts.has(point);
+  pointCounts.set(point, (pointCounts.get(point)||0) + 1);
+  if (isNew) schedPointListUpdate();
+
+  // Feed
+  if (!document.getElementById('pause-chk').checked) {
+    if (matchesFilter(uid, device, shortname, point)) addFeedRow(topic, siteId, uid, device, instance, point, dtype, value, ts);
+  }
+
+  // Update selected unit signals live
+  if (selectedUnit === uid) schedSigUpdate();
+}
+
+// ── feed ─────────────────────────────────────────────────────────────────────
+
+let feedBuf = [];
+function addFeedRow(topic, siteId, uid, device, instance, point, dtype, value, ts) {
+  const maxRows = parseInt(document.getElementById('max-rows').value) || 200;
+  feedBuf.push({ topic, siteId, uid, device, instance, point, dtype, value, ts });
+  if (feedBuf.length > FEED_MAX) { feedBuf.shift(); dropped++; }
+  schedFeedFlush();
+}
+
+let feedFlushPending = false;
+function schedFeedFlush() {
+  if (feedFlushPending) return;
+  feedFlushPending = true;
+  requestAnimationFrame(flushFeed);
+}
+
+let fullTopicFmt = false;
+function toggleTopicFmt() {
+  fullTopicFmt = !fullTopicFmt;
+  const btn = document.getElementById('topic-fmt-btn');
+  btn.textContent = fullTopicFmt ? 'Full' : 'Brief';
+  btn.classList.toggle('active', fullTopicFmt);
+}
+
+function flushFeed() {
+  feedFlushPending = false;
+  const feed = document.getElementById('feed');
+  const maxRows = Math.min(parseInt(document.getElementById('max-rows').value)||200, feedBuf.length);
+  const slice = feedBuf.slice(-maxRows);
+  feedBuf = [];
+
+  const frag = document.createDocumentFragment();
+  for (const m of slice) {
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+    const shortTs = m.ts ? m.ts.slice(11,23) : '--';
+    const valStr  = typeof m.value === 'number' ? m.value.toFixed(
+                      Number.isInteger(m.value) ? 0 : (m.dtype==='float'?3:1)) : String(m.value);
+    const siteLabel = m.siteId ? m.siteId.slice(-4) : '';
+    const topicHtml = fullTopicFmt
+      ? `<span class="msg-topic"><span class="seg-site">${m.topic}</span></span>`
+      : `<span class="msg-topic">${siteLabel ? `<span class="seg-site">${siteLabel}</span>/` : ''}<span class="seg-unit">${m.uid.slice(-4)}</span>/<span class="seg-dev">${m.device}</span>/${m.instance}/<span class="seg-point">${m.point}</span></span>`;
+    row.innerHTML =
+      topicHtml +
+      `<span class="msg-val">${valStr}</span>` +
+      `<span class="msg-ts">${shortTs}</span>`;
+    frag.appendChild(row);
+  }
+  feed.appendChild(frag);
+  // trim to maxRows
+  const max = parseInt(document.getElementById('max-rows').value)||200;
+  while (feed.children.length > max) feed.removeChild(feed.firstChild);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function matchesFilter(uid, device, shortname, point) {
+  if (selectedUnit && uid !== selectedUnit) return false;
+  if (devFilter !== 'all' && device !== devFilter) return false;
+  if (topicFilter && !shortname.toLowerCase().includes(topicFilter)) return false;
+  if (selectedPoints && !selectedPoints.has(point)) return false;
+  return true;
+}
+
+function applyFilter() {
+  topicFilter = document.getElementById('topic-filter').value.toLowerCase().trim();
+}
+
+function setDevFilter(el) {
+  document.querySelectorAll('.dbtn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  devFilter = el.dataset.dev;
+}
+
+// ── subscription narrowing ────────────────────────────────────────────────────
+
+function addSelectOption(selId, value, label) {
+  const sel = document.getElementById(selId);
+  if ([...sel.options].some(o => o.value === value)) return;
+  const opt = document.createElement('option');
+  opt.value = value; opt.textContent = label;
+  sel.appendChild(opt);
+}
+
+function onSiteChange() {
+  const site = document.getElementById('site-sel').value;
+  const unitSel = document.getElementById('unit-sel');
+  // Rebuild unit dropdown for selected site
+  unitSel.innerHTML = '<option value="">all</option>';
+  const pool = site ? (sites.get(site) || new Set()) : new Set([...sites.values()].flatMap(s => [...s]));
+  for (const uid of [...pool].sort()) addSelectOption('unit-sel', uid, uid);
+  applyUnitSub();
+}
+
+function applyUnitSub() {
+  const site = document.getElementById('site-sel').value;
+  const uid  = document.getElementById('unit-sel').value;
+  const siteSegment = (site && site !== '(no site)') ? site : '+';
+  let topic;
+  if (site && uid)  topic = `ems/site/${siteSegment}/unit/${uid}/#`;
+  else if (site)    topic = `ems/site/${siteSegment}/#`;
+  else if (uid)     topic = `ems/site/+/unit/${uid}/#`;
+  else              topic = 'ems/#';
+  document.getElementById('sub-topic').value = topic;
+  const disp = document.getElementById('sub-display');
+  if (disp) disp.textContent = `→ ${topic}`;
+  if (!client || !client.connected) return;
+  client.unsubscribe('#');
+  client.unsubscribe('ems/#');
+  client.subscribe(topic, { qos: 0 });
+  clearFeedData();
+}
+
+function clearFeedData() {
+  // Clears message data but preserves site/unit dropdown options and current selection
+  units.clear(); topicCounts.clear(); devCounts.clear(); pointCounts.clear();
+  selectedPoints = null;
+  instFilter = 'all';
+  document.getElementById('inst-filter-row').style.display = 'none';
+  document.getElementById('point-list').innerHTML = '';
+  updatePointBadge();
+  sigCardMap.clear();
+  totalRx = dropped = lastTotal = mps = 0;
+  document.getElementById('feed').innerHTML = '';
+  document.getElementById('unit-list').innerHTML = '<span style="color:var(--muted);font-size:.8rem">waiting…</span>';
+  document.getElementById('sig-grid').innerHTML = '';
+  document.getElementById('sig-section').style.display = 'none';
+  document.getElementById('dev-breakdown').innerHTML = '<span style="color:var(--muted);font-size:.8rem">no data yet</span>';
+}
+
+// ── unit list ─────────────────────────────────────────────────────────────────
+
+function selectUnit(uid) {
+  selectedUnit = uid;
+  document.getElementById('unit-sel').value = uid || '';
+  applyUnitSub();
+  renderUnitList();
+  if (uid) {
+    document.getElementById('sig-section').style.display = '';
+    const gridEl = document.getElementById('sig-grid');
+    gridEl.style.display = sigGraphsEnabled ? '' : 'none';
+    if (sigGraphsEnabled) renderSigGrid(uid);
+    updateInstFilterBar(uid);
+  } else {
+    document.getElementById('sig-section').style.display = 'none';
+  }
+}
+
+function onSigGraphsToggle() {
+  sigGraphsEnabled = document.getElementById('sig-graphs-toggle').checked;
+  const gridEl = document.getElementById('sig-grid');
+  gridEl.style.display = sigGraphsEnabled ? '' : 'none';
+  if (sigGraphsEnabled && selectedUnit) renderSigGrid(selectedUnit);
+  else if (!sigGraphsEnabled) { gridEl.innerHTML = ''; sigCardMap.clear(); }
+}
+
+function updateInstFilterBar(uid) {
+  const u = units.get(uid);
+  if (!u) return;
+  const instances = new Set();
+  for (const name of u.signals.keys()) {
+    const inst = name.split('/')[1];
+    if (inst) instances.add(inst);
+  }
+  const row = document.getElementById('inst-filter-row');
+  if (instances.size <= 1) { row.style.display = 'none'; return; }
+  row.style.display = 'flex';
+  // rebuild buttons (preserve existing all btn)
+  row.innerHTML = '<span>Instance:</span><span class="dbtn on" data-inst="all" onclick="setInstFilter(this)">all</span>';
+  for (const inst of [...instances].sort()) {
+    const btn = document.createElement('span');
+    btn.className = 'dbtn' + (instFilter === inst ? ' on' : '');
+    btn.dataset.inst = inst;
+    btn.textContent = inst;
+    btn.onclick = () => setInstFilter(btn);
+    row.appendChild(btn);
+  }
+  // re-apply current filter highlight
+  row.querySelectorAll('.dbtn').forEach(b => b.classList.toggle('on', b.dataset.inst === instFilter || (instFilter === 'all' && b.dataset.inst === 'all')));
+}
+
+function setInstFilter(el) {
+  document.getElementById('inst-filter-row').querySelectorAll('.dbtn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  instFilter = el.dataset.inst;
+  if (sigGraphsEnabled && selectedUnit) { sigCardMap.clear(); document.getElementById('sig-grid').innerHTML = ''; renderSigGrid(selectedUnit); }
+}
+
+function renderUnitList() {
+  const el   = document.getElementById('unit-list');
+  const sorted = [...units.values()].sort((a,b) => b.count - a.count);
+  el.innerHTML = '';
+  for (const u of sorted) {
+    const div = document.createElement('div');
+    div.className = `unit-item${selectedUnit === u.id ? ' active' : ''}`;
+    const age = Date.now() - u.lastSeen;
+    const active = age < 3000;
+    div.innerHTML = `
+      <span class="uid">${u.id}</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <span class="umps">${u.signals.size}pt</span>
+        <span class="uactive" style="background:${active?'var(--green)':'var(--muted)'}"></span>
+      </span>`;
+    div.onclick = () => selectUnit(u.id);
+    el.appendChild(div);
+  }
+}
+
+// ── signal grid ───────────────────────────────────────────────────────────────
+
+let sigUpdatePending = false;
+function schedSigUpdate() {
+  if (!sigGraphsEnabled) return;
+  if (sigUpdatePending) return;
+  sigUpdatePending = true;
+  setTimeout(() => { sigUpdatePending = false; if (selectedUnit) { updateInstFilterBar(selectedUnit); renderSigGrid(selectedUnit); } }, 200);
+}
+
+// Which signal cards are already in the grid (by shortname)
+const sigCardMap = new Map();
+
+function renderSigGrid(uid) {
+  const u = units.get(uid);
+  if (!u) return;
+  document.getElementById('sig-title').textContent = `Unit ${uid}`;
+  document.getElementById('sig-count').textContent = `${u.signals.size} signals`;
+
+  const grid = document.getElementById('sig-grid');
+
+  for (const [name, sig] of u.signals) {
+    // Apply instance filter
+    const nameParts = name.split('/');
+    const cardInst  = nameParts[1];
+    if (instFilter !== 'all' && cardInst !== instFilter) continue;
+    // Apply point name filter
+    const cardPoint = nameParts[2] || name;
+    if (selectedPoints !== null && !selectedPoints.has(cardPoint)) continue;
+
+    let card = sigCardMap.get(name);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'sig-card';
+      const parts = name.split('/');
+      const point = parts[2] || name;
+      const sub   = parts[0] + '/' + parts[1];
+      card.innerHTML = `<div class="sig-name" title="${name}">${point}</div>
+        <div class="sig-val" id="sv-${CSS.escape(name)}">—</div>
+        <div class="sig-sub">${sub}</div>
+        <canvas class="spark" id="sc-${CSS.escape(name)}" height="30"></canvas>`;
+      grid.appendChild(card);
+      sigCardMap.set(name, card);
+    }
+
+    // Update value
+    const valEl = card.querySelector('.sig-val');
+    if (valEl) {
+      valEl.textContent = typeof sig.val === 'number'
+        ? (Number.isInteger(sig.val) ? sig.val : sig.val.toFixed(3))
+        : String(sig.val);
+    }
+
+    // Sparkline
+    const canvas = card.querySelector('canvas');
+    if (canvas && sig.history.length > 1) drawSparkline(canvas, sig.history);
+  }
+}
+
+function drawSparkline(canvas, data) {
+  const W = canvas.offsetWidth || 180, H = 30;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  ctx.strokeStyle = '#58a6ff66';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  data.forEach((v,i) => {
+    const x = (i / (data.length-1)) * W;
+    const y = H - ((v - min) / range) * (H-4) - 2;
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  // last value dot
+  const lx = W, ly = H - ((data[data.length-1]-min)/range)*(H-4)-2;
+  ctx.fillStyle = '#58a6ff';
+  ctx.beginPath(); ctx.arc(lx,ly,2.5,0,Math.PI*2); ctx.fill();
+}
+
+// ── point name dropdown ──────────────────────────────────────────────────────
+
+let pointListDirty = false;
+function schedPointListUpdate() {
+  if (pointListDirty) return;
+  pointListDirty = true;
+  setTimeout(() => { pointListDirty = false; renderPointList(); }, 300);
+}
+
+function togglePointDropdown() {
+  const panel = document.getElementById('point-panel');
+  const btn   = document.getElementById('point-btn');
+  const open  = panel.classList.toggle('open');
+  btn.classList.toggle('open', open);
+  if (open) {
+    renderPointList();
+    document.getElementById('point-search').focus();
+  }
+}
+
+// Close when clicking outside
+document.addEventListener('click', e => {
+  const dd = document.getElementById('point-dropdown');
+  if (!dd.contains(e.target)) {
+    document.getElementById('point-panel').classList.remove('open');
+    document.getElementById('point-btn').classList.remove('open');
+  }
+});
+
+function renderPointList() {
+  const search = document.getElementById('point-search').value.toLowerCase().trim();
+  const list   = document.getElementById('point-list');
+  const sorted = [...pointCounts.entries()]
+    .filter(([n]) => !search || n.toLowerCase().includes(search))
+    .sort((a,b) => b[1]-a[1]);
+
+  list.innerHTML = '';
+  for (const [name, count] of sorted) {
+    const checked = selectedPoints === null || selectedPoints.has(name);
+    const div = document.createElement('div');
+    div.className = 'chk-item';
+    div.innerHTML = `<input type="checkbox" ${checked?'checked':''}>
+      <span class="ci-name" title="${name}">${name}</span>
+      <span class="ci-count">${count.toLocaleString()}</span>`;
+    div.querySelector('input').addEventListener('change', e => {
+      togglePoint(name, e.target.checked);
+    });
+    list.appendChild(div);
+  }
+  updatePointBadge();
+}
+
+function togglePoint(name, checked) {
+  // Materialise selectedPoints from null (= all) on first change
+  if (selectedPoints === null) {
+    selectedPoints = new Set(pointCounts.keys());
+  }
+  if (checked) selectedPoints.add(name);
+  else         selectedPoints.delete(name);
+  // If everything is checked revert to null (= all)
+  if (selectedPoints.size === pointCounts.size) selectedPoints = null;
+  updatePointBadge();
+}
+
+function selectAllPoints() {
+  selectedPoints = null;
+  renderPointList();
+}
+
+function clearAllPoints() {
+  selectedPoints = new Set();
+  renderPointList();
+}
+
+function invertPoints() {
+  const all = new Set(pointCounts.keys());
+  if (selectedPoints === null) {
+    selectedPoints = new Set();   // invert all → none
+  } else {
+    const inv = new Set([...all].filter(k => !selectedPoints.has(k)));
+    selectedPoints = inv.size === all.size ? null : inv;
+  }
+  renderPointList();
+}
+
+function updatePointBadge() {
+  const badge = document.getElementById('point-badge');
+  if (selectedPoints === null) {
+    badge.textContent = 'all';
+    badge.style.background = 'var(--accent)';
+  } else {
+    badge.textContent = selectedPoints.size;
+    badge.style.background = selectedPoints.size === 0 ? 'var(--red)' : 'var(--orange)';
+  }
+}
+
+// ── stats + UI update loop ────────────────────────────────────────────────────
+
+setInterval(() => {
+  mps = totalRx - lastTotal; lastTotal = totalRx;
+
+  document.getElementById('s-total').textContent   = totalRx >= 1e6 ? (totalRx/1e6).toFixed(2)+'M' : totalRx.toLocaleString();
+  document.getElementById('s-mps').textContent     = mps.toLocaleString();
+  document.getElementById('s-units').textContent   = units.size;
+  document.getElementById('s-topics').textContent  = topicCounts.size;
+  document.getElementById('s-devs').textContent    = devCounts.size;
+  document.getElementById('s-dropped').textContent = dropped;
+
+  renderUnitList();
+  renderDevBreakdown();
+}, 1000);
+
+function renderDevBreakdown() {
+  const el = document.getElementById('dev-breakdown');
+  if (devCounts.size === 0) return;
+  const total = [...devCounts.values()].reduce((a,b)=>a+b,0);
+  const sorted = [...devCounts.entries()].sort((a,b)=>b[1]-a[1]);
+  el.innerHTML = sorted.map(([d,n]) => `
+    <div class="dev-row">
+      <span class="dev-name">${d}</span>
+      <div class="dev-bar-wrap"><div class="dev-bar" style="width:${(n/total*100).toFixed(1)}%"></div></div>
+      <span class="dev-count">${n.toLocaleString()} (${(n/total*100).toFixed(1)}%)</span>
+    </div>`).join('');
+}
+
+function clearAll() {
+  units.clear(); sites.clear(); topicCounts.clear(); devCounts.clear(); pointCounts.clear();
+  instFilter = 'all';
+  document.getElementById('inst-filter-row').style.display = 'none';
+  document.getElementById('site-sel').innerHTML = '<option value="">all</option>';
+  document.getElementById('unit-sel').innerHTML = '<option value="">all</option>';
+  const disp = document.getElementById('sub-display');
+  if (disp) disp.textContent = '';
+  selectedPoints = null;
+  document.getElementById('point-list').innerHTML = '';
+  updatePointBadge();
+  sigCardMap.clear();
+  totalRx = dropped = lastTotal = mps = 0;
+  document.getElementById('feed').innerHTML = '';
+  document.getElementById('unit-list').innerHTML = '<span style="color:var(--muted);font-size:.8rem">waiting…</span>';
+  document.getElementById('sig-grid').innerHTML = '';
+  document.getElementById('sig-section').style.display = 'none';
+  document.getElementById('dev-breakdown').innerHTML = '<span style="color:var(--muted);font-size:.8rem">no data yet</span>';
+}
+
+function saveMqttPrefs() {
+  localStorage.setItem('mqv_host',  document.getElementById('broker-host').value.trim());
+  localStorage.setItem('mqv_port',  document.getElementById('broker-port').value.trim());
+  localStorage.setItem('mqv_topic', document.getElementById('sub-topic').value.trim());
+}
+
+// Restore prefs then auto-connect if ?host= in URL
+window.addEventListener('DOMContentLoaded', () => {
+  const saved_host  = localStorage.getItem('mqv_host');
+  const saved_port  = localStorage.getItem('mqv_port');
+  const saved_topic = localStorage.getItem('mqv_topic');
+  if (saved_host)  document.getElementById('broker-host').value = saved_host;
+  if (saved_port)  document.getElementById('broker-port').value = saved_port;
+  if (saved_topic) document.getElementById('sub-topic').value   = saved_topic;
+
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('host')) {
+    document.getElementById('broker-host').value = p.get('host');
+    if (p.get('port')) document.getElementById('broker-port').value = p.get('port');
+    toggleConnect();
+  }
+});
+
+// ── tab switching ─────────────────────────────────────────────────────────────
+function showMqttTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('mqtab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'parquet' && !pqSignalsLoaded) pqLoadSignals();
+}
+
+// ── Parquet / Replay tab ──────────────────────────────────────────────────────
+let pqSignalsLoaded = false;
+let pqData = null;
+let pqLatestMs = null;
+
+function pqApiUrl(path) {
+  const host = document.getElementById('pq-host').value.trim() || '192.168.86.34';
+  return `http://${host}:8772${path}`;
+}
+
+async function pqLoadSignals() {
+  pqShowStatus('loading signals…');
+  try {
+    const [fr, sr] = await Promise.all([
+      fetch(pqApiUrl('/query/files')),
+      fetch(pqApiUrl('/query/signals')),
+    ]);
+    if (!fr.ok || !sr.ok) { pqShowErr('Failed to reach bridge_api :8772'); return; }
+    const fd = await fr.json();
+    const sd = await sr.json();
+    pqSignalsLoaded = true;
+    const dl = document.getElementById('pq-sig-list');
+    dl.innerHTML = '';
+    for (const s of sd.signals) {
+      const o = document.createElement('option'); o.value = s; dl.appendChild(o);
+    }
+    if (fd.files.length > 0) {
+      pqLatestMs = new Date(fd.files[0].ts_iso).getTime();
+      pqSetRange(30);
+    }
+    pqShowStatus(`${fd.total} files · ${sd.signals.length} signals (${sd.schema})`);
+  } catch(e) { pqShowErr('bridge_api :8772 — ' + e.message); }
+}
+
+function pqSetRange(minutes) {
+  const now = pqLatestMs || Date.now();
+  const pad = n => String(n).padStart(2,'0');
+  const fmt = ms => { const d=new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  document.getElementById('pq-from').value = fmt(now - minutes*60000);
+  document.getElementById('pq-to').value   = fmt(now);
+}
+
+function pqMqttTopic(pt, signal) {
+  const dtype = pt.dtype || 'float';
+  if (pt.unit_id) return ['unit',pt.unit_id,pt.device||'',pt.instance||'',signal,dtype].join('/');
+  if (pt.site_id && pt.device) return ['ems','site',pt.site_id,pt.device,signal,dtype].join('/');
+  if (pt.site_id) return ['ems','site',pt.site_id,'root',signal,dtype].join('/');
+  return signal;
+}
+
+async function pqRunQuery() {
+  const signal = document.getElementById('pq-sig').value.trim();
+  const from   = document.getElementById('pq-from').value;
+  const to     = document.getElementById('pq-to').value;
+  if (!signal) { pqShowErr('Enter a signal name'); return; }
+  if (!from || !to) { pqShowErr('Set from/to range'); return; }
+  pqShowStatus('querying…');
+  document.getElementById('pq-results').style.display  = 'none';
+  document.getElementById('pq-summary').style.display  = 'none';
+  document.getElementById('pq-btn-csv').disabled  = true;
+  document.getElementById('pq-btn-mqtt').disabled = true;
+  try {
+    const url = pqApiUrl(`/query/data?signal=${encodeURIComponent(signal)}&from=${encodeURIComponent(new Date(from).toISOString())}&to=${encodeURIComponent(new Date(to).toISOString())}&limit=2000`);
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!resp.ok) { pqShowErr(data.error || `HTTP ${resp.status}`); return; }
+    pqData = data;
+    pqClearStatus();
+    pqRenderResults(data);
+  } catch(e) { pqShowErr('Query failed: ' + e.message); }
+}
+
+function pqRenderResults(data) {
+  const pts = data.points;
+  if (pts.length === 0) { pqShowStatus(`No data for "${data.signal}" in range`); return; }
+  const hasTopicCols = pts[0].site_id !== undefined || pts[0].unit_id !== undefined;
+
+  const vals = pts.map(p => p.value);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const avg = (vals.reduce((a,b)=>a+b,0)/vals.length).toPrecision(5);
+  document.getElementById('pqs-signal').textContent = data.signal;
+  document.getElementById('pqs-count').textContent  = pts.length;
+  document.getElementById('pqs-min').textContent    = Number.isInteger(mn)?mn:mn.toPrecision(5);
+  document.getElementById('pqs-max').textContent    = Number.isInteger(mx)?mx:mx.toPrecision(5);
+  document.getElementById('pqs-avg').textContent    = avg;
+  document.getElementById('pq-summary').style.display = 'flex';
+
+  const MAX = 200;
+  const shown = pts.slice(0, MAX);
+  document.getElementById('pq-table-note').textContent =
+    pts.length > MAX ? `Showing ${MAX} of ${pts.length}` : `${pts.length} points`;
+  document.getElementById('pq-thead').innerHTML = hasTopicCols
+    ? '<tr><th>Timestamp</th><th>Value</th><th>Topic</th></tr>'
+    : '<tr><th>Timestamp</th><th>Value</th></tr>';
+  const tbody = document.getElementById('pq-tbody');
+  tbody.innerHTML = '';
+  for (const p of shown) {
+    const tr = document.createElement('tr');
+    const ts = new Date(p.ts).toLocaleString();
+    if (hasTopicCols) {
+      const topic = pqMqttTopic(p, data.signal);
+      tr.innerHTML = `<td>${ts}</td><td>${p.value}</td><td class="qtopic-cell" title="${topic}">${topic}</td>`;
+    } else {
+      tr.innerHTML = `<td>${ts}</td><td>${p.value}</td>`;
+    }
+    tbody.appendChild(tr);
+  }
+  document.getElementById('pq-results').style.display  = 'block';
+  document.getElementById('pq-btn-csv').disabled  = false;
+  document.getElementById('pq-btn-mqtt').disabled = !hasTopicCols;
+}
+
+function pqExportCsv() {
+  if (!pqData) return;
+  const d = pqData;
+  const hasTopicCols = d.points.length > 0 && (d.points[0].site_id !== undefined || d.points[0].unit_id !== undefined);
+  const csv = hasTopicCols
+    ? 'ts,value,topic\n' + d.points.map(p=>`"${p.ts}",${p.value},"${pqMqttTopic(p,d.signal)}"`).join('\n')
+    : 'ts,value\n' + d.points.map(p=>`"${p.ts}",${p.value}`).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = d.signal.replace(/[^a-zA-Z0-9_]/g,'_') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function pqExportJson() {
+  if (!pqData) return;
+  const d = pqData;
+  const msgs = d.points.map(p => ({ topic: pqMqttTopic(p, d.signal), payload: { ts: p.ts, value: p.value } }));
+  const a = document.createElement('a');
+  a.href = 'data:application/octet-stream;charset=utf-8,' + encodeURIComponent(JSON.stringify(msgs, null, 2));
+  a.download = 'mqtt_' + d.signal.replace(/[^a-zA-Z0-9_]/g,'_') + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function pqShowStatus(msg) {
+  const el = document.getElementById('pq-status');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('pq-error').style.display = 'none';
+}
+function pqClearStatus() { document.getElementById('pq-status').style.display = 'none'; }
+function pqShowErr(msg) {
+  const el = document.getElementById('pq-error');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('pq-status').style.display = 'none';
+}
+</script>
+</body>
+</html>

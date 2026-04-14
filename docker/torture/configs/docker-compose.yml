@@ -1,0 +1,125 @@
+version: "3.9"
+
+networks:
+  torture:
+    name: torture_net
+    driver: bridge
+
+# Named volumes removed — writers use bind mounts on dedicated disks:
+#   writer-a/b → /mnt/tort-sdf   (sdf, ~870 GB free)
+#   writer-c/d → /mnt/tort-sdg   (sdg, ~870 GB free)
+
+services:
+
+  # ── MQTT broker ─────────────────────────────────────────────────────────
+  broker:
+    image: eclipse-mosquitto:2.0
+    container_name: torture_broker
+    networks: [torture]
+    ports:
+      - "11883:1883"   # host port 11883 → broker 1883 (avoids conflict with live broker)
+    volumes:
+      - ./configs/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: always
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "hc", "-m", "1", "-q", "0"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Stress runner ────────────────────────────────────────────────────────
+  stress:
+    image: python:3.10-slim
+    container_name: torture_stress
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - ../../source/stress_runner:/app
+      - ../../source/generator:/app/../generator
+    working_dir: /app
+    command: >
+      sh -c "pip install -q paho-mqtt pyyaml websockets &&
+             python stress_runner.py --config /app/stress_torture.yaml"
+    restart: unless-stopped
+
+  # ── Writer A — baseline, always running ─────────────────────────────────
+  writer-a:
+    image: parquet-writer:latest
+    container_name: torture_writer_a
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - /mnt/tort-sdf/data-a:/data/parquet
+      - /mnt/tort-sdf/wal-a:/wal
+      - ./configs/writer-a.yaml:/etc/writer/config.yaml:ro
+    ports:
+      - "8771:8771"
+    restart: unless-stopped
+
+  # ── Writer B — broker-kill target ────────────────────────────────────────
+  writer-b:
+    image: parquet-writer:latest
+    container_name: torture_writer_b
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - /mnt/tort-sdf/data-b:/data/parquet
+      - /mnt/tort-sdf/wal-b:/wal
+      - ./configs/writer-b.yaml:/etc/writer/config.yaml:ro
+    ports:
+      - "8772:8771"
+    restart: unless-stopped
+
+  # ── Writer C — disk-fill / chmod target ──────────────────────────────────
+  writer-c:
+    image: parquet-writer:latest
+    container_name: torture_writer_c
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - /mnt/tort-sdg/data-c:/data/parquet
+      - /mnt/tort-sdg/wal-c:/wal
+      - ./configs/writer-c.yaml:/etc/writer/config.yaml:ro
+    ports:
+      - "8773:8771"
+    restart: unless-stopped
+
+  # ── Writer D — kill-9 / overflow target ──────────────────────────────────
+  writer-d:
+    image: parquet-writer:latest
+    container_name: torture_writer_d
+    networks: [torture]
+    depends_on:
+      broker:
+        condition: service_healthy
+    volumes:
+      - /mnt/tort-sdg/data-d:/data/parquet
+      - /mnt/tort-sdg/wal-d:/wal
+      - ./configs/writer-d.yaml:/etc/writer/config.yaml:ro
+    ports:
+      - "8774:8771"
+    restart: unless-stopped
+
+  # ── Fault injector — runs scenarios on demand or in a loop ───────────────
+  fault:
+    image: alpine:3.19
+    container_name: torture_fault
+    networks: [torture]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/fault_inject.sh:/fault_inject.sh:ro
+      - /mnt/tort-sdg/data-c:/data-c
+    environment:
+      SCENARIO: ${SCENARIO:-all}
+      CYCLE_SECONDS: ${CYCLE_SECONDS:-60}
+      TARGET: ${TARGET:-torture_writer_d}
+    entrypoint: ["sh", "-c", "apk add -q docker-cli bash util-linux && bash /fault_inject.sh"]
+    profiles: ["fault"]   # only starts when explicitly requested

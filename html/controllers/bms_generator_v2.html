@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BMS NXP Generator v2</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 16px;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            background: #0a0a0a;
+            color: #e5e7eb;
+        }
+        .container {
+            max-width: 1600px; margin: 0 auto;
+            background: #121212;
+            border: 1px solid #1e3a8a;
+            border-radius: 12px;
+            display: flex; flex-direction: column;
+            height: 94vh; overflow: hidden;
+        }
+        .header {
+            display: grid; grid-template-columns: 1fr auto;
+            gap: 12px; align-items: center;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, #000, #1e3a8a);
+            border-bottom: 2px solid #2563eb;
+        }
+        .header h2 { margin: 0; font-size: 20px; }
+        .header small { color: #93c5fd; }
+        .header-right { text-align: right; font-size: 12px; line-height: 1.4; }
+        .pill { padding: 2px 8px; border-radius: 999px; font-weight: bold; font-size: 11px; }
+        .pill.ok { background: #065f46; color: #6ee7b7; }
+        .pill.bad { background: #7f1d1d; color: #fecaca; }
+        .pill.warn { background: #78350f; color: #fcd34d; }
+
+        .status-bar {
+            display: grid; grid-template-columns: repeat(6, 1fr);
+            padding: 8px; background: #1a1a1a;
+            border-bottom: 1px solid #1e3a8a;
+        }
+        .status-item { text-align: center; font-size: 12px; }
+        .status-item b { color: #60a5fa; }
+
+        .main { display: grid; grid-template-columns: 200px 1fr; flex: 1; overflow: hidden; }
+
+        .sidebar {
+            background: #0f172a; padding: 12px;
+            border-right: 1px solid #1e3a8a; overflow-y: auto;
+        }
+        .pack-item {
+            padding: 8px; margin-bottom: 6px;
+            border-radius: 6px; cursor: pointer;
+            background: #1e293b; border: 1px solid #334155;
+            font-size: 13px;
+        }
+        .pack-item.active { background: #2563eb; border-color: #60a5fa; }
+        .pack-item .pack-stats { font-size: 10px; color: #94a3b8; margin-top: 4px; }
+
+        .content { padding: 12px; overflow-y: auto; background: #0f172a; }
+
+        .row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .btn {
+            padding: 6px 12px; border-radius: 6px;
+            background: #334155; border: 1px solid #475569;
+            color: #e5e7eb; font-weight: bold; cursor: pointer;
+        }
+        .btn.primary { background: #2563eb; border-color: #60a5fa; }
+        .btn.success { background: #065f46; border-color: #10b981; }
+        .btn.danger { background: #7f1d1d; border-color: #ef4444; }
+        .btn.active { background: #1e40af; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+        .tab { padding: 6px 10px; border-radius: 6px; background: #1e293b; border: 1px solid #334155; cursor: pointer; font-size: 13px; }
+        .tab.active { background: #2563eb; border-color: #60a5fa; }
+
+        .module-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+
+        .summary {
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 8px; margin-bottom: 10px;
+        }
+        .summary-box {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 8px; padding: 8px; font-size: 12px;
+        }
+        .summary-box b { color: #60a5fa; font-size: 16px; }
+        .summary-box.warn b { color: #fcd34d; }
+        .summary-box.danger b { color: #ef4444; }
+
+        .slider-grid {
+            display: grid; grid-template-columns: repeat(16, 1fr);
+            gap: 6px;
+        }
+        .slider-card {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 6px; padding: 6px 2px;
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            font-size: 11px;
+        }
+        .slider-card.warn { border-color: #fcd34d; background: #422006; }
+        .slider-card.danger { border-color: #ef4444; background: #450a0a; }
+        input[type=range].vertical {
+            -webkit-appearance: slider-vertical;
+            appearance: slider-vertical;
+            writing-mode: vertical-lr;
+            direction: rtl;
+            width: 20px; height: 100px;
+            cursor: pointer;
+        }
+        /* Firefox vertical slider fix */
+        @supports (-moz-appearance: none) {
+            input[type=range].vertical {
+                writing-mode: vertical-lr;
+                direction: rtl;
+            }
+        }
+        .num { width: 52px; font-size: 10px; text-align: center; background: #020617; color: #60a5fa; border: 1px solid #334155; border-radius: 4px; padding: 2px; }
+
+        .controls {
+            background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 12px;
+            max-width: 500px;
+        }
+        .control-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .state { font-weight: bold; }
+        .state.on { color: #22c55e; }
+        .state.off { color: #ef4444; }
+
+        .status-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 12px; margin-bottom: 12px;
+        }
+        .status-card {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 8px; padding: 12px;
+        }
+        .status-card-label { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+        .status-card-value { font-size: 20px; font-weight: bold; color: #60a5fa; }
+        .status-card-unit { font-size: 11px; color: #64748b; }
+
+        .charge-control {
+            background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 12px;
+            max-width: 500px; margin-bottom: 12px;
+        }
+        .charge-slider-wrapper {
+            display: flex; align-items: center; gap: 12px; margin-top: 8px;
+        }
+        .charge-slider-wrapper input[type=range] {
+            flex: 1; height: 6px;
+        }
+        .charge-value { font-weight: bold; color: #60a5fa; min-width: 60px; text-align: right; }
+
+        .preset-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        
+        .connection-panel {
+            background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 12px;
+            margin-bottom: 12px;
+        }
+        .connection-panel input {
+            background: #1e293b; border: 1px solid #334155; color: #e5e7eb;
+            padding: 6px 10px; border-radius: 4px; width: 150px;
+        }
+        .log-area {
+            background: #020617; border: 1px solid #334155; border-radius: 6px;
+            padding: 8px; font-family: monospace; font-size: 11px;
+            max-height: 100px; overflow-y: auto; margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div>
+            <h2>BMS NXP GENERATOR v2</h2>
+            <small>Config: 5 Packs × 4 Modules × 16 Cells = 320 Cells</small>
+        </div>
+        <div class="header-right">
+            WebSocket: <span id="wsStatus" class="pill bad">DISCONNECTED</span><br />
+            Last sync: <span id="lastSync">--</span>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-item">PACK <b id="packDisp">1</b></div>
+        <div class="status-item">MODULE <b id="moduleDisp">1</b></div>
+        <div class="status-item">VIEW <b id="viewDisp">VOLTS</b></div>
+        <div class="status-item">CELLS <b>16</b></div>
+        <div class="status-item">TOTAL <b>320</b></div>
+        <div class="status-item">STATUS <b id="statusDisp" style="color:#22c55e">READY</b></div>
+    </div>
+
+    <div class="main">
+        <div class="sidebar">
+            <h4 style="color:#60a5fa; margin-top:0">PACKS</h4>
+            <div id="packList"></div>
+            <hr style="border-color:#334155; margin: 12px 0">
+            <h4 style="color:#60a5fa">QUICK ACTIONS</h4>
+            <button class="btn" style="width:100%; margin-bottom:6px" onclick="setAllVoltages(3300)">All → 3300mV</button>
+            <button class="btn" style="width:100%; margin-bottom:6px" onclick="setAllVoltages(3600)">All → 3600mV</button>
+            <button class="btn" style="width:100%; margin-bottom:6px" onclick="randomizeAll()">Randomize All</button>
+            <button class="btn danger" style="width:100%; margin-bottom:6px" onclick="simulateUV()">Simulate UV</button>
+            <button class="btn danger" style="width:100%" onclick="simulateOV()">Simulate OV</button>
+        </div>
+        <div class="content">
+            <div class="tabs">
+                <div class="tab active" onclick="setMainTab('data')">DATA EDITOR</div>
+                <div class="tab" onclick="setMainTab('status')">PACK STATUS</div>
+                <div class="tab" onclick="setMainTab('control')">CONTROLS</div>
+                <div class="tab" onclick="setMainTab('connection')">CONNECTION</div>
+            </div>
+
+            <div id="dataTab">
+                <div class="row">
+                    <button class="btn active" id="btnVolts" onclick="setMode('volts')">VOLTAGES</button>
+                    <button class="btn" id="btnTemps" onclick="setMode('temps')">TEMPS</button>
+                    <button class="btn" id="btnSOC" onclick="setMode('soc')">SOC</button>
+                    <span style="flex:1"></span>
+                    <button class="btn primary" onclick="syncToSimulator()">SYNC TO SIMULATOR</button>
+                    <button class="btn success" onclick="fetchFromGateway()">FETCH FROM GATEWAY</button>
+                </div>
+
+                <div class="module-tabs" id="moduleTabs"></div>
+
+                <div class="preset-btns" id="presetBtns"></div>
+
+                <div class="summary" id="summary"></div>
+                <div class="slider-grid" id="sliderGrid"></div>
+            </div>
+
+            <div id="statusTab" style="display:none">
+                <div class="status-grid">
+                    <div class="status-card">
+                        <div class="status-card-label">Pack Voltage</div>
+                        <div class="status-card-value" id="packVoltage">-- <span class="status-card-unit">V</span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">Pack Current</div>
+                        <div class="status-card-value" id="packCurrent">-- <span class="status-card-unit">A</span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">Pack Power</div>
+                        <div class="status-card-value" id="packPower">-- <span class="status-card-unit">kW</span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">Pack Temperature</div>
+                        <div class="status-card-value" id="packTemp">-- <span class="status-card-unit">°C</span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">State of Charge</div>
+                        <div class="status-card-value" id="packSOC">-- <span class="status-card-unit">%</span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-card-label">State of Health</div>
+                        <div class="status-card-value" id="packSOH">-- <span class="status-card-unit">%</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="controlTab" style="display:none">
+                <div class="charge-control">
+                    <h3>Charge / Discharge Simulation</h3>
+                    <div class="charge-slider-wrapper">
+                        <span style="font-size:12px; color:#94a3b8;">DISCHARGE</span>
+                        <input type="range" min="-200" max="200" value="0" id="currentSlider" 
+                            oninput="updateCurrentControl(this.value)"
+                            onmousedown="startSliderInteraction('current')" onmouseup="endSliderInteraction()"
+                            ontouchstart="startSliderInteraction('current')" ontouchend="endSliderInteraction()">
+                        <span style="font-size:12px; color:#94a3b8;">CHARGE</span>
+                    </div>
+                    <div style="text-align:center; margin-top:8px;">
+                        <div class="charge-value" id="currentValue">0 A</div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <h3>Contactor Simulation</h3>
+                    <div class="control-row">
+                        <span>Precharge Contactor</span>
+                        <span id="prechargeState" class="state off">OPEN</span>
+                        <button class="btn" onclick="toggleContactor('precharge')">Toggle</button>
+                    </div>
+                    <div class="control-row">
+                        <span>Positive Contactor</span>
+                        <span id="positiveState" class="state off">OPEN</span>
+                        <button class="btn" onclick="toggleContactor('positive')">Toggle</button>
+                    </div>
+                    <div class="control-row">
+                        <span>Negative Contactor</span>
+                        <span id="negativeState" class="state off">OPEN</span>
+                        <button class="btn" onclick="toggleContactor('negative')">Toggle</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="connectionTab" style="display:none">
+                <div class="connection-panel">
+                    <h3>WebSocket Connections</h3>
+                    <div class="row">
+                        <label>Simulator Host:</label>
+                        <input type="text" id="wsHost" value="localhost" />
+                        <label>Control Port:</label>
+                        <input type="text" id="wsPort" value="5003" style="width:80px" />
+                        <button class="btn primary" id="connectBtn" onclick="toggleConnection()">Connect to Simulator</button>
+                    </div>
+                    <div class="row" style="margin-top:8px">
+                        <label>Gateway Port:</label>
+                        <input type="text" id="gwPort" value="9001" style="width:80px" />
+                        <button class="btn" id="gwConnectBtn" onclick="toggleGatewayConnection()">Connect to Gateway</button>
+                        <span id="gwStatus" class="pill bad" style="margin-left:8px">DISCONNECTED</span>
+                    </div>
+                    <div class="row" style="margin-top:10px">
+                        <label>Auto-sync interval:</label>
+                        <select id="syncInterval" style="background:#1e293b; border:1px solid #334155; color:#e5e7eb; padding:4px;">
+                            <option value="0">Manual only</option>
+                            <option value="1000">1 second</option>
+                            <option value="2000">2 seconds</option>
+                            <option value="5000">5 seconds</option>
+                        </select>
+                    </div>
+                    <div class="log-area" id="logArea">Ready...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configuration matching bms_config.yaml
+    const NUM_PACKS = 5;
+    const MODULES_PER_PACK = 4;
+    const CELLS_PER_MODULE = 16;
+    const TOTAL_CELLS = NUM_PACKS * MODULES_PER_PACK * CELLS_PER_MODULE;
+
+    // Thresholds
+    const UV_THRESHOLD = 2800;  // mV
+    const OV_THRESHOLD = 4150;  // mV
+    const NOMINAL_VOLTAGE = 3600;  // mV
+
+    // State
+    let currentPack = 0;
+    let currentModule = 0;
+    let currentMode = 'volts';
+    let mainTab = 'data';
+    let ws = null;
+    let autoSyncInterval = null;
+
+    // Slider interaction tracking - pause updates while user adjusts
+    let activeSliderCell = null;
+    let interactionTimeout = null;
+    const INTERACTION_DEBOUNCE = 500;  // ms after release before resuming updates
+
+    function isSliderActive() { return activeSliderCell !== null; }
+    function startSliderInteraction(cellIdx) {
+        activeSliderCell = cellIdx;
+        if (interactionTimeout) { clearTimeout(interactionTimeout); interactionTimeout = null; }
+    }
+    function endSliderInteraction() {
+        if (interactionTimeout) clearTimeout(interactionTimeout);
+        interactionTimeout = setTimeout(() => { activeSliderCell = null; }, INTERACTION_DEBOUNCE);
+    }
+
+    // Data store: [pack][module][cell] = {voltage, temperature, soc}
+    const store = [];
+    for (let p = 0; p < NUM_PACKS; p++) {
+        store[p] = [];
+        for (let m = 0; m < MODULES_PER_PACK; m++) {
+            store[p][m] = [];
+            for (let c = 0; c < CELLS_PER_MODULE; c++) {
+                store[p][m][c] = {
+                    voltage: 3300 + Math.floor(Math.random() * 300),
+                    temperature: 20 + Math.floor(Math.random() * 15),
+                    soc: 70 + Math.floor(Math.random() * 25)
+                };
+            }
+        }
+    }
+
+    // Contactor state
+    const contactors = { precharge: false, positive: false, negative: false };
+    let packCurrent = 0;
+
+    function init() {
+        renderPacks();
+        renderModules();
+        renderPresets();
+        renderAll();
+    }
+
+    function renderPacks() {
+        const el = document.getElementById('packList');
+        el.innerHTML = '';
+        for (let p = 0; p < NUM_PACKS; p++) {
+            const stats = getPackStats(p);
+            const d = document.createElement('div');
+            d.className = 'pack-item' + (p === currentPack ? ' active' : '');
+            d.innerHTML = `<b>PACK ${p + 1}</b><div class="pack-stats">V: ${(stats.avgVoltage/1000).toFixed(2)}V | T: ${stats.avgTemp.toFixed(1)}°C</div>`;
+            d.onclick = () => { currentPack = p; renderPacks(); renderModules(); renderAll(); };
+            el.appendChild(d);
+        }
+        document.getElementById('packDisp').textContent = currentPack + 1;
+    }
+
+    function renderModules() {
+        const el = document.getElementById('moduleTabs');
+        el.innerHTML = '';
+        for (let m = 0; m < MODULES_PER_PACK; m++) {
+            const b = document.createElement('button');
+            b.className = 'btn' + (m === currentModule ? ' active' : '');
+            b.textContent = `MODULE ${m + 1}`;
+            b.onclick = () => { currentModule = m; renderModules(); renderAll(); };
+            el.appendChild(b);
+        }
+        document.getElementById('moduleDisp').textContent = currentModule + 1;
+    }
+
+    function renderPresets() {
+        const el = document.getElementById('presetBtns');
+        el.innerHTML = '';
+        if (currentMode === 'volts') {
+            [2800, 3000, 3300, 3600, 3800, 4000, 4150].forEach(v => {
+                const b = document.createElement('button');
+                b.className = 'btn';
+                b.textContent = `${v}mV`;
+                b.onclick = () => setModuleValues(v);
+                el.appendChild(b);
+            });
+        } else if (currentMode === 'temps') {
+            [15, 20, 25, 30, 35, 40, 50].forEach(t => {
+                const b = document.createElement('button');
+                b.className = 'btn';
+                b.textContent = `${t}°C`;
+                b.onclick = () => setModuleValues(t);
+                el.appendChild(b);
+            });
+        } else {
+            [0, 25, 50, 75, 90, 100].forEach(s => {
+                const b = document.createElement('button');
+                b.className = 'btn';
+                b.textContent = `${s}%`;
+                b.onclick = () => setModuleValues(s);
+                el.appendChild(b);
+            });
+        }
+    }
+
+    function setMode(m) {
+        currentMode = m;
+        document.getElementById('viewDisp').textContent = m.toUpperCase();
+        document.getElementById('btnVolts').classList.toggle('active', m === 'volts');
+        document.getElementById('btnTemps').classList.toggle('active', m === 'temps');
+        document.getElementById('btnSOC').classList.toggle('active', m === 'soc');
+        renderPresets();
+        renderAll();
+    }
+
+    function setMainTab(t) {
+        mainTab = t;
+        document.getElementById('dataTab').style.display = t === 'data' ? 'block' : 'none';
+        document.getElementById('statusTab').style.display = t === 'status' ? 'block' : 'none';
+        document.getElementById('controlTab').style.display = t === 'control' ? 'block' : 'none';
+        document.getElementById('connectionTab').style.display = t === 'connection' ? 'block' : 'none';
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        document.querySelector(`.tab[onclick="setMainTab('${t}')"]`).classList.add('active');
+        if (t === 'status') updateStatusDisplay();
+    }
+
+    function renderAll() {
+        renderSummary();
+        renderSliders();
+    }
+
+    function getPackStats(packIdx) {
+        let totalV = 0, totalT = 0, minV = 9999, maxV = 0, count = 0;
+        for (let m = 0; m < MODULES_PER_PACK; m++) {
+            for (let c = 0; c < CELLS_PER_MODULE; c++) {
+                const cell = store[packIdx][m][c];
+                totalV += cell.voltage;
+                totalT += cell.temperature;
+                minV = Math.min(minV, cell.voltage);
+                maxV = Math.max(maxV, cell.voltage);
+                count++;
+            }
+        }
+        return {
+            avgVoltage: totalV / count,
+            avgTemp: totalT / count,
+            minVoltage: minV,
+            maxVoltage: maxV,
+            delta: maxV - minV
+        };
+    }
+
+    function renderSummary() {
+        const cells = store[currentPack][currentModule];
+        let vals = cells.map(c => currentMode === 'volts' ? c.voltage : currentMode === 'temps' ? c.temperature : c.soc);
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
+        const delta = max - min;
+
+        let minClass = '', maxClass = '', deltaClass = '';
+        if (currentMode === 'volts') {
+            if (min < UV_THRESHOLD) minClass = 'danger';
+            else if (min < 3000) minClass = 'warn';
+            if (max > OV_THRESHOLD) maxClass = 'danger';
+            else if (max > 4000) maxClass = 'warn';
+            if (delta > 100) deltaClass = 'warn';
+            if (delta > 200) deltaClass = 'danger';
+        }
+
+        const unit = currentMode === 'volts' ? 'mV' : currentMode === 'temps' ? '°C' : '%';
+        document.getElementById('summary').innerHTML = `
+            <div class='summary-box ${minClass}'>MIN<br><b>${min}</b> ${unit}</div>
+            <div class='summary-box ${maxClass}'>MAX<br><b>${max}</b> ${unit}</div>
+            <div class='summary-box'>AVG<br><b>${avg}</b> ${unit}</div>
+            <div class='summary-box ${deltaClass}'>DELTA<br><b>${delta}</b> ${unit}</div>
+        `;
+    }
+
+    function renderSliders() {
+        const el = document.getElementById('sliderGrid');
+        el.innerHTML = '';
+        const cells = store[currentPack][currentModule];
+
+        let min, max;
+        if (currentMode === 'volts') { min = 2500; max = 4500; }
+        else if (currentMode === 'temps') { min = 0; max = 80; }
+        else { min = 0; max = 100; }
+
+        cells.forEach((cell, i) => {
+            const val = currentMode === 'volts' ? cell.voltage : currentMode === 'temps' ? cell.temperature : cell.soc;
+            let cardClass = '';
+            if (currentMode === 'volts') {
+                if (val < UV_THRESHOLD || val > OV_THRESHOLD) cardClass = 'danger';
+                else if (val < 3000 || val > 4000) cardClass = 'warn';
+            }
+
+            const d = document.createElement('div');
+            d.className = 'slider-card ' + cardClass;
+            d.innerHTML = `
+                <b>#${i + 1}</b>
+                <input type='range' class='vertical' min='${min}' max='${max}' value='${val}' 
+                    oninput='updateVal(${i},this.value)'
+                    onmousedown='startSliderInteraction(${i})' onmouseup='endSliderInteraction()'
+                    ontouchstart='startSliderInteraction(${i})' ontouchend='endSliderInteraction()'>
+                <input class='num' type='number' value='${val}' 
+                    onchange='updateVal(${i},this.value)'
+                    onfocus='startSliderInteraction(${i})' onblur='endSliderInteraction()'>
+            `;
+            el.appendChild(d);
+        });
+    }
+
+    function updateVal(cellIdx, value) {
+        const v = parseInt(value);
+        const cell = store[currentPack][currentModule][cellIdx];
+        if (currentMode === 'volts') cell.voltage = v;
+        else if (currentMode === 'temps') cell.temperature = v;
+        else cell.soc = v;
+        renderSummary();
+        renderSliders();
+        renderPacks();  // Update sidebar stats
+    }
+
+    function setModuleValues(value) {
+        const cells = store[currentPack][currentModule];
+        cells.forEach(cell => {
+            if (currentMode === 'volts') cell.voltage = value;
+            else if (currentMode === 'temps') cell.temperature = value;
+            else cell.soc = value;
+        });
+        renderAll();
+        renderPacks();
+    }
+
+    function setAllVoltages(value) {
+        for (let p = 0; p < NUM_PACKS; p++) {
+            for (let m = 0; m < MODULES_PER_PACK; m++) {
+                for (let c = 0; c < CELLS_PER_MODULE; c++) {
+                    store[p][m][c].voltage = value;
+                }
+            }
+        }
+        renderAll();
+        renderPacks();
+        log(`Set all cells to ${value}mV`);
+    }
+
+    function randomizeAll() {
+        for (let p = 0; p < NUM_PACKS; p++) {
+            for (let m = 0; m < MODULES_PER_PACK; m++) {
+                for (let c = 0; c < CELLS_PER_MODULE; c++) {
+                    store[p][m][c].voltage = 3200 + Math.floor(Math.random() * 500);
+                    store[p][m][c].temperature = 20 + Math.floor(Math.random() * 20);
+                    store[p][m][c].soc = 50 + Math.floor(Math.random() * 45);
+                }
+            }
+        }
+        renderAll();
+        renderPacks();
+        log('Randomized all cell data');
+    }
+
+    function simulateUV() {
+        // Set one random cell to undervoltage
+        const p = Math.floor(Math.random() * NUM_PACKS);
+        const m = Math.floor(Math.random() * MODULES_PER_PACK);
+        const c = Math.floor(Math.random() * CELLS_PER_MODULE);
+        store[p][m][c].voltage = 2500 + Math.floor(Math.random() * 200);
+        currentPack = p;
+        currentModule = m;
+        renderAll();
+        renderPacks();
+        renderModules();
+        log(`Simulated UV on Pack ${p+1}, Module ${m+1}, Cell ${c+1}`);
+    }
+
+    function simulateOV() {
+        // Set one random cell to overvoltage
+        const p = Math.floor(Math.random() * NUM_PACKS);
+        const m = Math.floor(Math.random() * MODULES_PER_PACK);
+        const c = Math.floor(Math.random() * CELLS_PER_MODULE);
+        store[p][m][c].voltage = 4200 + Math.floor(Math.random() * 100);
+        currentPack = p;
+        currentModule = m;
+        renderAll();
+        renderPacks();
+        renderModules();
+        log(`Simulated OV on Pack ${p+1}, Module ${m+1}, Cell ${c+1}`);
+    }
+
+    function updateStatusDisplay() {
+        const stats = getPackStats(currentPack);
+        const packV = (stats.avgVoltage * CELLS_PER_MODULE * MODULES_PER_PACK / 1000).toFixed(1);
+        document.getElementById('packVoltage').innerHTML = `${packV} <span class="status-card-unit">V</span>`;
+        document.getElementById('packCurrent').innerHTML = `${packCurrent} <span class="status-card-unit">A</span>`;
+        document.getElementById('packPower').innerHTML = `${(packV * packCurrent / 1000).toFixed(2)} <span class="status-card-unit">kW</span>`;
+        document.getElementById('packTemp').innerHTML = `${stats.avgTemp.toFixed(1)} <span class="status-card-unit">°C</span>`;
+
+        // Average SOC across pack
+        let totalSOC = 0, count = 0;
+        for (let m = 0; m < MODULES_PER_PACK; m++) {
+            for (let c = 0; c < CELLS_PER_MODULE; c++) {
+                totalSOC += store[currentPack][m][c].soc;
+                count++;
+            }
+        }
+        document.getElementById('packSOC').innerHTML = `${Math.round(totalSOC / count)} <span class="status-card-unit">%</span>`;
+        document.getElementById('packSOH').innerHTML = `98 <span class="status-card-unit">%</span>`;
+    }
+
+    function toggleContactor(name) {
+        contactors[name] = !contactors[name];
+        const el = document.getElementById(name + 'State');
+        el.className = 'state ' + (contactors[name] ? 'on' : 'off');
+        el.textContent = contactors[name] ? 'CLOSED' : 'OPEN';
+        log(`Contactor ${name}: ${contactors[name] ? 'CLOSED' : 'OPEN'}`);
+    }
+
+    function updateCurrentControl(val) {
+        packCurrent = parseInt(val);
+        document.getElementById('currentValue').textContent = val + ' A';
+    }
+
+    // WebSocket connections
+    // ws = connection to simulator control port (5003) for setting data
+    // gwWs = connection to gateway (9001) for fetching live data
+    let gwWs = null;
+    
+    // Simulator connection functions
+    function toggleConnection() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+        } else {
+            connectToSimulator();
+        }
+    }
+
+    function connectToSimulator() {
+        const host = document.getElementById('wsHost').value;
+        const port = document.getElementById('wsPort').value;
+        const url = `ws://${host}:${port}`;
+
+        log(`Connecting to simulator at ${url}...`);
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+            document.getElementById('wsStatus').className = 'pill ok';
+            document.getElementById('wsStatus').textContent = 'SIMULATOR';
+            document.getElementById('connectBtn').textContent = 'Disconnect Simulator';
+            log('Connected to simulator control server');
+
+            // Setup auto-sync if configured
+            const interval = parseInt(document.getElementById('syncInterval').value);
+            if (interval > 0) {
+                autoSyncInterval = setInterval(syncToSimulator, interval);
+                log(`Auto-sync enabled: ${interval}ms`);
+            }
+        };
+
+        ws.onclose = () => {
+            document.getElementById('wsStatus').className = 'pill bad';
+            document.getElementById('wsStatus').textContent = 'DISCONNECTED';
+            document.getElementById('connectBtn').textContent = 'Connect to Simulator';
+            log('Disconnected from simulator');
+            if (autoSyncInterval) {
+                clearInterval(autoSyncInterval);
+                autoSyncInterval = null;
+            }
+        };
+
+        ws.onerror = (e) => {
+            log('Simulator WebSocket error');
+        };
+
+        ws.onmessage = (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+                handleSimulatorMessage(msg);
+            } catch (err) {
+                log('Parse error: ' + err.message);
+            }
+        };
+    }
+
+    // Gateway connection functions
+    function toggleGatewayConnection() {
+        if (gwWs && gwWs.readyState === WebSocket.OPEN) {
+            gwWs.close();
+        } else {
+            connectToGateway();
+        }
+    }
+
+    function connectToGateway() {
+        const host = document.getElementById('wsHost').value;
+        const port = document.getElementById('gwPort').value;
+        const url = `ws://${host}:${port}`;
+
+        log(`Connecting to gateway at ${url}...`);
+        gwWs = new WebSocket(url);
+
+        gwWs.onopen = () => {
+            document.getElementById('gwStatus').className = 'pill ok';
+            document.getElementById('gwStatus').textContent = 'GATEWAY';
+            document.getElementById('gwConnectBtn').textContent = 'Disconnect Gateway';
+            log('Connected to BMS gateway');
+        };
+
+        gwWs.onclose = () => {
+            document.getElementById('gwStatus').className = 'pill bad';
+            document.getElementById('gwStatus').textContent = 'DISCONNECTED';
+            document.getElementById('gwConnectBtn').textContent = 'Connect to Gateway';
+            log('Disconnected from gateway');
+        };
+
+        gwWs.onerror = (e) => {
+            log('Gateway WebSocket error');
+        };
+
+        gwWs.onmessage = (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+                handleGatewayMessage(msg);
+            } catch (err) {
+                log('Gateway parse error: ' + err.message);
+            }
+        };
+    }
+
+    function handleSimulatorMessage(msg) {
+        if (msg.status === 'ok') {
+            if (msg.data && msg.data.updated) {
+                log('Simulator data updated successfully');
+            } else if (msg.data && msg.data.packs) {
+                updateFromData(msg.data);
+                log('Received data from simulator');
+            }
+        } else if (msg.status === 'error') {
+            log('Simulator error: ' + msg.error);
+        }
+    }
+
+    function handleGatewayMessage(msg) {
+        if (msg.status === 'ok') {
+            if (msg.data && msg.data.packs) {
+                updateFromData(msg.data);
+                log('Received live data from gateway');
+            }
+        } else if (msg.status === 'error') {
+            log('Gateway error: ' + msg.error);
+        }
+    }
+
+    function updateFromData(data) {
+        // Update local store from received data (gateway or simulator)
+        if (data.packs) {
+            data.packs.forEach((pack, p) => {
+                if (p < NUM_PACKS && pack.modules) {
+                    pack.modules.forEach((mod, m) => {
+                        if (m < MODULES_PER_PACK && mod.cells) {
+                            mod.cells.forEach((cell, c) => {
+                                if (c < CELLS_PER_MODULE) {
+                                    store[p][m][c].voltage = cell.voltage || store[p][m][c].voltage;
+                                    store[p][m][c].temperature = cell.temperature || store[p][m][c].temperature;
+                                    store[p][m][c].soc = cell.soc || store[p][m][c].soc;
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
+        // Skip slider re-render while user is adjusting to prevent fighting
+        if (!isSliderActive()) {
+            renderAll();
+        } else {
+            // Still update sidebar stats, just not the active sliders
+            renderSummary();
+        }
+        renderPacks();
+    }
+
+    function syncToSimulator() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            log('Not connected - cannot sync');
+            return;
+        }
+
+        // Build the data payload for the simulator
+        const payload = {
+            action: 'set_sim_data',
+            packs: []
+        };
+
+        for (let p = 0; p < NUM_PACKS; p++) {
+            const packData = { modules: [] };
+            for (let m = 0; m < MODULES_PER_PACK; m++) {
+                const modData = { cells: [] };
+                for (let c = 0; c < CELLS_PER_MODULE; c++) {
+                    modData.cells.push({
+                        voltage: store[p][m][c].voltage,
+                        temperature: store[p][m][c].temperature,
+                        soc: store[p][m][c].soc
+                    });
+                }
+                packData.modules.push(modData);
+            }
+            payload.packs.push(packData);
+        }
+
+        // Add contactor and current state
+        payload.contactors = contactors;
+        payload.current = packCurrent;
+
+        ws.send(JSON.stringify(payload));
+        document.getElementById('lastSync').textContent = new Date().toLocaleTimeString();
+        log('Sent data to simulator');
+    }
+
+    function fetchFromGateway() {
+        // Try gateway first, then simulator
+        if (gwWs && gwWs.readyState === WebSocket.OPEN) {
+            gwWs.send(JSON.stringify({ action: 'get_data' }));
+            log('Requested live data from gateway');
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: 'get_sim_data' }));
+            log('Requested data from simulator');
+        } else {
+            log('Not connected - cannot fetch');
+        }
+    }
+
+    function log(msg) {
+        const el = document.getElementById('logArea');
+        const time = new Date().toLocaleTimeString();
+        el.innerHTML += `<div>[${time}] ${msg}</div>`;
+        el.scrollTop = el.scrollHeight;
+    }
+
+    init();
+</script>
+</body>
+</html>

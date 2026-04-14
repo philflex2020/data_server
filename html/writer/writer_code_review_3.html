@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Third Critical Review</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; line-height: 1.6; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 0 0 8px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .finding {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin-bottom: 16px;
+    border-left: 4px solid var(--border);
+  }
+  .finding.critical { border-left-color: var(--red); }
+  .finding.major    { border-left-color: var(--yellow); }
+  .finding.minor    { border-left-color: var(--muted); }
+  .finding.perf     { border-left-color: var(--purple); }
+  .finding.good     { border-left-color: var(--green); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-right: 8px; }
+  .badge-crit   { background: #3d0a0a; color: var(--red);    border: 1px solid #7a1515; }
+  .badge-major  { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-minor  { background: #21262d; color: var(--muted);  border: 1px solid #30363d; }
+  .badge-perf   { background: #1a0a2e; color: var(--purple); border: 1px solid #4a2080; }
+  .badge-good   { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .badge-new    { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; font-size: 0.68rem; padding: 1px 5px; }
+
+  pre  { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.5; overflow-x: auto; color: #e6edf3; margin: 10px 0; }
+  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: #e6edf3; }
+  .loc  { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
+  p { margin-bottom: 8px; font-size: 0.88rem; }
+  ul { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+  .label { font-weight: 600; color: var(--orange); font-size: 0.82rem; margin-top: 10px; display: block; }
+  .ok   { color: var(--green); }
+  .err  { color: var(--red); }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+  .summary-num { font-size: 2rem; font-weight: 700; }
+  .summary-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 16px; }
+  .comparison-table th { background: #21262d; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  .comparison-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .comparison-table tr:last-child td { border-bottom: none; }
+  .comparison-table tr:hover td { background: #1c2128; }
+</style>
+</head>
+<body>
+
+<h1>writer.cpp — Third Critical Review</h1>
+<p class="subtitle">
+  Third independent pass · 2026-03-22 · 1328 lines ·
+  <a href="writer_code_review_2.html" style="color:var(--accent)">Review 2</a> ·
+  <a href="writer_critical_fixes_2.html" style="color:var(--accent)">Fixes 2</a> ·
+  <a href="writer_shm_ring.html" style="color:var(--accent)">SHM Ring design</a>
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  <a href="writer_diff_detector.html">Diff Detector</a>
+  <a href="writer_code_review_3.html" class="here">Review 3</a>
+  <a href="writer_critical_fixes_3.html">Fixes 3</a>
+</div>
+
+<!-- Summary counts -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--red)">2</div>
+    <div class="summary-label">Critical</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--yellow)">3</div>
+    <div class="summary-label">Major</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--muted)">3</div>
+    <div class="summary-label">Minor</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--purple)">2</div>
+    <div class="summary-label">Performance</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-num" style="color:var(--green)">6</div>
+    <div class="summary-label">Confirmed Good</div>
+  </div>
+</div>
+
+<!-- ── What improved since Review 2 ─────────────────────────────────── -->
+<h2>What improved since Review 2</h2>
+
+<div class="finding good">
+  <h3><span class="badge badge-good">GOOD</span>WAL flush retry with exponential backoff</h3>
+  <p>Configurable <code>flush_max_retries</code> + <code>flush_retry_base_seconds</code>. A transient NFS/disk hiccup no longer silently drops rows — the writer retries 1s, 2s, 4s before giving up and logging the loss.</p>
+</div>
+
+<div class="finding good">
+  <h3><span class="badge badge-good">GOOD</span>Delta-based sync drop detection (M2)</h3>
+  <p>Cumulative drop tracking via <code>g_sync_drops_detected</code> eliminated the per-interval timing jitter false positives from earlier sessions. Session ID reset on stress_runner restart is handled correctly.</p>
+</div>
+
+<div class="finding good">
+  <h3><span class="badge badge-good">GOOD</span>Correct parse thread shutdown sequence</h3>
+  <p><code>g_mqtt_stopped</code> flag ensures <code>parse_thread_fn</code> drains the ring completely after <code>mosquitto_loop_stop()</code>. Final flush in <code>main()</code> catches anything buffered during the MQTT→parse drain window.</p>
+</div>
+
+<div class="finding good">
+  <h3><span class="badge badge-good">GOOD</span>O(1) current-state snapshot (C4-A)</h3>
+  <p>Pointer swap (<code>std::move(g_current_state)</code>) at flush time instead of O(N) map copy. Clean and correct.</p>
+</div>
+
+<div class="finding good">
+  <h3><span class="badge badge-good">GOOD</span>Signal pipe is O_NONBLOCK on both ends</h3>
+  <p>At 400k msg/s the pipe fills in ~165ms during a flush. Making both ends non-blocking prevents deadlock in <code>process_raw_message</code> which writes to the pipe while holding <code>g_mutex</code>.</p>
+</div>
+
+<div class="finding good">
+  <h3><span class="badge badge-good">GOOD</span>Path-traversal sanitisation (M13)</h3>
+  <p><code>sanitize_path_segment()</code> strips <code>/</code>, <code>\</code>, <code>.</code>, <code>..</code> from topic-derived path segments before they reach <code>make_output_path()</code>.</p>
+</div>
+
+<!-- ── Critical ──────────────────────────────────────────────────────── -->
+<h2>Critical Issues</h2>
+
+<div class="finding critical">
+  <h3><span class="badge badge-crit">CRITICAL</span>R3-C1 · SIGPIPE can kill the writer process</h3>
+  <div class="loc">health_thread_fn() · line ~749 · send() calls</div>
+  <p>
+    The health endpoint uses raw <code>send()</code> without <code>MSG_NOSIGNAL</code>. If the monitor
+    client closes the connection between the writer's <code>accept()</code> and <code>send()</code> — which
+    happens frequently with browser polling — the kernel delivers <strong>SIGPIPE</strong> to the process.
+    The default SIGPIPE disposition is <em>terminate</em>. SIGINT and SIGTERM are handled; SIGPIPE is not.
+    This means a single ill-timed health poll can silently kill a writer that is mid-flush.
+  </p>
+  <pre>// Current (crashes on client disconnect):
+send(cli, resp.c_str(), resp.size(), 0);
+
+// Fix A — add MSG_NOSIGNAL to every send():
+send(cli, resp.c_str(), resp.size(), MSG_NOSIGNAL);
+
+// Fix B — one-shot in main() before threads start (simpler):
+signal(SIGPIPE, SIG_IGN);</pre>
+  <p>Fix B is one line in <code>main()</code> and covers all future <code>send()</code> calls too. Apply both for defence-in-depth.</p>
+</div>
+
+<div class="finding critical">
+  <h3><span class="badge badge-crit">CRITICAL</span>R3-C2 · Variable shadowing silently corrupts WAL replay log path</h3>
+  <div class="loc">replay_wal_files() · line ~624 vs ~632</div>
+  <p>
+    The outer scope declares <code>std::string wp</code> (the WAL directory path). The range-for loop
+    at line 632 re-uses the same name: <code>for (const auto& wp : wal_files)</code> where <code>wal_files</code>
+    is a <code>std::vector&lt;fs::path&gt;</code>. The inner <code>wp</code> shadows the outer one for the
+    entire loop body. The outer <code>wp</code> (directory path) becomes inaccessible inside the loop.
+    The code happens to work today because the outer <code>wp</code> is not used inside the loop body after
+    shadowing, but it is one refactor away from silently using the wrong value.
+  </p>
+  <pre>// Current — outer 'wp' (string) shadowed by inner 'wp' (fs::path):
+std::string wp = cfg.wal_path.empty() ? cfg.base_path + "/.wal" : cfg.wal_path;
+...
+for (const auto& wp : wal_files) {          // ← shadows outer wp!
+    auto rows = wal_replay_file(wp.string());
+
+// Fix — rename loop variable:
+for (const auto& wf : wal_files) {
+    auto rows = wal_replay_file(wf.string());</pre>
+</div>
+
+<!-- ── Major ─────────────────────────────────────────────────────────── -->
+<h2>Major Issues</h2>
+
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span>R3-M1 · mosquitto_loop_stop(false) can block 30 s on shutdown</h3>
+  <div class="loc">main() · line ~1305 · mosquitto_loop_stop(mosq, false)</div>
+  <p>
+    <code>force=false</code> waits for the network thread to exit cleanly. If the MQTT broker is
+    unreachable at shutdown time, the network thread is sleeping inside the reconnect backoff
+    (up to <code>mqtt_reconnect_max_seconds = 30s</code>). The result: pressing Ctrl-C appears to hang
+    for 30 s before the process exits. Confusing in production, breaks Docker stop timeout (default 10s),
+    and delays the final flush.
+  </p>
+  <pre>// Current:
+mosquitto_loop_stop(mosq, /*force=*/false);
+
+// Fix — force=true: network thread is stopped immediately.
+// mosquitto_destroy() cleans up properly regardless.
+mosquitto_loop_stop(mosq, /*force=*/true);</pre>
+</div>
+
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span>R3-M2 · handle_sync_message holds g_mutex during simdjson parse</h3>
+  <div class="loc">process_raw_message() → handle_sync_message() · line ~1010–1013</div>
+  <p>
+    <code>process_raw_message()</code> acquires <code>g_mutex</code> and then calls <code>handle_sync_message()</code>
+    which runs a full simdjson parse inside the lock. simdjson is fast (~100 ns), but the parse
+    still extends the mutex hold window unnecessarily. At high rates, every extra µs under <code>g_mutex</code>
+    adds to the latency seen by the flush thread (which must also acquire it to swap buffers).
+    The fix: parse first, then acquire the lock only to update the counters.
+  </p>
+  <pre>// Current — parse under lock:
+if (topic == "_sync") {
+    std::lock_guard&lt;std::mutex&gt; lock(g_mutex);
+    handle_sync_message(payload);   // simdjson parse here!
+    return;
+}
+
+// Fix — parse outside lock, acquire only for counter update:
+if (topic == "_sync") {
+    handle_sync_message(payload);   // parse outside lock
+    return;
+}
+// Inside handle_sync_message(), acquire lock only for the
+// g_received_since_sync / g_sync_drops_detected updates.</pre>
+</div>
+
+<div class="finding major">
+  <h3><span class="badge badge-major">MAJOR</span>R3-M3 · ValueOrDie() deprecated in Arrow 14+ / warning in Arrow 16</h3>
+  <div class="loc">wal_replay_file() · lines ~582–584</div>
+  <p>
+    <code>ValueOrDie()</code> was deprecated in Apache Arrow 14.0 and replaced by <code>.Value()</code>
+    (which also asserts on error) or <code>ARROW_ASSIGN_OR_RAISE</code> (which propagates errors).
+    The new Gumby SDK 0.11.0 ships Arrow 16.0.1 — <code>ValueOrDie()</code> will generate deprecation
+    warnings or fail to compile with <code>-Werror</code>. WAL replay is startup-critical; these calls
+    should not silently fall back.
+  </p>
+  <pre>// Current:
+auto r_in = arrow::io::ReadableFile::Open(path);
+if (!r_in.ok()) return rows;
+auto r_rd = arrow::ipc::RecordBatchFileReader::Open(r_in.ValueOrDie());  // ← deprecated
+if (!r_rd.ok()) return rows;
+auto reader = r_rd.ValueOrDie();                                          // ← deprecated
+
+// Fix — use .Value() (asserts on error, no-warning, same semantics):
+auto r_in = arrow::io::ReadableFile::Open(path);
+if (!r_in.ok()) return rows;
+auto r_rd = arrow::ipc::RecordBatchFileReader::Open(r_in.Value());
+if (!r_rd.ok()) return rows;
+auto reader = r_rd.Value();</pre>
+</div>
+
+<!-- ── Minor ─────────────────────────────────────────────────────────── -->
+<h2>Minor Issues</h2>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">MINOR</span>R3-N1 · parse_thread_fn spins at 50 µs on empty ring</h3>
+  <div class="loc">parse_thread_fn() · line ~1078</div>
+  <p>
+    When the ring is empty the parse thread sleeps 50 µs and retries. At very low
+    throughput (idle, early startup) this burns ~2% of a core continuously. On Gumby
+    Cortex-A55 targets where every milliwatt matters, it will drain battery during idle
+    periods. The flush thread already uses a <code>poll()</code> on the signal pipe — the
+    same mechanism could be used here (producer writes 1 byte to pipe; parse thread polls
+    the read end with a 100ms timeout as a backstop).
+  </p>
+  <pre>// Current:
+std::this_thread::sleep_for(std::chrono::microseconds(50));
+
+// Future fix: poll() on a pipe written by on_message().
+// Low-priority because at target rates (80k–1M msg/s) the ring
+// is rarely empty; this only matters at idle.</pre>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">MINOR</span>R3-N2 · Dual tracking of buffer row count (g_total_buffered + g_health_buffer_rows)</h3>
+  <div class="loc">process_raw_message() · line ~1060; do_flush() · line ~915</div>
+  <p>
+    <code>g_total_buffered</code> is a plain <code>size_t</code> under <code>g_mutex</code>. <code>g_health_buffer_rows</code>
+    is a separate <code>std::atomic&lt;uint64_t&gt;</code> that mirrors it. Both must be updated in sync;
+    they diverge if either site is missed in future edits. A single atomic is sufficient since the health
+    thread only reads it and does not need to participate in the mutex-protected overflow decision.
+    The duplication is low-risk today but is a maintenance hazard.
+  </p>
+</div>
+
+<div class="finding minor">
+  <h3><span class="badge badge-minor">MINOR</span>R3-N3 · Health endpoint lacks SHM ring metrics</h3>
+  <div class="loc">health_thread_fn() · JSON body construction · line ~727</div>
+  <p>
+    The health JSON does not yet include <code>shm_ring_used</code>, <code>shm_ring_drops</code>,
+    or <code>shm_ring_cap</code>. These are needed by the torture monitor once the SHM ring is
+    implemented (SHM-2). Plan now, implement alongside <code>shm_ring.h</code>.
+  </p>
+</div>
+
+<!-- ── Performance ───────────────────────────────────────────────────── -->
+<h2>Performance Issues</h2>
+
+<div class="finding perf">
+  <h3><span class="badge badge-perf">PERF</span>R3-P1 · parse_topic allocates std::istringstream on every message</h3>
+  <div class="loc">parse_topic() · line ~277</div>
+  <p>
+    <code>std::istringstream</code> heap-allocates an internal buffer on construction. At 300k msg/s
+    this means 300k heap allocations per second on the hot path, before any Row construction.
+    Profiling on the torture server showed the parse thread at ~15% CPU — replacing
+    <code>istringstream</code> with a pointer-walking split over the existing C string saves both
+    the allocation and the <code>std::string</code> copy of the topic.
+  </p>
+  <pre>// Current:
+std::istringstream ss(topic);       // heap alloc
+std::string segment;
+while (std::getline(ss, segment, '/')) { ... }
+
+// Fix — walk the existing char* from the ring slot directly:
+const char* p = topic_cstr;
+const char* end = p + strlen(p);
+while (p &lt;= end) {
+    const char* slash = (const char*)memchr(p, '/', end - p);
+    const char* seg_end = slash ? slash : end;
+    std::string_view seg(p, seg_end - p);
+    // ... process seg ...
+    p = slash ? slash + 1 : end + 1;
+}</pre>
+  <p>Estimated 3–5× speedup on the parse path; removes ~300k allocations/s at peak rate.</p>
+</div>
+
+<div class="finding perf">
+  <h3><span class="badge badge-perf">PERF</span>R3-P2 · Row uses std::map — 3M+ tree allocations/second at 300k msg/s</h3>
+  <div class="loc">struct Row · line ~227; parse_payload · line ~300+</div>
+  <p>
+    <code>struct Row</code> uses <code>std::map&lt;std::string, int64_t&gt;</code> and
+    <code>std::map&lt;std::string, double&gt;</code>. Each map insert allocates a red-black tree node
+    (typically 64–96 bytes on the heap). With ~5 int fields + ~10 float fields per row at 300k msg/s
+    = <strong>4.5M heap allocations/second</strong> just for Row construction.
+  </p>
+  <p>
+    At the torture test throughput (895k msg/s total) this approaches 15M allocations/second.
+    Allocator contention between the parse thread and the flush thread (which frees them) will
+    show up as mutex contention inside malloc at high rates.
+  </p>
+  <pre>// Short-term: switch to std::unordered_map (2-3× faster, same interface):
+struct Row {
+    std::unordered_map&lt;std::string, int64_t&gt; ints;
+    std::unordered_map&lt;std::string, double&gt;  floats;
+};
+
+// Long-term: flat struct with known field positions eliminates
+// all per-row heap allocation (see SHM ring slot design).</pre>
+  <p>This is the single highest-leverage change for sustaining 1M+ msg/s on the Gumby ARM targets.</p>
+</div>
+
+<!-- ── Shutdown sequence ─────────────────────────────────────────────── -->
+<h2>Shutdown Sequence Analysis</h2>
+
+<div class="finding minor">
+  <h3>Current shutdown order (annotated)</h3>
+  <pre>SIGINT/SIGTERM
+  → g_shutdown = true
+  → write(g_signal_pipe[1], 1)       // wakes flush_thread's poll()
+
+flush_thread:  last flush → exits while loop
+flusher.join()                        // ✓ wait for last flush
+health_thr.join()                     // ✓ exits within 1s (polls g_shutdown)
+
+mosquitto_disconnect(mosq)
+mosquitto_loop_stop(mosq, false)      // ⚠ blocks up to 30s if broker down
+                                      //   (should be force=true)
+g_mqtt_stopped = true
+parser.join()                         // ✓ drains ring then exits
+
+final flush in main()                 // catches msgs buffered during drain window
+mosquitto_destroy / lib_cleanup</pre>
+  <p>The sequence is logically correct. The only flaw is the 30s blocking risk at step 5 (R3-M1).</p>
+</div>
+
+<!-- ── Fix priority table ────────────────────────────────────────────── -->
+<h2>Fix Priority Table</h2>
+
+<table class="comparison-table">
+  <thead>
+    <tr>
+      <th>ID</th><th>Severity</th><th>Issue</th><th>Effort</th><th>Risk</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>R3-C1</code></td>
+      <td><span style="color:var(--red)">Critical</span></td>
+      <td>SIGPIPE kills writer on health poll disconnect</td>
+      <td>1 line</td>
+      <td>Zero — signal ignore is idempotent</td>
+    </tr>
+    <tr>
+      <td><code>R3-C2</code></td>
+      <td><span style="color:var(--red)">Critical</span></td>
+      <td>Variable shadow <code>wp</code> in replay_wal_files</td>
+      <td>1 line rename</td>
+      <td>Zero — behaviorally equivalent</td>
+    </tr>
+    <tr>
+      <td><code>R3-M1</code></td>
+      <td><span style="color:var(--yellow)">Major</span></td>
+      <td>loop_stop(false) blocks 30s when broker down</td>
+      <td>1 char change</td>
+      <td>Negligible — destroy() handles cleanup either way</td>
+    </tr>
+    <tr>
+      <td><code>R3-M3</code></td>
+      <td><span style="color:var(--yellow)">Major</span></td>
+      <td>ValueOrDie() deprecated in Arrow 14+/16</td>
+      <td>2 lines</td>
+      <td>Zero — .Value() same semantics</td>
+    </tr>
+    <tr>
+      <td><code>R3-M2</code></td>
+      <td><span style="color:var(--yellow)">Major</span></td>
+      <td>handle_sync_message holds g_mutex during parse</td>
+      <td>Medium — refactor</td>
+      <td>Low — logic unchanged, only lock scope narrows</td>
+    </tr>
+    <tr>
+      <td><code>R3-P1</code></td>
+      <td><span style="color:var(--purple)">Perf</span></td>
+      <td>istringstream in parse_topic — 300k allocs/s</td>
+      <td>Medium — rewrite function</td>
+      <td>Medium — test coverage needed</td>
+    </tr>
+    <tr>
+      <td><code>R3-P2</code></td>
+      <td><span style="color:var(--purple)">Perf</span></td>
+      <td>Row uses std::map — 4.5M allocs/s at 300k msg/s</td>
+      <td>Low (unordered_map) → High (flat struct)</td>
+      <td>Medium — ripples through rows_to_arrow_table</td>
+    </tr>
+    <tr>
+      <td><code>R3-N1</code></td>
+      <td><span style="color:var(--muted)">Minor</span></td>
+      <td>parse_thread spins 50µs when ring empty</td>
+      <td>Medium</td>
+      <td>Low — needed for Gumby ARM power budget</td>
+    </tr>
+    <tr>
+      <td><code>R3-N2</code></td>
+      <td><span style="color:var(--muted)">Minor</span></td>
+      <td>Dual buffer-row tracking (total_buffered + health_buffer_rows)</td>
+      <td>Small</td>
+      <td>Low</td>
+    </tr>
+    <tr>
+      <td><code>R3-N3</code></td>
+      <td><span style="color:var(--muted)">Minor</span></td>
+      <td>Health endpoint missing SHM ring metrics</td>
+      <td>Small — add 3 fields</td>
+      <td>Zero — additive</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Recommended Apply Order for Fixes #3</h2>
+<table class="comparison-table">
+  <thead>
+    <tr><th>#</th><th>Fix</th><th>Why first</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>R3-C1 — SIGPIPE ignore in main()</td><td>One line, prevents silent process death in prod</td></tr>
+    <tr><td>2</td><td>R3-C2 — rename <code>wp</code> → <code>wf</code> in WAL replay</td><td>One line, removes latent naming hazard</td></tr>
+    <tr><td>3</td><td>R3-M1 — loop_stop force=true</td><td>One char, prevents 30s Docker stop timeout</td></tr>
+    <tr><td>4</td><td>R3-M3 — ValueOrDie() → .Value()</td><td>Two lines, needed before Gumby cross-compile</td></tr>
+    <tr><td>5</td><td>R3-M2 — sync parse outside g_mutex</td><td>Tightens lock scope, low risk</td></tr>
+    <tr><td>6</td><td>R3-P2 — Row: map → unordered_map</td><td>High leverage, minimal interface change</td></tr>
+    <tr><td>7</td><td>R3-P1 — parse_topic: string_view split</td><td>Highest perf gain; after unordered_map to baseline</td></tr>
+    <tr><td>8</td><td>R3-N1 — parse_thread pipe sleep</td><td>ARM power budget — do before Gumby deployment</td></tr>
+    <tr><td>9</td><td>R3-N3 — SHM ring metrics in health</td><td>Implement alongside shm_ring.h (SHM-2)</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

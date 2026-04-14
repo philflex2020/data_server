@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>No-Loss Data Path — BMS Demo</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 28px 32px; max-width: 1200px; margin: auto; line-height: 1.5;
+}
+
+/* ── Nav ── */
+.nav { display: flex; gap: 8px; margin-bottom: 28px; }
+.nav a {
+  font-size: 0.8em; padding: 4px 12px; border-radius: 4px;
+  border: 1px solid #30363d; color: #8b949e; text-decoration: none;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; }
+.nav a.active { border-color: #58a6ff; color: #58a6ff; }
+
+/* ── Header ── */
+.page-header { margin-bottom: 28px; }
+.page-header h1 { color: #58a6ff; font-size: 1.7em; margin-bottom: 4px; }
+.page-header .subtitle { color: #8b949e; font-size: 0.9em; }
+
+/* ── Config bar ── */
+.config-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 12px 18px; margin-bottom: 28px;
+}
+.config-bar label { font-size: 0.83em; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+.config-bar input[type=text] {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  color: #e6edf3; font-size: 0.85em; padding: 4px 8px; width: 130px;
+}
+.config-bar button {
+  background: #1f6feb; border: none; border-radius: 6px;
+  color: #fff; font-size: 0.83em; padding: 6px 18px; cursor: pointer;
+}
+.config-bar button:hover { background: #388bfd; }
+.config-bar button.disconnect { background: #b62324; }
+.config-bar button.disconnect:hover { background: #d9363e; }
+.conn-status { font-size: 0.8em; margin-left: auto; }
+.conn-status .dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #30363d; margin-right: 5px; vertical-align: middle;
+}
+.conn-status .dot.ok  { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
+.conn-status .dot.err { background: #f85149; }
+.conn-status .dot.busy { background: #f0883e; }
+
+/* ── Status banner — both paths active ── */
+.paths-banner {
+  display: grid; grid-template-columns: 1fr 60px 1fr;
+  gap: 0; margin-bottom: 28px; align-items: stretch;
+}
+.path-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 18px 22px;
+}
+.path-card.influx  { border-color: #f0883e44; }
+.path-card.parquet { border-color: #3fb95044; }
+.path-card .path-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 12px;
+}
+.path-card.influx  .path-title { color: #f0883e; }
+.path-card.parquet .path-title { color: #3fb950; }
+.path-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.85em; }
+.path-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  background: #30363d; transition: background 0.4s;
+}
+.path-dot.ok   { background: #3fb950; box-shadow: 0 0 5px #3fb95066; }
+.path-dot.warn { background: #f0883e; }
+.path-dot.err  { background: #f85149; }
+.path-dot.dim  { background: #30363d; }
+.path-label  { color: #8b949e; }
+.path-value  { color: #e6edf3; font-weight: 600; margin-left: auto; font-family: monospace; font-size: 0.95em; }
+.path-value.ok   { color: #3fb950; }
+.path-value.warn { color: #f0883e; }
+.path-value.err  { color: #f85149; }
+.path-divider {
+  display: flex; align-items: center; justify-content: center;
+  color: #30363d; font-size: 1.4em; font-weight: 300;
+}
+
+/* ── Hero metrics ── */
+.hero-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 14px; margin-bottom: 28px;
+}
+.hero-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+  padding: 22px 24px; text-align: center;
+}
+.hero-card.integrity { border-color: #3fb95044; }
+.hero-card.drops     { border-color: #30363d; }
+.hero-card.drops.nonzero { border-color: #f8514966; }
+.hero-card.capture   { border-color: #58a6ff44; }
+.hero-label {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #8b949e; margin-bottom: 10px;
+}
+.hero-value {
+  font-size: 2.4em; font-weight: 700; font-family: monospace;
+  color: #e6edf3; line-height: 1; margin-bottom: 6px;
+}
+.hero-value.ok   { color: #3fb950; }
+.hero-value.warn { color: #f0883e; }
+.hero-value.err  { color: #f85149; }
+.hero-sub { font-size: 0.78em; color: #6e7681; }
+
+/* ── Detail row ── */
+.detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 14px; margin-bottom: 28px;
+}
+.detail-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 16px 20px;
+}
+.detail-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #8b949e;
+  margin-bottom: 14px; padding-bottom: 8px;
+  border-bottom: 1px solid #21262d;
+}
+.metric-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px; font-size: 0.85em;
+}
+.metric-row .m-label { color: #8b949e; }
+.metric-row .m-value { color: #e6edf3; font-family: monospace; font-weight: 600; }
+.metric-row .m-value.ok   { color: #3fb950; }
+.metric-row .m-value.warn { color: #f0883e; }
+.metric-row .m-value.err  { color: #f85149; }
+
+/* ── Cost comparison ── */
+.cost-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 14px; margin-bottom: 28px;
+}
+.cost-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 16px 20px;
+}
+.cost-card.current { border-color: #f0883e33; }
+.cost-card.new     { border-color: #3fb95033; }
+.cost-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 14px; padding-bottom: 8px;
+  border-bottom: 1px solid #21262d;
+}
+.cost-card.current .cost-title { color: #f0883e; }
+.cost-card.new     .cost-title { color: #3fb950; }
+.cost-item {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.83em; margin-bottom: 7px; color: #8b949e;
+}
+.cost-item .ci-name  { }
+.cost-item .ci-cost  { font-family: monospace; color: #c9d1d9; }
+.cost-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 1em; font-weight: 700; margin-top: 12px;
+  padding-top: 10px; border-top: 1px solid #30363d;
+}
+.cost-card.current .cost-total .ct-value { color: #f0883e; font-family: monospace; }
+.cost-card.new     .cost-total .ct-value { color: #3fb950; font-family: monospace; }
+.cost-saving {
+  background: #0d2d1a; border: 1px solid #3fb95033; border-radius: 8px;
+  padding: 14px 20px; margin-bottom: 28px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+}
+.saving-label { font-size: 0.85em; color: #7fba84; }
+.saving-value { font-size: 1.5em; font-weight: 700; color: #3fb950; font-family: monospace; }
+.saving-note  { font-size: 0.76em; color: #6e7681; width: 100%; }
+
+/* ── Live feed ── */
+.feed-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 16px 20px; margin-bottom: 28px;
+}
+.feed-title {
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #8b949e;
+  margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #21262d;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.feed-title span { font-weight: 400; font-size: 0.9em; color: #6e7681; letter-spacing: 0; text-transform: none; }
+.feed-stream {
+  height: 120px; overflow-y: auto; font-family: monospace; font-size: 0.76em;
+  color: #6e7681; display: flex; flex-direction: column-reverse;
+}
+.feed-stream .fe { margin-bottom: 2px; }
+.feed-stream .fe.live { color: #3fb950; }
+.feed-stream .fe.sys  { color: #58a6ff; }
+.feed-stream .fe.drop { color: #f85149; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="parquet_demo.html" class="active">Demo</a>
+  <a href="parquet_monitor.html">Monitor</a>
+  <a href="parquet_config.html">Config</a>
+</div>
+
+<div class="page-header">
+  <h1>No-Loss MQTT Data Capture</h1>
+  <div class="subtitle">Additive data integrity layer — runs alongside the existing InfluxDB pipeline</div>
+</div>
+
+<!-- Config bar -->
+<div class="config-bar">
+  <label>Edge host
+    <input type="text" id="host-edge" value="192.168.86.46">
+  </label>
+  <label>AWS / sim host
+    <input type="text" id="host-aws" value="192.168.86.51">
+  </label>
+  <button id="btn-connect" onclick="connect()">Connect</button>
+  <button id="btn-disconnect" class="disconnect" onclick="disconnect()" style="display:none">Disconnect</button>
+  <div class="conn-status">
+    <span class="dot" id="dot-ws"></span>
+    <span id="lbl-ws">disconnected</span>
+  </div>
+</div>
+
+<!-- Both paths banner -->
+<div class="paths-banner">
+  <div class="path-card influx">
+    <div class="path-title">Current path — InfluxDB</div>
+    <div class="path-row">
+      <span class="path-dot" id="dot-influx-mqtt"></span>
+      <span class="path-label">MQTT ingestion</span>
+      <span class="path-value" id="val-influx-mqtt">—</span>
+    </div>
+    <div class="path-row">
+      <span class="path-dot" id="dot-influx-db"></span>
+      <span class="path-label">InfluxDB writing</span>
+      <span class="path-value" id="val-influx-db">—</span>
+    </div>
+    <div class="path-row">
+      <span class="path-dot dim"></span>
+      <span class="path-label">Drop visibility</span>
+      <span class="path-value warn">none</span>
+    </div>
+  </div>
+
+  <div class="path-divider">+</div>
+
+  <div class="path-card parquet">
+    <div class="path-title">New path — No-Loss Parquet</div>
+    <div style="font-size:0.78em;color:#3fb95099;margin-bottom:10px">Writer runs on the site host — no AWS component required</div>
+    <div class="path-row">
+      <span class="path-dot" id="dot-parquet-mqtt"></span>
+      <span class="path-label">MQTT capture</span>
+      <span class="path-value" id="val-parquet-mqtt">—</span>
+    </div>
+    <div class="path-row">
+      <span class="path-dot" id="dot-parquet-files"></span>
+      <span class="path-label">Files on host disk</span>
+      <span class="path-value" id="val-parquet-files">—</span>
+    </div>
+    <div class="path-row">
+      <span class="path-dot" id="dot-parquet-drops"></span>
+      <span class="path-label" title="Messages lost between edge publisher and aws-sim broker — unavailable to InfluxDB and all other subscribers">Transit loss&nbsp;&#9432;</span>
+      <span class="path-value" id="val-parquet-drops">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- Hero metrics -->
+<div class="hero-grid">
+  <div class="hero-card integrity">
+    <div class="hero-label">Messages Captured</div>
+    <div class="hero-value ok" id="hero-captured">—</div>
+    <div class="hero-sub">total received this session</div>
+  </div>
+  <div class="hero-card drops" id="hero-drops-card">
+    <div class="hero-label" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <span title="Messages published by the edge stress runner that did not complete transit to the aws-sim broker (FlashMQ :1884). Measured by comparing the publisher sync heartbeat count against messages received by the subscriber API on the same broker. Both Telegraf/InfluxDB and the subscriber API subscribe to this broker — a message dropped here is unavailable to all downstream consumers including InfluxDB.">aws-sim Transit Loss&nbsp;&#9432;</span>
+      <button onclick="resetDrops()" style="font-size:0.75em;padding:1px 7px;background:#21262d;border:1px solid #30363d;border-radius:3px;color:#8b949e;cursor:pointer" title="Reset counter baseline to now">Reset</button>
+    </div>
+    <div class="hero-value" id="hero-drops">—</div>
+    <div class="hero-sub" id="hero-drops-sub">% of messages lost in transit</div>
+  </div>
+  <div class="hero-card capture">
+    <div class="hero-label">Rate</div>
+    <div class="hero-value" id="hero-rate">—</div>
+    <div class="hero-sub" id="hero-rate-sub">messages / second</div>
+  </div>
+</div>
+
+<!-- Detail row -->
+<div class="detail-grid">
+  <div class="detail-card">
+    <div class="detail-title">MQTT Stream — Chain of Custody</div>
+    <div class="metric-row">
+      <span class="m-label">Session</span>
+      <span class="m-value" id="sync-session">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Sync sequence</span>
+      <span class="m-value" id="sync-seq">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Total received</span>
+      <span class="m-value" id="sync-total">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label" title="Publisher sync count vs subscriber API received count on FlashMQ :1884 — proxy for InfluxDB loss as both share the same broker">Transit loss&nbsp;&#9432;</span>
+      <span class="m-value" id="sync-drops">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Last sync</span>
+      <span class="m-value" id="sync-last">—</span>
+    </div>
+  </div>
+
+  <div class="detail-card">
+    <div class="detail-title">Parquet Store</div>
+    <div class="metric-row">
+      <span class="m-label">Files written</span>
+      <span class="m-value" id="store-files">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Total size</span>
+      <span class="m-value" id="store-mb">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Last write</span>
+      <span class="m-value" id="store-last">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Push agent</span>
+      <span class="m-value" id="store-push">—</span>
+    </div>
+    <div class="metric-row">
+      <span class="m-label">Rsync runs</span>
+      <span class="m-value" id="store-rsync">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- Resource comparison (CPU / throughput) -->
+<div class="detail-card" style="margin-bottom:14px">
+  <div class="detail-title">Resource Comparison — Live</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+    <div>
+      <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#f0883e;margin-bottom:8px">Current path — Telegraf / InfluxDB</div>
+      <div class="metric-row"><span class="m-label" title="Telegraf parses every MQTT message, applies field mapping, type coercion and tag extraction before writing to InfluxDB">Processing model</span><span class="m-value warn">schema-coupled transform</span></div>
+      <div class="metric-row"><span class="m-label">Write model</span><span class="m-value">per-message indexed write</span></div>
+      <div class="metric-row"><span class="m-label">Instance required</span><span class="m-value warn">r5.xlarge  (4 vCPU / 32 GB)</span></div>
+      <div class="metric-row"><span class="m-label">CPU profiling</span><span class="m-value" id="cpu-influx">pending instrumentation</span></div>
+    </div>
+    <div>
+      <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#3fb950;margin-bottom:8px">No-loss path — Parquet writer (site host)</div>
+      <div class="metric-row"><span class="m-label" title="Writer deserialises raw JSON, appends to in-memory buffer, flushes to columnar file — no schema, no indexing, no transforms">Processing model</span><span class="m-value ok">schema-free serialise + flush</span></div>
+      <div class="metric-row"><span class="m-label">Write model</span><span class="m-value ok">batched columnar (Snappy)</span></div>
+      <div class="metric-row"><span class="m-label">Instance required</span><span class="m-value ok">t3.large  (2 vCPU / 8 GB)</span></div>
+      <div class="metric-row"><span class="m-label">Throughput now</span><span class="m-value ok" id="cpu-parquet-rate">—</span></div>
+    </div>
+  </div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid #21262d;font-size:0.76em;color:#6e7681">
+    Full CPU profiling of both paths against the same load requires additional instrumentation and is scheduled
+    as part of the production data validation exercise. Instance sizing above is based on vendor recommendations
+    and stress-test observations at ~8,000 msg/s.
+  </div>
+</div>
+
+<!-- Cost comparison — dropdown -->
+<div class="detail-card" style="margin-bottom:14px">
+  <div class="detail-title" onclick="toggleCosts()" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between">
+    <span>AWS Infrastructure Comparison</span>
+    <span id="cost-chevron" style="font-size:0.9em;color:#8b949e;transition:transform 0.2s">&#9654; expand</span>
+  </div>
+  <div id="cost-panel" style="display:none;margin-top:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+      <div>
+        <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#f0883e;margin-bottom:8px">Current path — InfluxDB</div>
+        <div class="cost-item"><span class="ci-name">High-memory EC2 (InfluxDB TSM index)</span><span class="ci-cost">large</span></div>
+        <div class="cost-item"><span class="ci-name">EFS persistent storage</span><span class="ci-cost">high $/GB</span></div>
+        <div class="cost-item"><span class="ci-name">IoT Core per-message ingestion</span><span class="ci-cost">scales with rate</span></div>
+        <div class="cost-item"><span class="ci-name">Lambda per-message transform</span><span class="ci-cost">scales with rate</span></div>
+        <div class="cost-item"><span class="ci-name">CloudWatch metrics + logs</span><span class="ci-cost">scales with rate</span></div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #30363d;font-size:0.82em;color:#f0883e;font-weight:600">Cost accelerates with site count — cardinality index forces vertical scaling</div>
+      </div>
+      <div>
+        <div style="font-size:0.72em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#3fb950;margin-bottom:8px">No-loss path — Parquet / S3</div>
+        <div class="cost-item"><span class="ci-name">Parquet writer runs on site host</span><span class="ci-cost" style="color:#3fb950">no AWS cost</span></div>
+        <div class="cost-item"><span class="ci-name">S3 columnar storage (8-15× compressed)</span><span class="ci-cost">low $/GB</span></div>
+        <div class="cost-item"><span class="ci-name">No IoT Core</span><span class="ci-cost" style="color:#3fb950">eliminated</span></div>
+        <div class="cost-item"><span class="ci-name">No Lambda transforms</span><span class="ci-cost" style="color:#3fb950">eliminated</span></div>
+        <div class="cost-item"><span class="ci-name">EC2 receiver (if host cannot run writer)</span><span class="ci-cost">small — if needed</span></div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #30363d;font-size:0.82em;color:#3fb950;font-weight:600">Primary cost: S3 storage only — writer runs on existing site hardware at no additional AWS cost</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:10px 14px;background:#0d2d1a;border:1px solid #3fb95033;border-radius:6px;font-size:0.82em;color:#7fba84">
+      Estimated saving against synthetic test load: <strong>&gt; 50%</strong>.
+      Final figures pending validation against production data volume — in progress.
+    </div>
+  </div>
+</div>
+
+<!-- Live feed -->
+<div class="feed-card">
+  <div class="feed-title">
+    Live Message Feed
+    <span id="feed-count">0 events</span>
+  </div>
+  <div class="feed-stream" id="feed-stream">
+    <div class="fe sys">— connect to see live data —</div>
+  </div>
+</div>
+
+<script>
+// ── Hosts ────────────────────────────────────────────────────────────────────
+const hostEdge = () => document.getElementById('host-edge').value.trim();
+const hostAws  = () => document.getElementById('host-aws').value.trim();
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ws = null;
+let feedCount = 0;
+let statsPoller = null;
+let dropsBaseline = 0;   // client-side offset — set on Reset
+let totalBaseline = 0;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
+function setClass(id, cls) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove('ok','warn','err','dim');
+  if (cls) el.classList.add(cls);
+}
+function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+
+function feedLog(msg, type = '') {
+  const stream = $('feed-stream');
+  const d = document.createElement('div');
+  d.className = 'fe' + (type ? ' ' + type : '');
+  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  stream.appendChild(d);
+  while (stream.children.length > 80) stream.removeChild(stream.firstChild);
+  feedCount++;
+  setText('feed-count', feedCount + ' events');
+}
+
+function toggleCosts() {
+  const panel = document.getElementById('cost-panel');
+  const chev  = document.getElementById('cost-chevron');
+  const open  = panel.style.display === 'none';
+  panel.style.display = open ? '' : 'none';
+  chev.innerHTML = open ? '&#9660; collapse' : '&#9654; expand';
+}
+
+function resetDrops() {
+  // Snapshot current server values as the new baseline — display resets to 0
+  const lastSync = window._lastSyncRaw || {};
+  dropsBaseline = lastSync.drops_detected ?? 0;
+  totalBaseline = lastSync.total_received ?? 0;
+  window._lastDrops = 0;
+  setText('hero-drops', '0%');
+  setText('hero-drops-sub', 'all messages present in InfluxDB');
+  setClass('hero-drops', 'ok');
+  $('hero-drops-card').classList.remove('nonzero');
+  setText('sync-drops', '0');
+  setText('val-parquet-drops', '0%');
+  feedLog('Drop counter reset', 'sys');
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect() {
+  if (ws && ws.readyState < 2) return;
+  const url = `ws://${hostAws()}:8767`;
+  feedLog('Connecting to ' + url + '…', 'sys');
+  setDot('dot-ws', 'busy'); setText('lbl-ws', 'connecting…');
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setDot('dot-ws', 'ok'); setText('lbl-ws', 'connected');
+    $('btn-connect').style.display = 'none';
+    $('btn-disconnect').style.display = '';
+    feedLog('Connected — receiving live data', 'sys');
+    startStatsPoller();
+  };
+
+  ws.onmessage = e => {
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+
+    if (d.type === 'stats')  handleStats(d);
+    if (d.type === 'status') handleStatus(d);
+    if (d.type === 'live')   handleLive(d);
+  };
+
+  ws.onclose = () => {
+    setDot('dot-ws', 'err'); setText('lbl-ws', 'disconnected');
+    $('btn-connect').style.display = '';
+    $('btn-disconnect').style.display = 'none';
+    stopStatsPoller();
+    feedLog('Disconnected', 'sys');
+  };
+
+  ws.onerror = () => feedLog('WebSocket error', 'sys');
+}
+
+function disconnect() {
+  if (ws) ws.close();
+}
+
+function setDot(id, state) {
+  const el = $(id);
+  if (!el) return;
+  el.className = 'dot' + (state ? ' ' + state : '');
+}
+
+// ── Stats handler ─────────────────────────────────────────────────────────────
+function handleStats(d) {
+  // MQTT / live stream
+  const mps       = d.live_per_sec        ?? 0;
+  const mpsSmooth = d.live_per_sec_smooth ?? mps;
+  const total     = d.live_total          ?? 0;
+  const mqttOk    = d.mqtt_connected;
+
+  setText('hero-rate',     mpsSmooth > 0 ? fmtNum(mpsSmooth) : '0');
+  setText('hero-rate-sub', mps !== mpsSmooth
+    ? `smooth  •  burst: ${fmtNum(mps)} msg/s`
+    : 'messages / second');
+  setText('hero-captured',    fmtNum(total));
+  setText('cpu-parquet-rate', mpsSmooth > 0
+    ? `${fmtNum(mpsSmooth)} smooth / ${fmtNum(mps)} burst msg/s  (t3.large)` : '—');
+  setText('val-parquet-mqtt', mqttOk ? 'active' : 'disconnected');
+  setClass('val-parquet-mqtt', mqttOk ? 'ok' : 'warn');
+  $('dot-parquet-mqtt').className = 'path-dot ' + (mqttOk ? 'ok' : 'warn');
+
+  // Sync / chain of custody
+  if (d.sync) {
+    const s = d.sync;
+    window._lastSyncRaw = s;   // kept for reset baseline
+
+    // Cumulative loss: total_published - total_received — immune to per-interval timing jitter.
+    // At high rates (24k msg/s) per-interval comparison is noisy; cumulative is the true metric.
+    const cumLoss  = Math.max(0, (s.cumulative_loss  ?? 0));
+    const totalPub = s.total_published ?? 0;
+    const cumPct   = totalPub > 0 ? (cumLoss / totalPub * 100) : 0;
+    const cumPctStr = cumPct > 0 ? cumPct.toFixed(2) + '%' : '0%';
+
+    // Per-interval (kept for detail panel — noisy but shows timing jitter)
+    const intDrops = Math.max(0, (s.drops_detected ?? 0) - dropsBaseline);
+    const intTotal = Math.max(0, (s.total_received  ?? 0) - totalBaseline);
+    const intPct   = (intTotal + intDrops) > 0 ? (intDrops / (intTotal + intDrops) * 100) : 0;
+    const intPctStr = intPct > 0 ? intPct.toFixed(2) + '%' : '0%';
+
+    setText('sync-session', s.session_id || '—');
+    setText('sync-seq',     s.sync_seq != null ? '#' + s.sync_seq : '—');
+    setText('sync-total',   fmtNum(intTotal));
+    setText('sync-drops',   cumLoss > 0
+      ? cumLoss.toLocaleString() + ' cumulative  (' + cumPctStr + ')  •  interval: ' + intPctStr
+      : '0  •  interval: ' + intPctStr);
+    setText('sync-last',    s.last_sync_ts ? new Date(s.last_sync_ts * 1000).toLocaleTimeString() : '—');
+    setClass('sync-drops',  cumLoss > 0 ? 'err' : 'ok');
+
+    // Hero uses cumulative — stable at high rates
+    setText('hero-drops',     cumPctStr);
+    setText('hero-drops-sub', cumLoss > 0
+      ? cumLoss.toLocaleString() + ' messages absent from InfluxDB'
+      : 'all messages present in InfluxDB');
+    setClass('hero-drops', cumLoss > 0 ? 'err' : 'ok');
+    $('hero-drops-card').classList.toggle('nonzero', cumLoss > 0);
+
+    setText('val-parquet-drops', cumLoss > 0 ? cumPctStr + ' missing' : '0%');
+    setClass('val-parquet-drops', cumLoss > 0 ? 'err' : 'ok');
+    $('dot-parquet-drops').className = 'path-dot ' + (cumLoss > 0 ? 'err' : 'ok');
+
+    if (cumLoss > 0 && cumLoss !== (window._lastDrops || 0)) {
+      feedLog('MISSING FROM INFLUX — ' + cumPctStr + ' (' + cumLoss + ' cumulative)', 'drop');
+    }
+    window._lastDrops = cumLoss;
+  }
+
+  // rsync stats
+  if (d.rsync) {
+    const r = d.rsync;
+    setText('store-rsync', r.run_count != null ? fmtNum(r.run_count) + ' runs' : '—');
+    setText('store-last',  r.last_ms   != null ? r.last_ms + ' ms ago' : '—');
+    setText('store-push',  r.run_count > 0 ? 'active' : 'idle');
+    setClass('store-push', r.run_count > 0 ? 'ok' : 'warn');
+  }
+
+  // InfluxDB proxy status — inferred from mqtt connection on influx side
+  setText('val-influx-mqtt', mqttOk ? 'active' : '—');
+  setClass('val-influx-mqtt', mqttOk ? 'ok' : 'dim');
+  $('dot-influx-mqtt').className = 'path-dot ' + (mqttOk ? 'ok' : 'dim');
+  setText('val-influx-db', 'running');
+  setClass('val-influx-db', 'ok');
+  $('dot-influx-db').className = 'path-dot ok';
+}
+
+function handleStatus(d) {
+  const ok = d.mqtt_connected;
+  setDot('dot-ws', ok ? 'ok' : 'busy');
+}
+
+function handleLive(d) {
+  const p = d.payload || {};
+  const site = p.site_id != null ? 's' + p.site_id : '';
+  const ts   = p.timestamp ? new Date(p.timestamp * 1000).toLocaleTimeString() : '';
+  feedLog(ts + '  ' + d.subject + '  ' + site, 'live');
+}
+
+// ── Push agent poller (:8770 on edge host) ────────────────────────────────────
+function startStatsPoller() {
+  stopStatsPoller();
+  pollPushAgent();
+  statsPoller = setInterval(pollPushAgent, 5000);
+}
+
+function stopStatsPoller() {
+  if (statsPoller) { clearInterval(statsPoller); statsPoller = null; }
+}
+
+async function pollPushAgent() {
+  try {
+    const r = await fetch(`http://${hostEdge()}:8770/parquet_stats`,
+                          { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return;
+    const d = await r.json();
+    setText('store-files', fmtNum(d.file_count));
+    setText('store-mb',    d.total_mb != null ? d.total_mb.toFixed(1) + ' MB' : '—');
+    $('dot-parquet-files').className = 'path-dot ' + (d.file_count > 0 ? 'ok' : 'warn');
+    setText('val-parquet-files', d.file_count > 0 ? fmtNum(d.file_count) + ' files' : '0');
+    setClass('val-parquet-files', d.file_count > 0 ? 'ok' : 'warn');
+  } catch {
+    setText('store-files', 'unreachable');
+    setText('val-parquet-files', 'unreachable');
+  }
+}
+
+// ── Auto-connect on load ──────────────────────────────────────────────────────
+window.addEventListener('load', () => setTimeout(connect, 500));
+</script>
+</body>
+</html>

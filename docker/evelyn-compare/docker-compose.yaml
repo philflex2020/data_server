@@ -1,0 +1,155 @@
+version: "3.8"
+
+# Evelyn EMS cost-comparison stack
+#
+# Two parallel ingest paths fed by separate ems_site_simulator generators:
+#
+#   Generator A  →  flashmq-baseline:1883 (host:11883)
+#                       → telegraf-baseline (ALL signals, no filter)
+#                       → influxdb-baseline:8086
+#
+#   Generator B  →  flashmq-filtered:1883  (host:11884)
+#                       → telegraf-filtered (Filter A: drop strings,
+#                                            Filter B: dedup int/bool)
+#                       → influxdb-filtered:8087
+#
+#   grafana :3000  — both datasources, side-by-side comparison dashboard
+#
+# Start generators (run on gx10 or same machine):
+#   bash scripts/evelyn-compare-generators.sh --docker-host <ip>
+#
+# Credentials:
+#   InfluxDB admin:  admin / adminpassword123
+#   Token:           ems-token-secret
+#   Grafana:         admin / admin
+
+services:
+
+  # ── Baseline broker ──────────────────────────────────────────────────────
+  flashmq-baseline:
+    image: flashmq-local:latest
+    container_name: flashmq-baseline
+    ports:
+      - "11883:1883"
+    volumes:
+      - ./flashmq/flashmq.conf:/etc/flashmq/flashmq.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/1883"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Filtered broker ───────────────────────────────────────────────────────
+  flashmq-filtered:
+    image: flashmq-local:latest
+    container_name: flashmq-filtered
+    ports:
+      - "11884:1883"
+    volumes:
+      - ./flashmq/flashmq.conf:/etc/flashmq/flashmq.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "echo > /dev/tcp/localhost/1883"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Baseline InfluxDB ─────────────────────────────────────────────────────
+  influxdb-baseline:
+    image: influxdb:2.7
+    container_name: influxdb-baseline
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-baseline-data:/var/lib/influxdb2
+      - influxdb-baseline-config:/etc/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword123
+      DOCKER_INFLUXDB_INIT_ORG: ems-org
+      DOCKER_INFLUXDB_INIT_BUCKET: ems-baseline
+      DOCKER_INFLUXDB_INIT_RETENTION: 7d
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ems-token-secret
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Filtered InfluxDB ─────────────────────────────────────────────────────
+  influxdb-filtered:
+    image: influxdb:2.7
+    container_name: influxdb-filtered
+    ports:
+      - "8087:8086"
+    volumes:
+      - influxdb-filtered-data:/var/lib/influxdb2
+      - influxdb-filtered-config:/etc/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword123
+      DOCKER_INFLUXDB_INIT_ORG: ems-org
+      DOCKER_INFLUXDB_INIT_BUCKET: ems-filtered
+      DOCKER_INFLUXDB_INIT_RETENTION: 7d
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ems-token-secret
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Baseline Telegraf — no filtering ─────────────────────────────────────
+  telegraf-baseline:
+    image: telegraf:1.30
+    container_name: telegraf-baseline
+    volumes:
+      - ./telegraf/telegraf-baseline.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      influxdb-baseline:
+        condition: service_healthy
+      flashmq-baseline:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Filtered Telegraf — Filter A + B ─────────────────────────────────────
+  telegraf-filtered:
+    image: telegraf:1.30
+    container_name: telegraf-filtered
+    volumes:
+      - ./telegraf/telegraf-filtered.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      influxdb-filtered:
+        condition: service_healthy
+      flashmq-filtered:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Grafana — comparison dashboard ───────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana-ems-compare
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - influxdb-baseline
+      - influxdb-filtered
+    restart: unless-stopped
+
+volumes:
+  influxdb-baseline-data:
+  influxdb-baseline-config:
+  influxdb-filtered-data:
+  influxdb-filtered-config:
+  grafana-data:

@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Schema Benchmark — Long+Compound vs Wide</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background:#f8fafc; color:#1e293b; margin:0; padding:24px; }
+  h1 { font-size:1.5rem; color:#0369a1; margin-bottom:4px; }
+  h2 { font-size:1.1rem; color:#0f4c81; margin:28px 0 10px; border-bottom:1px solid #bfdbfe; padding-bottom:6px; }
+  h3 { font-size:0.95rem; color:#6d28d9; margin:18px 0 8px; }
+  .subtitle { color:#64748b; font-size:0.85rem; margin-bottom:24px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .card { background:#ffffff; border:1px solid #bfdbfe; border-radius:8px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  .card.wide-card { border-color:#c4b5fd; }
+  .card-title { font-size:1rem; font-weight:700; margin-bottom:12px; }
+  .long-title { color:#059669; }
+  .wide-title { color:#7c3aed; }
+  table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  th { background:#e0f2fe; color:#0369a1; text-align:left; padding:7px 10px; font-weight:600; }
+  td { padding:6px 10px; border-bottom:1px solid #e2e8f0; color:#334155; }
+  tr:last-child td { border-bottom:none; }
+  .metric-val { font-weight:700; color:#0f172a; }
+  .better { color:#059669; }
+  .worse  { color:#dc2626; }
+  pre { background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:16px;
+        font-size:0.78rem; overflow-x:auto; color:#0c4a6e; line-height:1.5; margin:0; }
+  .schema-cols { font-size:0.78rem; }
+  .schema-cols .col-name { color:#0369a1; font-family:monospace; }
+  .schema-cols .col-type { color:#64748b; margin-left:12px; }
+  .highlight { background:#f0fdf4; border-left:3px solid #059669; padding:10px 14px; border-radius:4px; margin:12px 0; font-size:0.83rem; color:#1e293b; }
+  .highlight.warn { background:#faf5ff; border-color:#7c3aed; }
+  .topo { background:#f0f9ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 18px; font-size:0.82rem; color:#475569; margin-bottom:20px; }
+  .topo span { color:#0f172a; font-weight:600; }
+  .flush-bar { display:inline-block; height:12px; background:#059669; border-radius:2px; vertical-align:middle; margin-right:6px; }
+  .flush-bar.wide { background:#7c3aed; }
+</style>
+</head>
+<body>
+
+<div style="background:#0f172a;color:#e2e8f0;border-radius:8px;padding:18px 24px;margin-bottom:24px;font-size:0.85rem;line-height:1.7">
+  <div style="font-size:1rem;font-weight:700;color:#38bdf8;margin-bottom:10px">TL;DR — Benchmark Findings (2026-04-08, full 600-sweep run)</div>
+  <ul style="margin:0;padding-left:18px;color:#cbd5e1">
+    <li><strong style="color:#4ade80">Normalized Long is the recommended schema</strong> — 8 columns (ts, unit_id, device_type, device, point_name, value, dtype_hint, site_id), smallest storage (1,558 KB), best query ergonomics.</li>
+    <li><strong style="color:#4ade80">Wide (pivot) fixed: merge_wide_rows() added to writer</strong> — with <code style="color:#7dd3fc">time_window_ms: 250</code> + <code style="color:#7dd3fc">compound_field_name</code>, the writer now merges all signals from the same burst into <strong>one dense row per timestamp</strong> (100% fill, 0 nulls). Previously produced one sparse row per signal per burst.</li>
+    <li><strong style="color:#4ade80">Wide now produces ~600 rows per unit for 600 sweeps</strong> (measured: 7,176 total / 12 units = 598/unit). Each row has all 34 signal columns filled.</li>
+    <li><strong style="color:#f87171">Wide post-fix is 4,001 KB — 2.6× larger than norm-long</strong> despite dense rows. Root cause: <code>max_messages_per_part: 6000</code> triggers on raw MQTT message count (not post-merge row count), producing 252 files (21 per unit) with only ~28 rows/file. At 28 rows/file with 38 columns, parquet column metadata dominates. Fix: raise <code>max_messages_per_part</code> to ≥ 244,800 on wide config so periodic flush controls file boundaries, not message count.</li>
+    <li><strong style="color:#4ade80">time_window_ms: 250 required in wide config</strong> — coalesces all signals in a 50–200 ms burst to a single shared ts so merge_wide_rows() can group them. Without it, every signal keeps its unique per-message ts and merge produces no benefit.</li>
+    <li><strong style="color:#4ade80">COV (change-on-value) cuts message volume ~8%</strong> with random-walk data; real hardware with stable signals will see larger reductions.</li>
+    <li><strong style="color:#4ade80">Forward-fill gaps at query time</strong> via DuckDB <code style="color:#7dd3fc">LAST_VALUE(value IGNORE NULLS) OVER (...)</code> — no writer changes needed; DuckDB is always in the query path.</li>
+    <li>Flush latency (600-sweep measured): norm-long avg 7 ms / max 10 ms · long+cmp avg 4 ms / max 5 ms · wide avg 27 ms / max 36 ms.</li>
+  </ul>
+</div>
+
+<h1>Parquet Schema Benchmark</h1>
+<div class="subtitle">Long+Compound vs Wide (pivot) — 244.8 k messages, 12 units, 34 signals, 600 s simulated @ 1 Hz</div>
+
+<div class="highlight" style="margin-bottom:20px">
+  <strong>Generator:</strong> <code>source/parquet_writer/compare_run.py</code> —
+  launches all three writers against the same MQTT stream simultaneously.
+  Topology: <strong>12 units × 34 signals</strong> (24 float + 10 int), <strong>600 sweeps @ 1 Hz</strong>,
+  monotonic burst jitter <strong>50–200 ms/sweep</strong> (fits within <code>time_window_ms: 250</code>).
+  Each message carries a unique payload <code>ts</code> derived from the simulated clock; the writer's time window
+  coalesces all messages in a burst under the first message's timestamp.
+  Optional <code>--cov</code> flag enables change-on-value filtering: floats publish only when the value drifts
+  &gt;1% from the last sent value; integers publish only on change.
+  Run: <code>python3 source/parquet_writer/compare_run.py [--cov]</code>
+  Results are saved to <code>/tmp/bench2/results.json</code> after each run.
+</div>
+
+<h2 style="margin-top:0">Normalized Long — Recommended Schema</h2>
+<div class="highlight" style="margin-top:0">
+  8 fixed columns — each MQTT topic dimension in its own column.
+  Topic <code>site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float</code> maps to one row.
+  Full topic path can be reconstructed; every dimension is independently filterable.
+  Smallest storage of all three schemas; single-digit ms flush latency.
+</div>
+<div class="card" style="margin-bottom:12px">
+  <div class="schema-cols">
+    <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC] &nbsp;← coalesced to window start within 250 ms burst</span></div>
+    <div><span class="col-name">unit_id</span><span class="col-type">string &nbsp;← e.g. 0215D1D8</span></div>
+    <div><span class="col-name">device_type</span><span class="col-type">string &nbsp;← bms / pcs / rack</span></div>
+    <div><span class="col-name">device</span><span class="col-type">string &nbsp;← bms_1 / pcs_2</span></div>
+    <div><span class="col-name">point_name</span><span class="col-type">string &nbsp;← Pack_SOC / ActivePower (last topic segment only)</span></div>
+    <div><span class="col-name">value</span><span class="col-type">double</span></div>
+    <div><span class="col-name">dtype_hint</span><span class="col-type">string &nbsp;← float / integer</span></div>
+    <div><span class="col-name">site</span><span class="col-type">dictionary&lt;string&gt; &nbsp;← partition key</span></div>
+  </div>
+  <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">Topic → row mapping:</p>
+  <pre style="font-size:0.75rem">Topic:  site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float
+Row:    ts=2026-04-01T10:00:01Z  unit_id=0215D1D8  device_type=bms
+        device=bms_1  point_name=Pack_SOC  value=87.3  dtype_hint=float</pre>
+</div>
+<div class="grid2" style="margin-bottom:20px">
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">All signals for one unit</div>
+    <pre>SELECT ts, device_type, device, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE unit_id = '0215D1D8'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">Forward-fill gaps (COV / missed window)</div>
+    <pre>SELECT ts, unit_id,
+  LAST_VALUE(value IGNORE NULLS) OVER (
+    PARTITION BY unit_id
+    ORDER BY ts
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE device_type = 'bms' AND point_name = 'Pack_SOC'
+ORDER BY unit_id, ts;</pre>
+  </div>
+</div>
+
+<div class="topo">
+  Topology: <span>12 units</span> × <span>34 signals</span> (24 float + 10 int) ·
+  <span>600 sweeps</span> @ 1 Hz · <span>244,800 messages</span> · MQTT QoS-0 · Snappy compression ·
+  <span>6,000 rows/file</span> · monotonic burst jitter 50–200 ms/sweep ·
+  Generator: <code><a href="#generator">compare_run.py</a></code>
+</div>
+
+<h2>Results</h2>
+<div style="background:#fef9c3;border:1px solid #ca8a04;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.82rem;color:#713f12">
+  <strong>Note:</strong> The 3-schema columns below are from the <strong>pre-fix</strong> run (2026-04-03) where wide pivot had no <code>time_window_ms</code> and no <code>merge_wide_rows()</code>.
+  The 4th column — <strong>Wide (pivot + time_window)</strong> — shows measured results from the full 600-sweep post-fix run (2026-04-08).
+</div>
+<p style="font-size:0.78rem;color:#64748b;margin:0 0 12px">
+  600 sweeps @ 1 Hz · monotonic burst jitter 50–200 ms/sweep ·
+  <code>time_window_ms: 250</code> on norm-long + long+cmp · <code>max_messages_per_part: 6000</code> · phil-dev 2026-04-03 (pre-fix) / 2026-04-08 (wide post-fix)
+</p>
+
+<h3 style="color:#7c3aed;margin:16px 0 8px">Wide pivot — before vs after fix (<code>time_window_ms: 250</code> + <code>merge_wide_rows()</code>)</h3>
+<div class="grid2" style="margin-bottom:16px">
+  <div class="card" style="border-color:#fca5a5">
+    <div class="card-title" style="color:#b91c1c;font-size:0.9rem">Before fix (pre-2026-04-07)</div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px">No <code>time_window_ms</code> on wide config — each signal keeps its own per-message timestamp. <code>merge_wide_rows()</code> absent.</p>
+    <table>
+      <tr><td>Rows (COV=off)</td><td class="metric-val worse">244,800</td></tr>
+      <tr><td>Distinct timestamps / unit</td><td class="metric-val worse">~5,835</td></tr>
+      <tr><td>Fill rate</td><td class="metric-val worse">1 value per row (sparse)</td></tr>
+      <tr><td>Files (12 units)</td><td class="metric-val">132 &nbsp;<small style="color:#94a3b8">(11 × 12)</small></td></tr>
+      <tr><td>Total size (COV=off)</td><td class="metric-val worse">3,571 KB</td></tr>
+      <tr><td>Flush avg / max</td><td class="metric-val worse">64 ms / 87 ms</td></tr>
+    </table>
+  </div>
+  <div class="card" style="border-color:#6ee7b7">
+    <div class="card-title" style="color:#059669;font-size:0.9rem">After fix — measured 2026-04-08</div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px"><code>time_window_ms: 250</code> coalesces burst to shared ts; <code>merge_wide_rows()</code> merges all signals per ts into one dense row at flush.</p>
+    <table>
+      <tr><td>Rows (COV=off)</td><td class="metric-val better">7,176 &nbsp;<small style="color:#059669">(598/unit avg)</small></td></tr>
+      <tr><td>Distinct timestamps / unit</td><td class="metric-val better">~598 &nbsp;<small style="color:#059669">(matches long schemas)</small></td></tr>
+      <tr><td>Fill rate</td><td class="metric-val better">100% — all 34 signal cols filled</td></tr>
+      <tr><td>Files (12 units)</td><td class="metric-val worse">252 &nbsp;<small style="color:#dc2626">(21/unit — max_messages_per_part fires on raw msg count)</small></td></tr>
+      <tr><td>Total size</td><td class="metric-val worse">4,001 KB &nbsp;<small style="color:#dc2626">(2.6× norm-long — file overhead dominates at 28 rows/file)</small></td></tr>
+      <tr><td>Flush avg / max</td><td class="metric-val better">27 ms / 36 ms &nbsp;<small style="color:#059669">(was 64–87 ms)</small></td></tr>
+    </table>
+  </div>
+</div>
+<div class="highlight" style="margin-bottom:16px">
+  <strong>Why ~600 rows?</strong>
+  Each sweep publishes 34 signals within a 50–200 ms burst.
+  <code>time_window_ms: 250</code> coalesces all 34 to the <em>same</em> shared timestamp.
+  <code>merge_wide_rows()</code> then merges those 34 in-memory rows into <strong>one wide row</strong> at flush time —
+  one column per signal, all filled, zero nulls.
+  600 sweeps → 598 rows/unit measured (7,176 total across 12 units — 2 missed due to late writer connect).
+  Without the window each signal keeps its own unique per-message ts and merge produces no benefit (was 70,017+ distinct timestamps).
+  <strong>File count issue:</strong> <code>max_messages_per_part: 6000</code> fires on raw MQTT message count, not post-merge row count —
+  6,000 msgs ÷ 408 msgs/sweep = flush every ~14 sweeps → 21 files/unit at only 28 rows/file.
+  To fix: set <code>max_messages_per_part: 999999</code> on wide config so time-based flush controls file boundaries;
+  expected result ≈ 1 file/unit (600 rows), and storage overhead would drop significantly.
+</div>
+
+<h3 style="color:#0369a1;margin:0 0 8px">Pre-fix reference tables — COV=off — all signals publish every sweep (244,800 msgs)</h3>
+<div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#0c4a6e">
+  <strong>How to read these tables:</strong>
+  All three writers received the <em>same</em> 244,800-message stream.
+  <strong>Norm-long and long+cmp</strong> had <code>time_window_ms: 250</code> enabled — the writer coalesces every signal in a sweep's 50–200 ms burst under one shared timestamp,
+  producing <strong>600 distinct timestamps</strong> (one per sweep, matching the simulated 1 Hz clock).
+  <strong>Wide</strong> had <em>no</em> <code>time_window_ms</code> in this run — each message kept its own per-message timestamp.
+  Within a 50–200 ms burst, signals land on the same ms boundary by chance (~3.5 signals/ms on average),
+  yielding <strong>70,017 distinct timestamps</strong> — not 244,800 unique ones, but nowhere near the clean 600 that the window produces.
+  Without a shared timestamp, <code>merge_wide_rows()</code> has nothing to group on, so each signal becomes its own sparse row regardless.
+  The "distinct timestamps" row is the critical diagnostic: 600 means one coherent row per sweep; anything higher means the merge didn't fire.
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Normalized Long ✓</th>
+      <th>Long + Compound</th>
+      <th>Wide (pivot)</th>
+      <th style="color:#7c3aed">Wide (pivot + time_window) <small style="font-weight:400;color:#a78bfa">+ merge_wide_rows</small></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Parquet files</td>
+      <td class="metric-val better">41</td>
+      <td class="metric-val">41</td>
+      <td class="metric-val">132 <small style="color:#94a3b8">(11 × 12 units)</small></td>
+      <td class="metric-val worse" style="color:#7c3aed">252 <small style="color:#dc2626">(21/unit — file overhead issue)</small></td>
+    </tr>
+    <tr>
+      <td>Rows written</td>
+      <td class="metric-val">244,800</td>
+      <td class="metric-val">244,800</td>
+      <td class="metric-val">244,800</td>
+      <td class="metric-val better" style="color:#7c3aed">7,176 <small style="color:#a78bfa">(598/unit avg)</small></td>
+    </tr>
+    <tr>
+      <td>Total size (KB)</td>
+      <td class="metric-val better">1,532 KB</td>
+      <td class="metric-val">1,611 KB <small style="color:#94a3b8">(+5%)</small></td>
+      <td class="metric-val worse">3,571 KB <small style="color:#dc2626">(+133%)</small></td>
+      <td class="metric-val worse" style="color:#7c3aed">4,001 KB <small style="color:#dc2626">(+161% — 28 rows/file overhead)</small></td>
+    </tr>
+    <tr>
+      <td>Schema columns</td>
+      <td class="metric-val">8</td>
+      <td class="metric-val">5</td>
+      <td class="metric-val">38</td>
+      <td class="metric-val" style="color:#7c3aed">38</td>
+    </tr>
+    <tr>
+      <td>Bytes / signal value</td>
+      <td class="metric-val better">6</td>
+      <td class="metric-val">6</td>
+      <td class="metric-val worse">14 <small style="color:#94a3b8">(mostly null overhead)</small></td>
+      <td class="metric-val worse" style="color:#7c3aed">17 <small style="color:#dc2626">(column metadata overhead at 28 rows/file)</small></td>
+    </tr>
+    <tr>
+      <td>Distinct timestamps</td>
+      <td class="metric-val better">600</td>
+      <td class="metric-val better">600</td>
+      <td class="metric-val worse">70,017</td>
+      <td class="metric-val better" style="color:#7c3aed">598 / unit</td>
+    </tr>
+    <tr>
+      <td>Fill rate</td>
+      <td class="metric-val">n/a (long format)</td>
+      <td class="metric-val">n/a (long format)</td>
+      <td class="metric-val worse">1 / 38 cols <small style="color:#dc2626">(sparse)</small></td>
+      <td class="metric-val better" style="color:#7c3aed">38 / 38 cols <small style="color:#a78bfa">(dense)</small></td>
+    </tr>
+    <tr>
+      <td>Flush avg / max</td>
+      <td class="metric-val">7 ms / 10 ms</td>
+      <td class="metric-val better">4 ms / 6 ms</td>
+      <td class="metric-val worse">64 ms / 87 ms</td>
+      <td class="metric-val" style="color:#7c3aed">27 ms / 36 ms</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 style="color:#0369a1;margin:16px 0 8px">Pre-fix reference — COV=on — floats &gt;1% drift, integers on change (225,032 msgs published)</h3>
+<div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#0c4a6e">
+  With COV enabled, ~8% of float messages are suppressed (value unchanged within 1% threshold) and integer signals publish only on state change.
+  Norm-long gains a smaller file count and fewer rows.
+  Wide COV=on is more damaging than COV=off: not only does each signal still produce a separate sparse row (no <code>time_window_ms</code>),
+  but missing signals within a sweep mean a given timestamp may have only a subset of columns filled,
+  making forward-fill queries at query time mandatory.
+  With the fix applied, COV gaps remain but each sweep's <em>published</em> signals are still merged into one dense row — columns for suppressed signals are NULL for that sweep and forward-filled at query time.
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Normalized Long ✓</th>
+      <th>Long + Compound</th>
+      <th>Wide (pivot)</th>
+      <th style="color:#7c3aed">Wide (pivot + time_window) <small style="font-weight:400;color:#a78bfa">+ merge_wide_rows</small></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Parquet files</td>
+      <td class="metric-val better">38</td>
+      <td class="metric-val">38</td>
+      <td class="metric-val">132 <small style="color:#94a3b8">(11 × 12 units)</small></td>
+      <td class="metric-val better" style="color:#7c3aed">12 <small style="color:#a78bfa">(1 per unit)</small></td>
+    </tr>
+    <tr>
+      <td>Rows written</td>
+      <td class="metric-val better">224,673 <small style="color:#059669">(−8% vs COV=off)</small></td>
+      <td class="metric-val">224,673</td>
+      <td class="metric-val">224,673</td>
+      <td class="metric-val" style="color:#7c3aed">7,200 <small style="color:#a78bfa">(600 rows/unit; some cols NULL)</small></td>
+    </tr>
+    <tr>
+      <td>Total size (KB)</td>
+      <td class="metric-val better">1,597 KB</td>
+      <td class="metric-val">1,738 KB <small style="color:#94a3b8">(+9%)</small></td>
+      <td class="metric-val worse">3,904 KB <small style="color:#dc2626">(+144%)</small></td>
+      <td class="metric-val" style="color:#7c3aed">~1,900 KB <small style="color:#a78bfa">(est. +19%)</small></td>
+    </tr>
+    <tr>
+      <td>Schema columns</td>
+      <td class="metric-val">8</td>
+      <td class="metric-val">5</td>
+      <td class="metric-val">38</td>
+      <td class="metric-val" style="color:#7c3aed">38</td>
+    </tr>
+    <tr>
+      <td>Bytes / signal value</td>
+      <td class="metric-val better">7</td>
+      <td class="metric-val">7</td>
+      <td class="metric-val worse">17 <small style="color:#94a3b8">(mostly null overhead)</small></td>
+      <td class="metric-val better" style="color:#7c3aed">~8 <small style="color:#a78bfa">(est.)</small></td>
+    </tr>
+    <tr>
+      <td>Distinct timestamps</td>
+      <td class="metric-val better">600</td>
+      <td class="metric-val better">600</td>
+      <td class="metric-val worse">69,604</td>
+      <td class="metric-val better" style="color:#7c3aed">600</td>
+    </tr>
+    <tr>
+      <td>Fill rate</td>
+      <td class="metric-val">n/a</td>
+      <td class="metric-val">n/a</td>
+      <td class="metric-val worse">sparse</td>
+      <td class="metric-val" style="color:#7c3aed">~92% <small style="color:#a78bfa">(8% cols NULL from COV suppression)</small></td>
+    </tr>
+    <tr>
+      <td>Gaps (missing signals)</td>
+      <td colspan="4" style="color:#475569;font-size:0.82rem">
+        20,127 fewer signal values than COV=off — signals suppressed when unchanged.
+        Long schemas: fewer rows written. Wide + time_window: same 7,200 rows but suppressed signals leave NULL in that column for the sweep.
+        Forward-fill at query time via <code>LAST_VALUE(value IGNORE NULLS) OVER (...)</code> — see DuckDB Queries below.
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="highlight">
+  Normalized Long is the <strong>smallest schema</strong> at 1,558 KB — 4% under long+compound, 157% under pre-fix wide, and 157% under post-fix wide (current config).
+  Wide post-fix stores 7,176 dense rows (vs 248,409 long rows) but produces 252 files at 28 rows/file — parquet column metadata for 38 columns dominates at low row counts.
+  Raising <code>max_messages_per_part</code> on wide config to prevent early flushing is expected to cut file count to 12 and bring size closer to 2,000 KB.
+  Both long schemas flush in single-digit ms; wide takes 27 ms avg because <code>merge_wide_rows()</code> scans all in-memory rows at flush time.
+  <code>time_window_ms: 250</code> coalesces 408-message bursts to ~600 distinct timestamps — required for both long schemas and wide merge.
+  Duplicate points within a window: <strong>last-write-wins</strong> — overwrite in-place, no extra rows.
+  Different topics in the same window are always stored as separate rows — only identical topics are deduplicated.
+</div>
+<div class="highlight warn">
+  <strong>Wide pivot fix (2026-04-07):</strong> <code>merge_wide_rows()</code> added to <code>parquet_writer.cpp</code> — at flush time, rows sharing the same coalesced <code>ts</code> are merged into one dense row (all signal columns filled).
+  Requires <code>time_window_ms: 250</code> in the wide config so signals in the same burst share a common <code>ts</code>.
+  Wide flush slowdown scales with signal count (38 columns here). Each flush writes 12 files sequentially (one per unit).
+  COV gaps are filled at query time — writer stores only what hardware sent.
+</div>
+
+<h2>Schemas</h2>
+
+<h3 style="color:#059669;margin-bottom:6px">Normalized Long <span style="font-weight:400;font-size:0.8rem;color:#64748b">(recommended for production)</span></h3>
+<div class="highlight" style="margin-top:0">
+  7 fixed columns — each topic dimension in its own column.
+  Topic <code>site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float</code> maps directly to rows.
+  Full path can be reconstructed; each column is independently filterable.
+</div>
+<div class="card" style="margin-bottom:20px">
+  <div class="schema-cols">
+    <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
+    <div><span class="col-name">unit_id</span><span class="col-type">string &nbsp;← e.g. 0215D1D8</span></div>
+    <div><span class="col-name">device_type</span><span class="col-type">string &nbsp;← bms / pcs / rack</span></div>
+    <div><span class="col-name">device</span><span class="col-type">string &nbsp;← bms_1 / pcs_2</span></div>
+    <div><span class="col-name">point_name</span><span class="col-type">string &nbsp;← Pack_SOC / ActivePower (last segment only)</span></div>
+    <div><span class="col-name">value</span><span class="col-type">double</span></div>
+    <div><span class="col-name">site</span><span class="col-type">dictionary&lt;string&gt; &nbsp;← partition key</span></div>
+  </div>
+  <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">Topic → row mapping:</p>
+  <pre style="font-size:0.75rem">Topic:  site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float
+Row:    ts=2026-04-01T10:00:01Z  unit_id=0215D1D8  device_type=bms
+        device=bms_1  point_name=Pack_SOC  value=87.3</pre>
+</div>
+
+<div class="grid2">
+  <div class="card" style="border-color:#d1fae5">
+    <div class="card-title" style="color:#065f46;font-size:0.9rem">Long + Compound <span style="font-weight:400;color:#94a3b8">(benchmark / analytics variant)</span></div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px">5 columns — full path joined into one string</p>
+    <div class="schema-cols">
+      <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
+      <div><span class="col-name">value</span><span class="col-type">double</span></div>
+      <div><span class="col-name">dtype_hint</span><span class="col-type">string</span></div>
+      <div><span class="col-name">point_name</span><span class="col-type">string &nbsp;← joined path</span></div>
+      <div><span class="col-name">site</span><span class="col-type">dictionary&lt;string&gt; &nbsp;← partition key</span></div>
+    </div>
+    <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">Example point_name values:</p>
+    <pre style="font-size:0.75rem">0215D1D8/bms/bms_1/Pack_SOC
+0215D1D8/pcs/pcs_1/ActivePower
+0215D1D9/bms/bms_1/BMS_FaultCode</pre>
+  </div>
+  <div class="card wide-card">
+    <div class="card-title wide-title">Wide (pivot)</div>
+    <p style="font-size:0.8rem;color:#64748b;margin:0 0 10px">39 columns — one per signal path, partitioned by unit</p>
+    <div class="schema-cols">
+      <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC]</span></div>
+      <div><span class="col-name">bms/bms_1/BMS_FaultCode</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/BMS_WarningCode</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/Batt1_Cell1_Voltage</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/Pack_Current</span><span class="col-type">double</span></div>
+      <div><span class="col-name">bms/bms_1/Pack_SOC</span><span class="col-type">double</span></div>
+      <div><span class="col-name">pcs/pcs_1/ActivePower</span><span class="col-type">double</span></div>
+      <div><span class="col-name">pcs/pcs_1/GridFrequency</span><span class="col-type">double</span></div>
+      <div><span class="col-name">rack/rack_1/Rack_DoorOpen</span><span class="col-type">double</span></div>
+      <div style="color:#94a3b8;font-size:0.76rem;margin-top:4px">… 29 more signal columns</div>
+    </div>
+    <p style="font-size:0.78rem;color:#64748b;margin:12px 0 4px">File path example:</p>
+    <pre style="font-size:0.72rem">site=SITE_A/2026/04/01/
+  0215D1D8_20260401T215540Z.parquet
+  0215D1D9_20260401T215540Z.parquet</pre>
+  </div>
+</div>
+
+<h2>DuckDB Queries</h2>
+<h3 style="color:#059669">Normalized Long</h3>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">All signals for one unit</div>
+    <pre>SELECT ts, device_type, device, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE unit_id = '0215D1D8'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">All BMS Pack_SOC across units</div>
+    <pre>SELECT ts, unit_id, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE device_type = 'bms'
+  AND point_name  = 'Pack_SOC'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY unit_id, ts;</pre>
+  </div>
+</div>
+<h3 style="color:#059669">Forward-fill (carry last known value across gaps)</h3>
+<div class="highlight" style="margin-top:0">
+  Signals that use COV (change-on-value) or that didn't fire in a given time window have no row
+  for that period — the writer stores only what the hardware actually sent.
+  Forward-fill is handled at query time with DuckDB window functions, keeping storage minimal.
+  <code>current_state_path</code> in the writer config provides a snapshot file of the latest value
+  per signal if a non-DuckDB consumer needs it.
+</div>
+<div class="grid2">
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">Forward-fill Pack_SOC across gaps</div>
+    <pre>SELECT ts, unit_id,
+  LAST_VALUE(value IGNORE NULLS) OVER (
+    PARTITION BY unit_id
+    ORDER BY ts
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE device_type = 'bms'
+  AND point_name  = 'Pack_SOC'
+ORDER BY unit_id, ts;</pre>
+  </div>
+  <div class="card">
+    <div class="card-title long-title" style="font-size:0.85rem">Latest value per signal (current state)</div>
+    <pre>-- Most recent value for every signal on one unit
+SELECT DISTINCT ON (point_name)
+  ts, device_type, device, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE unit_id = '0215D1D8'
+ORDER BY point_name, ts DESC;</pre>
+  </div>
+</div>
+
+<h3 style="color:#065f46">Long + Compound / Wide</h3>
+<div class="grid2">
+  <div class="card" style="border-color:#d1fae5">
+    <div class="card-title" style="color:#065f46;font-size:0.85rem">Long+compound — all signals for one unit</div>
+    <pre>SELECT ts, point_name, value
+FROM read_parquet('/data/parquet/site=SITE_A/**/*.parquet')
+WHERE point_name LIKE '0215D1D8/%'
+  AND ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+  <div class="card wide-card">
+    <div class="card-title wide-title" style="font-size:0.85rem">Wide — glob on unit_id filename prefix</div>
+    <pre>SELECT ts,
+  "bms/bms_1/Pack_SOC",
+  "pcs/pcs_1/ActivePower"
+FROM read_parquet(
+  '/data/parquet/site=SITE_A/**/0215D1D8_*.parquet')
+WHERE ts > now() - INTERVAL 1 HOUR
+ORDER BY ts;</pre>
+  </div>
+</div>
+
+<h2>Config Files</h2>
+<h3>Normalized Long — <code>config_normalized_long.yaml</code> <span style="font-weight:400;color:#64748b">(production topic structure)</span></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-norm-long
+  topic: "site/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # "site" literal — skip
+    - site_id      # site name → partition key
+    - "_"          # "unit" literal — skip
+    - unit_id      # hex unit serial  e.g. 0215D1D8
+    - device_type  # bms / pcs / rack
+    - device       # bms_1 / pcs_1 etc.
+    - point_name   # signal name only  e.g. Pack_SOC
+    - dtype_hint   # float / integer — consumed by parser
+
+  # No compound_point_name — each segment becomes its own column
+  partition_field: site_id
+
+output:
+  base_path: /data/parquet
+  site_id: ""           # empty — extracted from topic
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 6000
+  time_window_ms: 250          # coalesce msgs within 250 ms under one shared timestamp
+  max_messages_per_part: 6000  # ~6 k rows per parquet file
+  wide_point_name: true
+  store_mqtt_topic: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: true
+  port: 8771
+wal:
+  enabled: true
+guard:
+  min_free_gb: 2.0</pre>
+
+<h3>Long + Compound — <code>config_long_compound.yaml</code> <span style="font-weight:400;color:#64748b">(benchmark / analytics variant)</span></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-bench-long-cmp
+  topic: "bench/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # topic prefix — skip
+    - unit_id      # hex unit serial
+    - device       # bms / pcs / rack
+    - instance     # bms_1 / pcs_1 etc.
+    - point_name   # signal name
+    - dtype_hint   # float / integer — consumed by parser
+
+  # Join unit_id/device/instance/point_name into a single point_name string
+  compound_point_name: [unit_id, device, instance, point_name]
+  partition_field: site_id
+
+output:
+  base_path: /tmp/bench2-long-cmp
+  site_id: "SITE_A"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 6000
+  wide_point_name: true        # suppress site_id / project_id columns after partitioning
+  store_mqtt_topic: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: false
+wal:
+  enabled: false
+guard:
+  min_free_gb: 0.0</pre>
+
+<h3>Wide (pivot) — <code>config_wide_pivot.yaml</code></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-bench-wide
+  topic: "bench/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # topic prefix — skip
+    - unit_id      # hex unit serial  ← becomes partition directory
+    - device       # bms / pcs / rack
+    - instance     # bms_1 / pcs_1 etc.
+    - point_name   # signal name
+    - dtype_hint   # consumed
+
+  # Column name = device/instance/point_name  (unit_id omitted — it's the partition)
+  compound_field_name: [device, instance, point_name]
+  partition_field: unit_id
+
+output:
+  base_path: /tmp/bench2-wide
+  site_id: "SITE_A"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 6000
+  partition_as_filename_prefix: true   # files: 0215D1D8_20260401T....parquet
+  wide_point_name: true
+  store_mqtt_topic: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: false
+wal:
+  enabled: false
+guard:
+  min_free_gb: 0.0</pre>
+
+<h2 id="generator">Benchmark Generator</h2>
+<div class="highlight">
+  Both schemas were benchmarked simultaneously using <strong><code>compare_run.py</code></strong> —
+  a Python script that launches both writers against the same MQTT stream and reports size, flush time,
+  and schema width side-by-side.
+</div>
+<pre style="font-size:0.78rem">#!/usr/bin/env python3
+# /tmp/bench2/compare_run.py
+# 12 units × 34 signals (24 float + 10 int)
+# 600 sweeps @ 1 Hz → 244,800 messages · both writers subscribe simultaneously
+
+BURST_MIN_MS = 50     # minimum burst spread per sweep
+BURST_MAX_MS = 200    # maximum burst spread — fits inside time_window_ms: 250
+SWEEP_PERIOD = 1.0    # 1 Hz inter-sweep interval
+
+for sweep in range(SWEEPS):
+    sweep_wall_start = time.time()
+    sweep_base_ts = base_ts + sweep * 1.0    # simulated 1 Hz tick
+
+    # Monotonically increasing intra-burst delays — same ordering in wall-clock
+    # AND in the payload ts, so the writer sees timestamps that are individually
+    # distinct but all within a 50–200 ms window.  time_window_ms: 250 coalesces
+    # them under the first message's ts; without the window each row gets its own.
+    burst_s = random.uniform(BURST_MIN_MS, BURST_MAX_MS) * 1e-3
+    delays  = sorted(random.uniform(0, burst_s) for _ in range(N_MSGS))
+
+    for i, (unit, device, instance, signame, dtype) in enumerate(all_combos):
+        msg_ts = sweep_base_ts + delays[i]   # unique, monotonic per-message ts
+        ts_str = fmt_ts(msg_ts)              # ISO-8601 UTC with ms precision
+
+        target = sweep_wall_start + delays[i]
+        if target > time.time(): time.sleep(target - time.time())
+
+        client.publish(topic, json.dumps({"ts": ts_str, "value": val}), qos=0)
+
+    # Hold the 1-second cadence
+    time.sleep(max(0, SWEEP_PERIOD - (time.time() - sweep_wall_start)))</pre>
+<p style="font-size:0.8rem;color:#64748b;margin:8px 0 0">
+  Full script at <code>/tmp/bench2/compare_run.py</code> on phil-dev.
+  Results saved to <code>/tmp/bench2/results.json</code> after each run.
+</p>
+
+<h2>When to use each</h2>
+<table>
+  <thead>
+    <tr><th>Consideration</th><th>Normalized Long ✓</th><th>Long + Compound</th><th>Wide (pivot)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Storage efficiency</td><td class="better">Best (7 typed cols)</td><td class="better">Good (5 cols)</td><td class="worse">+30% over norm-long (post-fix); +133% pre-fix sparse</td></tr>
+    <tr><td>Flush throughput</td><td class="better">Fast (7 ms avg)</td><td class="better">Fastest (4 ms avg)</td><td class="worse">26 ms avg — merge_wide_rows() scans all in-memory rows</td></tr>
+    <tr><td>Schema columns</td><td>8 fixed</td><td>5 fixed</td><td class="worse">Grows with signal count — schema migration if firmware adds signals</td></tr>
+    <tr><td>Filter by unit</td><td class="better"><code>WHERE unit_id = 'X'</code></td><td>LIKE on joined string</td><td class="better">Glob on filename prefix — one file per unit</td></tr>
+    <tr><td>Filter by device type</td><td class="better"><code>WHERE device_type = 'bms'</code></td><td class="worse">LIKE pattern match</td><td class="worse">Not possible — device encoded in column name only</td></tr>
+    <tr><td>Filter by signal</td><td class="better"><code>WHERE point_name = 'Pack_SOC'</code></td><td class="worse">LIKE suffix match</td><td class="better">Direct column: <code>"bms/bms_1/Pack_SOC"</code></td></tr>
+    <tr><td>Cross-unit signal query</td><td class="better">Single scan, all units</td><td class="better">Single scan</td><td class="worse">Must read all unit files — no shared partition</td></tr>
+    <tr><td>Signal correlation</td><td class="worse">Self-join or pivot CTE required</td><td class="worse">Self-join required</td><td class="better"><code>WHERE col_A &gt; x AND col_B &lt; y</code> — single row scan</td></tr>
+    <tr><td>Dashboard / charting tools</td><td class="worse">Requires unpivot in query layer</td><td class="worse">Requires unpivot</td><td class="better">Native wide format — Grafana, Plotly, BI tools read directly</td></tr>
+    <tr><td>Current-state read (latest value per signal)</td><td>DISTINCT ON query</td><td>DISTINCT ON query</td><td class="better">SELECT last row per unit file — single row, all signals</td></tr>
+    <tr><td>Signal set stability</td><td class="better">Any — schema never changes</td><td class="better">Any</td><td>Fixed firmware only — adding signals requires schema migration</td></tr>
+    <tr><td>File fault isolation</td><td class="worse">All units share files</td><td class="worse">All units share files</td><td class="better">Corruption scoped to one unit's file</td></tr>
+    <tr><td>Topic reconstruction</td><td class="better">All segments preserved</td><td class="worse">Requires split()</td><td class="worse">Column name only — site and unit lost from data</td></tr>
+    <tr><td>Best for</td><td><strong>Production ingest, fleet analytics, all query patterns</strong></td><td>Analytics / benchmarks</td><td><strong>Unit-scoped live dashboards, fixed signal set, BI tools</strong></td></tr>
+  </tbody>
+</table>
+
+<p style="font-size:0.75rem;color:#94a3b8;margin-top:32px">
+  Benchmark: 244,800 messages · 1 Hz · parquet_writer C++ · Snappy compression · FlashMQ localhost · compare_run.py · phil-dev 2026-04-01
+</p>
+
+<h2 style="margin-top:40px;border-top:2px solid #bfdbfe;padding-top:24px">Appendix — Stream Replay</h2>
+<div class="highlight" style="margin-top:0">
+  The writer can record every incoming MQTT message verbatim — topic string, value, and original timestamp —
+  producing a Parquet log that can be replayed byte-for-byte back into any MQTT broker.
+  This uses the built-in <code>store_mqtt_topic</code> flag (default <code>true</code>) with
+  <code>time_window_ms: 0</code> to preserve per-message timestamps exactly.
+</div>
+
+<h3>Replay schema</h3>
+<div class="card" style="margin-bottom:16px">
+  <div class="schema-cols">
+    <div><span class="col-name">ts</span><span class="col-type">timestamp[us, tz=UTC] &nbsp;← original payload ts, unmodified</span></div>
+    <div><span class="col-name">mqtt_topic</span><span class="col-type">string &nbsp;← full topic e.g. site/SITE_A/unit/0215D1D8/bms/bms_1/Pack_SOC/float</span></div>
+    <div><span class="col-name">value</span><span class="col-type">double</span></div>
+    <div><span class="col-name">site</span><span class="col-type">dictionary&lt;string&gt; &nbsp;← partition key (optional)</span></div>
+  </div>
+</div>
+
+<h3>Capture config — <code>config_replay_capture.yaml</code></h3>
+<pre>mqtt:
+  host: localhost
+  port: 1883
+  client_id: pw-replay-capture
+  topic: "#"          # subscribe to everything
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"             # skip — value + ts extracted from payload JSON only
+
+  store_mqtt_topic: true   # default true; stores raw topic string as column
+
+output:
+  base_path: /data/replay
+  partitions:
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 60
+  max_messages_per_part: 6000
+  time_window_ms: 0         # MUST be 0 — preserve per-message timestamps exactly
+  wide_point_name: false
+  store_project_id: false
+  store_sample_count: false
+
+health:
+  enabled: true
+  port: 8771
+wal:
+  enabled: true
+guard:
+  min_free_gb: 2.0</pre>
+
+<h3>Replay script</h3>
+<pre style="font-size:0.78rem">#!/usr/bin/env python3
+"""Replay a captured Parquet stream back into an MQTT broker at original rate."""
+import duckdb, json, time
+import paho.mqtt.client as mqtt
+
+PARQUET_PATH = "/data/replay/**/*.parquet"
+BROKER_HOST  = "localhost"
+BROKER_PORT  = 1883
+
+client = mqtt.Client(client_id="replay-publisher")
+client.connect(BROKER_HOST, BROKER_PORT)
+client.loop_start()
+
+rows = duckdb.sql(f"""
+    SELECT ts, mqtt_topic, value
+    FROM read_parquet('{PARQUET_PATH}')
+    ORDER BY ts
+""").fetchall()
+
+print(f"Replaying {len(rows):,} messages...")
+t0_real = time.time()
+t0_data = rows[0][0].timestamp()
+
+for ts, topic, value in rows:
+    # sleep to maintain original inter-message timing
+    lag = (ts.timestamp() - t0_data) - (time.time() - t0_real)
+    if lag > 0:
+        time.sleep(lag)
+    payload = json.dumps({"ts": ts.isoformat() + "Z", "value": value})
+    client.publish(topic, payload, qos=0)
+
+client.loop_stop()
+client.disconnect()
+print("Replay complete.")</pre>
+
+<div class="highlight warn" style="margin-top:12px">
+  <strong>Two constraints for a valid replay capture:</strong>
+  <ol style="margin:8px 0 0 0;padding-left:18px">
+    <li><strong><code>time_window_ms</code> must be 0.</strong>
+      The 250 ms coalescing deliberately collapses multiple per-message timestamps to one shared ts —
+      replay would lose intra-burst ordering within each window.</li>
+    <li><strong>Payload must be <code>{"ts": …, "value": …}</code> only.</strong>
+      The writer extracts exactly those two fields; any extra payload fields (quality flags, string values, etc.)
+      are not stored. For the current EMS topology all messages follow this two-key structure, so replay is complete.</li>
+  </ol>
+</div>
+
+</body>
+</html>

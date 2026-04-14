@@ -1,0 +1,2230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parquet Writer — Design Document</title>
+<style>
+  /* ── dark mode (default) ── */
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --pre-bg: #0d1117; --th-bg: #21262d; --tr-alt: #0d1117;
+    --kpi-bg: #0d1117; --arch-bg: #0d1117; --thread-bg: #0d1117;
+  }
+
+  /* ── light / print mode ── */
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+    --kpi-bg: #f6f8fa; --arch-bg: #f6f8fa; --thread-bg: #f6f8fa;
+  }
+
+  /* ── auto light on print (whichever mode the page is in) ── */
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #c8d1d9;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --pre-bg: #f6f8fa; --th-bg: #eaeef2; --tr-alt: #f6f8fa;
+      --kpi-bg: #f6f8fa; --arch-bg: #f6f8fa; --thread-bg: #f6f8fa;
+    }
+    .theme-toggle { display: none; }
+    .nav { display: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 32px; line-height: 1.7; max-width: 1100px; margin: 0 auto;
+         transition: background 0.2s, color 0.2s; }
+
+  h1 { color: var(--accent); font-size: 1.7rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.88rem; margin-bottom: 36px; }
+  h2 { color: var(--accent); font-size: 1.15rem; margin: 36px 0 12px;
+       padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 20px 0 8px; }
+  h4 { color: var(--text); font-size: 0.88rem; margin: 14px 0 6px; }
+
+  p  { margin-bottom: 10px; font-size: 0.88rem; }
+  ul, ol { padding-left: 22px; margin-bottom: 10px; }
+  li { font-size: 0.88rem; margin-bottom: 4px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 22px 24px; margin-bottom: 20px; }
+
+  pre, code { font-family: 'Consolas', 'Courier New', monospace; }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 1px 5px;
+         border-radius: 4px; font-size: 0.82rem; color: var(--code-text); }
+  pre  { background: var(--pre-bg); border: 1px solid var(--border); border-radius: 6px;
+         padding: 14px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto;
+         color: var(--code-text); margin: 10px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin: 10px 0; }
+  th    { background: var(--th-bg); color: var(--accent); text-align: left;
+          padding: 7px 12px; border: 1px solid var(--border); }
+  td    { padding: 6px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--tr-alt); }
+
+  .ok   { color: var(--green); }
+  .warn { color: var(--yellow); }
+  .err  { color: var(--red); }
+  .dim  { color: var(--muted); }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 14px 0; }
+  @media (max-width: 800px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  .kpi-card { background: var(--kpi-bg); border: 1px solid var(--border); border-radius: 6px;
+              padding: 14px; text-align: center; }
+  .kpi-val  { font-size: 1.6rem; font-family: monospace; color: var(--green); line-height: 1.1; }
+  .kpi-lbl  { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+
+  .arch-box { background: var(--arch-bg); border: 1px solid var(--border); border-radius: 6px;
+              padding: 16px; font-family: monospace; font-size: 0.82rem; line-height: 1.9;
+              white-space: pre; overflow-x: auto; margin: 10px 0; color: var(--code-text); }
+
+  .alert { border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 0.84rem; }
+  .alert-info   { background: #0c2d6b22; border: 1px solid #1a4d9e; color: var(--accent); }
+  .alert-ok     { background: #0d442922; border: 1px solid #1a6e3a; color: var(--green); }
+  .alert-warn   { background: #2d200022; border: 1px solid #5a4000; color: var(--yellow); }
+  body.light .alert-info { background: #dbeafe; border-color: #93c5fd; }
+  body.light .alert-ok   { background: #dcfce7; border-color: #86efac; }
+  body.light .alert-warn { background: #fef9c3; border-color: #fde047; }
+
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem;
+         font-weight: 700; margin-left: 6px; }
+  .tag-green  { background: #0d4429; color: var(--green); border: 1px solid #1a6e3a; }
+  .tag-blue   { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .tag-yellow { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  body.light .tag-green  { background: #dcfce7; border-color: #86efac; }
+  body.light .tag-blue   { background: #dbeafe; border-color: #93c5fd; }
+  body.light .tag-yellow { background: #fef9c3; border-color: #fde047; }
+
+  .thread-row { display: flex; gap: 12px; margin: 10px 0; }
+  .thread-box { flex: 1; background: var(--thread-bg); border: 1px solid var(--border);
+                border-radius: 6px; padding: 12px; }
+  .thread-name { font-size: 0.8rem; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+  .thread-desc { font-size: 0.8rem; color: var(--muted); }
+
+  .nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.8rem;
+           padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── theme toggle button ── */
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 14px;
+    font-size: 0.8rem; cursor: pointer; z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: background 0.2s, color 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+
+<script>
+  function toggleTheme() {
+    const body = document.body;
+    const btn  = document.getElementById('theme-btn');
+    if (body.classList.toggle('light')) {
+      btn.textContent = '🌙 Dark mode';
+    } else {
+      btn.textContent = '🖨 Print / Light mode';
+    }
+  }
+</script>
+</head>
+<body>
+
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🖨 Print / Light mode</button>
+
+<h1>Parquet Writer — Design Document</h1>
+<div class="subtitle">
+  <code>source/parquet_writer/parquet_writer.cpp</code> &nbsp;·&nbsp;
+  Branch: <code>03202026_run_with_real_data</code> &nbsp;·&nbsp;
+  Audience: BMS Team Members &nbsp;·&nbsp;
+  Updated: 2026-03-29
+</div>
+
+<div class="nav">
+  <a href="#overview">Overview</a>
+  <a href="#wide-pivot">Wide-Pivot Schema</a>
+  <a href="#source-data">Source Data</a>
+  <a href="#schemas">Schema Formats</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#threads">Threads</a>
+  <a href="#data-flow">Data Flow</a>
+  <a href="#realdata">Real Data</a>
+  <a href="#config">Configuration</a>
+  <a href="#robustness">Robustness</a>
+  <a href="#performance">Performance</a>
+  <a href="#deployment">Deployment</a>
+  <a href="#internals">Internals</a>
+  <a href="#compactor">Compactor</a>
+  <a href="#wal-detail">WAL Detail</a>
+  <a href="#flush-dedup">flush_dedup TODO</a>
+  <a href="mqtt_topic_formats.html">MQTT Topic Formats ↗</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="overview">1 · Overview</h2>
+
+<div class="section">
+  <p>
+    <strong>parquet_writer</strong> is a C++17 daemon that consumes a high-rate MQTT telemetry
+    stream and writes it as partitioned <a href="https://parquet.apache.org" style="color:var(--accent)">Apache Parquet</a>
+    files on local storage. It is designed for battery-energy-storage (BESS) telemetry at
+    industrial scale — sustained rates above 80,000 messages/second — but works for any
+    time-series sensor data with an MQTT/JSON source.
+  </p>
+
+  <h3>Why Parquet?</h3>
+  <p>
+    Raw MQTT JSON is ~109 bytes per message. The same data stored as Parquet with Snappy
+    compression averages <strong>9.6 bytes per row</strong> — an <strong>11.4× compression
+    ratio</strong>. Parquet is also columnar, which makes analytical queries (average voltage
+    of all cells in rack 3 over the last hour) orders of magnitude faster than row-oriented
+    formats. Query engines like DuckDB can read these files directly without any database
+    import step.
+  </p>
+
+  <h3>What it does not do</h3>
+  <ul>
+    <li>It does not decode or interpret the sensor values — it stores them faithfully.</li>
+    <li>It does not require a running database — output is plain files on disk.</li>
+    <li>It does not require cloud connectivity — designed for edge deployment.</li>
+  </ul>
+
+  <div class="kpi-grid" style="margin-top:18px">
+    <div class="kpi-card">
+      <div class="kpi-val">11.4×</div>
+      <div class="kpi-lbl">compression vs raw JSON</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">&gt;1M</div>
+      <div class="kpi-lbl">rows/sec sustained write</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">33×</div>
+      <div class="kpi-lbl">headroom above 80k msg/s fleet rate</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">~10 MB</div>
+      <div class="kpi-lbl">binary size (statically linked)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="wide-pivot">1a · Wide-Pivot Schema <span class="tag tag-green">Primary Format</span></h2>
+
+<div class="section">
+  <p>
+    The <strong>wide-pivot</strong> schema is the primary output format for BMS/PCS telemetry.
+    Instead of storing one row per MQTT message (long schema), it groups all signals for a
+    given unit × timestamp into a single row with one column per signal path. This is the
+    most query-efficient layout for time-series analytics where you want all channels for a
+    unit in one scan.
+  </p>
+
+  <h3>How it works</h3>
+  <p>
+    Configured via <code>compound_field_name</code>. The writer joins the listed topic segments
+    (e.g. <code>[device, instance, point_name]</code>) with <code>/</code> to produce the column
+    name for that message's value. Each row writes exactly one value column; all other signal
+    columns are null for that row. At flush time these sparse rows are combined into a wide table.
+  </p>
+
+  <h3>Example — 12-unit BESS fleet (bench topology)</h3>
+  <p>
+    Topic format: <code>bench/{unit_id}/{device}/{instance}/{signal}/{dtype}</code><br>
+    Config: <code>compound_field_name: [device, instance, point_name]</code>
+  </p>
+  <pre>Topic: bench/0215D1D8/bms/bms_1/Pack_Voltage/float
+→ column = "bms/bms_1/Pack_Voltage",  value = 1143.6
+
+Topic: bench/0215D1D8/pcs/pcs_1/GridFrequency/float
+→ column = "pcs/pcs_1/GridFrequency", value = 60.003</pre>
+
+  <p>Resulting wide row (one row per unique timestamp for this unit):</p>
+  <table>
+    <thead><tr>
+      <th>ts</th><th>unit_id</th>
+      <th>bms/bms_1/<br>Pack_Voltage</th>
+      <th>bms/bms_1/<br>Pack_SOC</th>
+      <th>pcs/pcs_1/<br>GridFrequency</th>
+      <th>… (31 more)</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>2026-04-11T14:06:58Z</td><td>0215D1D8</td>
+        <td>1143.6</td><td>84.2</td><td>60.003</td><td class="dim">null / value</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Output files (current continuous run)</h3>
+  <pre>/mnt/tort-sdi/bench/bench-wide/bench/2026/04/11/
+  0215D1D8_20260411T140658Z.parquet    ← one file per unit per 60s flush
+  0215D1D9_20260411T140658Z.parquet
+  …  (12 units × N flushes/day)
+compact_20260411T140658Z.parquet       ← compactor merges flush files every 5 min</pre>
+
+  <h3>COV — Change-on-Value at the publisher</h3>
+  <p>
+    The benchmark publisher supports a <code>--cov</code> flag that simulates realistic
+    COV filtering before publishing:
+  </p>
+  <table>
+    <thead><tr><th>Signal type</th><th>COV rule</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Float signals</td><td>Publish only when value drifts &gt;1% from last sent (<code>COV_FLOAT_PCT = 0.01</code>)</td><td>Slow-moving signals (resting cell voltage) may publish only every few minutes; fast-changing signals (current during charge/discharge) publish every sweep</td></tr>
+      <tr><td>Integer / boolean signals</td><td>Publish only on change</td><td>Fault codes and relay states publish rarely in normal operation, frequently during fault events</td></tr>
+    </tbody>
+  </table>
+  <p>Without <code>--cov</code> all 34 signals × 12 units publish every 1-Hz sweep (408 msg/s).</p>
+
+  <h3>null_fill_unchanged — COV at the writer level</h3>
+  <p>
+    The writer's <code>null_fill_unchanged: true</code> config implements COV suppression
+    <em>after</em> ingest — at flush time, not at the publisher. For each partition, any
+    signal column whose value has not changed since the last flush is set to null for all
+    rows in that flush interval. This gives columnar COV compression without requiring
+    publisher-side filtering.
+  </p>
+  <table>
+    <thead><tr><th>Setting</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>null_fill_unchanged: false</code> (default)</td>
+        <td>Every row carries the full value for every signal column it originated from. No nulls introduced. Most useful when downstream tools can't handle nulls or you need all-values-present guarantees.</td>
+      </tr>
+      <tr>
+        <td><code>null_fill_unchanged: true</code></td>
+        <td>After the first flush for a partition, columns whose value is identical to the prior flush's last value are replaced with null. On a typical resting BMS (SOC steady, cells not balancing), &gt;70% of float columns may become null — Parquet compresses null runs to near-zero bytes.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>null_fill_reset_interval_seconds — the null override</h3>
+  <p>
+    Pure null suppression would create data gaps: a signal that doesn't change for 2 hours
+    would write no value for that entire window. <code>null_fill_reset_interval_seconds</code>
+    (default: 3600) is the null override — it forces a full non-null write for all columns
+    every N seconds, regardless of whether values have changed.
+  </p>
+  <table>
+    <thead><tr><th>Value</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>3600</code> (default)</td><td>Guarantees at least one full-value row per signal per hour. A DuckDB <code>last_value(signal) IGNORE NULLS</code> query will find a value within the last hour for any stable signal.</td></tr>
+      <tr><td><code>0</code></td><td>Null override disabled — a signal that never changes will only appear in the very first flush after startup. Use only when signals are guaranteed to change regularly or when downstream tools always forward-fill nulls.</td></tr>
+      <tr><td><code>300</code></td><td>5-minute reset — matches a compactor cycle; each compacted file is guaranteed to contain at least one full row for every signal. Good for near-real-time dashboards.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Wide-pivot + COV interaction:</strong> when both <code>null_fill_unchanged</code>
+    and publisher-side <code>--cov</code> are active, the writer only sees changed values from
+    the publisher — so <code>null_fill_unchanged</code> adds a second layer of suppression on
+    top. This is fine and compounds the compression benefit. The
+    <code>null_fill_reset_interval_seconds</code> reset still fires at the configured interval
+    to prevent indefinite gaps.
+  </div>
+
+  <h3>Writer-side COV — per-signal thresholds <span class="tag tag-yellow">planned</span></h3>
+  <p>
+    Publisher-side COV (<code>--cov</code>) requires all publishers to implement the same
+    filtering logic. A cleaner alternative is COV enforcement inside the writer itself —
+    the publisher sends everything, the writer decides what to keep. This also works with
+    hardware devices that have no COV capability.
+  </p>
+  <p>
+    The design uses a single default threshold with a per-signal exception list, so most
+    signals need no config at all:
+  </p>
+<pre>output:
+  cov:
+    enabled: true
+    float_pct: 0.01        # suppress floats if change &lt; 1% (default)
+    integer: on_change     # suppress integers unless value changes (default)
+    reset_seconds: 300     # force write every 300s regardless — prevents gaps
+    exceptions:
+      bms/bms_1/SysSOC:
+        float_pct: 0.001   # tighter — SOC is operationally important
+      pcs/pcs_1/Hz:
+        float_pct: 0.005   # tighter — frequency deviation matters
+      bms/bms_1/SysTemperature:
+        disabled: true     # always write — no COV suppression</pre>
+
+  <table>
+    <thead><tr><th>Mode</th><th>Rule</th><th>Use case</th></tr></thead>
+    <tbody>
+      <tr><td><code>float_pct</code></td><td>Suppress if |new−last| / |last| &lt; threshold</td><td>Analogue signals — voltage, current, temperature</td></tr>
+      <tr><td><code>on_change</code></td><td>Suppress if new == last</td><td>Integer/boolean — fault codes, relay states, mode flags</td></tr>
+      <tr><td><code>disabled: true</code></td><td>Always write</td><td>Safety-critical signals that must never be suppressed</td></tr>
+      <tr><td><code>mon_ign</code></td><td>See below</td><td>Monotonic counters — heartbeats, sequence numbers</td></tr>
+    </tbody>
+  </table>
+
+  <h3>MON_IGN — monotonic ignore mode <span class="tag tag-yellow">planned</span></h3>
+  <p>
+    Heartbeat counters and sequence numbers increment every sweep — they always change,
+    so <code>on_change</code> would write every row, and the current workaround is to
+    exclude them entirely via <code>CSV_EXCLUDE</code>. Neither is ideal: exclusion
+    discards the signal completely; <code>on_change</code> defeats compression.
+  </p>
+  <p>
+    <code>mon_ign</code> (monotonic ignore) keeps the signal in the schema but only
+    records <em>backward jumps</em> — a counter reset, rollover, or unexpected decrement.
+    Normal monotonic increases are silently dropped:
+  </p>
+
+  <table>
+    <thead><tr><th>Condition</th><th>Action</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>new &gt; last</td><td>Suppress</td><td>Normal increment — expected, uninteresting</td></tr>
+      <tr><td>new &lt; last</td><td><strong>Write</strong></td><td>Counter reset, rollover, or device restart — meaningful event</td></tr>
+      <tr><td>new == last</td><td>Suppress</td><td>Stalled counter — optionally trigger after <code>stall_seconds</code></td></tr>
+    </tbody>
+  </table>
+
+<pre>output:
+  cov:
+    exceptions:
+      bms/bms_1/BMS_SysHB:
+        mode: mon_ign
+        stall_seconds: 30    # also write if counter hasn't moved in 30s
+                             # catches frozen heartbeat — comms fault
+      pcs/pcs_1/Counter:
+        mode: mon_ign
+      bms/bms_1/ItemDeletionTime:
+        mode: mon_ign</pre>
+
+  <p>
+    With <code>mon_ign</code> a heartbeat counter running normally for 8 hours produces
+    <strong>zero rows</strong>. A device restart produces <strong>one row</strong>. A frozen
+    heartbeat (<code>stall_seconds</code> exceeded) produces <strong>one row</strong>.
+    This is exactly the information you want from a heartbeat — noise gone, fault events preserved.
+  </p>
+
+  <div class="alert alert-info">
+    <strong>Migration from CSV_EXCLUDE:</strong> signals currently in <code>CSV_EXCLUDE</code>
+    (<code>BMS_SysHB</code>, <code>SysHB</code>, <code>Counter</code>,
+    <code>ItemDeletionTime</code>) are excluded entirely because there is no writer-side
+    MON_IGN yet. Once writer-side COV is implemented, these move from exclusion to
+    <code>mode: mon_ign</code> — they gain a column in the schema and restart/fault events
+    become queryable.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="source-data">1b · Source Data — SBESS3 Real-Site Recordings</h2>
+
+<div class="section">
+  <p>
+    The benchmark generator and continuous publisher can replay real BESS telemetry from
+    the <strong>SBESS3</strong> (Utility-Scale Battery Energy Storage System) field recording:
+    a 3-hour operational window from a production US site.
+  </p>
+
+  <h3>Dataset characteristics</h3>
+  <table>
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Site</td><td>SBESS3 — utility-scale US BESS, 60 Hz grid</td></tr>
+      <tr><td>Battery chemistry</td><td>Li-NMC, 342 series cells per unit (approx. 1,200V nominal pack)</td></tr>
+      <tr><td>Recording duration</td><td>~3 hours operational data (UC 61B5)</td></tr>
+      <tr><td>Devices loaded</td><td><code>bms_1</code> (BMS telemetry), <code>pcs_1</code> (PCS/inverter telemetry)</td></tr>
+      <tr><td>Signals per device</td><td>~24 float + 10 integer after exclusions</td></tr>
+      <tr><td>Source files</td><td><code>SBESS3 bms data - UC 61B5.csv</code>, <code>SBESS3 pcs data - UC 61B5.csv</code> (InfluxDB Flux CSV format, ZIP packaged)</td></tr>
+      <tr><td>Excluded signals</td><td>Monotonic counters (<code>BMS_SysHB</code>, <code>Counter</code>, …) and constants (<code>RackCount</code>, <code>SysSOH</code>, …) stripped at load time</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Observed signal ranges (calibration basis for physics model)</h3>
+  <table>
+    <thead><tr><th>Signal</th><th>Observed range</th><th>Typical noise</th></tr></thead>
+    <tbody>
+      <tr><td><code>Batt1_Cell*_Voltage</code></td><td>3.328 – 3.393 V</td><td>±0.5 mV</td></tr>
+      <tr><td><code>Batt1_Cell*_Temperature</code></td><td>20 – 29 °C</td><td>±0.05 °C</td></tr>
+      <tr><td><code>Pack_SOC</code></td><td>78 – 92 %</td><td>±0.01 %</td></tr>
+      <tr><td><code>Pack_Current</code></td><td>−480 to +480 A</td><td>±0.5 A</td></tr>
+      <tr><td><code>GridFrequency</code></td><td>59.95 – 60.05 Hz</td><td>±0.005 Hz</td></tr>
+      <tr><td><code>ActivePower</code></td><td>−580 to +580 kW</td><td>±1 kW</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Dataset analysis &amp; signal characterisation</h3>
+  <p>Two reference documents cover the real-site data in depth:</p>
+  <table>
+    <thead><tr><th>Document</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><a href="evelyn_data_analysis.html" style="color:var(--accent)">evelyn_data_analysis.html ↗</a></td>
+        <td>Full noise analysis of the real SBESS3 recording — 2.7M rows, 3-hour window (2026-03-23 14:23–17:44 UTC).
+            Sections: Coefficient of Variation ranking, delta percentiles for deadband sizing,
+            frozen/stuck sensor detection, Z-score outlier scan, physics consistency (rack voltage vs SOC residual).
+            Use this to understand actual signal volatility before tuning <code>null_fill_unchanged</code> or COV thresholds.</td>
+      </tr>
+      <tr>
+        <td><a href="ems_physics_proposal.html" style="color:var(--accent)">ems_physics_proposal.html ↗</a></td>
+        <td>Physics model proposal — per-signal specs calibrated from SBESS3 (UC 61B5 &amp; 63A1).
+            Signal range table, noise characterisation, comparison of random synthetic vs
+            physics-model vs real data. Source for all range/noise values in the
+            <code>UnitPhysics</code> class used by the continuous publisher.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>How to use real data in a benchmark run</h3>
+  <pre># Canonical zip location on both phil-dev and .34:
+# /home/phil/fractal/zip/SBESS3 Influx Data.zip
+
+# Benchmark run with real data:
+python3 source/parquet_writer/compare_run.py \
+    --csv "/home/phil/fractal/zip/SBESS3 Influx Data.zip" \
+    --sweeps 600
+
+# Continuous replay (current run on 192.168.86.34):
+python3 scripts/continuous_publisher.py \
+    --csv "/home/phil/fractal/zip/SBESS3 Influx Data.zip"
+
+# The CSV loader:
+#  1. Reads SBESS3 bms data - UC 61B5.csv and pcs data - UC 61B5.csv from the ZIP
+#  2. Strips log- prefixed signals and the monotonic/constant exclusion list
+#  3. Assigns each of the 12 bench units a different time-offset into the recording
+#     so units are not synchronised (stagger = N_steps / N_units)
+#  4. Loops the recording — when end of data is reached, wraps to start</pre>
+
+  <h3>Physics model (synthetic, used in continuous mode)</h3>
+  <p>
+    When no CSV is provided, the <code>UnitPhysics</code> class generates synthetic data
+    calibrated to the SBESS3 ranges above. Each unit has independent state:
+  </p>
+  <ul>
+    <li>SOC integrator: charge/discharge cycles of 20–40 min half-period</li>
+    <li>Cell voltages: OCV lookup table + per-cell ±20 mV spread + noise</li>
+    <li>RC thermal model: τ=600 s, ambient 20–25°C, I²R heating</li>
+    <li>Grid frequency: Gaussian random walk bounded 59.8–60.2 Hz</li>
+    <li>Rare fault events: Poisson λ≈0.1/day, clearing after 20–60 s</li>
+  </ul>
+  <p>
+    The physics model is the source for the <strong>current continuous run</strong> on
+    192.168.86.34 — publisher: <code>scripts/continuous_publisher.py</code>,
+    writer config: <code>/mnt/tort-sdi/bench/continuous_wide.yaml</code>.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="schemas">1c · Schema Format Comparison</h2>
+
+<div class="section">
+  <p>Three schema layouts are benchmarked by <code>compare_run.py</code>, all writing the same
+     12-unit × 34-signal stream simultaneously:</p>
+  <table>
+    <thead><tr><th>Format</th><th>Rows/flush</th><th>Cols</th><th>Size (600 sweeps)</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Wide-Pivot</strong> <span class="tag tag-green">primary</span></td>
+        <td>1 row per unit per timestamp (7,200 rows)</td>
+        <td>36 (34 signal + ts + unit_id)</td>
+        <td>~1 MB raw / ~0 after compact+COV</td>
+        <td>Time-series analytics — "all channels for unit X over time"</td>
+      </tr>
+      <tr>
+        <td>Normalized Long</td>
+        <td>1 row per message (244,800 rows)</td>
+        <td>8 (ts, value, device, device_type, dtype, point_name, unit_id, site)</td>
+        <td>~705 KB raw / ~571 KB compacted</td>
+        <td>Cross-unit signal queries, simple ingest, maximum compatibility</td>
+      </tr>
+      <tr>
+        <td>Long + Compound</td>
+        <td>1 row per message (244,800 rows)</td>
+        <td>5 (ts, value, dtype, point_name, site)</td>
+        <td>~727 KB raw / ~578 KB compacted</td>
+        <td>Compact long format with compound point_name path</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Wide-Pivot compression note:</strong> the benchmark reports 1 MB for wide-pivot
+    vs 705 KB for normalized long. However, wide-pivot with <code>null_fill_unchanged: true</code>
+    and realistic COV compresses dramatically more — a resting BMS with stable cell voltages
+    can achieve &gt;10× better compression than the flat-rate benchmark numbers suggest, because
+    null columns compress to near-zero. The benchmark does not enable <code>null_fill_unchanged</code>
+    so both formats are compared on equal footing for raw ingest rate.
+  </div>
+
+  <h3>Real-site measurement — SBESS3 continuous run (2026-04-12)</h3>
+  <p>
+    A full day of continuous wide-pivot output from the SBESS3 bench run (12 units × 63 signals
+    @ 1 Hz, publisher-side COV with 5-minute reset, Snappy compression) was merged into a
+    single day file using DuckDB <code>union_by_name=true</code>:
+  </p>
+
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Input</td><td>146 compact files — <strong>16.87 MB</strong></td><td>5-minute compact windows across the day</td></tr>
+      <tr><td>Output</td><td>1 merged file — <strong>11.98 MB</strong></td><td>Full day, single Parquet file, Snappy</td></tr>
+      <tr><td>Merge saving</td><td><strong>29%</strong></td><td>Single row-group re-encoding finds longer null runs across the full day</td></tr>
+      <tr><td>Row count</td><td><strong>1,514,059 rows</strong></td><td>12 units × ~8 hours — COV suppressed most constant columns</td></tr>
+      <tr><td>Columns</td><td><strong>64</strong></td><td>ts + unit_id + 62 signals (bms_1 + pcs_1)</td></tr>
+      <tr><td>Bytes per row</td><td><strong>8.3 bytes</strong></td><td>~1 byte per column — heavy null compression on constants</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Early compact files (before the first COV reset at ~5 min uptime) had only 17 columns;
+    later files had 64. <code>union_by_name=true</code> merged both schema variants seamlessly —
+    missing columns are null-filled. This is the production merge pattern for day-level compaction.
+  </p>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-val">8.3</div>
+      <div class="kpi-lbl">bytes / row (real-site COV)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">12 MB</div>
+      <div class="kpi-lbl">full day, 12 units, 63 signals</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">1.5M</div>
+      <div class="kpi-lbl">rows stored from ~2.7B possible</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">29%</div>
+      <div class="kpi-lbl">extra saving from day-level merge</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="architecture">2 · System Architecture</h2>
+
+<div class="section">
+  <p>A single writer instance sits between any FlashMQ broker and local storage.
+     It connects as an MQTT subscriber, parses incoming messages, and writes
+     partitioned Parquet files to disk.</p>
+
+<div class="arch-box">
+EMS Devices / BMS Publishers
+         │  MQTT QoS-0
+         ▼
+   ┌──────────────┐
+   │   FlashMQ    │  ← high-performance C++ MQTT broker (any host, any port)
+   │   :1883      │    attach to existing broker — no broker changes required
+   └──────┬───────┘
+          │  MQTT subscribe  #
+          ▼
+   ┌──────────────┐
+   │   writer     │  ← single process, four internal threads
+   │   :8771      │    health/status HTTP endpoint
+   └──────┬───────┘
+          │
+          ▼
+   /srv/data/parquet/
+   (date-partitioned Parquet files on local storage)
+</div>
+
+  <p>
+    The writer attaches to whichever FlashMQ instance serves the BMS data — it
+    does not need to run on the same host as the broker, and the broker requires
+    no configuration changes. The <code>mqtt.host</code> and <code>mqtt.port</code>
+    in the writer config point to any reachable FlashMQ instance.
+  </p>
+
+  <div class="alert alert-info">
+    <strong>Torture test note:</strong> the stress/validation environment runs four
+    writer instances in parallel (writer-a through writer-d on ports 8771–8774),
+    each receiving the full message stream independently — useful for fault-tolerance
+    testing, but not the production deployment model.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="threads">3 · Thread Model</h2>
+
+<div class="section">
+  <p>The writer uses <strong>four threads</strong>. Each has a single responsibility and they
+     communicate through lock-free or minimally-locked shared state.</p>
+
+  <div class="thread-row">
+    <div class="thread-box">
+      <div class="thread-name">① MQTT Network Thread</div>
+      <div class="thread-desc">
+        Managed by libmosquitto (<code>loop_start()</code>). Reads TCP socket,
+        calls <code>on_message()</code> for each arriving message.
+        <code>on_message()</code> does nothing but push raw bytes into the
+        lock-free ring buffer — no parsing, no locking.
+      </div>
+    </div>
+    <div class="thread-box">
+      <div class="thread-name">② Parse Thread</div>
+      <div class="thread-desc">
+        Drains the ring buffer. For each slot: parses the MQTT topic into
+        partition key + field name, parses the JSON payload, inserts a
+        <code>Row</code> into the in-memory buffer. Holds <code>g_mutex</code>
+        only for the brief buffer insert (~1 µs).
+      </div>
+    </div>
+    <div class="thread-box">
+      <div class="thread-name">③ Flush Thread</div>
+      <div class="thread-desc">
+        Wakes every <code>flush_interval_seconds</code> (or when buffer is
+        full). Swaps the buffer under <code>g_mutex</code> (pointer swap, O(1)),
+        releases the lock, then writes Parquet files to disk — the slow I/O
+        happens entirely outside the lock.
+      </div>
+    </div>
+    <div class="thread-box">
+      <div class="thread-name">④ Health Thread</div>
+      <div class="thread-desc">
+        Listens on a TCP port (default :8771). Responds to
+        <code>GET /health</code> with a JSON metrics snapshot:
+        messages received, ring utilisation, drop counts, flush timing.
+        Used by the monitoring dashboard and load balancers.
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size:0.82rem;color:var(--muted);margin:10px 0 6px">
+    The <code>real_writer</code> adds a fifth thread — the <strong>Compactor</strong> —
+    described fully in §11. It operates entirely on the filesystem and shares no state
+    with the four threads above.
+  </p>
+
+  <h3>Synchronisation summary</h3>
+  <table>
+    <thead><tr><th>Between</th><th>Mechanism</th><th>Contention</th></tr></thead>
+    <tbody>
+      <tr><td>MQTT thread → Parse thread</td><td>Lock-free SPSC ring buffer (<code>mqtt_ring.h</code>)</td><td class="ok">Zero — atomic read/write</td></tr>
+      <tr><td>Parse thread → Flush thread (buffer)</td><td><code>g_mutex</code> — held &lt;1 µs for vector push_back</td><td class="ok">Minimal</td></tr>
+      <tr><td>Parse thread → Flush thread (wake)</td><td>Non-blocking write to <code>g_signal_pipe</code></td><td class="ok">None</td></tr>
+      <tr><td>Flush thread buffer swap</td><td><code>g_mutex</code> — held ~1 µs for pointer exchange</td><td class="ok">Minimal</td></tr>
+      <tr><td>Any thread → Health thread</td><td>Atomic reads of counters — no lock</td><td class="ok">None</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="data-flow">4 · Data Flow</h2>
+
+<div class="section">
+  <h3>Step 1 — MQTT ingest (lock-free ring)</h3>
+  <p>
+    When a message arrives, <code>on_message()</code> copies the topic and payload into
+    a pre-allocated slot in the <strong>MqttRing</strong> — a 262,144-slot circular buffer
+    (~135 MB BSS). The write is a single <code>atomic::store</code>; no mutex, no allocation.
+    If the ring is full, the message is dropped and a counter is incremented (visible in
+    <code>/health</code>).
+  </p>
+  <p>
+    The ring acts as a shock absorber: at 300,000 msg/s it holds ~870 ms of burst before
+    any drops occur, absorbing slow parquet flushes (observed up to ~300 ms on spinning disk).
+  </p>
+
+  <h3>Step 2 — Topic parsing</h3>
+  <p>
+    The parse thread reads each ring slot and calls <code>parse_topic()</code>. The topic
+    string follows a <em>key=value</em> segment format:
+  </p>
+  <pre>batteries/site=0/rack=1/module=2/cell=3/voltage</pre>
+  <p style="font-size:0.82rem">
+    For Longbow / Evelyn EMS topic structures see
+    <a href="mqtt_topic_formats.html" style="color:var(--accent)">mqtt_topic_formats.html</a>.
+  </p>
+  <p>
+    <code>parse_topic()</code> walks the string with a single pointer pass (no heap allocation,
+    no regex), extracting the <strong>source type</strong> (<code>batteries</code>),
+    the <strong>KV pairs</strong> (<code>site_id=0, rack_id=1, …</code>), and the
+    <strong>field name</strong> (<code>voltage</code>). These become the partition key
+    and column name in the output row.
+  </p>
+
+  <h3>Step 3 — JSON payload parsing</h3>
+  <p>
+    Payloads are JSON. The writer uses <strong>simdjson</strong> — a SIMD-accelerated parser
+    that runs at memory-bandwidth speed on modern CPUs. Two payload formats are accepted:
+  </p>
+  <table>
+    <thead><tr><th>Format</th><th>Example</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr><td>Nested (generator)</td><td><code>{"timestamp":1.23,"voltage":{"value":3.7,"unit":"V"}}</code></td><td>stress_pub, generator</td></tr>
+      <tr><td>Flat scalar (EMS)</td><td><code>{"ts":"2024-11-15T21:27:52Z","value":0.999}</code></td><td>Longbow / real EMS</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Step 4 — In-memory buffering</h3>
+  <p>
+    Parsed rows are stored in <code>g_buffers</code> — a map from <em>PartitionKey</em>
+    to a <code>vector&lt;Row&gt;</code>. The partition key encodes where in the directory
+    tree the rows will land (source type + site + date). Memory usage is bounded by
+    <code>max_total_buffer_rows</code> (default 2M rows).
+  </p>
+  <p>
+    Each <code>Row</code> carries three typed maps: <code>ints</code> (int64 — topic KV fields,
+    project_id), <code>floats</code> (double — sensor values, timestamps), and
+    <code>strings</code> (string — <code>mqtt_topic</code>, <code>site_id</code>, and any
+    topic segments configured as string columns). This three-map design lets the Arrow schema
+    be derived dynamically from the first row of each partition without any schema pre-declaration.
+  </p>
+  <p>
+    <strong>value_i / value_f split:</strong> when a partition accumulates both integer and
+    float readings under the column name <code>"value"</code>, Arrow's type system requires
+    they be split. The flush thread detects this and renames: <code>value</code> (int path)
+    → <code>value_i</code>, <code>value</code> (float path) → <code>value_f</code>. This is
+    transparent to the parse thread — it always writes to <code>"value"</code>.
+  </p>
+
+  <h3>Step 5 — Parquet flush</h3>
+  <p>
+    Every <code>flush_interval_seconds</code> (default 60 s, torture test 10 s), the flush
+    thread atomically swaps <code>g_buffers</code> with a fresh empty map (O(1) pointer
+    exchange under the mutex), then writes each partition's rows to a Parquet file outside
+    the lock. File naming includes a UTC timestamp to avoid collisions:
+  </p>
+  <pre>/srv/data/parquet/batteries/project=0/site=0/2026/03/23/20260323T142001Z.parquet</pre>
+  <p>
+    Parquet files are self-describing — column names, types, and metadata are embedded.
+    DuckDB can query them directly with no import step. With
+    <code>topic_partition_segments: 2</code> the path becomes:
+  </p>
+  <pre>/srv/data/parquet/unit/02281660/2026/03/23/20260323T142001Z.parquet</pre>
+  <p>
+    See §6 Configuration for the full partitioning options.
+  </p>
+
+  <h3>Output schema</h3>
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+    Schema is derived from the first row seen per partition. Columns vary by writer variant and config.
+    The real EMS writer (<code>real_writer.cpp</code>) schema is shown here.
+  </p>
+  <table>
+    <thead><tr><th>Column</th><th>Type</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td><code>mqtt_topic</code></td><td>string <span class="tag tag-green">NEW</span></td><td>Full original MQTT topic string — stored verbatim for replay. Dictionary-encoded; ~1–2 bytes/row overhead since unique topic count is bounded.</td></tr>
+      <tr><td><code>site_id</code></td><td>string</td><td>Config <code>site_id</code> — which physical site/unit this writer serves</td></tr>
+      <tr><td><code>point_name</code></td><td>string</td><td>Sensor variable name extracted from topic (e.g. <code>Batt1_MBMS_CellVoltage_max</code>)</td></tr>
+      <tr><td><code>dtype</code></td><td>string</td><td>Longbow dtype segment (<code>float</code>, <code>integer</code>, <code>boolean_integer</code>, <code>string</code>)</td></tr>
+      <tr><td><code>value</code> / <code>value_f</code></td><td>double</td><td>JSON payload value (float path). Renamed to <code>value_f</code> when both int and float readings share the same partition.</td></tr>
+      <tr><td><code>value_i</code></td><td>double</td><td>JSON payload value (int path) — only present when <code>value_f</code> split is active.</td></tr>
+      <tr><td><code>ts</code></td><td>double</td><td>Payload timestamp parsed from ISO-8601 <code>"ts"</code> field (Unix seconds, fractional)</td></tr>
+      <tr><td><em>KV int cols</em></td><td>int64</td><td>Topic key=value pairs mapped per config (e.g. <code>rack_id</code>, <code>module_id</code>, <code>cell_id</code>). Config-driven via <code>topic_kv_map</code>.</td></tr>
+    </tbody>
+  </table>
+  <div class="alert alert-info" style="margin-top:10px">
+    <strong>Full MQTT replay:</strong> with <code>mqtt_topic</code> + <code>ts</code> + <code>value_f</code>/<code>value_i</code>,
+    every original MQTT message can be reconstructed exactly:
+    <code>topic = row.mqtt_topic</code>, <code>payload = {"ts": iso(row.ts), "value": row.value_f}</code>.
+    The parquet_viewer uses this to replay data directly to an MQTT broker.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="realdata">5 · Real EMS Data Constraints (Longbow Recording)</h2>
+
+<div class="section">
+  <p>
+    A 459-second production recording from the Longbow EMS site (1.3 M messages, 47 BMS units,
+    1,770 distinct topics) was analysed against the writer's internal buffer limits.
+    Key findings are summarised here; full analysis in
+    <a href="writer_real_data.html" style="color:var(--accent)">writer_real_data.html</a>.
+  </p>
+
+  <h3>Topic length distribution</h3>
+  <p>
+    Topics follow the pattern <code>unit/&lt;id&gt;/&lt;device&gt;/&lt;instance&gt;/&lt;point_name&gt;/&lt;dtype&gt;</code>.
+    The unit ID segment is 8 hex chars; the point name is the dominant source of length variation.
+  </p>
+  <table>
+    <thead><tr><th>Length bucket</th><th>Topic count</th><th>% of total</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>≤ 64 bytes</td><td>384</td><td>21.7%</td><td class="ok">safe</td></tr>
+      <tr><td>65–96 bytes</td><td>654</td><td>36.9%</td><td class="ok">safe</td></tr>
+      <tr><td>97–128 bytes</td><td>724</td><td>40.9%</td><td class="ok">safe (cap is now 256)</td></tr>
+      <tr><td>129–136 bytes</td><td class="warn">8</td><td class="warn">0.45%</td><td class="warn">⚠ were silently truncated at old cap of 128</td></tr>
+      <tr><td>&gt; 136 bytes</td><td>0</td><td>0%</td><td class="ok">none seen in dataset</td></tr>
+    </tbody>
+  </table>
+  <ul style="margin-top:10px">
+    <li><strong>Average topic length:</strong> 84.4 bytes &nbsp;·&nbsp; <strong>Min:</strong> 32 bytes &nbsp;·&nbsp; <strong>Max:</strong> 136 bytes</li>
+    <li><strong>Worst truncation:</strong> <code>…Both_main_positive_relay_and_main_negative_relay_sticking_fault/integer</code> — last 9 chars of point name + entire dtype segment lost; value stored as float under wrong column name</li>
+    <li><strong>Fix applied:</strong> <code>MQRING_TOPIC_MAX</code> raised 128 → 256; <code>topic_truncations</code> counter exposed in <code>/health</code></li>
+  </ul>
+
+  <h3>Variable (point) name lengths</h3>
+  <p>
+    The <code>point_name</code> column in the Parquet output is extracted from topic segment 4.
+    Observed range across 1,770 production topics:
+  </p>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Shortest point name</td><td>~10 chars</td><td><code>PCS_1PCS_Grid_Frequency</code> style names</td></tr>
+      <tr><td>Typical point name</td><td>30–60 chars</td><td>Most BMS telemetry variables</td></tr>
+      <tr><td>Longest observed</td><td><strong>104 chars</strong></td><td>BMS MBMS fault/warning flag names (e.g. <code>Batt1_MBMS_…relay_sticking_fault</code>)</td></tr>
+      <tr><td>High cardinality</td><td>1,770 unique</td><td>Benefits from Parquet dictionary encoding — each name stored once per row-group</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>SHM ring design note:</strong> the current SHM slot layout reserves only 16 bytes for
+    field names (<code>ShmField::name[16]</code>), targeting embedded targets (gumby / imx93) with
+    short names like <code>AvgCellV</code>. If the EMS stream is ever routed through the SHM path,
+    this must be raised to at least <code>name[128]</code>.
+  </div>
+
+  <h3>Payload structure</h3>
+  <p>
+    All production payloads are JSON objects with exactly two keys:
+  </p>
+  <pre>{"ts":"2024-11-15T21:27:52.775Z","value":0.999393}   // float
+{"ts":"2024-11-15T21:27:52.775Z","value":1}           // integer / boolean_integer</pre>
+  <p>
+    Typical payload length: 48–55 bytes. <code>MQRING_PAY_MAX = 256</code> is safe with
+    large headroom for all observed values.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="config">6 · Configuration</h2>
+
+<div class="section">
+  <p>All settings live in a YAML file (default: <code>writer_config.yaml</code>, or any path via <code>--config</code>).
+     The six top-level sections are <code>mqtt</code>, <code>output</code>, <code>wal</code>,
+     <code>health</code>, <code>compact</code>, and <code>guard</code>.</p>
+
+  <h3>Minimal example</h3>
+  <pre>mqtt:
+  host:      localhost
+  client_id: parquet-writer   # ★ unique per instance
+  topic:     "unit/#"
+
+output:
+  base_path: /srv/data/parquet   # ★ unique per instance
+  site_id:   site-001
+
+health:
+  port: 8771                     # ★ unique per instance</pre>
+
+  <h3>CLI overrides</h3>
+  <pre>./parquet_writer --config writer_config.yaml --client-id pw-b --output /srv/data/b --health-port 8772</pre>
+
+  <!-- ═══════════════ MQTT section ═══════════════ -->
+  <h3 id="cfg-mqtt">mqtt: — Connection &amp; Topic Parsing</h3>
+
+  <h4>Connection</h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>host</code></td><td><code>localhost</code></td><td>MQTT broker hostname or IP</td></tr>
+      <tr><td><code>port</code></td><td><code>1883</code></td><td>Broker port</td></tr>
+      <tr><td><code>client_id</code></td><td><code>parquet-writer</code></td><td>MQTT client ID — <span class="err">must be unique per instance</span>; duplicate ID causes broker to disconnect the earlier connection</td></tr>
+      <tr><td><code>topic</code></td><td><code>unit/#</code></td><td>MQTT subscription topic filter; <code>#</code> matches any sub-path</td></tr>
+      <tr><td><code>qos</code></td><td><code>0</code></td><td>Quality of service: 0 = at-most-once (maximum throughput), 1 = at-least-once</td></tr>
+      <tr><td><code>keepalive_seconds</code></td><td><code>60</code></td><td>MQTT PINGREQ interval when idle</td></tr>
+      <tr><td><code>reconnect_min_seconds</code></td><td><code>2</code></td><td>Minimum reconnect backoff after broker disconnect</td></tr>
+      <tr><td><code>reconnect_max_seconds</code></td><td><code>30</code></td><td>Maximum reconnect backoff (exponential cap)</td></tr>
+      <tr><td><code>connect_retry_seconds</code></td><td><code>5</code></td><td>Retry interval for initial connection attempts at startup</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Topic parsing — mode selection</h4>
+  <p>The writer supports two topic-parsing modes, selected by <code>topic_parser</code>:</p>
+  <table>
+    <thead><tr><th>Mode</th><th>How it works</th><th>Use when</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>positional</code> <span class="tag tag-green">default</span></td>
+        <td>Splits topic on <code>/</code> and maps each segment to a column name by position, using <code>topic_segments</code> list. Segment 0 becomes <code>topic_segments[0]</code>, etc.</td>
+        <td>Fixed-depth topics like <code>unit/{id}/bms/{inst}/{point}/{dtype}</code></td>
+      </tr>
+      <tr>
+        <td><code>kv</code></td>
+        <td>Each topic segment is expected to contain <code>key=value</code>. The <code>topic_kv_map</code> maps known keys to column names. Segments not in the map are ignored.</td>
+        <td>Self-describing topics like <code>site=0/rack=1/module=2/cell=3/voltage</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>topic_segments (positional mode)</h4>
+  <p>Ordered list of column names, one per topic segment. Special reserved values:</p>
+  <table>
+    <thead><tr><th>Reserved name</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><code>dtype_hint</code></td><td>Consumed for type-casting (int64 vs float64); <em>not</em> stored as a column</td></tr>
+      <tr><td><code>field_name</code></td><td>Renames the <code>value</code> float column to the segment value (wide-sparse schema)</td></tr>
+      <tr><td><em>anything else</em></td><td>Stored as a string column with that name</td></tr>
+    </tbody>
+  </table>
+  <pre>mqtt:
+  topic_parser: positional
+  topic_segments: [source_type, unit_id, device, instance, point_name, dtype_hint]
+  # topic: unit/02281660/bms/bms_1/voltage/float
+  # → source_type=unit, unit_id=02281660, device=bms, instance=bms_1,
+  #   point_name=voltage, dtype_hint=float (consumed, not stored)</pre>
+
+  <h4>topic_kv_map (kv mode)</h4>
+  <p>Map from segment key to column name. Only listed keys are extracted.</p>
+  <pre>mqtt:
+  topic_parser: kv
+  topic_kv_map:
+    site:   site_id
+    rack:   rack_id
+    module: module_id
+    cell:   cell_id
+  # topic: site=0/rack=1/module=2/cell=3/voltage
+  # → site_id=0, rack_id=1, module_id=2, cell_id=3  (point_name from payload or compound)</pre>
+
+  <h4>compound_point_name</h4>
+  <p>Join these segment columns with <code>/</code> and store the result as <code>point_name</code>.
+     The named columns are consumed (removed from the row after joining).</p>
+  <pre>mqtt:
+  topic_segments: [source_type, unit_id, device, instance, point_name, dtype_hint]
+  compound_point_name: [device, instance, point_name]
+  # device=bms, instance=bms_1, point_name=voltage → point_name = "bms/bms_1/voltage"</pre>
+
+  <h4>compound_field_name <span class="tag tag-blue">wide/pivot mode</span></h4>
+  <p>Join these segment columns with <code>/</code> and use the result as the <strong>value column name</strong>.
+     Each unique signal path becomes its own Parquet column; a row only writes to one column, all
+     others are null. Works best with <code>null_fill_unchanged: true</code> for COV compression.</p>
+  <pre>mqtt:
+  compound_field_name: [device, instance, point_name]
+  # Creates columns like "bms/bms_1/voltage", "bms/bms_1/temperature", …
+  # One row has exactly one non-null value column.</pre>
+
+  <h4>topic_patterns — multi-depth pattern matching</h4>
+  <p>Defines a list of match/segment rules (like Telegraf <code>topic_parsing</code>).
+     The first matching pattern wins. Ignored when <code>topic_segments</code> is non-empty.
+     <code>+</code> matches any single segment; <code>#</code> matches the remainder.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>match</code></td><td>Topic pattern string split on <code>/</code>. Use <code>+</code> for wildcard segments.</td></tr>
+      <tr><td><code>segments</code></td><td>Column names for each captured segment (same length as non-wildcard positions)</td></tr>
+      <tr><td><code>reverse</code></td><td>If true, <code>segments[0]</code> maps to the <em>last</em> topic segment (right-aligned)</td></tr>
+    </tbody>
+  </table>
+  <pre>mqtt:
+  topic_patterns:
+    - match: "unit/+/bms/#"
+      segments: [source_type, unit_id, device]
+    - match: "pcs/+/+/#"
+      segments: [source_type, unit_id, subsystem]</pre>
+
+  <h4>Filtering &amp; column control</h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>drop_point_names</code></td><td><code>[]</code></td><td>Discard any message whose parsed <code>point_name</code> matches an entry. Applied before compound field assembly — cheapest possible filter.</td></tr>
+      <tr><td><code>drop_columns</code></td><td><code>[]</code></td><td>Remove these column names from every row after parsing (applied after compound_point_name / compound_field_name).</td></tr>
+      <tr><td><code>partition_field</code></td><td><code>site_id</code></td><td>Column whose value is used as the partition key for directory grouping and filename prefix.</td></tr>
+      <tr><td><code>timestamp_field</code></td><td><code>ts</code></td><td>JSON payload field name for the event timestamp.</td></tr>
+      <tr><td><code>timestamp_format</code></td><td><code>iso8601</code></td><td>Timestamp parsing format. Currently only <code>iso8601</code> is supported.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════ OUTPUT section ═══════════════ -->
+<div class="section">
+  <h3 id="cfg-output">output: — Storage, Flush &amp; Partitioning</h3>
+
+  <h4>Paths &amp; identity</h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>base_path</code></td><td><code>/srv/data/parquet-ems</code></td><td>Root directory for all Parquet output. <span class="err">Must be unique per instance.</span></td></tr>
+      <tr><td><code>site_id</code></td><td><code>""</code></td><td>Site identifier injected into every row from config (not from topic). Required — writer fails to start if empty.</td></tr>
+      <tr><td><code>project_id</code></td><td><code>0</code></td><td>Integer project ID stored as a column in every row.</td></tr>
+      <tr><td><code>partitions</code></td><td><code>["site={site_id}", "{year}", "{month}", "{day}"]</code></td><td>List of directory path components. Supports <code>{site_id}</code>, <code>{year}</code>, <code>{month}</code>, <code>{day}</code> substitutions. Determines the directory tree under <code>base_path</code>.</td></tr>
+      <tr><td><code>filename_prefix</code></td><td><code>""</code></td><td>If set, prepended to the timestamp-based filename: <code>{prefix}_{ts}.parquet</code></td></tr>
+      <tr><td><code>partition_as_filename_prefix</code></td><td><code>false</code></td><td>If true, prepends the partition field value to the filename: <code>{unit_id}_{ts}.parquet</code></td></tr>
+    </tbody>
+  </table>
+
+  <h4>Flush control</h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>compression</code></td><td><code>snappy</code></td><td>Parquet compression codec: <code>snappy</code> (fast, moderate ratio) | <code>zstd</code> (best ratio) | <code>gzip</code> | <code>none</code></td></tr>
+      <tr><td><code>flush_interval_seconds</code></td><td><code>60</code></td><td>How often the flush thread wakes and writes buffered rows to Parquet. Lower = more files, less data loss window.</td></tr>
+      <tr><td><code>max_messages_per_part</code></td><td><code>5000000</code></td><td>Force a flush for a partition when its row count reaches this limit, even mid-interval.</td></tr>
+      <tr><td><code>max_total_buffer_rows</code></td><td><code>2000000</code></td><td>OOM guard: trigger immediate flush if total in-memory rows across all partitions exceeds this (~25 s at 80k msg/s).</td></tr>
+      <tr><td><code>flush_max_retries</code></td><td><code>3</code></td><td>Number of retry attempts if a Parquet write fails (e.g. transient I/O error).</td></tr>
+      <tr><td><code>flush_retry_base_seconds</code></td><td><code>1</code></td><td>Base backoff seconds between flush retries (doubles each attempt).</td></tr>
+      <tr><td><code>time_window_ms</code></td><td><code>0</code></td><td>If &gt;0, coalesce all messages received within this wall-clock window under one shared timestamp. Useful for sources that burst-publish with identical timestamps. 0 = disabled, each message keeps its own timestamp.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Auxiliary outputs</h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>hot_file_path</code></td><td><code>""</code></td><td>If set, always overwrite this file with the latest flush data (the "hot" window). Useful as a live feed for dashboards without scanning the full archive.</td></tr>
+      <tr><td><code>current_state_path</code></td><td><code>""</code></td><td>If set, atomically (tmp+rename) writes a single-row-per-sensor snapshot on every flush. Seed for dashboards and on-call views after a restart. Also used by the <code>null_fill_unchanged</code> COV comparison.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Column flags</h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>store_mqtt_topic</code></td><td><code>true</code></td><td>Write the raw MQTT topic string as a dictionary-encoded string column. Set false to reduce schema width.</td></tr>
+      <tr><td><code>store_project_id</code></td><td><code>true</code></td><td>Include <code>project_id</code> column in output. Set false for schemas where project context is in the path.</td></tr>
+      <tr><td><code>store_sample_count</code></td><td><code>true</code></td><td>Include <code>sample_count</code> int64 column (always 1 unless flush_dedup is active). Useful for <code>SUM(sample_count)</code> to recover original message count after dedup.</td></tr>
+      <tr><td><code>wide_point_name</code></td><td><code>false</code></td><td>After capturing the partition key, drop <code>site_id</code> and <code>project_id</code> columns from each row. Use with <code>compound_point_name</code> or <code>compound_field_name</code> — those already encode the identity in the filename/path.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Wide-pivot COV compression <span class="tag tag-blue">compound_field_name mode</span></h4>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>null_fill_unchanged</code></td><td><code>false</code></td><td>In wide-pivot mode: null out value columns whose reading has not changed since the last flush for this partition. Signals that don't change compress to near-zero; active signals still write every row. Only active when <code>compound_field_name</code> is set.</td></tr>
+      <tr><td><code>null_fill_reset_interval_seconds</code></td><td><code>3600</code></td><td>Force a full (non-null) write for all columns every N seconds regardless of change. Prevents gaps longer than this duration in archived data. Set to 0 to disable periodic reset.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════ WAL/HEALTH/COMPACT/GUARD ═══════════════ -->
+<div class="section">
+  <h3 id="cfg-wal">wal: — Write-Ahead Log</h3>
+  <p>The WAL guarantees no data loss across a writer crash. See <a href="#wal-detail">§16 WAL Detail</a> for the full design.</p>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>enabled</code></td><td><code>true</code></td><td>Enable WAL. Strongly recommended in production. Disable only for transient test writers where data loss is acceptable.</td></tr>
+      <tr><td><code>path</code></td><td><code>{base_path}/.wal/</code></td><td>Directory for WAL files. Arrow IPC format, one file per partition per flush cycle. Auto-created if missing.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="cfg-health">health: — HTTP Metrics Endpoint</h3>
+  <p>GET <code>http://host:{port}/health</code> returns a JSON object with live counters.</p>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>enabled</code></td><td><code>true</code></td><td>Enable the health HTTP endpoint.</td></tr>
+      <tr><td><code>port</code></td><td><code>8771</code></td><td>TCP port to listen on. <span class="err">Must be unique per instance.</span></td></tr>
+    </tbody>
+  </table>
+  <pre>$ curl http://localhost:8771/health
+{
+  "msgs_received":       1217551,   // total MQTT messages received
+  "buffer_rows":         42318,     // rows currently in memory buffer
+  "overflow_drops":      0,         // rows dropped when buffer was full
+  "ring_used":           12,        // SPSC ring slots currently occupied
+  "ring_cap":            262144,    // ring capacity (slots)
+  "ring_drops":          0,         // messages dropped due to full ring
+  "flush_count":         14,        // number of completed flush cycles
+  "flush_avg_ms":        68,        // average flush duration (ms)
+  "flush_max_ms":        151,       // worst-case flush duration (ms)
+  "last_wal_ms":         12,        // WAL write portion of last flush
+  "wal_replay_rows":     0,         // rows recovered from WAL on startup
+  "topic_truncations":   0,         // MQTT topics truncated (> 256 bytes)
+  "payload_truncations": 0,         // payloads truncated (> 256 bytes)
+  "disk_free_gb":        245.3      // filesystem free space at base_path
+}</pre>
+
+  <h3 id="cfg-compact">compact: — Background File Compactor</h3>
+  <p>Merges many small flush files into one larger file per directory. See <a href="#compactor">§11 Compactor</a> for design details.</p>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>enabled</code></td><td><code>false</code></td><td>Enable the compactor background thread. Recommended when flush interval is short or many partitions are active.</td></tr>
+      <tr><td><code>interval_seconds</code></td><td><code>600</code></td><td>How often the compactor scans for eligible directories (default: 10 minutes).</td></tr>
+      <tr><td><code>min_files</code></td><td><code>3</code></td><td>Minimum number of eligible files in a directory before compaction is triggered.</td></tr>
+      <tr><td><code>min_age_seconds</code></td><td><code>0</code></td><td>Only compact files older than this. <code>0</code> = automatically use <code>2 × flush_interval_seconds</code> to avoid racing with the active flush file.</td></tr>
+      <tr><td><code>log_path</code></td><td><code>{base_path}/compact.log</code></td><td>Path for compactor JSON-lines activity log. Each line records a compaction event: directory, file count, row count, duration.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="cfg-guard">guard: — Disk Space Protection</h3>
+  <table>
+    <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>min_free_gb</code></td><td><code>1.0</code></td><td>Check free space before every flush. If <code>disk_free_gb</code> falls below this threshold, skip the flush and log a warning. Prevents the writer from filling the filesystem and crashing the host. Exposed in <code>/health</code> as <code>disk_free_gb</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Per-instance uniqueness requirements</h3>
+  <table>
+    <thead><tr><th>Setting</th><th>Unique per instance?</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>mqtt.client_id</code></td><td class="err">Required</td><td>Broker kicks whichever client connects second with a duplicate ID</td></tr>
+      <tr><td><code>output.base_path</code></td><td class="err">Required</td><td>Two writers in the same directory race on filenames and WAL files</td></tr>
+      <tr><td><code>health.port</code></td><td class="err">Required</td><td>Two processes cannot bind the same TCP port</td></tr>
+      <tr><td><code>mqtt.topic</code></td><td class="ok">Optional</td><td>Broker fans out each message to every subscriber independently</td></tr>
+      <tr><td><code>output.compression</code></td><td class="ok">Optional</td><td>Can differ between instances (trade CPU vs file size)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="robustness">7 · Robustness Features</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Feature</th><th>What it does</th><th>Config key</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>MQTT auto-reconnect</strong></td>
+        <td>Libmosquitto reconnects automatically with exponential backoff (2 s → 30 s) if the broker restarts or the TCP connection drops. Subscription is re-issued in <code>on_connect()</code> so it survives reconnects.</td>
+        <td><code>mqtt.reconnect_*</code></td>
+      </tr>
+      <tr>
+        <td><strong>Ring buffer overflow protection</strong></td>
+        <td>When the ring is full (e.g. during a slow flush), new messages are dropped rather than blocking the MQTT network thread. Drop count is tracked and exposed in <code>/health</code>. The ring holds ~870 ms of burst at 300k msg/s before any drops occur.</td>
+        <td>Fixed at 262,144 slots</td>
+      </tr>
+      <tr>
+        <td><strong>Buffer overflow guard</strong></td>
+        <td>If in-memory buffer rows exceed <code>max_total_buffer_rows</code>, the writer drops incoming messages and triggers an early flush to reclaim memory. Prevents OOM on very long flush pauses.</td>
+        <td><code>output.max_total_buffer_rows</code></td>
+      </tr>
+      <tr>
+        <td><strong>Disk space guard</strong></td>
+        <td>Before each flush, checks available disk space. If below <code>min_free_gb</code>, skips the flush and logs a warning. Prevents the writer from filling the disk and crashing the host.</td>
+        <td><code>guard.min_free_gb</code></td>
+      </tr>
+      <tr>
+        <td><strong>Write-ahead log (WAL)</strong></td>
+        <td>
+          Before each Parquet flush, writes all buffered rows to an Arrow IPC file
+          (<code>{base_path}/.wal/{source}_{pval}_{ts}.wal.arrow</code>). On successful
+          Parquet write the WAL file is deleted. On startup, any surviving WAL files are
+          replayed before live data is accepted — guaranteeing no data loss across writer
+          crashes. WAL write time is reported separately as <code>last_wal_ms</code> in
+          <code>/health</code>; replay row count as <code>wal_replay_rows</code>.<br>
+          <strong>Default: ON</strong> in <code>real_writer</code> (<code>wal_enabled: true</code>).
+          Disabled in the stress-test <code>writer</code> (NVMe flush is the bottleneck there).
+        </td>
+        <td><code>wal.enabled</code></td>
+      </tr>
+      <tr>
+        <td><strong>Parquet flush retry</strong></td>
+        <td>If a Parquet file write fails (disk full, permission error, transient I/O), the writer retries up to <code>flush_max_retries</code> times with exponential backoff before logging a permanent failure.</td>
+        <td><code>output.flush_max_retries</code></td>
+      </tr>
+      <tr>
+        <td><strong>Graceful shutdown</strong></td>
+        <td>On SIGTERM or SIGINT, the writer completes any in-progress flush, performs a final flush of all buffered rows, disconnects from MQTT cleanly, and exits. No data is lost on a clean shutdown.</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><strong>Health endpoint</strong></td>
+        <td>HTTP/1.1 GET /health returns a JSON metrics object. Used by the monitoring dashboard to detect dead writers, track message rates, ring utilisation, and flush timing. Health thread shuts down within 100 ms of SIGTERM.</td>
+        <td><code>health.enabled / health.port</code></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="performance">8 · Performance</h2>
+
+<div class="section">
+  <p>Benchmarks run on <strong>spark1</strong> — ASUS NUC GX10, ARM Cortex-X925 + A725 (20 cores),
+     120 GB unified RAM, PCIe 4.0 NVMe (3.3 GB/s). Build: <code>g++ -O2 -std=c++17</code>.</p>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-val">2.67M</div>
+      <div class="kpi-lbl">parse_topic ops/sec (+62% from F3 fixes)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">491k</div>
+      <div class="kpi-lbl">parse + JSON payload ops/sec</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">~1M</div>
+      <div class="kpi-lbl">parquet flush rows/sec (NVMe)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val">1.09M</div>
+      <div class="kpi-lbl">end-to-end rows/sec (full pipeline)</div>
+    </div>
+  </div>
+
+  <h3>Production workload vs capacity</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Production rate</th><th>Writer capacity</th><th>Headroom</th></tr></thead>
+    <tbody>
+      <tr><td>Fleet message rate</td><td>81,420 msg/s (46 units × 1,770 topics)</td><td>&gt;1,000,000 msg/s</td><td class="ok">12×</td></tr>
+      <tr><td>Stress test rate (single writer)</td><td>300,000 msg/s</td><td>&gt;1,000,000 msg/s</td><td class="ok">3.3×</td></tr>
+      <tr><td>Topic parsing</td><td>81,420 calls/s</td><td>2,672,549 calls/s</td><td class="ok">33×</td></tr>
+      <tr><td>Parquet flush</td><td>~80k rows per 60s interval</td><td>~1M rows/s</td><td class="ok">750×</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key optimisations (F3 series)</h3>
+  <table>
+    <thead><tr><th>Fix</th><th>Change</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>F3-1</td><td>SIGPIPE → SIG_IGN</td><td>Health client disconnect no longer kills the writer</td></tr>
+      <tr><td>F3-2</td><td>Signal pipe O_NONBLOCK on both ends</td><td>Eliminates deadlock at 400k msg/s when pipe fills during flush</td></tr>
+      <tr><td>F3-3</td><td><code>mosquitto_loop_stop(force=true)</code></td><td>Shutdown no longer blocks up to reconnect_max_seconds</td></tr>
+      <tr><td>F3-4</td><td>Final flush moved after <code>loop_stop</code></td><td>All messages delivered up to broker disconnect are captured</td></tr>
+      <tr><td>F3-5</td><td>JSON parse moved outside <code>g_mutex</code></td><td>Mutex hold time reduced from ~200 µs to &lt;1 µs per message</td></tr>
+      <tr><td>F3-6</td><td><code>std::map</code> → <code>std::unordered_map</code> in Row</td><td>2–4× less allocation pressure at 300k msg/s</td></tr>
+      <tr><td>F3-7</td><td>Pointer-walk topic parser (no <code>istringstream</code>)</td><td>+62% parse throughput; zero heap allocation on hot path</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="deployment">9 · Deployment</h2>
+
+<div class="section">
+  <h3>Stress / validation environments</h3>
+  <p>These environments run multiple writer instances in parallel against a high-rate
+     synthetic workload — for fault-tolerance testing only, not representative of
+     production deployment.</p>
+  <table>
+    <thead><tr><th>Host</th><th>IP</th><th>Type</th><th>Instances (stress only)</th><th>Stress rate</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>phil-256g</strong></td>
+        <td>192.168.86.34</td>
+        <td>Docker</td>
+        <td>4 containers :8771–8774</td>
+        <td>300k/s (adjustable via monitor)</td>
+      </tr>
+      <tr>
+        <td><strong>spark1</strong></td>
+        <td>192.168.86.48</td>
+        <td>Native ARM binaries</td>
+        <td>4 processes :8771–8774</td>
+        <td>300k/s (adjustable via monitor)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Build</h3>
+  <pre># Dependencies: libparquet-dev, libarrow-dev, libmosquitto-dev, libyaml-cpp-dev, libsimdjson-dev
+make -C source/parquet_writer parquet_writer
+
+# ARM cross-compile (imx93 SoM via Yocto SDK)
+# see project notes — gumby/SDK target</pre>
+
+  <h3>Run</h3>
+  <pre># Single instance
+./parquet_writer --config writer_config.yaml
+
+# Multiple instances (no second config file needed)
+./parquet_writer --config writer_config.yaml --client-id pw-b --output /srv/data/parquet-b --health-port 8772 &amp;</pre>
+
+  <h3>Monitor</h3>
+  <p>The torture test monitoring dashboard is at
+     <code>http://192.168.86.46:8080/writer/torture_monitor.html</code>.
+     It shows real-time stress rates, writer health metrics (ring utilisation, drop counts,
+     flush timing), container status, and includes a rate control slider and fault injection
+     panel.</p>
+
+  <h3>Health endpoint</h3>
+  <pre>$ curl http://192.168.86.48:8771/health
+{
+  "msgs_received":      1217551,
+  "buffer_rows":        42318,
+  "overflow_drops":     0,
+  "ring_used":          12,
+  "ring_cap":           262144,
+  "ring_drops":         0,
+  "flush_count":        14,
+  "flush_avg_ms":       68,
+  "flush_max_ms":       151,
+  "last_wal_ms":        12,        ← WAL write portion of last flush
+  "wal_replay_rows":    0,         ← rows replayed from WAL on startup
+  "topic_truncations":  0,
+  "payload_truncations":0
+}</pre>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="internals">10 · Implementation Details</h2>
+
+<div class="section">
+  <h3>Lock-free SPSC ring (<code>mqtt_ring.h</code>)</h3>
+  <p>
+    The <code>MqttRing</code> is a single-producer / single-consumer ring buffer using
+    two <code>std::atomic&lt;uint64_t&gt;</code> counters (<code>write_pos</code>,
+    <code>read_pos</code>) on separate 64-byte cache lines to avoid false sharing.
+  </p>
+  <p>
+    <strong>Producer</strong> (<code>on_message</code>, MQTT thread): loads <code>write_pos</code>
+    with relaxed ordering, checks fullness with acquire on <code>read_pos</code>, copies topic
+    + payload into the slot, then stores <code>write_pos+1</code> with release ordering.
+  </p>
+  <p>
+    <strong>Consumer</strong> (<code>parse_thread_fn</code>): loads <code>read_pos</code>
+    with relaxed, checks emptiness with acquire on <code>write_pos</code>, copies the slot,
+    stores <code>read_pos+1</code> with release. The acquire/release pair is the memory
+    barrier that guarantees the consumer sees the fully-written slot.
+  </p>
+  <p>
+    Slot size: 516 bytes (4-byte header + 256-byte topic + 256-byte payload).
+    Total ring: 262,144 slots × 516 B ≈ <strong>135 MB</strong> (BSS, zero-initialised at startup).
+  </p>
+
+  <h3>Topic truncation counters</h3>
+  <p>
+    Real EMS topics reach 136 bytes. The ring's <code>MQRING_TOPIC_MAX</code> is 256 bytes —
+    safe headroom. If a topic or payload would be truncated, atomic counters
+    <code>topic_truncations</code> / <code>payload_truncations</code> are incremented and
+    exposed in <code>/health</code>. A non-zero count means the physical sensor topic
+    structure has changed and the constant needs to be updated.
+  </p>
+
+  <h3>Flush thread wake mechanism</h3>
+  <p>
+    Rather than a condition variable (which would require a mutex for the wait), the flush
+    thread polls a <code>g_signal_pipe</code> (a standard Unix pipe) using <code>poll()</code>
+    with a timeout equal to <code>flush_interval_seconds</code>. When a message arrives or
+    the buffer is full, <code>process_raw_message()</code> writes a single byte to the write
+    end of the pipe. The flush thread wakes immediately instead of waiting the full interval.
+    Both ends of the pipe are <code>O_NONBLOCK</code> to prevent the fast write path from
+    ever blocking.
+  </p>
+
+  <h3>Shutdown sequence</h3>
+  <pre>SIGTERM →  handle_signal() sets g_shutdown=true, writes to signal pipe
+          → flush_thread: current flush completes, exits while(!g_shutdown) loop
+          → main: flusher.join()
+          → main: mosquitto_disconnect + mosquitto_loop_stop(force=true)
+          → main: sets g_mqtt_stopped=true — parse_thread drains ring to empty
+          → main: parser.join()
+          → main: final flush of any remaining buffer rows
+          → main: health_thr.join() (exits within 100ms of g_shutdown)
+          → process exits cleanly</pre>
+
+  <h3>Parquet schema construction</h3>
+  <p>
+    The Parquet schema is built from the first row seen for each partition.
+    Each <code>Row</code> carries three typed maps — <code>ints</code> (int64),
+    <code>floats</code> (double), <code>strings</code> (string) — and the flush thread
+    iterates all three to construct Arrow builders dynamically. <code>mqtt_topic</code>
+    lands in <code>strings</code> and is written as a Parquet dictionary-encoded string
+    column (Arrow <code>DictionaryArray&lt;int32, StringArray&gt;</code>), making the
+    per-row overhead ~1–2 bytes despite topic strings being 30–136 characters long.
+  </p>
+  <p>
+    At flush time, if any partition has accumulated both integer and floating-point values
+    under the column name <code>"value"</code>, the flush thread renames them
+    <code>value_i</code> and <code>value_f</code> before building the Arrow schema, avoiding
+    a type mismatch. This happens automatically and is invisible to the parse thread.
+  </p>
+  <p>
+    Arrow builders accumulate rows in memory; at flush time the builders are finalised into
+    an Arrow Table and written via <code>parquet::arrow::WriteTable()</code>. The WAL uses
+    the same Arrow IPC format via <code>arrow::ipc::MakeFileWriter()</code> — the same
+    schema, so WAL replay can feed directly into the same flush function.
+  </p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="compactor">11 · Compactor <span class="tag tag-blue">real_writer only</span></h2>
+
+<div class="section">
+  <p>
+    The compactor is a fifth background thread in <code>real_writer</code> that <strong>fully
+    re-parquets</strong> many small flush files into one larger file per directory. It reads each
+    source file into an Arrow Table in RAM, concatenates them, and calls
+    <code>parquet::arrow::WriteTable()</code> to write a brand new Parquet file — not a byte-level
+    merge. It is entirely filesystem-based and shares no state with the four core threads.
+  </p>
+  <p>
+    Because the output is re-encoded from scratch, the compacted file gets: fresh compression using
+    the current config codec (useful if you switch codecs), fresh column statistics and row-group
+    min/max (makes DuckDB predicate pushdown more accurate), unified schema across source files, and
+    a single large row group instead of many small ones.
+  </p>
+
+  <h3>Why compaction is needed</h3>
+  <p>
+    At a 60-second flush interval with <code>topic_partition_segments: 2</code> (one file per unit per
+    flush), a 46-unit fleet produces 46 files every minute — 2,760 files per hour, 66,240 per day.
+    DuckDB can scan many small files, but opening and closing thousands of file handles has overhead.
+    Compacting N small files into one per directory per day removes this overhead without changing
+    the data model.
+  </p>
+
+  <h3>Safety rules</h3>
+  <table>
+    <thead><tr><th>Rule</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Age gate</td><td>Only touches files older than <code>compact_min_age_seconds</code> (default: 2 × <code>flush_interval_seconds</code>) — never races with the currently-writing flush file.</td></tr>
+      <tr><td>Atomic write</td><td>Writes to <code>compact_{ts}.parquet.tmp</code>, then <code>rename()</code> to <code>compact_{ts}.parquet</code> before deleting source files. Crash at any point leaves data intact.</td></tr>
+      <tr><td>Read-failure bail</td><td>If any source file fails to read, the whole directory is skipped — no partial compactions.</td></tr>
+      <tr><td>Schema unification</td><td>Uses <code>arrow::ConcatenateTablesOptions{.unify_schemas=true}</code> — safe to merge files from different flush intervals that may have slightly different column sets (e.g. a new unit type appeared mid-day).</td></tr>
+      <tr><td>Eligible files only</td><td>Only processes files whose names start with a digit (flush files: <code>YYYYMMDDTHHMMSSZ.parquet</code>). Skips <code>compact_*</code>, <code>*.tmp</code>, <code>current_state.parquet</code>, <code>hot.parquet</code>.</td></tr>
+      <tr><td>compact_ files are final</td><td><code>compact_*.parquet</code> files are the output of a compaction run and are <strong>not</strong> re-consumed as inputs. Each compaction cycle merges only the original flush files (digit-prefixed), preventing compact files from being re-processed and their rows doubled on every cycle. <span class="ok">Bug fix: commit 6ad3bf0</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Operation</h3>
+<div class="arch-box">compact_thread_fn() loop (every compact_interval_seconds):
+
+  1. Walk base_path recursively
+  2. Group eligible files (age > cutoff) by parent directory
+  3. For each directory with ≥ compact_min_files files:
+       a. read_parquet_table() each source file → Arrow Table in RAM  (full decode)
+       b. ConcatenateTables(unify_schemas=true) → one merged Arrow Table
+       c. write_parquet_table() → compact_{ts}.parquet.tmp           (full re-encode)
+          uses current cfg.compression; one row-group for the whole table
+       d. rename() → compact_{ts}.parquet
+       e. delete source files
+  4. Log: "N files → compact_{ts}.parquet (M rows)"</div>
+
+  <h3>Configuration</h3>
+  <pre>compact:
+  enabled:          true          # off by default — enable when file count grows large
+  interval_seconds: 600           # scan every 10 minutes
+  min_files:        3             # need at least 3 files in a dir to bother compacting
+  min_age_seconds:  0             # 0 = 2 × flush_interval_seconds (120s at default)</pre>
+
+  <div class="alert alert-warn">
+    <strong>No health metrics yet.</strong> The compactor thread logs to stdout but does not
+    currently expose counters in <code>/health</code>. Adding <code>compact_cycles</code>,
+    <code>compact_files_consumed</code>, and <code>compact_rows_merged</code> atomics would
+    let the monitoring dashboard show compaction activity.
+  </div>
+
+  <div class="alert alert-info">
+    <strong>DuckDB tip:</strong> after compaction, <code>GLOB</code> patterns like
+    <code>read_parquet('/data/parquet-evelyn/a/unit/02281660/2026/03/23/*.parquet')</code>
+    return 1–2 files instead of 60, dramatically reducing query startup time for single-day
+    single-unit queries.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="ext-ws">12 · Extension: WS/JSON Stream Input <span class="tag tag-yellow">Under Review</span></h2>
+
+
+<div class="section">
+  <p>
+    The current architecture accepts data exclusively via MQTT (libmosquitto). A proposed extension
+    adds a second input path that accepts a continuous WebSocket stream carrying the same
+    <code>{"ts":"…","value":…}</code> JSON payload format, removing the MQTT broker as a
+    dependency for sources that already produce a WebSocket feed.
+  </p>
+
+  <h3>Proposed architecture with WS/JSON path</h3>
+<div class="arch-box">
+EMS Devices / BMS Publishers
+    │                          │
+    │ MQTT QoS-0               │ WebSocket JSON stream
+    ▼                          ▼
+┌──────────────┐        ┌──────────────────┐
+│   FlashMQ    │        │  WS listener     │  ← new: single-thread libwebsockets
+│   :1883      │        │  :9001 (config)  │    or Boost.Beast — parses topic
+└──────┬───────┘        └────────┬─────────┘    from WS path or message header
+       │                         │
+       │  same on_message()      │  same push() call
+       └────────────┬────────────┘
+                    ▼
+          ┌──────────────────┐
+          │   MqttRing       │  ← shared lock-free SPSC ring (unchanged)
+          │   262,144 slots  │
+          └────────┬─────────┘
+                   ▼
+         parse_thread → flush_thread → Parquet
+</div>
+
+  <p>
+    The key design constraint is that the ring push interface is topic-agnostic: a slot holds
+    raw <code>char[256]</code> topic + <code>char[256]</code> payload bytes. The WS listener only
+    needs to extract these two fields from each incoming message before calling
+    <code>MqttRing::push()</code> — the entire downstream parse and flush pipeline is reused
+    without modification.
+  </p>
+
+  <h3>Integration points</h3>
+  <table>
+    <thead><tr><th>Concern</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Topic encoding</td><td>WS messages must carry the topic either as a URL path (<code>ws://host/unit/id/bms/…</code>) or as a JSON wrapper field (<code>{"topic":"…","ts":"…","value":…}</code>). The latter requires a two-level JSON parse on the hot path — URL path is preferred.</td></tr>
+      <tr><td>Backpressure</td><td>WS listener should apply the same ring-full guard as MQTT: if <code>MqttRing::push()</code> returns false (ring full), drop and increment a <code>ws_drops</code> counter exposed in <code>/health</code>.</td></tr>
+      <tr><td>Authentication</td><td>MQTT relies on broker-level ACLs; WS listener needs its own token or IP-whitelist mechanism before merging into production.</td></tr>
+      <tr><td>Topic length</td><td>URL path-encoded topics inherit the same 136-byte real-data maximum; <code>MQRING_TOPIC_MAX = 256</code> gives adequate headroom.</td></tr>
+      <tr><td>Config flag</td><td>New <code>ws.enabled</code> / <code>ws.port</code> YAML keys; WS listener thread started only when enabled — zero overhead when disabled.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Status — under review.</strong> The WS path adds a second socket listener thread
+    and a third entry point into <code>MqttRing::push()</code>. The ring is SPSC (single-producer);
+    dual-producer use requires either a mutex on the push side or promoting the ring to MPSC.
+    This trade-off must be resolved before implementation begins.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="ext-shm-output">13 · Extension: SHM Output File Buffer <span class="tag tag-yellow">Under Review</span></h2>
+
+<div class="section">
+  <p>
+    The flush thread currently writes Parquet files directly to a disk path
+    (<code>/srv/data/parquet/</code>). A proposed extension stages completed files in a
+    <code>/dev/shm/parquet_out/</code> ring of N slots before an async mover thread transfers
+    them to the final disk destination. This decouples flush latency from disk write latency.
+  </p>
+
+  <h3>Motivation</h3>
+  <ul>
+    <li><strong>Disk jitter isolation</strong> — spinning HDD write latency spikes (10–100 ms) no longer stall the flush thread; the flush thread writes to RAM at memory speed (&gt;10 GB/s), then returns to accumulating rows immediately.</li>
+    <li><strong>Burst absorption</strong> — at 1 M msg/s, a 60-second flush produces ~60 M rows. Staging in SHM allows the next interval's rows to start accumulating while the large file is being committed to disk.</li>
+    <li><strong>Crash-safe handover</strong> — files staged in <code>/dev/shm</code> survive a writer process crash (SHM persists until the OS reboots). A restarted writer (or companion recovery process) can inspect the output ring and complete any pending disk moves.</li>
+  </ul>
+
+  <h3>Proposed layout</h3>
+<div class="arch-box">
+/dev/shm/parquet_out/
+├── ring_header        ← shared header: N, write_slot, move_slot, pid, heartbeat_ns
+├── slot_0/            ← completed Parquet file staged here
+│   ├── data.parquet
+│   └── meta.json      ← destination path, size, flush timestamp
+├── slot_1/
+│   ⋮
+└── slot_{N-1}/
+</div>
+
+  <table>
+    <thead><tr><th>Parameter</th><th>Proposed default</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>N (slot count)</td><td>8</td><td>Covers ~8 flush intervals of backlog; each slot is one Parquet file (typically 2–10 MB compressed)</td></tr>
+      <tr><td>Max slot size</td><td>128 MB</td><td>Headroom for a 1 M msg/s × 60 s burst flush</td></tr>
+      <tr><td>Total SHM reservation</td><td>~1 GB</td><td>8 × 128 MB; actual usage much lower at normal rates</td></tr>
+      <tr><td>Move thread poll</td><td>100 ms or inotify</td><td>Picks up completed slots and rsync/copies to final path</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Status — under review.</strong> The SHM output buffer adds complexity to the flush
+    path and requires a companion move thread. The benefit is primarily for HDD targets; NVMe
+    hosts (spark1: 3.3 GB/s) gain little. Implementation should be conditioned on
+    <code>output.shm_buffer: true</code> in config and deferred until disk jitter is
+    measured as a real bottleneck.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="shm-takeover">14 · SHM Ownership Takeover on Crash</h2>
+
+<div class="section">
+  <p>
+    Both the SHM input ring (<code>/dev/shm/parquet_ring</code>) and the proposed SHM output
+    buffer (<code>/dev/shm/parquet_out/</code>) use the same ownership model: a PID +
+    heartbeat field in the shared header allows a replacement writer process to detect
+    that the previous owner has crashed and take over cleanly, without losing any data
+    that was in flight.
+  </p>
+
+  <h3>Ownership header (shared by input and output SHM regions)</h3>
+  <pre>struct ShmOwner {
+    uint32_t  owner_pid;        // PID of the writer that currently holds this region
+    uint64_t  heartbeat_ns;     // writer updates this every ~200 ms (CLOCK_MONOTONIC)
+    uint32_t  heartbeat_period; // declared update period in ms (default 200)
+    uint32_t  takeover_grace;   // ms to wait before declaring owner dead (default 600)
+};</pre>
+
+  <h3>Takeover protocol</h3>
+  <table>
+    <thead><tr><th>Step</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>1. Attach</td><td>New writer opens the SHM region (<code>shm_open + mmap</code>). If the region does not exist, it creates it and sets <code>owner_pid = getpid()</code>.</td></tr>
+      <tr><td>2. Check liveness</td><td>If <code>owner_pid != 0</code>, send <code>kill(owner_pid, 0)</code>. If the process exists, another writer is healthy — this instance exits or waits.</td></tr>
+      <tr><td>3. Heartbeat stale?</td><td>If <code>kill(owner_pid, 0)</code> returns <code>ESRCH</code> (process gone) <em>or</em> <code>now − heartbeat_ns &gt; takeover_grace ms</code>, the owner is considered crashed.</td></tr>
+      <tr><td>4. CAS takeover</td><td>Attempt <code>__atomic_compare_exchange</code> on <code>owner_pid</code>: expected = old PID, desired = <code>getpid()</code>. Only one of multiple racing restarts wins.</td></tr>
+      <tr><td>5. Resume</td><td>New owner reads the ring's <code>read_pos</code> / <code>write_pos</code> and continues from where the crashed writer stopped. No data is lost from the SHM ring.</td></tr>
+      <tr><td>6. Heartbeat loop</td><td>New owner updates <code>heartbeat_ns</code> every ~200 ms from a dedicated timer thread (or the health thread). If the writer's own health thread detects <code>g_shutdown</code>, it zeros <code>owner_pid</code> to release cleanly.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>What survives a crash</h3>
+  <table>
+    <thead><tr><th>Resource</th><th>Survives crash?</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>SHM input ring (<code>/dev/shm/parquet_ring</code>)</td><td class="ok">Yes</td><td>Kernel retains the region; unread slots are still there for the next owner</td></tr>
+      <tr><td>SHM output buffer (<code>/dev/shm/parquet_out/</code>)</td><td class="ok">Yes</td><td>Staged Parquet files remain; recovery writer can complete the disk move</td></tr>
+      <tr><td>In-memory row buffer (heap)</td><td class="err">No</td><td>Rows accumulated since last flush are lost — same as current behaviour</td></tr>
+      <tr><td>WAL / partial Parquet file on disk</td><td class="ok">Yes</td><td>Existing on-disk files are not corrupted by a crash; partial file is abandoned and named with <code>.partial</code> suffix</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Relationship to the SHM ring (SHM-0 → SHM-7):</strong> the takeover protocol described
+    here is the same mechanism specified in
+    <a href="writer_shm_ring.html" style="color:var(--accent)">writer_shm_ring.html</a>
+    for the input ring. The output buffer extension reuses the identical header layout and
+    CAS takeover step — one ownership model covers both SHM regions.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="next">15 · Roadmap</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Item</th><th>Description</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>SHM ring (SHM-0 → SHM-7)</strong></td>
+        <td>
+          A second input path via a POSIX shared-memory ring buffer
+          (<code>/dev/shm/parquet_ring</code>). Primary use case: embedded targets
+          (imx93 SoM / gumby) that cannot run an MQTT stack. The SHM ring survives
+          writer restarts — a new writer instance takes ownership and resumes from the
+          last read cursor, giving lossless restart without a WAL.
+          Designed with PID + heartbeat ownership takeover and a futex-based cross-process
+          wake mechanism. Full design in <code>html/writer/writer_shm_ring.html</code>.
+        </td>
+        <td class="warn">In design — implementation next</td>
+      </tr>
+      <tr>
+        <td><strong>SHM-7: parse_thread futex wake</strong></td>
+        <td>
+          The parse thread currently sleeps 50 µs when the ring is empty, causing 20,000
+          unnecessary wakeups/sec at idle. Replace with <code>FUTEX_WAIT</code> on a
+          <code>wake_seq</code> atomic in the ring — parse thread blocks until a message
+          arrives, saving CPU and reducing first-message latency.
+        </td>
+        <td class="warn">Pending</td>
+      </tr>
+      <tr>
+        <td><strong>ARM deployment (imx93 SoM)</strong></td>
+        <td>
+          Cross-compile via Yocto SDK on gumby. Arrow/Parquet dev headers available
+          natively on the target. Binary already tested on spark1 (ARM Cortex-X925).
+        </td>
+        <td class="warn">Pending integration</td>
+      </tr>
+      <tr>
+        <td><strong>Topic truncation alert</strong></td>
+        <td>
+          <code>topic_truncations</code> counter in <code>/health</code> is currently
+          a silent metric. Wire it into the monitoring dashboard as a visible warning
+          badge so operators notice if a new device type pushes topic lengths past 256 bytes.
+        </td>
+        <td class="warn">Pending</td>
+      </tr>
+      <tr>
+        <td><strong>flush_dedup — float COV dedup</strong></td>
+        <td>
+          Change-on-value deduplication for float signals during flush. Before writing a row to
+          Parquet, compare its value against the last-flushed value for that sensor. If the change
+          is within a configured deadband, skip the row — accumulating a <code>dedup_drops</code>
+          counter and incrementing <code>sample_count</code> on the surviving row instead.
+          See <a href="#flush-dedup" style="color:var(--accent)">flush_dedup design</a> below.
+        </td>
+        <td class="warn">TODO — design complete, not implemented</td>
+      </tr>
+      <tr>
+        <td><strong>Compactor health metrics</strong></td>
+        <td>
+          Add <code>compact_cycles</code>, <code>compact_files_consumed</code>, and
+          <code>compact_rows_merged</code> atomics so the monitoring dashboard can show
+          compaction activity without tailing logs.
+        </td>
+        <td class="warn">Pending</td>
+      </tr>
+      <tr>
+        <td><strong>Push agent integration</strong></td>
+        <td>
+          The push agent (<code>source/rsync_push/push_agent.py</code>) rsyncs the parquet
+          output directory to the AWS-sim host (fractal-phil) where DuckDB queries it.
+          Currently separate; may be folded into the writer's post-flush hook.
+        </td>
+        <td class="ok">Operational (separate process)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="wal-detail">16 · WAL — Detailed Design</h2>
+
+<div class="section">
+  <p>
+    The write-ahead log guarantees that no rows buffered in RAM are permanently lost across a
+    writer crash. It uses Arrow IPC format — the same in-memory column layout as Arrow Tables,
+    written to a file — so WAL files are compact, schema-preserving, and readable without a
+    full Parquet decode.
+  </p>
+
+  <h3>File layout</h3>
+  <pre>{base_path}/.wal/
+├── unit_02281660_20260329T142001Z.wal.arrow     ← one file per partition per flush cycle
+├── unit_02281661_20260329T142001Z.wal.arrow
+└── unit_02281660_20260329T142001Z.wal.arrow.tmp  ← only exists during write; rename() makes it atomic</pre>
+  <p style="font-size:0.82rem;color:var(--muted)">
+    Naming: <code>{source_type}_{partition_value}_{timestamp}.wal.arrow</code>.
+    The <code>.tmp</code> suffix is used during write; only <code>.wal.arrow</code> files are
+    scanned at replay time so a crash mid-write leaves no partial file in the scan path.
+  </p>
+
+  <h3>Per-flush sequence (normal operation)</h3>
+<div class="arch-box">For each partition in to_flush:
+
+  1. write_wal_ipc(part.rows) → {partition}.wal.arrow.tmp   (Arrow IPC, all columns)
+  2. rename(.tmp → .wal.arrow)                              (atomic — visible or not)
+  3. flush_partition(part.rows) → {date}/{ts}.parquet       (with up to 3 retries)
+     ├── success → fs::remove(.wal.arrow)                  (WAL no longer needed)
+     └── permanent failure → WAL file RETAINED             (logged: "WAL retained for recovery")</div>
+
+  <p>
+    The WAL file for a given partition exists on disk for only the duration of the Parquet write
+    — typically 10–100 ms. At any point in time the <code>.wal/</code> directory should be empty
+    unless a crash or permanent I/O failure has occurred.
+  </p>
+
+  <h3>Crash scenarios</h3>
+  <table>
+    <thead><tr><th>Crash point</th><th>WAL state</th><th>Parquet state</th><th>On restart</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>During <code>write_wal_ipc</code> (step 1)</td>
+        <td><code>.tmp</code> file only — not scanned</td>
+        <td>Not started</td>
+        <td>No WAL found; rows in that buffer interval are lost (same as no-WAL behaviour)</td>
+      </tr>
+      <tr>
+        <td>Between rename and <code>flush_partition</code> (step 2→3)</td>
+        <td><code>.wal.arrow</code> present and complete</td>
+        <td>Not started</td>
+        <td class="ok">WAL replayed → rows recovered in full</td>
+      </tr>
+      <tr>
+        <td>During <code>flush_partition</code> (step 3, mid-write)</td>
+        <td><code>.wal.arrow</code> present</td>
+        <td>Partial <code>.parquet</code> on disk (invalid)</td>
+        <td class="ok">WAL replayed → rows recovered. Partial Parquet is ignored by DuckDB (invalid footer). Compactor skips it (extension ≠ <code>.parquet</code> after truncation — but see note).</td>
+      </tr>
+      <tr>
+        <td>After Parquet written, before <code>fs::remove(wal)</code></td>
+        <td><code>.wal.arrow</code> present</td>
+        <td>Complete valid Parquet</td>
+        <td class="warn">WAL replayed → <strong>duplicate rows</strong> written to a new Parquet file alongside the original. Compactor will merge and deduplicate via schema unification — but there is currently no row-level dedup in the compactor. The duplicates are benign for most queries but inflate row count.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Duplicate on last crash point:</strong> the window between Parquet success and WAL
+    delete is ~1 µs (a single <code>fs::remove()</code> call). In practice this is extremely
+    unlikely but not impossible. A future fix is to write a small <em>commit marker</em> file
+    alongside the Parquet output and check for it during WAL replay before re-flushing.
+  </div>
+
+  <h3>Startup replay sequence</h3>
+<div class="arch-box">main() startup order:
+
+  1. validate_config()
+  2. replay_wal_files()                ← BEFORE mosquitto_connect — no live data yet
+     ├── scan {wal_path}/*.wal.arrow
+     ├── for each file:
+     │     a. wal_replay_file() → vector&lt;Row&gt;   (Arrow IPC decode)
+     │     b. group rows by partition_field (site_id / unit_id)
+     │     c. flush_partition() → {date}/{ts}.parquet  (IMMEDIATE — not held in buffer)
+     │     d. success → fs::remove(.wal.arrow)
+     │     e. failure → retain WAL, log warning
+     └── log: "wal_replay_rows" counter (visible in /health after start)
+  3. mosquitto_lib_init() + mosquitto_connect()
+  4. start flush_thread, health_thread, compact_thread
+  5. mosquitto_loop_forever() — live data now accepted</div>
+
+  <h3>The recombine problem — replayed rows as isolated files</h3>
+  <p>
+    The current design flushes replayed rows <strong>immediately</strong> to new Parquet files
+    (step 2c above). This means:
+  </p>
+  <ul style="margin-bottom:12px">
+    <li>If the writer crashed 5 s into a 60 s flush interval, the WAL holds 5 s of data.</li>
+    <li>On restart those 5 s are written as a standalone Parquet file with a new timestamp.</li>
+    <li>The next 60 s of live data lands in a <em>separate</em> flush file.</li>
+    <li>The compactor will eventually merge both into one file — but only after
+        <code>compact_interval_seconds</code> (default 10 min) have elapsed.</li>
+  </ul>
+  <p>
+    For analytical queries this is fine — DuckDB scans both files. For storage efficiency it
+    creates a small orphan file that inflates the file count until the compactor runs.
+  </p>
+
+  <h3>TODO: 5-second recombine flush after restart</h3>
+  <p>
+    Instead of immediately flushing replayed rows to disk, inject them back into
+    <code>g_buffers</code> and trigger a short initial flush interval so they are combined
+    with the first batch of live data into a single Parquet file.
+  </p>
+<div class="arch-box">Proposed restart sequence with recombine:
+
+  replay_wal_files() — modified:
+    ├── decode each .wal.arrow → vector&lt;Row&gt;
+    ├── insert rows directly into g_buffers  (same as live ingest)
+    └── do NOT flush yet
+
+  mosquitto_connect() — live data starts flowing into g_buffers
+
+  flush_thread — first wake uses short interval (e.g. 5 s):
+    ├── to_flush = exchange(g_buffers, {})   ← contains replayed + first 5 s of live rows
+    ├── do_flush() → single Parquet file per partition (replayed + live, combined)
+    └── subsequent wakes revert to flush_interval_seconds (60 s)</div>
+
+  <h4>Implementation sketch</h4>
+  <pre>// In replay_wal_files() — new path
+for (auto& r : rows) {
+    auto& part = g_buffers[key];
+    part.rows.push_back(std::move(r));
+    ++g_total_buffered;
+}
+// Signal flush thread to wake after short delay
+g_initial_flush_seconds = 5;   // new atomic, read by flush_thread_fn
+
+// In flush_thread_fn()
+int interval = g_initial_flush_seconds.exchange(0);
+if (interval == 0) interval = g_cfg->flush_interval_seconds;
+g_flush_cv.wait_for(lock, std::chrono::seconds(interval));</pre>
+
+  <h4>Trade-offs</h4>
+  <table>
+    <thead><tr><th></th><th>Current (immediate flush)</th><th>Proposed (5 s recombine)</th></tr></thead>
+    <tbody>
+      <tr><td>Replay latency</td><td class="ok">Rows on disk before MQTT connects</td><td class="warn">Rows in RAM for 5 s after MQTT connects</td></tr>
+      <tr><td>File count</td><td class="warn">+1 orphan file per partition per crash</td><td class="ok">Replayed rows merged into first live flush file</td></tr>
+      <tr><td>Crash during 5 s window</td><td class="ok">WAL already consumed — data safe</td><td class="warn">WAL consumed but buffer not flushed — rows lost again (need new WAL write at buffer insert time)</td></tr>
+      <tr><td>Complexity</td><td class="ok">Simple — replay is self-contained</td><td class="warn">Requires coordinating replay path with flush_thread startup</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-warn">
+    <strong>Key risk of recombine approach:</strong> once WAL rows are moved into
+    <code>g_buffers</code> and the <code>.wal.arrow</code> file is deleted, a second crash
+    within the 5-second window loses those rows permanently (they are in RAM with no WAL
+    backing). The safe fix is: write a new WAL for the recombined buffer <em>before</em>
+    deleting the original, or simply leave the original WAL file until the first flush succeeds.
+    The simplest implementation is to leave the WAL file in place and only delete it after the
+    combined flush completes — the existing flush-then-delete path already handles this correctly.
+  </div>
+
+  <h3>WAL size and timing</h3>
+  <table>
+    <thead><tr><th>Scenario</th><th>WAL file size</th><th>Replay time</th></tr></thead>
+    <tbody>
+      <tr><td>60 s flush, 46 units, 81k msg/s</td><td>~4–8 MB per partition (Arrow IPC, uncompressed)</td><td>&lt;1 s for all partitions</td></tr>
+      <tr><td>5 s flush (short interval)</td><td>~300–600 KB per partition</td><td>&lt;100 ms</td></tr>
+      <tr><td>Crash at 1 s into 60 s interval</td><td>~80 KB (1 s × 81k/46 ≈ 1760 rows)</td><td>Negligible</td></tr>
+    </tbody>
+  </table>
+
+  <div class="alert alert-info">
+    <strong>Why Arrow IPC and not Parquet for WAL?</strong> Writing WAL as Arrow IPC avoids the
+    Parquet encoding overhead (dictionary building, RLE, compression) on the hot flush path.
+    Arrow IPC is a direct memory dump of the column buffers — typically 5–10× faster to write
+    than Parquet for the same data. The WAL is a transient safety net, not a query target, so
+    its larger on-disk size is acceptable.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="flush-dedup">17 · TODO: flush_dedup — Float COV Deduplication</h2>
+
+<div class="section">
+  <p>
+    Telegraf's <code>dedup</code> processor already handles integer and boolean signals (Filter B —
+    ~23% row reduction). Float signals are excluded because floating-point equality comparison is
+    unreliable. <strong>flush_dedup</strong> would bring the same change-on-value logic into the
+    writer itself, applied at flush time using a configurable deadband threshold, and would be the
+    primary mechanism for the "Moderate" filter scenario (~40% total reduction).
+  </p>
+
+  <h3>Foundation already in the code</h3>
+  <table>
+    <thead><tr><th>Existing piece</th><th>Role in flush_dedup</th></tr></thead>
+    <tbody>
+      <tr><td><code>g_current_state</code> — <code>map&lt;SensorKey, Row&gt;</code></td><td>Tracks the last row seen per sensor. Already updated on every ingest when <code>current_state_path</code> is set. flush_dedup reads this to get the last <em>flushed</em> value for comparison.</td></tr>
+      <tr><td><code>row.ints["sample_count"] = 1</code></td><td>Placeholder set on every row. flush_dedup would accumulate skipped counts here so the surviving row records how many samples it represents.</td></tr>
+      <tr><td><code>current_state_path</code> config</td><td>Persists <code>g_current_state</code> to disk across restarts so the deadband comparison survives a writer restart without a cold-start burst.</td></tr>
+      <tr><td><code>g_overflow_drops</code> atomic pattern</td><td>Template for the new <code>g_dedup_drops</code> counter — same atomic + health endpoint exposure pattern.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Where to apply dedup</h3>
+  <p>
+    Dedup should run in the <strong>flush thread</strong>, not in the message callback. Doing it
+    in the callback would require holding <code>g_mutex</code> longer (for the
+    <code>g_current_state</code> lookup) and would make the hot path conditional on config.
+    In the flush thread the data is already off the hot path — the buffer has been swapped out
+    under the mutex and the flush thread owns it exclusively.
+  </p>
+  <p>
+    Concretely: after <code>std::exchange(g_buffers, {})</code> gives the flush thread its snapshot,
+    it iterates the rows per partition and filters them before building Arrow columns.
+    <code>g_current_state</code> is read from a snapshot taken at the same swap point (already done
+    for <code>hot.parquet</code> and <code>current_state.parquet</code>), so the comparison is
+    consistent with the buffer contents.
+  </p>
+
+  <h3>Why a single global threshold is insufficient</h3>
+  <p>
+    A single relative deadband (e.g. 0.1%) applied to all float signals fails in both
+    directions across the EMS signal space:
+  </p>
+  <table>
+    <thead><tr><th>Signal</th><th>Typical range</th><th>0.1% of range</th><th>Problem</th></tr></thead>
+    <tbody>
+      <tr><td><code>voltage</code></td><td>3.0–4.2 V</td><td>~3.6 mV</td><td class="ok">Reasonable — cell voltage drifts slowly at rest</td></tr>
+      <tr><td><code>temperature</code></td><td>15–55 °C</td><td>~0.04 °C</td><td class="warn">Too tight — sensor noise alone exceeds this; almost nothing is deduped</td></tr>
+      <tr><td><code>soc</code></td><td>0–100 %</td><td>0.1 %</td><td class="ok">Reasonable for state-of-charge</td></tr>
+      <tr><td><code>current</code></td><td>−500 to +500 A</td><td>~500 mA</td><td class="warn">Too tight during charge/discharge — 0.5 A noise is normal; over-stores. Also: near zero current (idle), relative % is meaningless (divide-by-near-zero)</td></tr>
+      <tr><td><code>power</code></td><td>−200 to +200 kW</td><td>~200 W</td><td class="warn">Similar to current — large absolute noise during operation</td></tr>
+      <tr><td><code>PCS_Grid_Frequency</code></td><td>49.9–50.1 Hz</td><td>~0.05 Hz</td><td class="err">Way too loose — frequency must be recorded at ±0.01 Hz resolution for grid compliance</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Per-point-name deadband lets each signal class carry its own threshold, expressed as either
+    a <strong>relative %</strong> (good for signals with stable baselines) or an
+    <strong>absolute value</strong> (good for near-zero-crossing signals and where physical units
+    dictate the resolution requirement). Specific signals can also be marked
+    <strong>disabled</strong> — always stored regardless of change.
+  </p>
+
+  <h3>Deadband comparison — with per-point lookup</h3>
+  <pre>enum class DeadbandMode { Relative, Absolute, Disabled };
+
+struct PointDeadband {
+    DeadbandMode mode  {DeadbandMode::Relative};
+    double       value {0.001};   // relative: fraction (0.001 = 0.1%)
+                                  // absolute: raw units (0.005 = 5 mV for voltage)
+};
+
+// In Config — built from YAML at startup
+std::unordered_map&lt;std::string, PointDeadband&gt; dedup_per_point;
+PointDeadband                                   dedup_default;   // fallback
+
+// Lookup — O(1) unordered_map, called once per row in flush thread
+const PointDeadband& get_deadband(const std::string& point_name) {
+    auto it = g_cfg-&gt;dedup_per_point.find(point_name);
+    return (it != g_cfg-&gt;dedup_per_point.end()) ? it-&gt;second : g_cfg-&gt;dedup_default;
+}
+
+bool within_deadband(double new_val, double last_val, const PointDeadband& db) {
+    if (db.mode == DeadbandMode::Disabled) return false;
+    double delta = std::abs(new_val - last_val);
+    if (db.mode == DeadbandMode::Absolute)
+        return delta &lt; db.value;
+    // Relative — guard against divide-by-near-zero
+    if (std::abs(last_val) &lt; 1e-9) return delta &lt; 1e-9;
+    return delta / std::abs(last_val) &lt; db.value;
+}</pre>
+  <p>
+    The <code>point_name</code> is already stored in <code>row.strings["point_name"]</code> for
+    every row produced by the real EMS writer, so the lookup key is always available at flush time
+    with no additional parsing.
+  </p>
+
+  <h3>sample_count accumulation</h3>
+  <p>
+    When a row is suppressed by dedup, its value is not lost — it is recorded as "seen but
+    unchanged". The <code>sample_count</code> on the <em>last surviving row</em> for that
+    sensor is incremented. At the end of the flush loop, any sensor whose last row was
+    suppressed all-flush needs its accumulated count written out as a final "sentinel" row
+    so <code>sample_count</code> is not silently dropped.
+  </p>
+<div class="arch-box">Per sensor, within one flush interval:
+
+  msg1  value=3.712  → kept   (first seen)  sample_count=1
+  msg2  value=3.713  → dedup  (Δ=0.027%)    sample_count on msg1 → 2
+  msg3  value=3.714  → dedup  (Δ=0.054%)    sample_count on msg1 → 3
+  msg4  value=3.850  → kept   (Δ=3.8% > db) sample_count=1
+  msg5  value=3.851  → dedup                 sample_count on msg4 → 2
+
+Flushed rows: msg1 (sample_count=3), msg4 (sample_count=2)
+Dedup drops this interval: 3</div>
+
+  <h3>Counting skipped duplicates</h3>
+  <table>
+    <thead><tr><th>Counter</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>g_dedup_drops</code></td><td><code>std::atomic&lt;uint64_t&gt;</code></td><td>Total rows suppressed since process start. Exposed in <code>/health</code> as <code>"dedup_drops"</code>. Monotonically increasing — use the delta between health polls to get a rate.</td></tr>
+      <tr><td><code>g_dedup_drops_last_flush</code></td><td><code>std::atomic&lt;uint64_t&gt;</code></td><td>Drops in the most recent flush cycle only. Exposed as <code>"dedup_drops_last_flush"</code>. Reset at the start of each flush. Gives an instantaneous dedup rate without client-side delta math.</td></tr>
+      <tr><td><code>row.ints["sample_count"]</code></td><td>int64 Parquet column</td><td>How many raw MQTT messages this row represents. 1 = no dedup. &gt;1 = N−1 duplicates were suppressed. Queryable from DuckDB: <code>SUM(sample_count)</code> recovers the original message count.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Configuration — global default + per-point overrides</h3>
+  <pre>dedup:
+  enabled:      false          # off by default
+  integer_enabled: false       # integers already handled by Telegraf Filter B
+
+  # Global fallback — applied to any point_name not listed in per_point
+  default:
+    mode:  relative            # relative | absolute | disabled
+    value: 0.001               # relative: 0.1% of last value
+
+  # Per-point-name overrides — point_name matches row.strings["point_name"]
+  # Supports glob-style prefix matching (e.g. "Batt1_MBMS_*") if implemented
+  per_point:
+    voltage:              {mode: absolute, value: 0.005}   # 5 mV — cell voltage
+    temperature:          {mode: absolute, value: 0.5}     # 0.5 °C — thermal sensor noise floor
+    soc:                  {mode: absolute, value: 0.1}     # 0.1 % SOC
+    current:              {mode: absolute, value: 1.0}     # 1 A — avoids near-zero relative issues
+    power:                {mode: absolute, value: 500.0}   # 500 W — large-scale power signal
+    PCS_Grid_Frequency:   {mode: disabled}                 # always store — grid compliance
+    PCS_Grid_Voltage:     {mode: absolute, value: 0.5}     # 0.5 V AC
+    fan_speed:            {mode: relative, value: 0.02}    # 2% — coarse actuator signal</pre>
+
+  <h3>Config loading sketch</h3>
+  <pre>// Parse dedup.per_point from YAML at startup
+if (auto pp = y["dedup"]["per_point"]) {
+    for (const auto& kv : pp) {
+        std::string name = kv.first.as&lt;std::string&gt;();
+        auto node = kv.second;
+        PointDeadband db;
+        std::string mode = node["mode"].as&lt;std::string&gt;("relative");
+        if      (mode == "absolute") db.mode = DeadbandMode::Absolute;
+        else if (mode == "disabled") db.mode = DeadbandMode::Disabled;
+        else                         db.mode = DeadbandMode::Relative;
+        if (node["value"])           db.value = node["value"].as&lt;double&gt;();
+        cfg.dedup_per_point[name] = db;
+    }
+}
+// Global default
+auto def_node = y["dedup"]["default"];
+cfg.dedup_default.value = def_node["value"].as&lt;double&gt;(0.001);
+std::string def_mode    = def_node["mode"].as&lt;std::string&gt;("relative");
+if (def_mode == "absolute") cfg.dedup_default.mode = DeadbandMode::Absolute;</pre>
+
+  <h3>Relative vs absolute deadband — worked examples</h3>
+
+  <h4>Relative deadband — <code>mode: relative, value: 0.001</code> (0.1%)</h4>
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+    Suppress if <code>|new − last| / |last| &lt; 0.001</code>.
+    Good for signals with a stable non-zero baseline where proportional drift is meaningful.
+  </p>
+  <table>
+    <thead><tr><th>last</th><th>new</th><th>|Δ|</th><th>|Δ/last|</th><th>Result</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>3.712 V</td><td>3.713 V</td><td>1 mV</td><td>0.027%</td><td class="ok">SUPPRESS</td><td>Tiny drift, well within 0.1%</td></tr>
+      <tr><td>3.712 V</td><td>3.720 V</td><td>8 mV</td><td>0.22%</td><td class="err">KEEP</td><td>Exceeds 0.1% — meaningful change</td></tr>
+      <tr><td>3.712 V</td><td>3.850 V</td><td>138 mV</td><td>3.7%</td><td class="err">KEEP</td><td>Large step — always kept</td></tr>
+      <tr><td>0.0 A</td><td>0.001 A</td><td>1 mA</td><td>—</td><td class="warn">KEEP*</td><td>Near-zero guard: |last| &lt; 1e-9, so always keep</td></tr>
+      <tr><td>480.0 A</td><td>480.4 A</td><td>400 mA</td><td>0.083%</td><td class="ok">SUPPRESS</td><td>0.4 A noise on a 480 A signal — within 0.1%</td></tr>
+      <tr><td>480.0 A</td><td>482.0 A</td><td>2.0 A</td><td>0.42%</td><td class="err">KEEP</td><td>Exceeds 0.1% — real change</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.82rem;color:var(--muted);margin-top:6px">
+    * At 0 A the relative formula breaks down — near-zero guard forces KEEP to avoid suppressing a genuine
+    transition from idle to active.
+  </p>
+
+  <h4>Absolute deadband — <code>mode: absolute, value: 0.5</code> (0.5 °C)</h4>
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+    Suppress if <code>|new − last| &lt; 0.5</code>.
+    Good for signals where the physical resolution (sensor noise, measurement granularity) defines
+    the meaningful change threshold regardless of the current value.
+  </p>
+  <table>
+    <thead><tr><th>last</th><th>new</th><th>|Δ|</th><th>Result</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>25.3 °C</td><td>25.6 °C</td><td>0.3 °C</td><td class="ok">SUPPRESS</td><td>Within sensor noise floor (0.5 °C)</td></tr>
+      <tr><td>25.3 °C</td><td>25.9 °C</td><td>0.6 °C</td><td class="err">KEEP</td><td>Exceeds 0.5 °C — real thermal change</td></tr>
+      <tr><td>45.0 °C</td><td>45.4 °C</td><td>0.4 °C</td><td class="ok">SUPPRESS</td><td>Still within 0.5 °C even at high temp — relative would give 0.4/45 = 0.9%, also suppressed but for different reason</td></tr>
+      <tr><td>0.1 °C</td><td>0.5 °C</td><td>0.4 °C</td><td class="ok">SUPPRESS</td><td>Near-zero is safe with absolute — no divide-by-zero risk</td></tr>
+      <tr><td>0.1 °C</td><td>0.7 °C</td><td>0.6 °C</td><td class="err">KEEP</td><td>Exceeds 0.5 °C absolute threshold</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Side-by-side: why mode matters for the same signal</h4>
+  <table>
+    <thead><tr><th>Signal</th><th>Values</th><th>Relative 0.1%</th><th>Absolute 0.5 °C</th><th>Best choice</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Temperature at rest (25 °C, sensor noise ±0.3 °C)</td>
+        <td>25.1 → 25.3 → 25.2 → 25.4</td>
+        <td class="warn">KEEP all (0.2 °C = 0.8% &gt; 0.1%)</td>
+        <td class="ok">SUPPRESS most (all within 0.5 °C)</td>
+        <td>Absolute 0.5 °C</td>
+      </tr>
+      <tr>
+        <td>Cell voltage charging (3.7 → 4.2 V ramp)</td>
+        <td>3.700 → 3.704 → 3.708 → 3.750</td>
+        <td class="ok">SUPPRESS 4 mV steps (0.1%), KEEP 50 mV jump</td>
+        <td class="warn">SUPPRESS all (all &lt; 0.5 °C — wrong units but illustrates: 50 mV &lt;&lt; 0.5)</td>
+        <td>Relative 0.1% or Absolute 5 mV</td>
+      </tr>
+      <tr>
+        <td>Grid frequency (50.0 Hz, must record ±0.01 Hz)</td>
+        <td>50.00 → 50.01 → 49.99 → 50.02</td>
+        <td class="err">SUPPRESS all (0.01 Hz = 0.02% &lt; 0.1%) — misses compliance events</td>
+        <td class="err">SUPPRESS all (0.02 Hz &lt; 0.5)</td>
+        <td>Disabled — always store</td>
+      </tr>
+      <tr>
+        <td>Pack current idle → charge (0 → 480 A)</td>
+        <td>0.00 → 0.05 → 0.10 → 480.0</td>
+        <td class="warn">Near-zero guard forces KEEP of small steps; 480 A always kept</td>
+        <td class="ok">Absolute 1 A: SUPPRESS 0.05 A noise at idle, KEEP 480 A step</td>
+        <td>Absolute 1 A</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Lookup cost</h3>
+  <p>
+    <code>std::unordered_map&lt;std::string, PointDeadband&gt;</code> lookup is O(1) average.
+    With 1,770 distinct point names (Longbow fleet) and a 60-second flush interval at 81k msg/s,
+    the flush thread calls <code>get_deadband()</code> ~4.9 M times per flush — each call is a
+    single hash + string compare, well under 1 µs. Total overhead is negligible relative to the
+    Arrow column building that follows.
+  </p>
+  <p>
+    If glob-style prefix matching is needed (e.g. suppress all <code>Batt1_MBMS_*</code> fault
+    flags the same way), a two-stage lookup — exact match first, then linear scan of prefix
+    patterns — is acceptable at flush time since it is not on the hot MQTT ingest path.
+  </p>
+
+  <div class="alert alert-warn">
+    <strong>Interaction with WAL replay:</strong> if the writer crashes mid-flush, the WAL replay
+    on restart re-inserts the pre-dedup rows into <code>g_buffers</code>. The
+    <code>g_current_state</code> snapshot at that point may be stale (it was not persisted atomically
+    with the WAL). The first flush after replay should therefore skip dedup for WAL-sourced rows
+    (they are already marked with their original <code>sample_count</code>) to avoid double-suppression.
+    Tag WAL-replayed rows with a flag (e.g. <code>row.ints["_wal_replay"] = 1</code>) so the flush
+    thread can bypass the per-point deadband lookup for them.
+  </div>
+  <div class="alert alert-info">
+    <strong>Per-point config and <code>current_state_path</code>:</strong> the per-point deadband
+    comparison uses the last <em>flushed</em> value from <code>g_current_state</code>. If the writer
+    restarts cleanly (SIGTERM, not crash), <code>current_state_path</code> persists this map to disk
+    so the first post-restart flush applies the correct per-point deadband rather than treating every
+    signal as "first seen" and storing all values unconditionally. Without this persistence, a restart
+    causes a one-interval burst of un-deduped rows — acceptable but worth noting.
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Expected reduction:</strong> based on the Telegraf dedup experiment, float COV at 0.1%
+    deadband is projected to suppress ~17–23% of float rows on top of Filter B's integer dedup,
+    bringing the combined reduction to the "Moderate" scenario (~40% total). The actual rate depends
+    heavily on signal volatility — a cell voltage that dithers ±0.001 V at rest will dedup heavily;
+    a current signal during active charge/discharge will not.
+  </div>
+</div>
+
+<div style="margin-top:32px;padding-top:16px;border-top:1px solid var(--border);font-size:0.78rem;color:var(--muted)">
+  Document updated 2026-04-11 (wide-pivot focus) &nbsp;·&nbsp; Branch: <code>03202026_run_with_real_data</code>
+  &nbsp;·&nbsp; Source: <code>source/parquet_writer/parquet_writer.cpp</code>,
+  <code>mqtt_ring.h</code>, <code>writer_config.yaml</code>
+</div>
+
+</body>
+</html>

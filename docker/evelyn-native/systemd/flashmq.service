@@ -1,0 +1,16 @@
+[Unit]
+Description=FlashMQ MQTT Broker (Evelyn)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/flashmq --config-file /etc/evelyn/flashmq.conf
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

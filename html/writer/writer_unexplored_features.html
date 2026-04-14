@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>parquet_writer — Unexplored DuckDB &amp; Parquet Features</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.6; padding: 0 0 80px 0; }
+  h1 { font-size: 2em; color: #61dafb; padding: 40px 40px 10px; border-bottom: 2px solid #2a2a4a; margin-bottom: 20px; }
+  h2 { font-size: 1.4em; color: #e5c07b; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #2a2a4a; }
+  h3 { font-size: 1.1em; color: #98c379; margin: 24px 0 8px; }
+  h4 { font-size: 1em; color: #56b6c2; margin: 16px 0 6px; }
+  p { margin: 10px 0; max-width: 860px; }
+  ul, ol { margin: 10px 0 10px 24px; max-width: 860px; }
+  li { margin: 4px 0; }
+  .content { padding: 0 40px; }
+  pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; margin: 12px 0; max-width: 900px; }
+  code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: #e5c07b; }
+  .kw { color: #56b6c2; }
+  .str { color: #98c379; }
+  .fn { color: #e5c07b; }
+  .cm { color: #5c6370; font-style: italic; }
+  .num { color: #d19a66; }
+  table { border-collapse: collapse; margin: 16px 0; max-width: 900px; width: 100%; }
+  th { background: #2a2a4a; color: #61dafb; padding: 8px 14px; text-align: left; border: 1px solid #30363d; }
+  td { padding: 7px 14px; border: 1px solid #30363d; vertical-align: top; }
+  tr:nth-child(even) td { background: #16213e; }
+  .toc { background: #16213e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 20px 28px; margin: 20px 40px 30px; display: inline-block; min-width: 340px; }
+  .toc h2 { margin-top: 0; border: none; font-size: 1.1em; }
+  .toc ol { margin-left: 18px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: #61dafb; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #2a2a4a; margin: 36px 0; }
+  .note { background: #1e2d1e; border-left: 3px solid #98c379; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .warn { background: #2d2a1e; border-left: 3px solid #e5c07b; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .badge { display: inline-block; padding: 1px 9px; border-radius: 8px; font-size: 11px; font-weight: bold; vertical-align: middle; margin-left: 6px; }
+  .hi  { background: #1e4d1e; color: #98c379; }
+  .med { background: #3d3d1e; color: #e5c07b; }
+  .low { background: #1e2d3d; color: #61dafb; }
+  .page-nav { padding: 14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:#abb2bf; text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid #2a2a4a; border-radius:4px; }
+  .page-nav a:hover { color:#61dafb; border-color:#61dafb; }
+  .theme-btn { position:fixed; top:14px; right:20px; background:#16213e; border:1px solid #30363d; color:#abb2bf; border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  body.light { background:#f5f5f0; color:#1a1a2e; }
+  body.light h1 { color:#0066aa; border-color:#d0d0c0; }
+  body.light h2 { color:#8a6000; border-color:#d0d0c0; }
+  body.light h3 { color:#2a6e2a; }
+  body.light h4 { color:#006688; }
+  body.light pre, body.light code { background:#e8e8e0; border-color:#c8c8b8; color:#1a1a2e; }
+  body.light .kw { color:#006688; } body.light .str { color:#2a6e2a; } body.light .fn { color:#8a6000; } body.light .cm { color:#888877; } body.light .num { color:#aa4400; }
+  body.light table th { background:#e0e0d0; color:#0066aa; border-color:#c0c0b0; }
+  body.light table td { border-color:#d0d0c0; }
+  body.light tr:nth-child(even) td { background:#f0f0e8; }
+  body.light .toc { background:#ffffff; border-color:#d0d0c0; }
+  body.light .note { background:#d4f0d4; }
+  body.light .warn { background:#f0f0d4; }
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.body.classList.toggle('light')">☀ / ☾</button>
+
+<div class="page-nav">
+  <a href="writer_design.html">writer_design</a>
+  <a href="writer_query_design.html">query_design</a>
+  <a href="writer_unit_test.html">unit_tests</a>
+  <a href="writer_commercial_options.html">commercial</a>
+  <a href="/index.html">← index</a>
+</div>
+
+<h1>parquet_writer — Unexplored DuckDB &amp; Parquet Features</h1>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#summary">Feature Summary</a></li>
+    <li><a href="#asof">ASOF JOIN — align multi-device signals</a></li>
+    <li><a href="#columns">COLUMNS() macro — pattern-select wide columns</a></li>
+    <li><a href="#timebucket">time_bucket — downsample for dashboards</a></li>
+    <li><a href="#unpivot">UNPIVOT — wide → long at query time</a></li>
+    <li><a href="#zstd">Zstd compression — better ratio for archive files</a></li>
+    <li><a href="#copyto">DuckDB COPY TO parquet — replace Arrow compactor</a></li>
+    <li><a href="#bloom">Bloom filters — fast equality row-group skipping</a></li>
+    <li><a href="#rowgroup">Row group size tuning</a></li>
+    <li><a href="#catalog">Persistent .duckdb catalog — pre-DuckLake option</a></li>
+    <li><a href="#parallel">Parallel query execution</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="summary">1. Feature Summary</h2>
+
+<p>Ranked by relevance to the wide-pivot time-series stack (SBESS3, 63 signal columns, 1 Hz,
+DuckDB queries via subscriber_api).</p>
+
+<table>
+  <tr><th>Feature</th><th>Relevance</th><th>Primary benefit</th><th>Effort</th></tr>
+  <tr><td><a href="#asof">ASOF JOIN</a></td><td><span class="badge hi">HIGH</span></td>
+      <td>Multi-device alignment + forward-fill in one join</td><td>Low — SQL only</td></tr>
+  <tr><td><a href="#columns">COLUMNS() macro</a></td><td><span class="badge hi">HIGH</span></td>
+      <td>Subset 63-column table by glob — no hardcoded names</td><td>Low — SQL only</td></tr>
+  <tr><td><a href="#timebucket">time_bucket</a></td><td><span class="badge hi">HIGH</span></td>
+      <td>Downsample 1 Hz → N-second buckets for dashboards</td><td>Low — SQL only</td></tr>
+  <tr><td><a href="#unpivot">UNPIVOT</a></td><td><span class="badge med">MEDIUM</span></td>
+      <td>Wide → long conversion for external tools</td><td>Low — SQL only</td></tr>
+  <tr><td><a href="#zstd">Zstd compression</a></td><td><span class="badge med">MEDIUM</span></td>
+      <td>~25% smaller compact files vs Snappy</td><td>Low — one config line</td></tr>
+  <tr><td><a href="#copyto">COPY TO parquet</a></td><td><span class="badge med">MEDIUM</span></td>
+      <td>Replace Arrow-based compactor with SQL</td><td>Medium — refactor compactor</td></tr>
+  <tr><td><a href="#bloom">Bloom filters</a></td><td><span class="badge med">MEDIUM</span></td>
+      <td>Skip row groups on unit_id/device equality</td><td>Low — 2 lines in writer</td></tr>
+  <tr><td><a href="#rowgroup">Row group tuning</a></td><td><span class="badge med">MEDIUM</span></td>
+      <td>Better time-range pruning in compact files</td><td>Low — one config value</td></tr>
+  <tr><td><a href="#catalog">Persistent .duckdb catalog</a></td><td><span class="badge low">LOW–MED</span></td>
+      <td>Persistent views before DuckLake adoption</td><td>Low — subscriber_api change</td></tr>
+  <tr><td><a href="#parallel">Parallel execution</a></td><td><span class="badge low">LOW</span></td>
+      <td>Already on by default — no action needed</td><td>None</td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="asof">2. ASOF JOIN — align multi-device signals <span class="badge hi">HIGH</span></h2>
+
+<p>DuckDB's <code>ASOF JOIN</code> joins two tables on the <em>nearest</em> timestamp rather
+than exact equality. This solves two problems at once: clock skew between bms_1 and pcs_1,
+and forward-fill of COV-nulled values across the join boundary — without a window function.</p>
+
+<h3>Multi-device alignment</h3>
+<pre><span class="cm">-- Align bms_1 and pcs_1 to a common timeline, forward-filling gaps in both</span>
+SELECT
+    bms.ts,
+    bms.<span class="str">"bms/bms_1/SysSOC"</span>,
+    bms.<span class="str">"bms/bms_1/SysVolt"</span>,
+    pcs.<span class="str">"pcs/pcs_1/RealPower"</span>,
+    pcs.<span class="str">"pcs/pcs_1/Frequency"</span>
+FROM   (SELECT ts, <span class="str">"bms/bms_1/SysSOC"</span>, <span class="str">"bms/bms_1/SysVolt"</span>
+        FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>)) bms
+ASOF LEFT JOIN
+       (SELECT ts, <span class="str">"pcs/pcs_1/RealPower"</span>, <span class="str">"pcs/pcs_1/Frequency"</span>
+        FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>)) pcs
+ON bms.ts &gt;= pcs.ts
+ORDER BY bms.ts;</pre>
+
+<h3>Forward-fill without a window function</h3>
+<pre><span class="cm">-- Forward-fill null-filled SOC column using ASOF self-join</span>
+SELECT a.ts, b.<span class="str">"bms/bms_1/SysSOC"</span> AS soc_filled
+FROM signals a
+ASOF LEFT JOIN (
+    SELECT ts, <span class="str">"bms/bms_1/SysSOC"</span>
+    FROM signals
+    WHERE <span class="str">"bms/bms_1/SysSOC"</span> IS NOT NULL
+) b ON a.ts &gt;= b.ts
+ORDER BY a.ts;</pre>
+
+<div class="note">
+  <strong>vs LAST_VALUE IGNORE NULLS:</strong> ASOF JOIN is often faster for forward-fill
+  because DuckDB can use a merge join rather than a full window sort. On large compact files
+  the difference is measurable.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="columns">3. COLUMNS() macro — pattern-select wide columns <span class="badge hi">HIGH</span></h2>
+
+<p>Select a subset of the 63-column wide table by glob pattern. Essential for subscriber_api
+endpoints that serve device-specific slices without hardcoding every column name.</p>
+
+<pre><span class="cm">-- BMS signals only</span>
+SELECT ts, COLUMNS(<span class="str">'bms/*'</span>)
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>)
+WHERE ts &gt; <span class="fn">epoch_ms</span>(<span class="num">1712000000000</span>);
+
+<span class="cm">-- All signals except PCS</span>
+SELECT ts, COLUMNS(<span class="str">'*'</span>) EXCLUDE (COLUMNS(<span class="str">'pcs/*'</span>))
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>);
+
+<span class="cm">-- subscriber_api: parameterise device prefix</span>
+conn.execute(<span class="str">f"SELECT ts, COLUMNS('{device}/*') FROM read_parquet(?)"</span>, [glob])
+
+<span class="cm">-- EXCLUDE specific metadata columns</span>
+SELECT ts, COLUMNS(<span class="str">'*'</span>) EXCLUDE (mqtt_topic, sample_count, source_type)
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>);</pre>
+
+<div class="note">
+  <code>COLUMNS()</code> is evaluated at query planning time against the actual schema —
+  adding a new signal column is automatically picked up by any query using
+  <code>COLUMNS('bms/*')</code> without changing the SQL.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="timebucket">4. time_bucket — downsample for dashboards <span class="badge hi">HIGH</span></h2>
+
+<p>Groups timestamps into fixed-width intervals for aggregation. More flexible than
+<code>date_trunc</code> — supports arbitrary intervals like 30 seconds or 5 minutes.</p>
+
+<pre><span class="cm">-- 60-second averages for dashboard strip chart</span>
+SELECT
+    <span class="fn">time_bucket</span>(INTERVAL <span class="str">'60 seconds'</span>, ts)  AS t,
+    <span class="fn">AVG</span>(<span class="str">"bms/bms_1/SysSOC"</span>)                  AS soc_avg,
+    <span class="fn">MIN</span>(<span class="str">"pcs/pcs_1/RealPower"</span>)               AS power_min,
+    <span class="fn">MAX</span>(<span class="str">"pcs/pcs_1/RealPower"</span>)               AS power_max,
+    <span class="fn">LAST</span>(<span class="str">"bms/bms_1/SysVolt"</span>, ts)            AS volt_last
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>)
+WHERE ts &gt; <span class="fn">now</span>() - INTERVAL <span class="str">'1 hour'</span>
+GROUP BY t
+ORDER BY t;
+
+<span class="cm">-- 5-minute OHLC (open/high/low/close) for power signal</span>
+SELECT
+    <span class="fn">time_bucket</span>(INTERVAL <span class="str">'5 minutes'</span>, ts) AS t,
+    <span class="fn">FIRST</span>(<span class="str">"pcs/pcs_1/RealPower"</span>, ts)        AS open,
+    <span class="fn">MAX</span>(<span class="str">"pcs/pcs_1/RealPower"</span>)              AS high,
+    <span class="fn">MIN</span>(<span class="str">"pcs/pcs_1/RealPower"</span>)              AS low,
+    <span class="fn">LAST</span>(<span class="str">"pcs/pcs_1/RealPower"</span>, ts)         AS close
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/**/*.parquet'</span>)
+GROUP BY t ORDER BY t;</pre>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="unpivot">5. UNPIVOT — wide → long at query time <span class="badge med">MEDIUM</span></h2>
+
+<p>Converts the wide table to long format <code>(ts, signal_name, value)</code> on the fly.
+Useful for external tools (alerting, InfluxDB export, charting libraries) that expect the
+long schema.</p>
+
+<pre><span class="cm">-- Melt all signal columns into rows — no column list needed</span>
+SELECT ts, signal_name, signal_value
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>)
+UNPIVOT (signal_value FOR signal_name IN (COLUMNS(<span class="str">'*'</span>) EXCLUDE ts))
+ORDER BY ts, signal_name;
+
+<span class="cm">-- BMS signals only in long format</span>
+SELECT ts, signal_name, signal_value
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/13/*.parquet'</span>)
+UNPIVOT (signal_value FOR signal_name IN (COLUMNS(<span class="str">'bms/*'</span>)))
+WHERE signal_value IS NOT NULL
+ORDER BY ts;</pre>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="zstd">6. Zstd compression — better ratio for archive files <span class="badge med">MEDIUM</span></h2>
+
+<p>Zstd gives ~25% smaller files than Snappy with acceptable decompression speed. Best applied
+to compact files (read infrequently); keep Snappy for flush files (written and read every minute).</p>
+
+<table>
+  <tr><th>Codec</th><th>Ratio (time-series)</th><th>Decompress speed</th><th>Best for</th></tr>
+  <tr><td><code>snappy</code></td><td>baseline</td><td>fastest</td><td>Flush files, live queries</td></tr>
+  <tr><td><code>zstd</code></td><td>~25% smaller</td><td>fast</td><td>Compact / archive files</td></tr>
+  <tr><td><code>gzip</code></td><td>~35% smaller</td><td>slow</td><td>Cold archival only</td></tr>
+</table>
+
+<pre><span class="cm"># parquet_writer.yaml — two-tier compression</span>
+output:
+  compression: snappy     <span class="cm"># flush files — fast write + read</span>
+
+compact:
+  compression: zstd       <span class="cm"># compact files — better archive ratio (planned config key)</span></pre>
+
+<div class="note">
+  The writer currently uses a single <code>compression</code> key. A two-tier approach
+  (different codecs for flush vs compact) is a small addition to the compactor config
+  and worth evaluating on the .51 test run — benchmark file size before/after.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="copyto">7. DuckDB COPY TO parquet — replace Arrow compactor <span class="badge med">MEDIUM</span></h2>
+
+<p>DuckDB can write Parquet natively, potentially replacing the C++ Arrow-based
+<code>compact_directory()</code> with a single SQL statement. Adds forward-fill
+(Strategy C from <a href="writer_query_design.html#forward-fill-strategies">query_design §forward-fill</a>)
+via a window function at merge time.</p>
+
+<pre><span class="cm">-- Merge N flush files + forward-fill + write compact in one statement</span>
+COPY (
+    SELECT
+        ts,
+        <span class="fn">LAST_VALUE</span>(<span class="str">"bms/bms_1/SysSOC"</span>   IGNORE NULLS) OVER w AS <span class="str">"bms/bms_1/SysSOC"</span>,
+        <span class="fn">LAST_VALUE</span>(<span class="str">"bms/bms_1/SysVolt"</span>  IGNORE NULLS) OVER w AS <span class="str">"bms/bms_1/SysVolt"</span>,
+        <span class="fn">LAST_VALUE</span>(<span class="str">"pcs/pcs_1/RealPower"</span> IGNORE NULLS) OVER w AS <span class="str">"pcs/pcs_1/RealPower"</span>
+        <span class="cm">-- ... all 63 columns, or generated dynamically</span>
+    FROM <span class="fn">read_parquet</span>([<span class="str">'flush_001.parquet'</span>, <span class="str">'flush_002.parquet'</span>, <span class="str">'flush_003.parquet'</span>],
+                      union_by_name=<span class="kw">true</span>)
+    WINDOW w AS (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+    ORDER BY ts
+) TO <span class="str">'compact_20260413T090000Z.parquet'</span>
+  (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE <span class="num">8192</span>);</pre>
+
+<div class="warn">
+  <strong>Dynamic column list:</strong> generating the <code>LAST_VALUE(...) OVER w</code>
+  expressions for all 63 columns requires either a code-generation step or DuckDB macro
+  support. This is the main complexity — the merge and write parts are trivial.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="bloom">8. Bloom filters — fast equality row-group skipping <span class="badge med">MEDIUM</span></h2>
+
+<p>Per-column bloom filters let DuckDB skip entire row groups on equality predicates without
+decompressing any column data. Most useful in multi-unit / multi-site deployments where a
+single compact file may span several units.</p>
+
+<pre><span class="cm">// write_parquet_table() in parquet_writer.cpp — add bloom filter columns</span>
+<span class="kw">auto</span> props = parquet::WriterProperties::Builder()
+    .<span class="fn">compression</span>(<span class="fn">to_parquet_compression</span>(compression))
+    -&gt;<span class="fn">enable_bloom_filter</span>(<span class="str">"unit_id"</span>)    <span class="cm">// skip row groups not matching unit</span>
+    -&gt;<span class="fn">enable_bloom_filter</span>(<span class="str">"device"</span>)     <span class="cm">// skip row groups for other devices</span>
+    -&gt;<span class="fn">build</span>();
+
+<span class="cm">-- DuckDB query that benefits — skips row groups where unit_id ≠ 'UC61B5'</span>
+SELECT ts, COLUMNS(<span class="str">'bms/*'</span>)
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/**/*.parquet'</span>)
+WHERE unit_id = <span class="str">'UC61B5'</span>;</pre>
+
+<div class="note">
+  At the current scale (single unit, files already partitioned by unit), bloom filters
+  add minimal benefit — the partition directory already isolates units. They become
+  valuable when multiple units share a compact file or when querying a full data lake
+  without hive partitioning.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="rowgroup">9. Row group size tuning <span class="badge med">MEDIUM</span></h2>
+
+<p>Parquet stores data in row groups. Smaller row groups give finer predicate pruning;
+larger give better compression. At 1 Hz with 60-second flushes each flush file is already
+a single ~60-row row group — no tuning needed there. Compact files covering longer windows
+benefit from explicit tuning.</p>
+
+<table>
+  <tr><th>Row group size</th><th>Rows at 1 Hz</th><th>Pruning granularity</th><th>Compression</th></tr>
+  <tr><td>128k rows (default)</td><td>~35 hours</td><td>Coarse</td><td>Best</td></tr>
+  <tr><td>8,192 rows</td><td>~2.3 hours</td><td>Good — typical query window</td><td>Good</td></tr>
+  <tr><td>3,600 rows</td><td>1 hour</td><td>Fine</td><td>Moderate</td></tr>
+  <tr><td>60 rows (flush)</td><td>1 minute</td><td>Finest</td><td>Reduced</td></tr>
+</table>
+
+<pre><span class="cm">// In write_parquet_table() — set row group size for compact files</span>
+<span class="kw">auto</span> arrow_props = parquet::ArrowWriterProperties::Builder()
+    -&gt;<span class="fn">build</span>();
+<span class="cm">// Pass chunk_size to WriteTable:</span>
+parquet::arrow::<span class="fn">WriteTable</span>(*table, pool, sink, <span class="cm">/*chunk_size=*/</span><span class="num">8192</span>, props, arrow_props);</pre>
+
+<div class="note">
+  8,192 rows (~2.3 hours at 1 Hz) is a good starting point for compact files —
+  a typical dashboard query window is 1–6 hours, so DuckDB skips most row groups on
+  a time-range filter. Benchmark on the .51 test run with
+  <code>EXPLAIN ANALYZE SELECT ...</code> to see row groups read vs skipped.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="catalog">10. Persistent .duckdb catalog — pre-DuckLake option <span class="badge low">LOW–MEDIUM</span></h2>
+
+<p>Before adopting DuckLake, a persistent <code>.duckdb</code> file can store views,
+UDFs, and virtual table definitions so subscriber_api doesn't rebuild glob patterns
+and schema on every request.</p>
+
+<pre><span class="cm">-- subscriber_api startup: attach or create catalog once</span>
+ATTACH IF NOT EXISTS <span class="str">'/mnt/zike/bench/catalog.duckdb'</span> AS cat;
+
+<span class="cm">-- Register hive-partitioned view — persists across restarts</span>
+CREATE VIEW IF NOT EXISTS cat.signals AS
+    SELECT * FROM <span class="fn">read_parquet</span>(
+        <span class="str">'/mnt/zike/bench/**/*.parquet'</span>,
+        union_by_name=<span class="kw">true</span>,
+        hive_partitioning=<span class="kw">true</span>
+    );
+
+<span class="cm">-- All subsequent queries just use the view — no path construction</span>
+SELECT ts, COLUMNS(<span class="str">'bms/*'</span>)
+FROM cat.signals
+WHERE ts &gt; <span class="fn">now</span>() - INTERVAL <span class="str">'1 hour'</span>;
+
+<span class="cm">-- Save a useful alert query as a named view</span>
+CREATE VIEW IF NOT EXISTS cat.soc_low AS
+    SELECT ts, <span class="str">"bms/bms_1/SysSOC"</span>
+    FROM cat.signals
+    WHERE <span class="str">"bms/bms_1/SysSOC"</span> &lt; <span class="num">20.0</span>;</pre>
+
+<div class="note">
+  The persistent catalog is a stepping stone toward DuckLake — it removes the path
+  construction logic from subscriber_api without requiring the full DuckLake catalog
+  format. When DuckLake is ready, replace the <code>ATTACH catalog.duckdb</code> with
+  <code>ATTACH 'ducklake://...'</code>.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="parallel">11. Parallel query execution <span class="badge low">LOW</span></h2>
+
+<p>DuckDB automatically parallelises queries across all available CPU cores — no configuration
+needed. Multi-file queries (reading a full day or week of compact files) scale linearly with
+core count. This is already active and requires no changes to the stack.</p>
+
+<pre><span class="cm">-- This query runs in parallel across all CPU cores automatically</span>
+SELECT
+    <span class="fn">time_bucket</span>(INTERVAL <span class="str">'5 minutes'</span>, ts) AS t,
+    <span class="fn">AVG</span>(<span class="str">"bms/bms_1/SysSOC"</span>) AS soc
+FROM <span class="fn">read_parquet</span>(<span class="str">'bench-wide/bench/2026/04/**/*.parquet'</span>)
+WHERE ts &gt; <span class="fn">now</span>() - INTERVAL <span class="str">'7 days'</span>
+GROUP BY t ORDER BY t;
+
+<span class="cm">-- Check parallelism and row groups read on .51:</span>
+EXPLAIN ANALYZE
+SELECT ts, COLUMNS(<span class="str">'bms/*'</span>)
+FROM <span class="fn">read_parquet</span>(<span class="str">'/mnt/zike/bench/**/*.parquet'</span>)
+WHERE ts BETWEEN <span class="fn">now</span>() - INTERVAL <span class="str">'1 hour'</span> AND <span class="fn">now</span>();</pre>
+
+<div class="note">
+  <code>EXPLAIN ANALYZE</code> is the most useful diagnostic tool for the .51 test run —
+  it shows exactly how many row groups were read vs skipped for a given query,
+  confirming whether bloom filters, min-max statistics, and row group sizing are
+  having the expected effect.
+</div>
+
+</div><!-- .content -->
+</body>
+</html>

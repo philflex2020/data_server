@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ems_site_simulator — EMS / Longbow MQTT Stress Publisher</title>
+<style>
+  /* ── dark mode (default) ── */
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+    --code-bg: #21262d; --code-text: #e6edf3;
+    --th-bg: #21262d; --tr-hover: #1c2128; --surface2: #0d1117;
+    --kw: #ff7b72; --fn: #d2a8ff; --ty: #79c0ff; --str: #a5d6ff;
+  }
+  body.light {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --orange: #953800; --purple: #6639ba;
+    --code-bg: #eaeef2; --code-text: #1f2328;
+    --th-bg: #eaeef2; --tr-hover: #eaeef2; --surface2: #f6f8fa;
+    --kw: #cf222e; --fn: #8250df; --ty: #0550ae; --str: #0a3069;
+  }
+  @media print {
+    body {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #57606a; --accent: #0550ae;
+      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+      --orange: #953800; --purple: #6639ba;
+      --code-bg: #eaeef2; --code-text: #1f2328;
+      --th-bg: #eaeef2; --tr-hover: #eaeef2; --surface2: #f6f8fa;
+      --kw: #cf222e; --fn: #8250df; --ty: #0550ae; --str: #0a3069;
+    }
+    .theme-toggle, .nav { display: none; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font-family: 'Segoe UI', system-ui, sans-serif;
+         padding: 24px; line-height: 1.6; transition: background 0.2s, color 0.2s; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px;
+       padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.9rem; margin: 18px 0 6px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem;
+            padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent);
+                background: #0c2d6b22; opacity: 0.8; }
+
+  .section { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+
+  pre { background: var(--surface2); border: 1px solid var(--border);
+        border-radius: 6px; padding: 14px;
+        font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.6;
+        overflow-x: auto; color: var(--code-text); margin: 8px 0; }
+  code { background: var(--code-bg); border: 1px solid var(--border);
+         padding: 1px 5px; border-radius: 4px;
+         font-family: 'Consolas', monospace; font-size: 0.82rem; color: var(--code-text); }
+
+  .kw  { color: var(--kw); }
+  .fn  { color: var(--fn); }
+  .ty  { color: var(--ty); }
+  .str { color: var(--str); }
+  .num { color: var(--ty); }
+  .cmt { color: var(--muted); }
+  .ok  { color: var(--green); }
+  .warn{ color: var(--yellow); }
+  .err { color: var(--red); }
+
+  p { margin-bottom: 8px; font-size: 0.88rem; }
+  ul, ol { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px;
+           font-size: 0.75rem; font-weight: 700; }
+  .badge-new  { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+  .badge-info { background: #0c2d6b; color: var(--accent); border: 1px solid #1a4d9e; }
+  .badge-warn { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-cpp  { background: #200d3a; color: var(--purple); border: 1px solid #5a3a7a; }
+  body.light .badge-new  { border-color: #86efac; }
+  body.light .badge-info { border-color: #93c5fd; }
+  body.light .badge-warn { border-color: #fde047; }
+  body.light .badge-cpp  { border-color: #d8b4fe; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 12px; }
+  th { background: var(--th-bg); color: var(--muted); text-align: left;
+       padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--tr-hover); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .card { background: var(--surface2); border: 1px solid var(--border);
+          border-radius: 6px; padding: 14px; }
+  .card-title { color: var(--muted); font-size: 0.78rem; text-transform: uppercase;
+                letter-spacing: 0.06em; margin-bottom: 6px; }
+  .card-val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .card-sub { color: var(--muted); font-size: 0.75rem; margin-top: 2px; }
+
+  .alert { border-radius: 6px; padding: 12px 16px; margin: 12px 0;
+           font-size: 0.88rem; border-left: 4px solid; }
+  .alert-info { background: #0c2d6b22; border-color: var(--accent); }
+  .alert-ok   { background: #0d442922; border-color: var(--green); }
+  .alert-warn { background: #2d200022; border-color: var(--yellow); }
+  .alert-err  { background: #3d0a0a22; border-color: var(--red); }
+  body.light .alert-info { background: #dbeafe; }
+  body.light .alert-ok   { background: #dcfce7; }
+  body.light .alert-warn { background: #fef9c3; }
+  body.light .alert-err  { background: #fee2e2; }
+
+  .flow { font-family: 'Consolas', monospace; font-size: 0.82rem; color: var(--text);
+          background: var(--surface2); border: 1px solid var(--border);
+          border-radius: 6px; padding: 16px; line-height: 1.8; margin: 8px 0; }
+  .flow .hi   { color: var(--accent); font-weight: 700; }
+  .flow .ok   { color: var(--green); }
+  .flow .warn { color: var(--yellow); }
+  .flow .err  { color: var(--red); }
+
+  /* SOC bar chart */
+  .soc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  .soc-row { display: flex; align-items: center; gap: 8px; padding: 2px 0;
+             font-size: 0.76rem; font-family: 'Consolas', monospace; }
+  .soc-id  { color: var(--muted); min-width: 84px; }
+  .soc-bar-wrap { flex: 1; background: var(--border); border-radius: 2px;
+                  height: 10px; overflow: hidden; }
+  .soc-bar { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .soc-val { min-width: 40px; text-align: right; color: var(--text); }
+  .soc-low  { background: var(--red);    opacity: 0.8; }
+  .soc-mid  { background: var(--yellow); opacity: 0.8; }
+  .soc-high { background: var(--green);  opacity: 0.8; }
+
+  .opt-row { display: grid; grid-template-columns: 200px 1fr; gap: 8px 16px;
+             align-items: start; margin: 4px 0; font-size: 0.84rem; }
+  .opt-flag { font-family: 'Consolas', monospace; color: var(--accent); white-space: nowrap; }
+  .opt-desc { color: var(--text); }
+  .opt-default { color: var(--muted); font-size: 0.78rem; }
+
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 14px;
+    font-size: 0.8rem; cursor: pointer; z-index: 999;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: background 0.2s, color 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+<script>
+  function toggleTheme() {
+    const body = document.body;
+    const btn  = document.getElementById('theme-btn');
+    body.classList.toggle('light');
+    btn.textContent = body.classList.contains('light') ? '🌙 Dark mode' : '🖨 Print / Light mode';
+  }
+</script>
+</head>
+<body>
+
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🖨 Print / Light mode</button>
+
+<h1>ems_site_simulator — EMS / Longbow MQTT Stress Publisher</h1>
+<p class="subtitle">
+  C++ high-throughput publisher · real Longbow topic structure · synthetic values ·
+  <code>source/stress_runner/ems_site_simulator.cpp</code>
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_code_review_3.html">Review 3</a>
+  <a href="writer_critical_fixes_3.html">Fixes 3</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="writer_diff_detector.html">Diff Detector</a>
+  <a href="writer_duck_diff_detector.html">DuckDB Diff</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html" class="here">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Why a C++ Publisher?</h2>
+
+<div class="section">
+  <p>
+    The Python <code>real_stress_runner.py</code> publishes EMS-format messages using the same
+    topic template, but it is limited by Python's GIL, asyncio overhead, and paho's per-message
+    JSON serialisation.  In practice it saturates around <strong>20–40k msg/s</strong> before
+    the paho outbound queue backs up and messages are dropped.
+  </p>
+  <p>
+    <code>ems_site_simulator</code> is a single-binary C++ publisher that reaches
+    <strong>350k msg/s sustained</strong> on gx10-d94c (20 cores, 119 GB).  It uses the same
+    topic template and the same payload format — so <code>real_writer</code> sees identical data
+    either way — but it can drive the writer to its actual ceiling rather than Python's.
+  </p>
+
+  <div class="grid3" style="margin-top:14px">
+    <div class="card">
+      <div class="card-title">Python real_stress_runner</div>
+      <div class="card-val" style="color:var(--yellow)">~30k</div>
+      <div class="card-sub">msg/s practical ceiling (paho + asyncio)</div>
+    </div>
+    <div class="card">
+      <div class="card-title">ems_site_simulator (C++)</div>
+      <div class="card-val" style="color:var(--green)">350k+</div>
+      <div class="card-sub">msg/s sustained on gx10-d94c</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Target rate (full Longbow site)</div>
+      <div class="card-val">81,420</div>
+      <div class="card-sub">46 units × 1,770 topics at 1 s interval</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Build</h2>
+
+<div class="section">
+<pre><span class="cmt"># From repo root</span>
+cd source/stress_runner
+make ems_site_simulator
+
+<span class="cmt"># Or manually:</span>
+g++ -O2 -std=c++17 ems_site_simulator.cpp -o ems_site_simulator \
+    -lmosquitto $(pkg-config --libs simdjson)</pre>
+
+  <p>Dependencies: <code>libmosquitto-dev</code> (already required by writer) and
+     <code>libsimdjson-dev</code> (already required by writer).</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Command-Line Reference</h2>
+
+<div class="section">
+<pre>./ems_site_simulator [options]</pre>
+
+  <div style="margin-top:12px">
+    <div class="opt-row">
+      <span class="opt-flag">--host &lt;host&gt;</span>
+      <span class="opt-desc">MQTT broker hostname or IP
+        <span class="opt-default">(default: localhost)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--port &lt;port&gt;</span>
+      <span class="opt-desc">MQTT broker port
+        <span class="opt-default">(default: 1883)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--template &lt;path&gt;</span>
+      <span class="opt-desc"><code>ems_topic_template.json</code> file. Auto-detected from
+        standard locations (script dir, repo root) if omitted.
+        <span class="opt-default">(default: auto)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--units &lt;n&gt;</span>
+      <span class="opt-desc">Number of synthetic units to simulate. Generates hex IDs
+        <code>0215F5DD</code>, <code>0215F5DE</code>, … Ignored if <code>--unit-id</code> is given.
+        <span class="opt-default">(default: 4)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--unit-id &lt;id&gt;</span>
+      <span class="opt-desc">Explicit hex unit ID (e.g. <code>0215F662</code>). Repeat to add
+        multiple units. Overrides <code>--units</code>.
+        <span class="opt-default">(repeatable)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--rate &lt;n&gt;</span>
+      <span class="opt-desc">Target total messages/sec. Applied as a sweep-level delay —
+        the publisher completes one full topic sweep then sleeps for the remainder of the
+        target window. Use 0 for unlimited (max speed).
+        <span class="opt-default">(default: 0 = unlimited)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--qos &lt;0|1&gt;</span>
+      <span class="opt-desc">MQTT QoS level. QoS 0 for maximum throughput; QoS 1 for
+        delivery confirmation (significant overhead at high rates).
+        <span class="opt-default">(default: 0)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--id &lt;client_id&gt;</span>
+      <span class="opt-desc">MQTT client ID base string.
+        <span class="opt-default">(default: ems-stress)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--ws-port &lt;port&gt;</span>
+      <span class="opt-desc">WebSocket control server port. Connect a browser or script to send
+        mode commands, fault injections, and receive live status.
+        <span class="opt-default">(default: 8769)</span></span>
+    </div>
+    <div class="opt-row">
+      <span class="opt-flag">--soc &lt;pct&gt;</span>
+      <span class="opt-desc">Initial state-of-charge for all simulated units (0–100).
+        Physics model then drifts SOC in real time based on active mode and current.
+        <span class="opt-default">(default: 50)</span></span>
+    </div>
+  </div>
+
+  <h3 style="margin-top:18px">Rate limiting behaviour</h3>
+  <p>
+    Rate limiting is applied <em>per sweep</em>, not per message. At the end of each full
+    topic sweep the publisher calculates how long the sweep took and sleeps for the remaining
+    budget. This means:
+  </p>
+  <ul>
+    <li>At <code>--rate 81420</code> with 4 units (7,080 topics/sweep) the sweep completes in
+        &lt; 100 ms and sleeps ~900 ms → effective 1 s cycle, matching real Longbow cadence.</li>
+    <li>At <code>--rate 81420</code> with 46 units (81,420 topics/sweep) one sweep fills the
+        entire 1 s window → no sleep needed, continual publish.</li>
+    <li>Setting <code>--rate</code> below topics/sweep has no effect (one sweep already
+        takes longer than the window). Use more units or fewer units to adjust density.</li>
+  </ul>
+
+  <div class="alert alert-info">
+    <strong>Typical invocations on gx10-d94c:</strong> four parallel instances each with a
+    different <code>--id</code> and topic prefix subset (batteries_a/b/c/d), each at
+    <code>--rate 350000</code>, giving a combined 1.4M msg/s to the local writer fleet.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Output Format</h2>
+
+<div class="section">
+  <h3>Topic structure</h3>
+  <div class="flow">
+unit/{unit_id}/{device}/{instance}/{point_name}/{dtype_hint}
+
+<span class="ok">Example:</span>
+unit/<span class="ty">0215F662</span>/bms/bms_1/<span class="str">Batt1_Batt_MBMS_SOC</span>/<span class="fn">float</span>
+unit/<span class="ty">0215F662</span>/bms/bms_2/<span class="str">Batt2_SBMU1_warning_and_Fault__HV_circuit_(Fuse)open_circuit_fault</span>/<span class="fn">integer</span>
+unit/<span class="ty">0215F662</span>/pcs/pcs_1/<span class="str">PCS_1PCS_Input_75_Operation_mode</span>/<span class="fn">float</span>
+unit/<span class="ty">0215F662</span>/rack/bms_1_rack_3/<span class="str">RackSOC</span>/<span class="fn">float</span>
+  </div>
+
+  <h3>Payload format</h3>
+  <div class="flow">
+<span class="cmt">// float dtype</span>
+{"ts":"<span class="str">2024-11-15T21:27:52.775Z</span>","value":<span class="num">3.700000</span>}
+
+<span class="cmt">// integer / boolean_integer dtype</span>
+{"ts":"<span class="str">2024-11-15T21:27:52.775Z</span>","value":<span class="num">42</span>}
+  </div>
+
+  <p>
+    The timestamp is the actual UTC wall time at publish, formatted as ISO 8601 with millisecond
+    precision — matching the real Longbow recording format exactly.
+    <code>real_writer</code> parses this with <code>timestamp_format: iso8601</code> and stores
+    it as FLOAT64 Unix epoch seconds.
+  </p>
+
+  <h3>Value generation — signal-classified output</h3>
+  <p>
+    Each topic is classified at load time into a <code>Sig</code> enum category.  The publish
+    loop reads from the per-unit physics state via a <code>switch</code> — zero string matching
+    at publish time.
+  </p>
+  <table>
+    <thead><tr><th>Signal category</th><th>Typical value range</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td><code>SYS_SOC</code></td><td>0 – 100 %</td><td>Per-unit physics state <code>soc</code></td></tr>
+      <tr><td><code>SYS_CURRENT</code></td><td>−600 – +600 A</td><td>Per-unit <code>current</code> (+ = charge)</td></tr>
+      <tr><td><code>SYS_VOLTAGE</code></td><td>1,320 – 1,394 V</td><td><code>1320 + 0.74 × SOC</code></td></tr>
+      <tr><td><code>SYS_POWER</code></td><td>kW, derived</td><td><code>V × I / 1000</code></td></tr>
+      <tr><td><code>AVG/MAX/MIN_CELL_V</code></td><td>2.6 – 3.65 V/cell</td><td>System voltage ÷ 400 cells ± jitter</td></tr>
+      <tr><td><code>RACK_SOC</code></td><td>per-rack ±10% of unit SOC</td><td>Per-rack state + jitter</td></tr>
+      <tr><td><code>RACK_TEMP</code></td><td>20 – 60 °C</td><td>Per-rack temperature physics</td></tr>
+      <tr><td><code>RACK_VOLTAGE</code></td><td>system V ÷ 5</td><td>Derived from rack SOC</td></tr>
+      <tr><td><code>RACK_CURRENT</code></td><td>unit current ÷ 5</td><td>Distributed equally</td></tr>
+      <tr><td><code>FAULT_OVERTEMP</code></td><td>0 / 1</td><td>1 when rack temp > 50 °C (or injected)</td></tr>
+      <tr><td><code>FAULT_OVERCURR</code></td><td>0 / 1</td><td>1 when |I| > 600 A (or injected)</td></tr>
+      <tr><td><code>FAULT_UNDERVOLT</code></td><td>0 / 1</td><td>1 when cell V < 2.8 V (or injected)</td></tr>
+      <tr><td><code>FAULT_OVERVOLT</code></td><td>0 / 1</td><td>1 when injected (or cell V > 3.65 V)</td></tr>
+      <tr><td><code>FAULT_LOW_SOC</code></td><td>0 / 1</td><td>1 when SOC < 10 % (or injected)</td></tr>
+      <tr><td><code>PCS_KW</code></td><td>−1000 – +1000 kW</td><td>Derived from V × I</td></tr>
+      <tr><td><code>PCS_MODE</code></td><td>1/2/6</td><td>6=standby 1=charge 2=discharge</td></tr>
+      <tr><td><code>CHARGE_KWH / DISCHARGE_KWH</code></td><td>monotonic counters</td><td>Integrated from physics loop</td></tr>
+      <tr><td><code>GENERIC_FLOAT / GENERIC_INT</code></td><td>pool-cycled</td><td>Unclassified topics fall back to random pool</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Topic Template</h2>
+
+<div class="section">
+  <p>
+    The template is loaded from <code>source/stress_runner/ems_topic_template.json</code>
+    at startup.  It was extracted from the real Longbow production recording
+    (<code>ref_data/longbow_recording.csv.gz</code>) using
+    <code>tools/extract_ems_template.py</code>.
+  </p>
+
+  <div class="grid3" style="margin:14px 0">
+    <div class="card">
+      <div class="card-title">Template entries</div>
+      <div class="card-val">1,770</div>
+      <div class="card-sub">unique (device, instance, point, dtype) tuples</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Device breakdown</div>
+      <div class="card-val" style="font-size:0.95rem;line-height:1.6">bms 1,262<br>rack 280<br>pcs 228</div>
+      <div class="card-sub">topics per unit</div>
+    </div>
+    <div class="card">
+      <div class="card-title">dtype split</div>
+      <div class="card-val" style="font-size:0.95rem;line-height:1.6">int 962<br>float 766<br>bool 42</div>
+      <div class="card-sub">per 1,770 template entries</div>
+    </div>
+  </div>
+
+  <p>
+    To regenerate the template from the CSV (e.g. after adding a new recording):
+  </p>
+<pre>python3 tools/extract_ems_template.py \
+    --input  ref_data/longbow_recording.csv.gz \
+    --output source/stress_runner/ems_topic_template.json \
+    --site-id 0215D1D8</pre>
+
+  <p>
+    The template JSON also contains the full list of 46 real unit IDs from the recording.
+    To simulate the exact production topology:
+  </p>
+<pre><span class="cmt"># Uncomment unit_ids in real_stress_runner_config.yaml, or use --unit-id flags:</span>
+./ems_site_simulator --units 46 --rate 81420
+
+<span class="cmt"># Or a subset of real unit IDs:</span>
+./ems_site_simulator \
+    --unit-id 0215F662 \
+    --unit-id 0215F87A \
+    --unit-id 02281656 \
+    --rate 5310</pre>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Real Data — Observed Patterns in the Longbow Recording</h2>
+
+<div class="section">
+  <p>
+    The source recording (<code>ref_data/longbow_recording.csv.gz</code>) is a 7.65-minute
+    live MQTT capture from site <code>0215D1D8</code> taken on <strong>2024-11-15 21:27–21:35 UTC</strong>
+    (late afternoon US Pacific time).  Analysing it reveals what the stress publisher is
+    designed to replicate at the transport layer — and what it does <em>not</em> yet replicate
+    at the value layer.
+  </p>
+
+  <h3>Fleet state snapshot — SOC distribution across 45 units</h3>
+  <p>
+    Each row below shows the last observed system-level SOC for one unit during the recording
+    window.  The spread reveals the site was captured <strong>after a discharge event</strong>:
+    most units are at 11–36% SOC (deeply discharged), with three outliers that either sat out
+    the dispatch or were recently topped up.
+  </p>
+
+  <div class="soc-grid" style="margin:12px 0">
+    <!-- col 1 (low–mid SOC units) -->
+    <div>
+      <div class="soc-row"><span class="soc-id">0227C86B</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:11.3%"></div></div><span class="soc-val">11.3%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F70F</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:16.3%"></div></div><span class="soc-val">16.3%</span></div>
+      <div class="soc-row"><span class="soc-id">02281684</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:17.9%"></div></div><span class="soc-val">17.9%</span></div>
+      <div class="soc-row"><span class="soc-id">0228165D</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:18.5%"></div></div><span class="soc-val">18.5%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5DD</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:18.8%"></div></div><span class="soc-val">18.8%</span></div>
+      <div class="soc-row"><span class="soc-id">0228168A</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:19.0%"></div></div><span class="soc-val">19.0%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F734</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:19.7%"></div></div><span class="soc-val">19.7%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C82B</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:19.7%"></div></div><span class="soc-val">19.7%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5CF</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:19.8%"></div></div><span class="soc-val">19.8%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F63C</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:20.1%"></div></div><span class="soc-val">20.1%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C838</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:20.3%"></div></div><span class="soc-val">20.3%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F60D</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:20.4%"></div></div><span class="soc-val">20.4%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5FE</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:20.7%"></div></div><span class="soc-val">20.7%</span></div>
+      <div class="soc-row"><span class="soc-id">0228165E</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:21.2%"></div></div><span class="soc-val">21.2%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5F5</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:21.6%"></div></div><span class="soc-val">21.6%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F849</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:21.9%"></div></div><span class="soc-val">21.9%</span></div>
+      <div class="soc-row"><span class="soc-id">02281663</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:22.2%"></div></div><span class="soc-val">22.2%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F6BF</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:22.4%"></div></div><span class="soc-val">22.4%</span></div>
+      <div class="soc-row"><span class="soc-id">02281646</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:22.6%"></div></div><span class="soc-val">22.6%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5DF</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:22.8%"></div></div><span class="soc-val">22.8%</span></div>
+      <div class="soc-row"><span class="soc-id">02281636</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.0%"></div></div><span class="soc-val">23.0%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5E3</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.4%"></div></div><span class="soc-val">23.4%</span></div>
+    </div>
+    <!-- col 2 (mid–high SOC units) -->
+    <div>
+      <div class="soc-row"><span class="soc-id">02281634</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.4%"></div></div><span class="soc-val">23.4%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F6B1</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.6%"></div></div><span class="soc-val">23.6%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C84E</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.6%"></div></div><span class="soc-val">23.6%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F625</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.7%"></div></div><span class="soc-val">23.7%</span></div>
+      <div class="soc-row"><span class="soc-id">0228168E</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.7%"></div></div><span class="soc-val">23.7%</span></div>
+      <div class="soc-row"><span class="soc-id">02281683</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:23.9%"></div></div><span class="soc-val">23.9%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C82A</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:24.0%"></div></div><span class="soc-val">24.0%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C842</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:24.1%"></div></div><span class="soc-val">24.1%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F708</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:24.2%"></div></div><span class="soc-val">24.2%</span></div>
+      <div class="soc-row"><span class="soc-id">02281660</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:24.2%"></div></div><span class="soc-val">24.2%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C829</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:24.4%"></div></div><span class="soc-val">24.4%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5E7</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:24.9%"></div></div><span class="soc-val">24.9%</span></div>
+      <div class="soc-row"><span class="soc-id">0227C86E</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:25.1%"></div></div><span class="soc-val">25.1%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5BF</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:25.3%"></div></div><span class="soc-val">25.3%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F562</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:26.5%"></div></div><span class="soc-val">26.5%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F6FD</span><div class="soc-bar-wrap"><div class="soc-bar soc-low" style="width:26.8%"></div></div><span class="soc-val">26.8%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F5D6</span><div class="soc-bar-wrap"><div class="soc-bar soc-mid" style="width:30.0%"></div></div><span class="soc-val">30.0%</span></div>
+      <div class="soc-row"><span class="soc-id">02285B20</span><div class="soc-bar-wrap"><div class="soc-bar soc-mid" style="width:31.6%"></div></div><span class="soc-val">31.6%</span></div>
+      <div class="soc-row"><span class="soc-id">02281632</span><div class="soc-bar-wrap"><div class="soc-bar soc-mid" style="width:36.8%"></div></div><span class="soc-val">36.8%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F60B</span><div class="soc-bar-wrap"><div class="soc-bar soc-mid" style="width:56.2%"></div></div><span class="soc-val">56.2%</span></div>
+      <div class="soc-row"><span class="soc-id">02281656</span><div class="soc-bar-wrap"><div class="soc-bar soc-high" style="width:81.0%"></div></div><span class="soc-val">81.0%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F87A</span><div class="soc-bar-wrap"><div class="soc-bar soc-high" style="width:82.7%"></div></div><span class="soc-val">82.7%</span></div>
+      <div class="soc-row"><span class="soc-id">0215F662</span><div class="soc-bar-wrap"><div class="soc-bar soc-high" style="width:95.4%"></div></div><span class="soc-val">95.4%</span></div>
+    </div>
+  </div>
+
+  <table style="margin-top:12px">
+    <thead><tr><th>Metric</th><th>Value</th><th>Interpretation</th></tr></thead>
+    <tbody>
+      <tr><td>Units with SOC data</td><td>45 of 46</td><td>1 unit had no SOC reading in the window</td></tr>
+      <tr><td>Mean SOC</td><td>27.7%</td><td>Fleet has mostly discharged; ~¼ capacity remaining</td></tr>
+      <tr><td>Median SOC</td><td>23.4%</td><td>Half the fleet below 23.4%</td></tr>
+      <tr><td>SOC range</td><td>11.3% – 95.4%</td><td>84-point spread → selective dispatch history</td></tr>
+      <tr><td>Units &lt; 25%</td><td>36 / 45  (80%)</td><td>Post-discharge low-SOC cluster</td></tr>
+      <tr><td>Units &gt; 50%</td><td>4 / 45  (9%)</td>
+          <td>Outliers — possibly not dispatched, recently charged, or different capacity</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Operational State at Time of Recording</h2>
+
+<div class="section">
+  <div class="grid2">
+    <div>
+      <h3>PCS (Power Conversion System)</h3>
+      <table>
+        <thead><tr><th>Signal</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>kW</code> (AC active power)</td><td class="ok">0.0 kW</td><td>No active power flow</td></tr>
+          <tr><td><code>kVAR</code> (reactive)</td><td class="ok">0.0 kVAR</td><td>No reactive power</td></tr>
+          <tr><td><code>Hz</code> (grid frequency)</td><td>60.01 Hz</td><td>60 Hz grid (North America)</td></tr>
+          <tr><td><code>PF</code> (power factor)</td><td>0.999</td><td>Near-unity PF</td></tr>
+          <tr><td><code>PhVphA/B/C</code></td><td>370–378 V</td><td>3-phase grid voltage (nominal)</td></tr>
+          <tr><td>Active power setpoint</td><td>0.0 kW</td><td>PCS commanded idle</td></tr>
+          <tr><td>Operation mode (reg 75)</td><td>6</td><td>Standby — grid connected, waiting dispatch</td></tr>
+          <tr><td>Grid connection state</td><td>1 (connected)</td><td>HV contactors closed, synced to grid</td></tr>
+          <tr><td>DC side state</td><td>1 (connected)</td><td>Battery contactors closed</td></tr>
+          <tr><td>PCS-1 total injected</td><td>1,140 kWh</td><td>Lifetime energy exported to grid</td></tr>
+          <tr><td>PCS-1 total absorbed</td><td>12,150 kWh</td><td>Lifetime energy charged from grid</td></tr>
+          <tr><td>PCS-2 total injected</td><td>13,460 kWh</td><td>Net exporter (opposite role to PCS-1)</td></tr>
+          <tr><td>PCS-2 total absorbed</td><td>410 kWh</td><td>Rarely charged — primarily discharges</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Active battery units (current flowing)</h3>
+      <table>
+        <thead><tr><th>Unit</th><th>Current</th><th>Voltage</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>0227C838</code></td><td class="warn">6–8 A</td><td>1,351 V</td><td>Balancing or pre-charge</td></tr>
+          <tr><td><code>0215F6FD</code></td><td class="warn">up to 8 A</td><td>1,354–1,362 V</td><td>Active; voltage slightly low</td></tr>
+          <tr><td><code>0215F6B1</code></td><td>—</td><td>1,386–1,388 V</td><td>High voltage, contactor closed</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:.8rem;color:var(--muted);margin-top:6px">
+        43 of 46 units showed 0 V / 0 A — contactors open (idle/standby state).
+        The 6–8 A currents at 1,350+ V correspond to ≈ 8–11 kW per unit, consistent
+        with a balancing or low-rate top-up current, not a full dispatch event.
+      </p>
+
+      <h3 style="margin-top:16px">What we don't see in this recording</h3>
+      <ul>
+        <li>A full charge or discharge cycle (would take 3–6 hours at rated power)</li>
+        <li>Active dispatch (PCS commanded to 0 kW during the window)</li>
+        <li>SOC drift within the window — Modbus polling is too slow and 7.65 min too short</li>
+        <li>Fault events — all warning/fault flags are 0 throughout</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="alert alert-info" style="margin-top:12px">
+    <strong>Charge/discharge cycle indicators to look for in longer recordings:</strong>
+    <code>Batt1_Batt_MBMS_SOC</code> rising continuously (charging) or falling (discharging) ·
+    <code>Batt1_Batt_MBMS_System_Current</code> &gt; 0 sustained (positive = charge, negative would = discharge if sign convention used) ·
+    <code>PCS kW</code> positive (absorbing from grid to charge) or negative (injecting to grid from discharge) ·
+    <code>Batt1_Charge_kWh</code> / <code>Discharge_kWh</code> counters incrementing.
+    The <code>Operation mode</code> register moving from 6 (standby) to 1 or 2 (active dispatch) is the clearest indicator.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>ems_site_simulator vs stress_pub vs csv_replayer</h2>
+
+<div class="section">
+  <table>
+    <thead><tr><th>Tool</th><th>Topic format</th><th>Values</th><th>Timing</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>stress_pub</code></td>
+        <td><code>batteries_a/project=0/site=0/rack=R/module=M/cell=C/voltage</code><br>
+            <span style="font-size:.75rem;color:var(--muted)">kv-style · 7 fields/cell</span></td>
+        <td>Synthetic float, tiny variance</td>
+        <td>Unlimited or <code>--rate N</code></td>
+        <td>Raw writer throughput, torture tests</td>
+      </tr>
+      <tr>
+        <td><code>ems_site_simulator</code> <span class="badge badge-new">physics</span></td>
+        <td><code>unit/{uid}/{device}/{instance}/{point}/{dtype}</code><br>
+            <span style="font-size:.75rem;color:var(--muted)">positional · 1,770 points/unit</span></td>
+        <td>Physics-correlated: SOC drift, voltage, temperature, fault flags; <code>--soc</code> initial state</td>
+        <td><code>--rate N</code>, sweep-level pacing; runtime via WebSocket</td>
+        <td>EMS schema, real_writer throughput, application logic, fault testing</td>
+      </tr>
+      <tr>
+        <td><code>tools/csv_replayer.py</code></td>
+        <td>Original <code>ems/site/…/unit/…</code> prefix stripped to <code>unit/…</code></td>
+        <td><strong>Real recorded values</strong> from CSV</td>
+        <td>Realtime / fast / fixed rate</td>
+        <td>Exact reproduction of production message patterns</td>
+      </tr>
+      <tr>
+        <td><code>real_stress_runner.py</code></td>
+        <td><code>unit/{uid}/{device}/{instance}/{point}/{dtype}</code></td>
+        <td>Synthetic (Python random)</td>
+        <td>asyncio sweep, 1 s interval</td>
+        <td>Low-rate integration tests (&lt; 30k msg/s)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>EMS Physics Simulation</h2>
+
+<div class="section">
+  <p>
+    A background physics thread runs every 100 ms.  Each unit has independent state:
+    SOC, current, temperature, mode, and per-rack sub-state.
+  </p>
+
+  <h3>State machine</h3>
+  <div class="flow">
+         ┌──────────────┐
+         │   STANDBY    │◄──── default, I = 0 A
+         └──────┬───────┘
+       set_mode │charge|discharge
+                ▼
+    ┌───────────────────────┐
+    │  CHARGING (I > 0 A)   │──── auto-trip when SOC ≥ 99.5%
+    └───────────────────────┘
+
+    ┌───────────────────────┐
+    │ DISCHARGING (I &lt; 0 A) │──── auto-trip when SOC ≤ 5%
+    └───────────────────────┘
+
+         ┌──────────────┐
+         │   OFFLINE    │ contactor open, I = 0 A
+         └──────────────┘
+  </div>
+
+  <h3>Physics update (100 ms tick)</h3>
+  <table>
+    <thead><tr><th>Quantity</th><th>Update rule</th></tr></thead>
+    <tbody>
+      <tr><td>SOC drift</td><td><code>dSOC/dt = I / capacity × 100 / 3600 %/s</code></td></tr>
+      <tr><td>System voltage</td><td><code>V = 1320 + 0.74 × SOC</code> (LFP approximation)</td></tr>
+      <tr><td>Rack temperature</td><td><code>dT/dt = |I| / capacity × 40 / 3600 °C/s</code> toward 25°C when idle (τ ≈ 300 s)</td></tr>
+      <tr><td>Charge counter</td><td>Integrated kWh when charging</td></tr>
+      <tr><td>Discharge counter</td><td>Integrated kWh when discharging</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Fault auto-detection</h3>
+  <table>
+    <thead><tr><th>Fault</th><th>Auto-set when</th></tr></thead>
+    <tbody>
+      <tr><td><code>FAULT_OVERTEMP</code></td><td>any rack temp > 50 °C</td></tr>
+      <tr><td><code>FAULT_LOW_SOC</code></td><td>unit SOC < 10 %</td></tr>
+      <tr><td><code>FAULT_UNDERVOLT</code></td><td>cell voltage < 2.8 V (SOC too low)</td></tr>
+      <tr><td><code>FAULT_OVERCURR</code></td><td>|I| > 600 A</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>WebSocket Control API</h2>
+
+<div class="section">
+  <p>
+    A WebSocket server listens on <code>--ws-port</code> (default 8769) and broadcasts a full
+    status message every second to all connected clients.  Send JSON commands to control
+    simulation state.  The <a href="ems_simulator_control.html" style="color:var(--accent)">EMS Simulator Control page</a>
+    provides a browser UI.
+  </p>
+
+  <h3>Server → Client (every second and on connect)</h3>
+<pre>{
+  "type":            "stats",
+  "total_published": 123456,
+  "mps":             81420,
+  "active_tasks":    1,
+  "interval":        1.0,
+  "session_id":      "a1b2c3d4",
+  "sync_seq":        12,
+  "units": [
+    { "id": "0215F662", "mode": "CHARGING", "contactor": true,
+      "soc": 52.4, "current": 150.0, "temp": 28.3,
+      "charge_kwh": 2344.1, "discharge_kwh": 677.0,
+      "faults": [],
+      "racks": [
+        { "idx": 0, "soc": 51.9, "temp": 28.1, "faults": [] },
+        ...
+      ]
+    }
+  ]
+}</pre>
+
+  <h3>Client → Server commands</h3>
+  <table>
+    <thead><tr><th>Command</th><th>Fields</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>set_mode</code></td>
+        <td><code>units</code>, <code>mode</code>, <code>current_a</code></td>
+        <td>Set operating mode for target units.
+          <code>mode</code>: <code>"charge"</code>, <code>"discharge"</code>, <code>"standby"</code>, <code>"offline"</code>.
+          <code>current_a</code>: magnitude in amps (default 0).</td>
+      </tr>
+      <tr>
+        <td><code>set_contactor</code></td>
+        <td><code>units</code>, <code>closed</code></td>
+        <td>Open (<code>false</code>) or close (<code>true</code>) the HV contactor.
+          Opening sets mode to STANDBY and current to 0.</td>
+      </tr>
+      <tr>
+        <td><code>inject_fault</code></td>
+        <td><code>units</code>, <code>fault</code>, <code>value</code></td>
+        <td>Inject a fault condition.  See fault types below.</td>
+      </tr>
+      <tr>
+        <td><code>clear_faults</code></td>
+        <td><code>units</code></td>
+        <td>Clear all injected faults on the target units.</td>
+      </tr>
+      <tr>
+        <td><code>set_rate</code></td>
+        <td><code>rate</code></td>
+        <td>Change the publish rate target (msg/s) at runtime.</td>
+      </tr>
+      <tr>
+        <td><code>get_status</code></td>
+        <td>—</td>
+        <td>Request an immediate status reply (reply sent on next broadcast tick).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The <code>units</code> field is an array of unit ID strings, or <code>["ALL"]</code>
+    to target every unit.
+  </p>
+
+  <h3>Fault injection types</h3>
+  <table>
+    <thead><tr><th>fault</th><th>value</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>overtemp</code></td><td>temperature °C</td><td>Forces rack[0] temperature to value; clears when <code>clear_faults</code></td></tr>
+      <tr><td><code>low_soc</code></td><td>—</td><td>Forces unit SOC to 8% (below low-SOC threshold)</td></tr>
+      <tr><td><code>undervolt</code></td><td>—</td><td>Forces rack[0] SOC to 3% → cell V ≈ 2.6 V (below 2.8 V threshold)</td></tr>
+      <tr><td><code>overvolt</code></td><td>—</td><td>Sets overvolt flag override (reported in FAULT_OVERVOLT signal)</td></tr>
+      <tr><td><code>overcurrent</code></td><td>amps</td><td>Sets unit current to value (e.g. 700 A → above 600 A limit)</td></tr>
+      <tr><td><code>soc_imbalance</code></td><td>spread %</td><td>Distributes rack SOCs across <code>±spread/2</code> around unit SOC</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Example commands (wscat or browser)</h3>
+<pre><span class="cmt"># Start charging all units at 150 A</span>
+{"type":"set_mode","units":["ALL"],"mode":"charge","current_a":150}
+
+<span class="cmt"># Start discharging a single unit at 300 A</span>
+{"type":"set_mode","units":["0215F662"],"mode":"discharge","current_a":300}
+
+<span class="cmt"># Inject overtemp on one unit (force rack 0 to 55°C)</span>
+{"type":"inject_fault","units":["0215F662"],"fault":"overtemp","value":55}
+
+<span class="cmt"># SOC imbalance of 40% spread across racks</span>
+{"type":"inject_fault","units":["ALL"],"fault":"soc_imbalance","value":40}
+
+<span class="cmt"># Clear all faults</span>
+{"type":"clear_faults","units":["ALL"]}
+
+<span class="cmt"># Change publish rate to 10k msg/s</span>
+{"type":"set_rate","rate":10000}</pre>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Running on gx10-d94c (.48)</h2>
+
+<div class="section">
+  <p>Current production test configuration — four parallel instances, each 350k msg/s:</p>
+
+<pre><span class="cmt"># Build on .48 (repo at ~/work/gen-ai/data_server)</span>
+cd ~/work/gen-ai/data_server/source/stress_runner
+make ems_site_simulator
+
+<span class="cmt"># Launch 4 instances targeting the local broker</span>
+./ems_site_simulator --units 12 --rate 350000 --id ems-a &
+./ems_site_simulator --units 12 --rate 350000 --id ems-b &
+./ems_site_simulator --units 12 --rate 350000 --id ems-c &
+./ems_site_simulator --units 10 --rate 350000 --id ems-d &
+
+<span class="cmt"># Combined: 46 units (full site) × 1,770 topics at up to 1.4M msg/s</span></pre>
+
+  <div class="grid3" style="margin-top:14px">
+    <div class="card">
+      <div class="card-title">Active writers</div>
+      <div class="card-val">4×</div>
+      <div class="card-sub">parquet_writer from repo, configs in /tmp/writer-spark-a…d.yaml</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Writer config</div>
+      <div class="card-val" style="font-size:0.85rem">real_writer_<br>config.yaml</div>
+      <div class="card-sub">positional parser · site_id 0215D1D8 · snappy compression</div>
+    </div>
+    <div class="card">
+      <div class="card-title">WAL</div>
+      <div class="card-val" style="color:var(--yellow)">disabled</div>
+      <div class="card-sub">on .48 test configs (throughput test, not durability test)</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

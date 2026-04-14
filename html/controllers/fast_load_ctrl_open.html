@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fast Load — Sequence Control</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2230;
+  --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
+  --accent:#58a6ff; --green:#3fb950; --yellow:#d29922;
+  --orange:#e3b341; --red:#f85149; --purple:#bc8cff;
+  --code-bg:#21262d;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text);
+       font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+
+.nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+         padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+.nav a:hover { color:var(--accent); border-color:var(--accent); }
+
+h1 { color:var(--accent); font-size:1.2rem; margin-bottom:2px; }
+.subtitle { color:var(--muted); font-size:.8rem; margin-bottom:14px; }
+
+/* ── Connection bar ── */
+.conn-bar { display:flex; gap:8px; align-items:center; margin-bottom:16px;
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:6px; padding:9px 14px; flex-wrap:wrap; }
+.conn-bar input { background:var(--code-bg); border:1px solid var(--border);
+                  color:var(--text); border-radius:4px; padding:5px 9px; font-size:.82rem; }
+.conn-bar input:focus { border-color:var(--accent); outline:none; }
+#conn-host { width:150px; }
+#conn-port { width:64px; }
+.dot { width:9px; height:9px; border-radius:50%; background:var(--red);
+       flex-shrink:0; transition:background .3s; }
+.dot.ok { background:var(--green); }
+.dot.trying { background:var(--yellow); }
+#conn-lbl { font-size:.8rem; color:var(--muted); }
+
+/* ── Main layout ── */
+.main-grid { display:grid; grid-template-columns:320px 1fr; gap:12px; margin-bottom:12px; }
+@media(max-width:820px){ .main-grid{ grid-template-columns:1fr; } }
+
+/* ── Section headers ── */
+.sec-hdr { font-size:.83rem; font-weight:700; color:var(--orange);
+           padding-bottom:6px; border-bottom:1px solid var(--border);
+           margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+
+/* ── Buttons ── */
+.btn { display:inline-flex; align-items:center; gap:4px; padding:6px 12px;
+       border-radius:5px; font-size:.79rem; font-weight:600; border:none;
+       cursor:pointer; transition:opacity .15s; line-height:1; }
+.btn:hover:not(:disabled) { opacity:.8; }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn-accent { background:#1f6feb; color:#fff; }
+.btn-green  { background:#1a7f37; color:#fff; }
+.btn-red    { background:#9b1c1c; color:#fff; }
+.btn-ghost  { background:transparent; color:var(--muted);
+              border:1px solid var(--border); }
+.btn-ghost:hover:not(:disabled) { color:var(--text); border-color:var(--muted); opacity:1; }
+.btn-orange { background:#7a4800; color:#e3b341; border:1px solid #6a3e00; }
+.btn-save   { background:transparent; color:#3fb950; border:1px solid #3fb95066; }
+.btn-save:hover:not(:disabled)  { border-color:var(--green); background:#1a7f3722; opacity:1; }
+.btn-load   { background:transparent; color:var(--purple); border:1px solid #bc8cff66; }
+.btn-load:hover:not(:disabled)  { border-color:var(--purple); background:#2d1b4a33; opacity:1; }
+.btn-sm { padding:4px 9px; font-size:.74rem; }
+.btn-row { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+
+/* ── Block Library (left col) ── */
+.block-lib { background:var(--surface); border:1px solid var(--border);
+             border-radius:6px; padding:12px; display:flex; flex-direction:column; }
+.block-list { display:flex; flex-direction:column; gap:6px;
+              max-height:300px; overflow-y:auto; margin-bottom:8px; min-height:40px; }
+.block-card { background:var(--code-bg); border:1px solid var(--border);
+              border-radius:5px; padding:8px 11px; cursor:pointer;
+              transition:border-color .12s; }
+.block-card:hover { border-color:#555; }
+.block-card.sel { border-color:var(--accent); background:#0c2d6b22; }
+.bc-name { font-size:.87rem; font-weight:700; display:flex; align-items:center;
+           gap:7px; margin-bottom:4px; }
+.bc-swatch { width:9px; height:9px; border-radius:2px; flex-shrink:0; }
+.bc-meta { font-size:.72rem; color:var(--muted); }
+.bc-steps { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+.bc-step-pip { font-size:.68rem; padding:1px 5px; border-radius:3px;
+               border:1px solid var(--border); color:var(--muted); }
+
+/* ── Block Editor ── */
+.block-ed { background:var(--code-bg); border:1px solid var(--border);
+            border-radius:5px; padding:11px; margin-top:6px; }
+.frow { display:flex; flex-direction:column; gap:2px; margin-bottom:7px; }
+.frow label { font-size:.7rem; color:var(--muted); }
+.frow input { background:var(--bg); border:1px solid var(--border); color:var(--text);
+              border-radius:4px; padding:4px 7px; font-size:.8rem; }
+.frow input:focus { border-color:var(--accent); outline:none; }
+
+/* Step table within block editor */
+.step-sec { margin-bottom:9px; }
+.step-sec-hdr { font-size:.72rem; color:var(--muted); font-weight:600;
+                display:flex; align-items:center; justify-content:space-between;
+                margin-bottom:5px; padding-bottom:4px;
+                border-bottom:1px solid var(--border); }
+.step-col-hdr { display:grid; grid-template-columns:18px 1fr 1fr 1fr 1fr 52px;
+                gap:4px; padding:0 4px; margin-bottom:3px; }
+.step-col-hdr span { font-size:.67rem; color:var(--muted); }
+.step-rows { display:flex; flex-direction:column; gap:3px; max-height:180px;
+             overflow-y:auto; }
+.step-row { display:grid; grid-template-columns:18px 1fr 1fr 1fr 1fr 52px;
+            gap:4px; align-items:center; padding:4px;
+            background:var(--bg); border-radius:3px; }
+.step-row:hover { background:#111; }
+.step-num { font-size:.68rem; color:var(--muted); text-align:center; }
+.step-row input { background:transparent; border:none; border-bottom:1px solid var(--border);
+                  color:var(--text); padding:2px 4px; font-size:.77rem;
+                  width:100%; text-align:right; }
+.step-row input:focus { border-bottom-color:var(--accent); outline:none; }
+.step-btns { display:flex; gap:2px; justify-content:flex-end; }
+.si-btn { background:none; border:none; color:var(--muted); cursor:pointer;
+          font-size:12px; padding:1px 3px; border-radius:2px; }
+.si-btn:hover { color:var(--text); background:#333; }
+.si-btn.del:hover { color:var(--red); }
+
+/* ── Right col ── */
+.col-right { display:flex; flex-direction:column; gap:11px; }
+
+/* Waveform canvas */
+.canvas-wrap { background:var(--surface); border:1px solid var(--border);
+               border-radius:6px; padding:12px; }
+.canvas-bar { display:flex; gap:7px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+.ch-btn { padding:3px 9px; border-radius:4px; font-size:.73rem; font-weight:600;
+          border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; }
+.ch-btn.on-v { color:var(--accent); border-color:var(--accent); background:#0c2d6b33; }
+.ch-btn.on-i { color:var(--orange); border-color:var(--orange); background:#4a1f0033; }
+#wf-dur { font-size:.71rem; color:var(--muted); margin-left:auto; }
+canvas#wfC { width:100%; height:160px; display:block; border-radius:4px; background:#0d1117; }
+
+/* Sequence builder */
+.seq-panel { background:var(--surface); border:1px solid var(--border);
+             border-radius:6px; padding:12px; }
+.seq-name-bar { display:flex; gap:5px; align-items:center; margin-bottom:8px; }
+select.seq-name-sel { flex:1; min-width:0; background:var(--code-bg); border:1px solid var(--border);
+                      color:var(--text); border-radius:4px; padding:4px 8px; font-size:.79rem; }
+select.seq-name-sel:focus { border-color:var(--accent); outline:none; }
+.seq-list { display:flex; flex-direction:column; gap:5px;
+            max-height:210px; overflow-y:auto; margin-bottom:8px; min-height:40px; }
+.seq-item { background:var(--code-bg); border:1px solid var(--border); border-radius:5px;
+            padding:6px 10px; display:grid;
+            grid-template-columns:20px 1fr auto auto auto auto;
+            gap:7px; align-items:center; }
+.si-idx { font-size:.7rem; color:var(--muted); text-align:right; }
+.si-name { display:flex; align-items:center; gap:6px; font-size:.83rem; font-weight:600; }
+.si-swatch { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+.si-rpt { display:flex; align-items:center; gap:3px; font-size:.75rem; color:var(--muted); }
+.si-rpt input { width:46px; background:var(--bg); border:1px solid var(--border);
+                color:var(--text); padding:2px 5px; border-radius:3px;
+                font-size:.75rem; text-align:center; }
+.seq-empty { color:var(--muted); font-size:.8rem; text-align:center; padding:14px 0; }
+.loop-row { display:flex; align-items:center; gap:8px; }
+.tog { width:34px; height:17px; background:var(--border); border-radius:9px;
+       cursor:pointer; position:relative; transition:background .2s; flex-shrink:0; }
+.tog.on { background:#1a7f37; }
+.tog::after { content:''; position:absolute; top:2px; left:2px; width:13px; height:13px;
+              border-radius:50%; background:#fff; transition:left .2s; }
+.tog.on::after { left:19px; }
+
+/* Playback */
+.play-panel { background:var(--surface); border:1px solid var(--border);
+              border-radius:6px; padding:12px; }
+.play-ctrl { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+select.ch-sel { background:var(--code-bg); border:1px solid var(--border);
+                color:var(--text); border-radius:4px; padding:5px 8px; font-size:.8rem; }
+.play-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-bottom:8px; }
+.pstat { background:var(--code-bg); border-radius:4px; padding:6px 9px; }
+.pstat-lbl { font-size:.67rem; color:var(--muted); margin-bottom:1px; }
+.pstat-val { font-size:.88rem; font-weight:700; color:var(--text); }
+.phase-lbl { font-size:.72rem; color:var(--muted); margin-bottom:4px; }
+.prog-bg { background:var(--code-bg); border-radius:3px; height:5px; overflow:hidden; margin-bottom:6px; }
+.prog-bar { height:100%; border-radius:3px; transition:width .4s linear;
+            background:linear-gradient(90deg, var(--accent), var(--green)); }
+.timeline { display:flex; height:16px; border-radius:3px; overflow:hidden; margin-top:2px; }
+.tl-seg { height:100%; display:flex; align-items:center; justify-content:center;
+          font-size:.58rem; color:rgba(0,0,0,.75); font-weight:700;
+          overflow:hidden; white-space:nowrap; min-width:3px; }
+
+/* Terminal */
+.term-wrap { background:var(--surface); border:1px solid var(--border);
+             border-radius:6px; padding:12px; }
+.term { background:#0a0c10; border-radius:4px; padding:9px; height:100px;
+        overflow-y:auto; font-family:monospace; font-size:.74rem; line-height:1.4; }
+.t-tx  { color:var(--accent); }
+.t-rx  { color:var(--green); }
+.t-err { color:var(--red); }
+.t-inf { color:var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html">Controller Projects</a>
+  <a href="fast_load_control.html">Fast Load Info</a>
+</div>
+
+<h1>Fast Load — Sequence Control</h1>
+<p class="subtitle">Named signal blocks (multi-step waveforms) → sequence playlist → I2S DMA DAC 5 kHz · ws:81</p>
+
+<!-- Connection bar -->
+<div class="conn-bar">
+  <div class="dot" id="ws-dot"></div>
+  <span id="conn-lbl">Disconnected</span>
+  <input id="conn-host" type="text"   placeholder="192.168.x.x">
+  <input id="conn-port" type="number" value="81">
+  <button class="btn btn-accent btn-sm" id="btn-conn" onclick="wsToggle()">Connect</button>
+  <button class="btn btn-ghost btn-sm" onclick="wsSend({cmd:'get_status'})">Status</button>
+  <select id="preset-sel" class="seq-name-sel" style="min-width:160px">
+    <option value="">— Load Preset —</option>
+  </select>
+  <button class="btn btn-ghost btn-sm" onclick="loadPreset()">Load</button>
+</div>
+
+<!-- System config bar -->
+<div class="conn-bar" style="margin-top:4px;gap:12px">
+  <span style="font-size:.78rem;color:var(--muted)">System Scale:</span>
+  <label style="font-size:.78rem;color:var(--muted)">Max V</label>
+  <input id="cfg-max-v" type="number" min="1" step="1" value="60"
+         style="width:70px" onchange="saveCfg()">
+  <label style="font-size:.78rem;color:var(--muted)">Max A</label>
+  <input id="cfg-max-i" type="number" min="1" step="1" value="200"
+         style="width:70px" onchange="saveCfg()">
+  <span id="cfg-hint" style="font-size:.72rem;color:var(--muted)">
+    Presets scale to these limits
+  </span>
+</div>
+
+<div class="main-grid">
+
+  <!-- ── Block Library ── -->
+  <div class="block-lib">
+    <div class="sec-hdr">
+      Block Library
+      <div class="btn-row" style="gap:4px">
+        <button class="btn btn-save btn-sm" onclick="saveToFile()" title="Save waveform to JSON file">↓ Save</button>
+        <button class="btn btn-load btn-sm" onclick="loadFromFile()" title="Load waveform from JSON file">↑ Load</button>
+        <button class="btn btn-accent btn-sm" onclick="newBlock()">+ New</button>
+      </div>
+    </div>
+    <div class="block-list" id="block-list">
+      <div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px 0">
+        No blocks — click + New or load a preset above
+      </div>
+    </div>
+
+    <!-- Block editor (shown when a block is selected) -->
+    <div class="block-ed" id="block-ed" style="display:none">
+      <div class="frow">
+        <label>Block Name</label>
+        <input id="be-name" type="text" placeholder="e.g. Pulse">
+      </div>
+      <div class="step-sec">
+        <div class="step-sec-hdr">
+          Steps
+          <span id="be-step-count" style="font-size:.72rem;color:var(--muted);margin-right:auto"></span>
+          <button class="btn btn-ghost btn-sm" onclick="addStep()">+ Step</button>
+        </div>
+        <div class="step-col-hdr">
+          <span>#</span><span>V (V)</span><span>I (A)</span>
+          <span>Ramp ms</span><span>Hold ms</span><span></span>
+        </div>
+        <div class="step-rows" id="be-steps"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green btn-sm" onclick="saveBlock()">Save</button>
+        <button class="btn btn-orange btn-sm" onclick="addToSeq()">→ Sequence</button>
+        <button class="btn btn-red btn-sm" onclick="deleteBlock()">Delete</button>
+        <button class="btn btn-ghost btn-sm" onclick="cancelEdit()">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right column ── -->
+  <div class="col-right">
+
+    <!-- Waveform preview -->
+    <div class="canvas-wrap">
+      <div class="sec-hdr">Waveform Preview</div>
+      <div class="canvas-bar">
+        <button class="ch-btn on-v" id="sh-v" onclick="toggleV()">V Voltage</button>
+        <button class="ch-btn on-i" id="sh-i" onclick="toggleI()">I Current</button>
+        <span id="wf-dur"></span>
+      </div>
+      <canvas id="wfC"></canvas>
+    </div>
+
+    <!-- Sequence builder -->
+    <div class="seq-panel">
+      <div class="sec-hdr">
+        Sequence
+        <div class="loop-row">
+          <div class="tog" id="loop-tog" onclick="toggleLoop()"></div>
+          <span id="loop-lbl" style="font-size:.78rem;color:var(--muted)">Loop Off</span>
+        </div>
+      </div>
+      <div class="seq-name-bar">
+        <select id="named-seq-sel" class="seq-name-sel" onchange="loadNamedSeq(this.value)">
+          <option value="">— select sequence —</option>
+        </select>
+        <button class="btn btn-save btn-sm" onclick="saveNamedSeq()" title="Save current sequence">Save</button>
+        <button class="btn btn-ghost btn-sm" onclick="renameNamedSeq()" title="Rename selected sequence">Rename</button>
+        <button class="btn btn-accent btn-sm" onclick="newNamedSeq()" title="Save as new named sequence">+ New</button>
+        <button class="btn btn-red btn-sm" onclick="deleteNamedSeq()" title="Delete selected sequence">Del</button>
+      </div>
+      <div class="seq-list" id="seq-list">
+        <div class="seq-empty">No blocks in sequence — add from library</div>
+      </div>
+      <div id="seq-step-badge" style="font-size:.72rem;padding:2px 6px;display:none"></div>
+      <div class="btn-row">
+        <select id="seq-sel" style="background:var(--code-bg);border:1px solid var(--border);
+                color:var(--text);border-radius:4px;padding:4px 8px;font-size:.79rem;">
+          <option value="">— add block —</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="addSeqEntry()">Add</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearSeq()">Clear</button>
+      </div>
+    </div>
+
+    <!-- Playback -->
+    <div class="play-panel">
+      <div class="sec-hdr">Playback</div>
+      <div class="play-ctrl">
+        <select class="ch-sel" id="play-ch">
+          <option value="both">Both Channels</option>
+          <option value="voltage">Voltage Only</option>
+          <option value="current">Current Only</option>
+        </select>
+        <button class="btn btn-green" onclick="startSeq()">▶ Start</button>
+        <button class="btn btn-red"   onclick="stopSeq()">■ Stop</button>
+        <button class="btn btn-ghost btn-sm" onclick="sendProfile()">↑ Load (no start)</button>
+      </div>
+      <div class="play-stats">
+        <div class="pstat">
+          <div class="pstat-lbl">Block</div>
+          <div class="pstat-val" id="ps-block">—</div>
+        </div>
+        <div class="pstat">
+          <div class="pstat-lbl">Step</div>
+          <div class="pstat-val" id="ps-step">—</div>
+        </div>
+        <div class="pstat">
+          <div class="pstat-lbl">Repeat / Cycle</div>
+          <div class="pstat-val" id="ps-rpt">—</div>
+        </div>
+      </div>
+      <div class="phase-lbl" id="ps-phase">—</div>
+      <!-- Firmware-reported step — independent cross-check of what the device is actually running -->
+      <div style="display:flex;gap:6px;align-items:baseline;margin:4px 0;font-size:.72rem;color:var(--muted)">
+        <span>FW:</span>
+        <span id="fw-vstep" style="color:var(--text);font-weight:600">—</span>
+        <span style="color:var(--border)">|</span>
+        <span id="fw-cstep" style="color:var(--text);font-weight:600">—</span>
+      </div>
+      <div class="prog-bg"><div class="prog-bar" id="ps-prog" style="width:0%"></div></div>
+      <div class="timeline" id="tl-strip"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- WS Terminal -->
+<div class="term-wrap">
+  <div class="sec-hdr">
+    WS Log
+    <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+  </div>
+  <div class="term" id="term"></div>
+</div>
+
+<input type="file" id="wf-file-in" accept=".json" style="display:none">
+
+<!-- ── Running-sequence confirmation modal ── -->
+<div id="confirm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+     z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;
+              padding:24px 28px;max-width:360px;width:90%;">
+    <div style="font-weight:600;margin-bottom:8px;color:var(--orange)">&#9888; Sequence Running</div>
+    <div id="confirm-msg" style="font-size:.85rem;color:var(--muted);margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="confirmCancel()">Keep Running</button>
+      <button class="btn btn-red btn-sm"   onclick="confirmOk()">Stop &amp; Continue</button>
+    </div>
+  </div>
+</div>
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const COLORS = [
+  '#58a6ff','#3fb950','#e3b341','#bc8cff','#f47067',
+  '#79c0ff','#56d364','#ffa657','#d2a8ff','#ff7b72',
+  '#39d353','#a5d6ff','#ffb86c','#bd93f9','#ff6e6e'
+];
+
+// Block schema: { id, name, color, steps: [{vTarget, iTarget, rampMs, holdMs}] }
+// Sequence:     [ {blockId, repeatCount} ]
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let blocks      = {};
+let sequences   = {};   // named sequences: {id: {id, name, entries:[{blockId,repeatCount}], loopSeq}}
+let activeSeqId = null; // which named sequence is loaded into the working state
+let sequence    = [];   // working sequence entries
+let loopSeq     = false;
+let colorIdx    = 0;
+let selId       = null;
+let editSteps   = [];   // working copy of steps while editor is open
+
+let ws      = null;
+let wsState = 'off';
+
+let showV = true;
+let showI = true;
+
+let pbActive  = false;
+let pbStart   = null;
+let pbTimer   = null;
+let pbMeta    = [];
+let pbTotalMs = 0;
+
+// ─── Running-sequence confirm modal ──────────────────────────────────────────
+let _confirmOkFn = null;
+function confirmIfRunning(msg, fn) {
+  if (!pbActive) { fn(); return; }
+  document.getElementById('confirm-msg').textContent = msg;
+  const m = document.getElementById('confirm-modal');
+  m.style.display = 'flex';
+  _confirmOkFn = fn;
+}
+function confirmOk() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  stopSeq();
+  if (_confirmOkFn) { _confirmOkFn(); _confirmOkFn = null; }
+}
+function confirmCancel() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  _confirmOkFn = null;
+}
+
+// ─── File save / load ────────────────────────────────────────────────────────
+function saveToFile() {
+  const payload = JSON.stringify({ version: 1, blocks, sequence, loopSeq, colorIdx, sequences, activeSeqId }, null, 2);
+  // Use data: URI instead of blob URL — blob URLs trigger a navigation event
+  // in Chrome/Edge which drops the WebSocket connection to the device.
+  const a    = document.createElement('a');
+  const now  = new Date();
+  const ts   = now.getFullYear() + '-' +
+               String(now.getMonth()+1).padStart(2,'0') + '-' +
+               String(now.getDate()).padStart(2,'0') + '_' +
+               String(now.getHours()).padStart(2,'0') +
+               String(now.getMinutes()).padStart(2,'0');
+  a.href     = 'data:application/json;charset=utf-8,' + encodeURIComponent(payload);
+  a.download = 'waveform-' + ts + '.json';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  tlog('Saved → ' + a.download + '  (' + Object.keys(blocks).length + ' blocks, ' + sequence.length + ' seq entries)', 'inf');
+}
+
+function loadFromFile() {
+  const inp = document.getElementById('wf-file-in');
+  inp.value = '';   // allow re-selecting the same file
+  inp.click();
+}
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+function save() {
+  localStorage.setItem('flc_blocks',     JSON.stringify(blocks));
+  localStorage.setItem('flc_seq',        JSON.stringify(sequence));
+  localStorage.setItem('flc_loop',       loopSeq ? '1' : '0');
+  localStorage.setItem('flc_colorIdx',   colorIdx);
+  localStorage.setItem('flc_sequences',  JSON.stringify(sequences));
+  localStorage.setItem('flc_active_seq', activeSeqId || '');
+  const h = document.getElementById('conn-host').value.trim();
+  if (h) localStorage.setItem('flc_host', h);
+}
+
+function loadSaved() {
+  try {
+    const b = localStorage.getItem('flc_blocks');
+    if (b) blocks = JSON.parse(b);
+    // Migrate old single-step format → steps array
+    Object.values(blocks).forEach(bl => {
+      if (!bl.steps) {
+        bl.steps = [{ vTarget: bl.vTarget||0, iTarget: bl.iTarget||0,
+                      rampMs: bl.rampMs||500, holdMs: bl.holdMs||2000 }];
+        delete bl.vTarget; delete bl.iTarget; delete bl.rampMs; delete bl.holdMs;
+      }
+    });
+    const s = localStorage.getItem('flc_seq');
+    if (s) sequence = JSON.parse(s);
+    loopSeq  = localStorage.getItem('flc_loop') === '1';
+    colorIdx = parseInt(localStorage.getItem('flc_colorIdx') || '0');
+    const sq = localStorage.getItem('flc_sequences');
+    if (sq) sequences = JSON.parse(sq);
+    activeSeqId = localStorage.getItem('flc_active_seq') || null;
+    if (activeSeqId && !sequences[activeSeqId]) activeSeqId = null;
+    const h  = localStorage.getItem('flc_host');
+    if (h) document.getElementById('conn-host').value = h;
+  } catch (e) {}
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function genId() { return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
+function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function blockMs(b) { return b.steps.reduce((a,s) => a + s.rampMs + s.holdMs, 0); }
+
+// ─── Block Library ────────────────────────────────────────────────────────────
+function newBlock() {
+  const id = genId();
+  blocks[id] = {
+    id, name: 'Block ' + (Object.keys(blocks).length + 1),
+    color: COLORS[colorIdx++ % COLORS.length],
+    steps: [{ vTarget: 0, iTarget: 0, rampMs: 500, holdMs: 2000 }]
+  };
+  selId = id;
+  save();
+  renderBlocks();
+  refreshSeqSel();
+  openEditor();
+  redraw();
+}
+
+function selectBlock(id) {
+  selId = id;
+  renderBlocks();
+  openEditor();
+}
+
+function openEditor() {
+  const ed = document.getElementById('block-ed');
+  if (!selId || !blocks[selId]) { ed.style.display = 'none'; return; }
+  const b = blocks[selId];
+  document.getElementById('be-name').value = b.name;
+  editSteps = b.steps.map(s => ({...s}));
+  renderStepRows();
+  ed.style.display = '';
+}
+
+function cancelEdit() {
+  selId = null;
+  renderBlocks();
+  document.getElementById('block-ed').style.display = 'none';
+}
+
+function saveBlock() {
+  if (!selId || !blocks[selId]) return;
+  // Flush any pending inputs before reading editSteps
+  syncStepInputs();
+  const b = blocks[selId];
+  b.name  = document.getElementById('be-name').value.trim() || b.name;
+  b.steps = editSteps.map(s => ({...s}));
+  save();
+  renderBlocks();
+  refreshSeqSel();
+  renderSeq();
+  redraw();
+}
+
+function deleteBlock() {
+  if (!selId) return;
+  if (!confirm('Delete "' + blocks[selId].name + '"?')) return;
+  delete blocks[selId];
+  sequence = sequence.filter(e => e.blockId !== selId);
+  selId = null;
+  save();
+  renderBlocks();
+  document.getElementById('block-ed').style.display = 'none';
+  refreshSeqSel();
+  renderSeq();
+  redraw();
+}
+
+function addToSeq() {
+  if (!selId || !blocks[selId]) return;
+  sequence.push({ blockId: selId, repeatCount: 1 });
+  save();
+  renderSeq();
+  redraw();
+}
+
+function renderBlocks() {
+  const el = document.getElementById('block-list');
+  const ids = Object.keys(blocks);
+  if (!ids.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px 0">No blocks — click + New or load a preset above</div>';
+    return;
+  }
+  el.innerHTML = '';
+  ids.forEach(id => {
+    const b  = blocks[id];
+    const ms = blockMs(b);
+    const d  = document.createElement('div');
+    d.className = 'block-card' + (selId === id ? ' sel' : '');
+    // Build step summary pills
+    const pips = b.steps.map((s, i) =>
+      `<span class="bc-step-pip" title="ramp ${s.rampMs}ms · hold ${s.holdMs}ms">
+        ${i+1}: ${s.vTarget}V ${s.iTarget}A</span>`).join('');
+    d.innerHTML = `
+      <div class="bc-name">
+        <span class="bc-swatch" style="background:${b.color}"></span>${esc(b.name)}
+      </div>
+      <div class="bc-meta">${b.steps.length} step${b.steps.length!==1?'s':''} · ${ms} ms total</div>
+      <div class="bc-steps">${pips}</div>`;
+    d.onclick = () => selectBlock(id);
+    el.appendChild(d);
+  });
+}
+
+// ─── Step editor within block ─────────────────────────────────────────────────
+function syncStepInputs() {
+  // Read current input values back into editSteps (handles last-change before Save)
+  const rows = document.querySelectorAll('#be-steps .step-row');
+  rows.forEach((row, i) => {
+    if (!editSteps[i]) return;
+    const inputs = row.querySelectorAll('input');
+    editSteps[i].vTarget = parseFloat(inputs[0].value) || 0;
+    editSteps[i].iTarget = parseFloat(inputs[1].value) || 0;
+    editSteps[i].rampMs  = Math.max(0,  parseInt(inputs[2].value) || 0);
+    editSteps[i].holdMs  = Math.max(1,  parseInt(inputs[3].value) || 1);
+  });
+}
+
+const FW_MAX_STEPS = 100;
+
+function renderStepRows() {
+  const container = document.getElementById('be-steps');
+  container.innerHTML = '';
+  const badge = document.getElementById('be-step-count');
+  if (badge) {
+    const n = editSteps.length;
+    badge.textContent = n + ' / ' + FW_MAX_STEPS + ' steps';
+    badge.style.color = n >= FW_MAX_STEPS ? 'var(--red)' : n > FW_MAX_STEPS * 0.75 ? 'var(--orange)' : 'var(--muted)';
+  }
+  editSteps.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'step-row';
+    row.innerHTML = `
+      <span class="step-num">${i+1}</span>
+      <input type="number" step="0.1" min="0" value="${s.vTarget}" placeholder="V">
+      <input type="number" step="0.1" min="0" value="${s.iTarget}" placeholder="A">
+      <input type="number" min="0"            value="${s.rampMs}"  placeholder="ms">
+      <input type="number" min="1"            value="${s.holdMs}"  placeholder="ms">
+      <div class="step-btns">
+        <button class="si-btn"     onclick="stepUp(${i})"   title="Up">↑</button>
+        <button class="si-btn"     onclick="stepDown(${i})" title="Down">↓</button>
+        <button class="si-btn del" onclick="stepDel(${i})"  title="Remove">×</button>
+      </div>`;
+    container.appendChild(row);
+  });
+}
+
+function addStep() {
+  syncStepInputs();
+  if (editSteps.length >= FW_MAX_STEPS) {
+    tlog('Block already has ' + FW_MAX_STEPS + ' steps — firmware limit reached', 'err');
+    return;
+  }
+  // Inherit last step's values as starting point
+  const last = editSteps.length ? editSteps[editSteps.length - 1] : null;
+  editSteps.push({
+    vTarget: last ? last.vTarget : 0,
+    iTarget: last ? last.iTarget : 0,
+    rampMs:  last ? last.rampMs  : 500,
+    holdMs:  last ? last.holdMs  : 2000
+  });
+  renderStepRows();
+}
+
+function stepUp(i) {
+  syncStepInputs();
+  if (i < 1) return;
+  [editSteps[i-1], editSteps[i]] = [editSteps[i], editSteps[i-1]];
+  renderStepRows();
+}
+
+function stepDown(i) {
+  syncStepInputs();
+  if (i >= editSteps.length - 1) return;
+  [editSteps[i], editSteps[i+1]] = [editSteps[i+1], editSteps[i]];
+  renderStepRows();
+}
+
+function stepDel(i) {
+  if (editSteps.length <= 1) { tlog('Block must have at least 1 step', 'err'); return; }
+  syncStepInputs();
+  editSteps.splice(i, 1);
+  renderStepRows();
+}
+
+// ─── Named Sequences ──────────────────────────────────────────────────────────
+function genSeqId() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
+
+function refreshNamedSeqSel() {
+  const sel = document.getElementById('named-seq-sel');
+  sel.innerHTML = '<option value="">— select sequence —</option>';
+  Object.values(sequences).forEach(sq => {
+    const opt = document.createElement('option');
+    opt.value = sq.id;
+    opt.textContent = sq.name;
+    sel.appendChild(opt);
+  });
+  // Set value after building — does NOT fire onchange (only user interaction does)
+  sel.value = activeSeqId || '';
+}
+
+function loadNamedSeq(id) {
+  if (!id) return;
+  if (!sequences[id]) { activeSeqId = null; return; }
+  const sq = sequences[id];
+  const doLoad = () => {
+    activeSeqId = id;
+    sequence = sq.entries.map(e => ({...e}));
+    loopSeq  = !!sq.loopSeq;
+    document.getElementById('loop-tog').className = 'tog' + (loopSeq ? ' on' : '');
+    document.getElementById('loop-lbl').textContent = loopSeq ? 'Loop On' : 'Loop Off';
+    save();
+    renderSeq();
+    redraw();
+    tlog('Loaded "' + sq.name + '" (' + sequence.length + ' entr' + (sequence.length===1?'y':'ies') + ')', 'inf');
+  };
+  confirmIfRunning(
+    'Loading "' + sq.name + '" will replace the current sequence. Stop the running profile first?',
+    doLoad
+  );
+}
+
+function saveNamedSeq() {
+  if (!activeSeqId || !sequences[activeSeqId]) { newNamedSeq(); return; }
+  sequences[activeSeqId].entries = sequence.map(e => ({...e}));
+  sequences[activeSeqId].loopSeq = loopSeq;
+  save();
+  tlog('Saved "' + sequences[activeSeqId].name + '"', 'inf');
+}
+
+function newNamedSeq() {
+  const name = prompt('Sequence name:', 'Sequence ' + (Object.keys(sequences).length + 1));
+  if (name === null) return;   // cancelled
+  const id = genSeqId();
+  sequences[id] = {
+    id,
+    name: name.trim() || ('Sequence ' + (Object.keys(sequences).length + 1)),
+    entries: sequence.map(e => ({...e})),
+    loopSeq
+  };
+  activeSeqId = id;
+  save();
+  refreshNamedSeqSel();
+  tlog('Created "' + sequences[id].name + '"', 'inf');
+}
+
+function renameNamedSeq() {
+  if (!activeSeqId || !sequences[activeSeqId]) {
+    tlog('Select a sequence to rename', 'err'); return;
+  }
+  const sq = sequences[activeSeqId];
+  const name = prompt('Rename sequence:', sq.name);
+  if (name === null) return;           // cancelled
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  sq.name = trimmed;
+  save();
+  refreshNamedSeqSel();
+  tlog('Renamed to "' + trimmed + '"', 'inf');
+}
+
+function deleteNamedSeq() {
+  if (!activeSeqId || !sequences[activeSeqId]) return;
+  if (!confirm('Delete sequence "' + sequences[activeSeqId].name + '"?')) return;
+  const name = sequences[activeSeqId].name;
+  delete sequences[activeSeqId];
+  activeSeqId = null;
+  save();
+  refreshNamedSeqSel();
+  tlog('Deleted "' + name + '"', 'inf');
+}
+
+// ─── Sequence Builder ─────────────────────────────────────────────────────────
+function refreshSeqSel() {
+  const sel = document.getElementById('seq-sel');
+  sel.innerHTML = '<option value="">— add block —</option>';
+  Object.values(blocks).forEach(b => {
+    sel.innerHTML += `<option value="${b.id}">${esc(b.name)}</option>`;
+  });
+}
+
+function addSeqEntry() {
+  const v = document.getElementById('seq-sel').value;
+  if (!v || !blocks[v]) return;
+  sequence.push({ blockId: v, repeatCount: 1 });
+  document.getElementById('seq-sel').value = '';
+  save(); renderSeq(); redraw();
+}
+
+function setRepeat(idx, val) {
+  sequence[idx].repeatCount = Math.max(1, parseInt(val) || 1);
+  save(); redraw();
+}
+
+function seqUp(idx) {
+  if (idx < 1) return;
+  [sequence[idx-1], sequence[idx]] = [sequence[idx], sequence[idx-1]];
+  save(); renderSeq(); redraw();
+}
+
+function seqDown(idx) {
+  if (idx >= sequence.length - 1) return;
+  [sequence[idx], sequence[idx+1]] = [sequence[idx+1], sequence[idx]];
+  save(); renderSeq(); redraw();
+}
+
+function seqRemove(idx) {
+  sequence.splice(idx, 1);
+  save(); renderSeq(); redraw();
+}
+
+function clearSeq() {
+  if (!confirm('Clear sequence?')) return;
+  confirmIfRunning(
+    'Clearing the sequence while a profile is running will stop the firmware output.',
+    () => { sequence = []; save(); renderSeq(); redraw(); }
+  );
+}
+
+function toggleLoop() {
+  loopSeq = !loopSeq;
+  document.getElementById('loop-tog').className = 'tog' + (loopSeq ? ' on' : '');
+  document.getElementById('loop-lbl').textContent = loopSeq ? 'Loop On' : 'Loop Off';
+  save(); redraw();
+}
+
+function updateSeqStepBadge() {
+  const badge = document.getElementById('seq-step-badge');
+  if (!badge) return;
+  const total = sequence.reduce((acc, e) => {
+    const b = blocks[e.blockId];
+    return acc + (b ? b.steps.length * e.repeatCount : 0);
+  }, 0);
+  if (!total) { badge.style.display = 'none'; return; }
+  badge.style.display = 'block';
+  if (total > FW_MAX_STEPS) {
+    badge.textContent = 'Compiled steps: ' + total + ' — exceeds firmware limit of ' + FW_MAX_STEPS + ' (will truncate)';
+    badge.style.color = 'var(--red)';
+  } else {
+    badge.textContent = 'Compiled steps: ' + total + ' / ' + FW_MAX_STEPS;
+    badge.style.color = total > FW_MAX_STEPS * 0.75 ? 'var(--orange)' : 'var(--muted)';
+  }
+}
+
+function renderSeq() {
+  const el = document.getElementById('seq-list');
+  if (!sequence.length) {
+    el.innerHTML = '<div class="seq-empty">No blocks in sequence — add from library</div>';
+    updateSeqStepBadge();
+    return;
+  }
+  el.innerHTML = '';
+  sequence.forEach((e, i) => {
+    const b = blocks[e.blockId];
+    if (!b) return;
+    const ms = blockMs(b) * e.repeatCount;
+    const d  = document.createElement('div');
+    d.className = 'seq-item';
+    d.innerHTML = `
+      <span class="si-idx">${i+1}</span>
+      <span class="si-name">
+        <span class="si-swatch" style="background:${b.color}"></span>
+        ${esc(b.name)}
+        <span style="font-size:.68rem;color:var(--muted);font-weight:400">
+          · ${b.steps.length}step · ${ms}ms</span>
+      </span>
+      <span class="si-rpt">
+        ×<input type="number" min="1" value="${e.repeatCount}"
+                onchange="setRepeat(${i},this.value)">
+      </span>
+      <button class="si-btn" onclick="seqUp(${i})"    title="Up">↑</button>
+      <button class="si-btn" onclick="seqDown(${i})"  title="Down">↓</button>
+      <button class="si-btn del" onclick="seqRemove(${i})" title="Remove">×</button>`;
+    el.appendChild(d);
+  });
+  updateSeqStepBadge();
+}
+
+// ─── Compile → flat ProfileStep arrays ───────────────────────────────────────
+// Returns:
+//   vSteps, iSteps  — arrays of {targetVal, rampMs, holdMs} for firmware
+//   meta            — one entry per (seqEntry × repeat × step) for canvas/tracking
+//   totalMs         — total sequence duration
+function compile() {
+  const vSteps = [], iSteps = [], meta = [];
+  let t = 0, pv = 0, pi = 0;
+
+  for (const e of sequence) {
+    const b = blocks[e.blockId];
+    if (!b) continue;
+    for (let r = 0; r < e.repeatCount; r++) {
+      for (let si = 0; si < b.steps.length; si++) {
+        const s  = b.steps[si];
+        const ts = t;
+        const te = t + s.rampMs + s.holdMs;
+        meta.push({
+          blockId: b.id, blockName: b.name, color: b.color,
+          repIdx: r, totalReps: e.repeatCount,
+          stepIdx: si, totalSteps: b.steps.length,
+          rampMs: s.rampMs, holdMs: s.holdMs,
+          tStart: ts, tEnd: te,
+          vStart: pv, vEnd: s.vTarget,
+          iStart: pi, iEnd: s.iTarget
+        });
+        vSteps.push({ targetVal: s.vTarget, rampMs: s.rampMs, holdMs: s.holdMs });
+        iSteps.push({ targetVal: s.iTarget, rampMs: s.rampMs, holdMs: s.holdMs });
+        pv = s.vTarget;
+        pi = s.iTarget;
+        t  = te;
+      }
+    }
+  }
+  return { vSteps, iSteps, meta, totalMs: t };
+}
+
+// ─── Canvas ───────────────────────────────────────────────────────────────────
+function toggleV() {
+  showV = !showV;
+  document.getElementById('sh-v').className = 'ch-btn' + (showV ? ' on-v' : '');
+  redraw();
+}
+function toggleI() {
+  showI = !showI;
+  document.getElementById('sh-i').className = 'ch-btn' + (showI ? ' on-i' : '');
+  redraw();
+}
+
+function redraw() { drawCanvas(); drawTimeline(); }
+
+function drawCanvas() {
+  const canvas = document.getElementById('wfC');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  if (!W || !H) return;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const { meta, totalMs } = compile();
+  pbTotalMs = totalMs;
+
+  // Duration label
+  const du = document.getElementById('wf-dur');
+  if (totalMs > 0) {
+    const s  = (totalMs / 1000).toFixed(1);
+    const ns = meta.length;
+    du.textContent = `${s} s · ${ns} step${ns!==1?'s':''} · ${loopSeq ? '∞ loop' : '1 cycle'}`;
+  } else {
+    du.textContent = 'No sequence';
+  }
+
+  const PL=36, PR=8, PT=12, PB=22;
+  const W0 = W - PL - PR, H0 = H - PT - PB;
+
+  // Grid lines
+  ctx.strokeStyle = '#1f2630'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const gy = PT + H0 * i / 4;
+    ctx.beginPath(); ctx.moveTo(PL, gy); ctx.lineTo(W - PR, gy); ctx.stroke();
+    ctx.fillStyle = '#444'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((100 - i * 25) + '%', PL - 4, gy + 3);
+  }
+  ctx.textAlign = 'left';
+  if (totalMs === 0) return;
+
+  const tx = ms => PL + (ms / totalMs) * W0;
+
+  // Build block-level spans for background bands
+  // Group consecutive meta entries with same blockId+repIdx
+  const spans = [];
+  let cur = null;
+  meta.forEach(m => {
+    const key = m.blockId + ':' + m.repIdx;
+    if (!cur || cur.key !== key) {
+      if (cur) spans.push(cur);
+      cur = { key, blockName: m.blockName, color: m.color,
+              repIdx: m.repIdx, totalReps: m.totalReps,
+              tStart: m.tStart, tEnd: m.tEnd };
+    } else {
+      cur.tEnd = m.tEnd;
+    }
+  });
+  if (cur) spans.push(cur);
+
+  // Draw block bands + labels
+  spans.forEach((sp, idx) => {
+    ctx.fillStyle = sp.color + '14';
+    ctx.fillRect(tx(sp.tStart), PT, tx(sp.tEnd) - tx(sp.tStart), H0);
+    // Left border between blocks
+    if (idx > 0 && spans[idx-1].blockId !== sp.blockId) {
+      ctx.strokeStyle = sp.color + '55';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tx(sp.tStart), PT); ctx.lineTo(tx(sp.tStart), PT+H0); ctx.stroke();
+    }
+    // Step dividers within block
+    if (sp.stepBoundaries) sp.stepBoundaries.forEach(t0 => {
+      ctx.strokeStyle = '#ffffff18'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tx(t0), PT+4); ctx.lineTo(tx(t0), PT+H0-4); ctx.stroke();
+    });
+    // Label on first repeat only
+    if (sp.repIdx === 0) {
+      const bw = tx(sp.tEnd) - tx(sp.tStart);
+      ctx.fillStyle = sp.color + 'cc';
+      ctx.font = '8px Segoe UI, sans-serif';
+      ctx.save();
+      ctx.beginPath(); ctx.rect(tx(sp.tStart)+2, PT, bw-4, 13); ctx.clip();
+      ctx.fillText(sp.blockName, tx(sp.tStart)+4, PT+10);
+      ctx.restore();
+    }
+  });
+
+  // Draw step boundaries as faint dashes
+  meta.forEach((m, idx) => {
+    if (idx === 0) return;
+    if (meta[idx-1].blockId === m.blockId && meta[idx-1].repIdx === m.repIdx) {
+      // step boundary within same block+rep
+      ctx.strokeStyle = '#ffffff1a'; ctx.lineWidth = 1;
+      ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(tx(m.tStart), PT+6); ctx.lineTo(tx(m.tStart), PT+H0-6); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+
+  // Scale
+  const maxV = Math.max(...meta.map(m => m.vEnd), ...meta.map(m => m.vStart), 1);
+  const maxI = Math.max(...meta.map(m => m.iEnd), ...meta.map(m => m.iStart), 1);
+  const scale = Math.max(maxV, maxI, 1);
+  const py = v => PT + H0 * (1 - v / scale);
+
+  // Voltage waveform
+  if (showV && meta.length) {
+    ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#58a6ff55'; ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.moveTo(PL, py(meta[0].vStart));
+    meta.forEach(m => {
+      ctx.lineTo(tx(m.tStart + m.rampMs), py(m.vEnd));
+      ctx.lineTo(tx(m.tEnd), py(m.vEnd));
+    });
+    ctx.stroke(); ctx.shadowBlur = 0;
+  }
+
+  // Current waveform
+  if (showI && meta.length) {
+    ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#e3b34155'; ctx.shadowBlur = 5;
+    ctx.beginPath();
+    ctx.moveTo(PL, py(meta[0].iStart));
+    meta.forEach(m => {
+      ctx.lineTo(tx(m.tStart + m.rampMs), py(m.iEnd));
+      ctx.lineTo(tx(m.tEnd), py(m.iEnd));
+    });
+    ctx.stroke(); ctx.shadowBlur = 0;
+  }
+
+  // Playback cursor
+  if (pbActive && pbStart) {
+    let el = Date.now() - pbStart;
+    if (loopSeq && totalMs > 0) el = el % totalMs;
+    if (el >= 0 && el <= totalMs) {
+      ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1.5;
+      ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(tx(el), PT); ctx.lineTo(tx(el), PT+H0); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Time axis
+  ctx.fillStyle = '#555'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+  const nt = Math.min(8, Math.floor(W0 / 55));
+  for (let i = 0; i <= nt; i++) {
+    const ms = totalMs * i / nt;
+    const px = tx(ms);
+    const lb = ms >= 1000 ? (ms/1000).toFixed(1)+'s' : Math.round(ms)+'ms';
+    ctx.fillText(lb, px - (i===nt ? 20 : 10), H - 4);
+  }
+}
+
+function drawTimeline() {
+  const strip = document.getElementById('tl-strip');
+  strip.innerHTML = '';
+  const { meta, totalMs } = compile();
+  if (!totalMs) return;
+  // Group by block+rep for colored segments
+  const spans = [];
+  let cur = null;
+  meta.forEach(m => {
+    const key = m.blockId + ':' + m.repIdx;
+    if (!cur || cur.key !== key) {
+      if (cur) spans.push(cur);
+      cur = { key, color: m.color, blockName: m.blockName,
+              repIdx: m.repIdx, totalReps: m.totalReps,
+              tStart: m.tStart, tEnd: m.tEnd };
+    } else { cur.tEnd = m.tEnd; }
+  });
+  if (cur) spans.push(cur);
+
+  spans.forEach(sp => {
+    const pct = ((sp.tEnd - sp.tStart) / totalMs * 100).toFixed(2);
+    const seg = document.createElement('div');
+    seg.className = 'tl-seg';
+    seg.style.cssText = `width:${pct}%;background:${sp.color};`;
+    seg.title = `${sp.blockName} ×${sp.repIdx+1}/${sp.totalReps}  ${sp.tEnd - sp.tStart}ms`;
+    if (parseFloat(pct) > 5) seg.textContent = sp.blockName;
+    strip.appendChild(seg);
+  });
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function wsToggle() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    ws.close(); return;
+  }
+  const host = document.getElementById('conn-host').value.trim();
+  const port  = document.getElementById('conn-port').value.trim() || '81';
+  if (!host) { tlog('Enter a host IP', 'err'); return; }
+  save();
+  const url = 'ws://' + host + ':' + port;
+  tlog('Connecting → ' + url, 'inf');
+  setDot('trying');
+  ws = new WebSocket(url);
+  ws.onopen    = () => { setDot('ok');  tlog('Connected', 'inf'); };
+  ws.onclose   = () => { setDot('off'); tlog('Disconnected', 'inf'); };
+  ws.onerror   = () => { tlog('WS error', 'err'); };
+  ws.onmessage = e => {
+    tlog('← ' + e.data, 'rx');
+    try {
+      const d = JSON.parse(e.data);
+      // Device sends ok/authenticated on open-access connect (no secret set)
+      if (d.type === 'ok' && d.msg === 'authenticated') {
+        tlog('Connected (open access)', 'inf');
+        wsSend({ cmd: 'get_status' });
+        return;
+      }
+      if (d.type === 'error') { tlog('Error: ' + d.msg, 'err'); return; }
+      if (d && d.type === 'status') {
+        // Do NOT drive pbActive from firmware status: firmware reports profileVRunning=false
+        // in the gap between load_profile and start_profile (120ms delay), which would
+        // kill the progress tracker before the sequence starts. tickPb() owns pbActive.
+        const fwRunning = !!(d.profileV || d.profileC);
+        if (!pbActive) {
+          document.getElementById('ps-block').textContent =
+            ((d.profileV ? 'V' : '') + (d.profileC ? 'C' : '')) || '—';
+        }
+        document.getElementById('ps-phase').textContent =
+          (fwRunning ? 'running' : pbActive ? 'starting…' : 'stopped') +
+          '  ' + d.voltage + ' V  ' + d.current + ' A' +
+          '  ' + (d.bufsPerSec || 0) + ' buf/s';
+        const vLabel = d.profileV
+          ? (d.vStep + 1) + '/' + d.vStepCount + ' ' + (d.vStepName || '?')
+          : 'V idle';
+        const cLabel = d.profileC
+          ? (d.cStep + 1) + '/' + d.cStepCount + ' ' + (d.cStepName || '?')
+          : 'C idle';
+        document.getElementById('fw-vstep').textContent = vLabel;
+        document.getElementById('fw-cstep').textContent = cLabel;
+      }
+    } catch (_) {}
+  };
+}
+
+function setDot(state) {
+  wsState = state;
+  document.getElementById('ws-dot').className =
+    'dot' + (state==='ok' ? ' ok' : state==='trying' ? ' trying' : '');
+  document.getElementById('conn-lbl').textContent =
+    { ok:'Connected', trying:'Connecting…', off:'Disconnected' }[state] || state;
+  document.getElementById('btn-conn').textContent =
+    state === 'ok' ? 'Disconnect' : 'Connect';
+}
+
+function wsSend(obj) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { tlog('Not connected', 'err'); return false; }
+  const s = JSON.stringify(obj);
+  tlog('→ ' + s, 'tx');
+  ws.send(s);
+  return true;
+}
+
+// ─── Send / Start / Stop ──────────────────────────────────────────────────────
+function sendProfile() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { tlog('Not connected', 'err'); return false; }
+  const { vSteps, iSteps, meta, totalMs } = compile();
+  if (!meta.length) { tlog('Sequence is empty', 'err'); return false; }
+  const ch = document.getElementById('play-ch').value;
+
+  // Firmware loadProfileFromJson() reads top-level doc["voltage"] / doc["current"]
+  // arrays, each entry: {name, value, durationMs, rampMs}.
+  // compile() uses {targetVal, holdMs} — map them here.
+  // Both channels must be in ONE message: a second load_profile call stops both
+  // profiles before replacing them, which would wipe the first channel loaded.
+  // Use block name + step index as the step name so serial/OLED show meaningful labels.
+  // meta[i] has blockName and stepIdx for each compiled step.
+  const toFw = (steps) => steps.map((s, i) => {
+    const m = meta[i];
+    const name = m ? (m.blockName + ':' + (m.stepIdx + 1)) : ('step' + (i + 1));
+    return { name, value: s.targetVal, durationMs: s.holdMs, rampMs: s.rampMs };
+  });
+
+  const payload = { cmd: 'load_profile', loop: loopSeq };
+  if (ch === 'voltage' || ch === 'both') payload.voltage = toFw(vSteps);
+  if (ch === 'current' || ch === 'both') payload.current = toFw(iSteps);
+  tlog('Sending ' + (payload.voltage ? payload.voltage.length : 0) + ' V steps, ' +
+       (payload.current ? payload.current.length : 0) + ' C steps  [ch=' + ch + ']', 'inf');
+
+  const maxSteps = FW_MAX_STEPS;
+  const tooLong = (payload.voltage && payload.voltage.length > maxSteps) ||
+                  (payload.current && payload.current.length > maxSteps);
+  if (tooLong) {
+    tlog('Sequence exceeds ' + maxSteps + ' firmware steps — reduce blocks, steps, or repeat counts before sending', 'err');
+    return false;
+  }
+
+  wsSend(payload);
+  pbMeta    = meta;
+  pbTotalMs = totalMs;
+  return true;
+}
+
+function startSeq() {
+  if (!sendProfile()) return;
+  setTimeout(() => {
+    const ch = document.getElementById('play-ch').value;
+    if (wsSend({ cmd: 'start_profile', channel: ch })) {
+      pbActive = true;
+      pbStart  = Date.now();
+      if (pbTimer) clearInterval(pbTimer);
+      pbTimer = setInterval(tickPb, 200);
+    }
+  }, 120);
+}
+
+function stopSeq() {
+  const ch = document.getElementById('play-ch').value;
+  wsSend({ cmd: 'stop_profile', channel: ch });
+  if (pbTimer) { clearInterval(pbTimer); pbTimer = null; }
+  pbActive = false;
+  document.getElementById('ps-block').textContent = '—';
+  document.getElementById('ps-step').textContent  = '—';
+  document.getElementById('ps-rpt').textContent   = '—';
+  document.getElementById('ps-phase').textContent = '—';
+  document.getElementById('ps-prog').style.width  = '0%';
+  redraw();
+}
+
+function tickPb() {
+  if (!pbMeta.length || !pbStart) return;
+  let el = Date.now() - pbStart;
+  let cycle = 0;
+  if (loopSeq && pbTotalMs > 0) {
+    cycle = Math.floor(el / pbTotalMs);
+    el    = el % pbTotalMs;
+  } else if (el > pbTotalMs) {
+    stopSeq();
+    document.getElementById('ps-phase').textContent = 'Complete';
+    return;
+  }
+  const step = pbMeta.find(m => el >= m.tStart && el < m.tEnd);
+  if (step) {
+    const inStep = el - step.tStart;
+    const phase  = inStep < step.rampMs ? 'ramping ↗' : 'holding —';
+    document.getElementById('ps-block').textContent = step.blockName;
+    document.getElementById('ps-step').textContent  =
+      (step.stepIdx + 1) + '/' + step.totalSteps +
+      ` · V${step.vEnd} I${step.iEnd}`;
+    document.getElementById('ps-rpt').textContent   =
+      (step.repIdx + 1) + '/' + step.totalReps +
+      (loopSeq ? ' · cyc ' + (cycle + 1) : '');
+    document.getElementById('ps-phase').textContent =
+      phase + ' · ' + inStep + ' ms elapsed';
+  }
+  const pct = pbTotalMs > 0 ? Math.min(100, el / pbTotalMs * 100) : 0;
+  document.getElementById('ps-prog').style.width = pct.toFixed(1) + '%';
+  redraw();
+}
+
+// ─── System config (max V / max I) ───────────────────────────────────────────
+let cfgMaxV = 60;
+let cfgMaxI = 200;
+
+function saveCfg() {
+  cfgMaxV = parseFloat(document.getElementById('cfg-max-v').value) || 60;
+  cfgMaxI = parseFloat(document.getElementById('cfg-max-i').value) || 200;
+  localStorage.setItem('flc_cfg', JSON.stringify({ maxV: cfgMaxV, maxI: cfgMaxI }));
+}
+
+function loadCfg() {
+  try {
+    const c = JSON.parse(localStorage.getItem('flc_cfg') || '{}');
+    if (c.maxV) cfgMaxV = c.maxV;
+    if (c.maxI) cfgMaxI = c.maxI;
+  } catch(_) {}
+  document.getElementById('cfg-max-v').value = cfgMaxV;
+  document.getElementById('cfg-max-i').value = cfgMaxI;
+}
+
+// ─── Preset library ───────────────────────────────────────────────────────────
+// Steps are normalized: v/i are fractions 0.0–1.0 of cfgMaxV / cfgMaxI.
+// rampMs / holdMs are milliseconds.
+const PRESETS = [
+  {
+    id: 'generic',
+    name: 'Generic — Soft Start → Full Load → Pulse → Cool Down',
+    loop: true,
+    blocks: [
+      { name: 'Standby',
+        steps: [{ v:0.20, i:0.00, rampMs:300,  holdMs:2000 }]},
+      { name: 'Soft Start',
+        steps: [{ v:0.40, i:0.10, rampMs:1500, holdMs:500  },
+                { v:0.60, i:0.25, rampMs:1000, holdMs:500  },
+                { v:0.80, i:0.50, rampMs:1000, holdMs:2000 }]},
+      { name: 'Full Load',
+        steps: [{ v:0.80, i:0.75, rampMs:200,  holdMs:4000 }]},
+      { name: 'Pulse Burst',
+        steps: [{ v:0.80, i:1.00, rampMs:50,   holdMs:200  },
+                { v:0.80, i:0.10, rampMs:50,   holdMs:300  },
+                { v:0.80, i:1.00, rampMs:50,   holdMs:200  },
+                { v:0.80, i:0.10, rampMs:50,   holdMs:300  }]},
+      { name: 'Cool Down',
+        steps: [{ v:0.40, i:0.15, rampMs:2000, holdMs:1000 },
+                { v:0.20, i:0.02, rampMs:2000, holdMs:500  }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 2 },
+      { block: 3, repeat: 3 },
+      { block: 4, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_inference',
+    name: 'AI — Token Generation (steady inference load)',
+    loop: true,
+    blocks: [
+      { name: 'AI Idle',
+        steps: [{ v:1.00, i:0.05, rampMs:500,  holdMs:2000 }]},
+      { name: 'KV Cache Fill',
+        // Sharp spike as prompt fills KV cache, then drops to generation level
+        steps: [{ v:1.00, i:0.90, rampMs:100,  holdMs:300  },
+                { v:1.00, i:0.60, rampMs:200,  holdMs:500  }]},
+      { name: 'Token Gen',
+        // Sustained flat load during autoregressive decoding
+        steps: [{ v:1.00, i:0.65, rampMs:100,  holdMs:3000 }]},
+      { name: 'Decode Drain',
+        // Output finishes, cache cleared
+        steps: [{ v:1.00, i:0.30, rampMs:300,  holdMs:500  },
+                { v:1.00, i:0.05, rampMs:500,  holdMs:1000 }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 4 },
+      { block: 3, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_batch',
+    name: 'AI — Batch Inference (staircase memory bandwidth)',
+    loop: true,
+    blocks: [
+      { name: 'Idle',
+        steps: [{ v:1.00, i:0.05, rampMs:500,  holdMs:1000 }]},
+      { name: 'Batch Ramp',
+        // Power climbs as batch size grows and memory bandwidth saturates
+        steps: [{ v:1.00, i:0.30, rampMs:400,  holdMs:500  },
+                { v:1.00, i:0.55, rampMs:400,  holdMs:500  },
+                { v:1.00, i:0.75, rampMs:400,  holdMs:500  },
+                { v:1.00, i:0.90, rampMs:400,  holdMs:500  }]},
+      { name: 'Mem BW Wall',
+        // Saturated — flat ceiling
+        steps: [{ v:1.00, i:0.92, rampMs:200,  holdMs:4000 }]},
+      { name: 'Batch Flush',
+        steps: [{ v:1.00, i:0.50, rampMs:300,  holdMs:500  },
+                { v:1.00, i:0.05, rampMs:500,  holdMs:1000 }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 2 },
+      { block: 3, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_thermal',
+    name: 'AI — Thermal Throttle (power limit triggered mid-run)',
+    loop: false,
+    blocks: [
+      { name: 'Idle',
+        steps: [{ v:1.00, i:0.05, rampMs:300,  holdMs:1000 }]},
+      { name: 'Full Inference',
+        steps: [{ v:1.00, i:0.90, rampMs:300,  holdMs:5000 }]},
+      { name: 'Throttle Step',
+        // Power limit kicks in — current drops in steps as thermal headroom shrinks
+        steps: [{ v:1.00, i:0.75, rampMs:800,  holdMs:2000 },
+                { v:1.00, i:0.60, rampMs:800,  holdMs:2000 },
+                { v:1.00, i:0.45, rampMs:800,  holdMs:2000 }]},
+      { name: 'Recovery',
+        steps: [{ v:1.00, i:0.15, rampMs:1000, holdMs:3000 }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 1 },
+      { block: 3, repeat: 1 },
+    ]
+  },
+  {
+    id: 'ai_multigpu',
+    name: 'AI — Multi-GPU Sync (allreduce pulse pattern)',
+    loop: true,
+    blocks: [
+      { name: 'Compute',
+        // GPUs running forward/backward pass
+        steps: [{ v:1.00, i:0.80, rampMs:100, holdMs:1500 }]},
+      { name: 'AllReduce',
+        // Gradient sync: NVLink/InfiniBand burst — all GPUs spike together
+        steps: [{ v:1.00, i:1.00, rampMs:30,  holdMs:150  },
+                { v:1.00, i:0.60, rampMs:30,  holdMs:100  },
+                { v:1.00, i:1.00, rampMs:30,  holdMs:150  },
+                { v:1.00, i:0.60, rampMs:30,  holdMs:100  }]},
+      { name: 'Optimizer',
+        // Weight update step — lower than compute
+        steps: [{ v:1.00, i:0.50, rampMs:100, holdMs:500  }]},
+    ],
+    sequence: [
+      { block: 0, repeat: 1 },
+      { block: 1, repeat: 1 },
+      { block: 2, repeat: 1 },
+    ]
+  },
+];
+
+function initPresetSel() {
+  const sel = document.getElementById('preset-sel');
+  sel.innerHTML = '<option value="">— Load Preset —</option>';
+  PRESETS.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  });
+}
+
+function loadPreset() {
+  const id = document.getElementById('preset-sel').value;
+  if (!id) return;
+  const preset = PRESETS.find(p => p.id === id);
+  if (!preset) return;
+
+  // Add preset blocks to the library and save as a new named sequence.
+  const V = cfgMaxV, I = cfgMaxI;
+  const ids = [];
+  preset.blocks.forEach(d => {
+    const bid = genId();
+    blocks[bid] = {
+      id: bid, name: d.name,
+      color: COLORS[colorIdx++ % COLORS.length],
+      steps: d.steps.map(s => ({
+        vTarget: +(s.v * V).toFixed(2),
+        iTarget: +(s.i * I).toFixed(2),
+        rampMs:  s.rampMs,
+        holdMs:  s.holdMs
+      }))
+    };
+    ids.push(bid);
+  });
+  const entries = preset.sequence.map(e => ({ blockId: ids[e.block], repeatCount: e.repeat }));
+
+  // Save as a new named sequence so it appears in the dropdown
+  const sqId = genSeqId();
+  sequences[sqId] = { id: sqId, name: preset.name, entries, loopSeq: !!preset.loop };
+
+  // Load it into the working state
+  activeSeqId = sqId;
+  sequence    = entries.map(e => ({...e}));
+  loopSeq     = !!preset.loop;
+
+  save();
+  renderAll();
+  tlog('Preset loaded as "' + preset.name + '" (MaxV=' + V + ' MaxA=' + I +
+       ') — rename in the dropdown then Save to keep changes', 'inf');
+}
+
+// ─── Full render ──────────────────────────────────────────────────────────────
+function renderAll() {
+  renderBlocks();
+  refreshSeqSel();
+  refreshNamedSeqSel();
+  renderSeq();
+  document.getElementById('loop-tog').className = 'tog' + (loopSeq ? ' on' : '');
+  document.getElementById('loop-lbl').textContent = loopSeq ? 'Loop On' : 'Loop Off';
+  redraw();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadCfg();
+  initPresetSel();
+  loadSaved();
+  renderAll();
+  tlog('Ready — connect to controller at ws://host:81', 'inf');
+
+  document.getElementById('wf-file-in').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (!d.blocks || typeof d.blocks !== 'object') throw new Error('missing "blocks" key');
+        // Migrate old single-step format if needed
+        Object.values(d.blocks).forEach(bl => {
+          if (!bl.steps) {
+            bl.steps = [{ vTarget: bl.vTarget||0, iTarget: bl.iTarget||0,
+                          rampMs: bl.rampMs||500, holdMs: bl.holdMs||2000 }];
+            delete bl.vTarget; delete bl.iTarget; delete bl.rampMs; delete bl.holdMs;
+          }
+        });
+        const nb = Object.keys(d.blocks).length;
+        const ns = Array.isArray(d.sequence) ? d.sequence.length : 0;
+        if (Object.keys(blocks).length > 0 &&
+            !confirm('Replace current waveform with "' + file.name + '"?\n(' + nb + ' blocks, ' + ns + ' sequence entries)')) return;
+        blocks      = d.blocks;
+        sequence    = Array.isArray(d.sequence) ? d.sequence : [];
+        loopSeq     = !!d.loopSeq;
+        colorIdx    = typeof d.colorIdx === 'number' ? d.colorIdx : 0;
+        sequences   = (d.sequences && typeof d.sequences === 'object') ? d.sequences : {};
+        activeSeqId = d.activeSeqId && sequences[d.activeSeqId] ? d.activeSeqId : null;
+        save();
+        renderAll();
+        tlog('Loaded "' + file.name + '" — ' + nb + ' blocks, ' + ns + ' seq entries', 'inf');
+      } catch (err) {
+        tlog('Load failed: ' + err.message, 'err');
+      }
+    };
+    reader.readAsText(file);
+  });
+});
+
+window.addEventListener('resize', () => redraw());
+
+// ─── Log ─────────────────────────────────────────────────────────────────────
+function tlog(msg, cls) {
+  const el = document.getElementById('term');
+  const d  = document.createElement('div');
+  d.className  = 't-' + (cls || 'inf');
+  d.textContent = '[' + new Date().toLocaleTimeString('en-GB',{hour12:false}) + '] ' + msg;
+  el.appendChild(d);
+  if (el.children.length > 200) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('term').innerHTML = ''; }
+</script>
+</body>
+</html>

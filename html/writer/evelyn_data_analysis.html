@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evelyn Data — Noise Analysis</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149; --orange:#e3b341;
+    --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+          font-family:'Segoe UI',system-ui,sans-serif; padding:20px; line-height:1.5; }
+  h1 { color:var(--accent); font-size:1.4rem; margin-bottom:4px; }
+  .meta { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:1rem; margin:28px 0 10px;
+        padding-bottom:5px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--accent); font-size:.9rem; margin:20px 0 8px; }
+
+  /* overview cards */
+  .ocards { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:24px; }
+  .ocard { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+            padding:12px 16px; min-width:180px; }
+  .ocard-title { font-size:.75rem; color:var(--muted); text-transform:uppercase;
+                  letter-spacing:.06em; margin-bottom:4px; }
+  .ocard-stat  { font-size:1.6rem; font-weight:700; color:var(--accent); }
+  .ocard-label { font-size:.72rem; color:var(--muted); }
+  .ocard-detail{ font-size:.72rem; color:var(--muted); margin-top:4px; }
+
+  /* query sections */
+  .qcard { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+            padding:14px; margin-bottom:20px; overflow-x:auto; }
+  .qdesc { font-size:.8rem; color:var(--muted); margin-bottom:12px; }
+
+  table { border-collapse:collapse; width:100%; font-size:.78rem; }
+  thead tr { background:var(--code-bg); }
+  th { padding:6px 10px; text-align:left; color:var(--muted); font-weight:600;
+        border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:5px 10px; border-bottom:1px solid #1e2530; white-space:nowrap; }
+  tr:hover td { background:#1a2030; }
+  td:nth-child(n+3) { text-align:right; font-variant-numeric:tabular-nums; }
+
+  /* highlight top rows */
+  tbody tr:nth-child(1) td { color:var(--red); }
+  tbody tr:nth-child(2) td { color:var(--orange); }
+  tbody tr:nth-child(3) td { color:var(--yellow); }
+
+  .err  { color:var(--red);   font-size:.85rem; padding:8px; }
+  .none { color:var(--muted); font-size:.85rem; padding:8px; }
+
+  .sql-block { background:var(--code-bg); border:1px solid var(--border); border-radius:6px;
+                padding:10px 14px; margin-top:10px; font-family:monospace; font-size:.72rem;
+                color:#6e7681; white-space:pre-wrap; word-break:break-all; }
+  details summary { cursor:pointer; color:var(--muted); font-size:.78rem; margin-top:8px; }
+
+  /* light / print mode */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#ffffff; --surface:#f6f8fa; --border:#d0d7de;
+      --text:#24292f; --muted:#57606a; --accent:#0969da;
+      --green:#1a7f37; --yellow:#9a6700; --red:#cf222e; --orange:#bc4c00;
+      --code-bg:#f6f8fa;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>Evelyn BESS Site — Noise Analysis Report</h1>
+<p class="meta">
+  Generated 2026-03-24 01:34 UTC &nbsp;·&nbsp;
+  Site: <code>0226571E</code> &nbsp;·&nbsp;
+  Unit: <code>0215F404</code> &nbsp;·&nbsp;
+  Source: <code>/home/phil/parquet/*.parquet</code>
+</p>
+
+<h2>Dataset Overview</h2>
+<div class="ocards">
+
+        <div class="ocard">
+          <div class="ocard-title">site</div>
+          <div class="ocard-stat">2,719,701</div>
+          <div class="ocard-label">total rows</div>
+          <div class="ocard-detail">139 signals &nbsp;·&nbsp;
+            2,434,352 float &nbsp;·&nbsp; 236,184 int</div>
+          <div class="ocard-detail">2026-03-23 14:23:49 → 2026-03-23 17:06:15</div>
+        </div>
+        <div class="ocard">
+          <div class="ocard-title">pcs</div>
+          <div class="ocard-stat">326,104</div>
+          <div class="ocard-label">total rows</div>
+          <div class="ocard-detail">48 signals &nbsp;·&nbsp;
+            162,469 float &nbsp;·&nbsp; 98,181 int</div>
+          <div class="ocard-detail">2026-03-23 14:44:01 → 2026-03-23 17:44:00</div>
+        </div>
+        <div class="ocard">
+          <div class="ocard-title">meter</div>
+          <div class="ocard-stat">216,097</div>
+          <div class="ocard-label">total rows</div>
+          <div class="ocard-detail">27 signals &nbsp;·&nbsp;
+            216,097 float &nbsp;·&nbsp; 0 int</div>
+          <div class="ocard-detail">2026-03-23 14:42:09 → 2026-03-23 17:24:25</div>
+        </div>
+        <div class="ocard">
+          <div class="ocard-title">rtac</div>
+          <div class="ocard-stat">208,590</div>
+          <div class="ocard-label">total rows</div>
+          <div class="ocard-detail">348 signals &nbsp;·&nbsp;
+            208,590 float &nbsp;·&nbsp; 0 int</div>
+          <div class="ocard-detail">2026-03-23 14:44:47 → 2026-03-23 17:27:02</div>
+        </div>
+        <div class="ocard">
+          <div class="ocard-title">unit</div>
+          <div class="ocard-stat">179,705</div>
+          <div class="ocard-label">total rows</div>
+          <div class="ocard-detail">40 signals &nbsp;·&nbsp;
+            70,605 float &nbsp;·&nbsp; 76,370 int</div>
+          <div class="ocard-detail">2026-03-23 14:25:19 → 2026-03-23 17:25:19</div>
+        </div>
+        <div class="ocard">
+          <div class="ocard-title">rack</div>
+          <div class="ocard-stat">44,349</div>
+          <div class="ocard-label">total rows</div>
+          <div class="ocard-detail">22 signals &nbsp;·&nbsp;
+            33,440 float &nbsp;·&nbsp; 10,909 int</div>
+          <div class="ocard-detail">2026-03-23 14:40:02 → 2026-03-23 17:40:01</div>
+        </div>
+</div>
+
+
+<h2>1 — Coefficient of Variation (signal noise ranking)</h2>
+<div class="qcard">
+  <p class="qdesc">Coefficient of Variation (CV = σ/|μ|) ranks signals by relative noise level. High CV means the signal is noisy relative to its mean. Signals with CV &gt; 0.1 (10%) may need filtering before use in control logic.</p>
+  <p class="meta" style="margin-bottom:8px">40 rows returned (limit 40)</p>
+  <table><thead><tr><th>measurement</th><th>point_name</th><th>mean</th><th>stddev</th><th>cv</th></tr></thead><tbody><tr><td>unit</td><td>SysCurrent</td><td>-63.4768</td><td>427.2076</td><td>6.730134</td></tr><tr><td>site</td><td>PCS_P--Frequency Response</td><td>110.3206</td><td>617.2076</td><td>5.594671</td></tr><tr><td>rtac</td><td>MET_F4_P_WATTS</td><td>-318.5185</td><td>1729.423</td><td>5.429585</td></tr><tr><td>site</td><td>Group2_Q</td><td>0.0</td><td>0.0</td><td>5.301301</td></tr><tr><td>rtac</td><td>MET_F5_P_WATTS</td><td>-354.794</td><td>1845.4163</td><td>5.201373</td></tr><tr><td>rtac</td><td>MET_F2_P_WATTS</td><td>-872.3331</td><td>4142.1119</td><td>4.748315</td></tr><tr><td>rtac</td><td>MET_F1_P_WATTS</td><td>-2266.4481</td><td>9883.4668</td><td>4.360773</td></tr><tr><td>meter</td><td>kW</td><td>-2485.8842</td><td>10176.9838</td><td>4.093909</td></tr><tr><td>unit</td><td>kW</td><td>-172.2553</td><td>677.5171</td><td>3.933216</td></tr><tr><td>rack</td><td>RackCurrent</td><td>-7.3362</td><td>27.8894</td><td>3.801629</td></tr><tr><td>rack</td><td>String Current</td><td>-7.3362</td><td>27.8894</td><td>3.801629</td></tr><tr><td>pcs</td><td>DCkW</td><td>-78.8319</td><td>276.5</td><td>3.507464</td></tr><tr><td>pcs</td><td>kW</td><td>-78.8319</td><td>276.5</td><td>3.507464</td></tr><tr><td>site</td><td>PCS_P--P Correction</td><td>5521.0201</td><td>19156.871</td><td>3.469806</td></tr><tr><td>rtac</td><td>QSE_Line_flows_MW</td><td>-4002.3689</td><td>13606.5929</td><td>3.399635</td></tr><tr><td>rtac</td><td>QSE_Transformer_flows_MW</td><td>-4002.3689</td><td>13606.5929</td><td>3.399635</td></tr><tr><td>rtac</td><td>MET_L1_P_WATTS</td><td>-3980.7197</td><td>13461.7291</td><td>3.381732</td></tr><tr><td>site</td><td>Ptot</td><td>-4029.2902</td><td>13570.9918</td><td>3.368085</td></tr><tr><td>site</td><td>HS-CONTROL-P-Measured</td><td>-4028.456</td><td>13567.9333</td><td>3.368023</td></tr><tr><td>site</td><td>Group1_P</td><td>-4031.7454</td><td>13577.6663</td><td>3.367689</td></tr><tr><td>site</td><td>BESSkW</td><td>-4290.255</td><td>14327.8785</td><td>3.339633</td></tr><tr><td>unit</td><td>PCS_P</td><td>-248.32</td><td>768.9167</td><td>3.096475</td></tr><tr><td>unit</td><td>Unit_Pset</td><td>-266.1</td><td>808.178</td><td>3.037121</td></tr><tr><td>rtac</td><td>QSE_BESS_LOAD_MW</td><td>5430.6419</td><td>15944.4462</td><td>2.936015</td></tr><tr><td>rtac</td><td>QSE_CLR_Scheduled_Power_Consumption</td><td>5430.6419</td><td>15944.4462</td><td>2.936015</td></tr><tr><td>rtac</td><td>QSE_CLR_Net_Load_MW</td><td>5430.6419</td><td>15944.4462</td><td>2.936015</td></tr><tr><td>meter</td><td>CLR_NET_LOAD_MW</td><td>5502.8948</td><td>16079.356</td><td>2.921981</td></tr><tr><td>meter</td><td>CLR_NET_MW</td><td>5502.8948</td><td>16079.356</td><td>2.921981</td></tr><tr><td>pcs</td><td>PCS_P</td><td>-116.0234</td><td>324.4802</td><td>2.796678</td></tr><tr><td>pcs</td><td>CMD_P</td><td>-131.8664</td><td>363.604</td><td>2.757366</td></tr><tr><td>meter</td><td>pf</td><td>16.065</td><td>40.9939</td><td>2.551753</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>-5633.5824</td><td>14329.7237</td><td>2.543625</td></tr><tr><td>rtac</td><td>MET_F3_P_WATTS</td><td>-1000.1515</td><td>2541.6069</td><td>2.541222</td></tr><tr><td>rtac</td><td>MET_F4_PF</td><td>0.0705</td><td>0.1747</td><td>2.478528</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-9982.5598</td><td>24729.8397</td><td>2.477304</td></tr><tr><td>pcs</td><td>StatusSymmCurrentComp_CurrentRealPS</td><td>-151.0642</td><td>360.9699</td><td>2.389513</td></tr><tr><td>rtac</td><td>MET_F5_PF</td><td>0.0722</td><td>0.1706</td><td>2.361446</td></tr><tr><td>site</td><td>PCS_P</td><td>-7348.4124</td><td>17104.174</td><td>2.327601</td></tr><tr><td>site</td><td>RTAC_P</td><td>-16593.405</td><td>29832.3415</td><td>1.797843</td></tr><tr><td>rtac</td><td>MET_F1_PF</td><td>0.1009</td><td>0.181</td><td>1.794379</td></tr></tbody></table>
+  <details>
+    <summary>Show SQL</summary>
+    <div class="sql-block">SELECT measurement, point_name,
+           ROUND(AVG(value_f), 4)    AS mean,
+           ROUND(STDDEV(value_f), 4) AS stddev,
+           ROUND(STDDEV(value_f) / NULLIF(ABS(AVG(value_f)), 0), 6) AS cv
+    FROM &#x27;/home/phil/parquet/*.parquet&#x27;
+    WHERE value_f IS NOT NULL
+    GROUP BY measurement, point_name
+    HAVING STDDEV(value_f) &gt; 0
+    ORDER BY cv DESC
+    LIMIT 40</div>
+  </details>
+</div>
+
+<h2>2 — Delta Percentiles (deadband sizing per signal)</h2>
+<div class="qcard">
+  <p class="qdesc">Sample-to-sample delta percentiles help size deadbands for change-on-value filtering. A deadband of p95 suppresses 95% of updates; p99 suppresses 99%. Signals with large p95/p99 ratios have occasional large spikes.</p>
+  <p class="meta" style="margin-bottom:8px">40 rows returned (limit 40)</p>
+  <table><thead><tr><th>measurement</th><th>point_name</th><th>p50</th><th>p95</th><th>p99</th><th>max_delta</th><th>samples</th></tr></thead><tbody><tr><td>rtac</td><td>MET_F1_Q_VARS</td><td>13562.5</td><td>17000.0</td><td>17343.75</td><td>18468.75</td><td>3531</td></tr><tr><td>meter</td><td>kVAR</td><td>1203.125</td><td>16932.6223</td><td>18660.318</td><td>20289.4319</td><td>18642</td></tr><tr><td>rtac</td><td>MET_L1_MVARH_DEL</td><td>8000.0</td><td>8000.0</td><td>8000.0</td><td>8000.0</td><td>6</td></tr><tr><td>rtac</td><td>MET_F1_P_WATTS</td><td>978.5156</td><td>7279.4922</td><td>64231.25</td><td>90750.0</td><td>3764</td></tr><tr><td>site</td><td>MinQ</td><td>3375.0</td><td>4050.0</td><td>4050.0</td><td>4050.0</td><td>12</td></tr><tr><td>site</td><td>MaxQ</td><td>3375.0</td><td>4050.0</td><td>4050.0</td><td>4050.0</td><td>12</td></tr><tr><td>rtac</td><td>MET_F2_MVARH_REC</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>3</td></tr><tr><td>rtac</td><td>MET_F1_MVARH_REC</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>3</td></tr><tr><td>rtac</td><td>MET_F5_MVARH_REC</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>2</td></tr><tr><td>rtac</td><td>MET_F4_MVARH_REC</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>4000.0</td><td>2</td></tr><tr><td>meter</td><td>kW</td><td>141.4965</td><td>3811.1538</td><td>35320.6534</td><td>102685.5557</td><td>18632</td></tr><tr><td>rtac</td><td>QSE_CLR_Net_Load_MW</td><td>871.0938</td><td>3380.7617</td><td>4602.5195</td><td>8273.4375</td><td>1422</td></tr><tr><td>rtac</td><td>QSE_CLR_Scheduled_Power_Consumption</td><td>871.0938</td><td>3380.7617</td><td>4602.5195</td><td>8273.4375</td><td>1422</td></tr><tr><td>rtac</td><td>QSE_BESS_LOAD_MW</td><td>871.0938</td><td>3380.7617</td><td>4602.5195</td><td>8273.4375</td><td>1422</td></tr><tr><td>meter</td><td>CLR_NET_LOAD_MW</td><td>871.0938</td><td>3323.8281</td><td>4618.6719</td><td>8273.4375</td><td>1393</td></tr><tr><td>meter</td><td>CLR_NET_MW</td><td>871.0938</td><td>3323.8281</td><td>4618.6719</td><td>8273.4375</td><td>1393</td></tr><tr><td>rtac</td><td>MET_L1_P_WATTS</td><td>440.4297</td><td>2734.9854</td><td>4500.0</td><td>8572.3267</td><td>1851</td></tr><tr><td>rtac</td><td>QSE_Line_flows_MW</td><td>438.9648</td><td>2734.8022</td><td>4500.0</td><td>8572.3267</td><td>1852</td></tr><tr><td>rtac</td><td>QSE_Transformer_flows_MW</td><td>438.9648</td><td>2734.8022</td><td>4500.0</td><td>8572.3267</td><td>1852</td></tr><tr><td>rtac</td><td>QSE_CLR_HEL</td><td>3.6446</td><td>2389.7802</td><td>2422.8756</td><td>6019.9402</td><td>6285</td></tr><tr><td>rtac</td><td>QSE_CLR_Load_Resource_Maximum_Power_Consumption_High_Sustained_Limit</td><td>3.6446</td><td>2389.7802</td><td>2422.8756</td><td>6019.9402</td><td>6285</td></tr><tr><td>rtac</td><td>QSE_CLR_HSL</td><td>3.6446</td><td>2389.7802</td><td>2422.8756</td><td>6019.9402</td><td>6285</td></tr><tr><td>rtac</td><td>QSE_Maximum_Operating_Charge_Power_Limit</td><td>3.6446</td><td>2389.7802</td><td>2422.8756</td><td>6019.9402</td><td>6285</td></tr><tr><td>site</td><td>RTAC_P</td><td>121.0</td><td>2230.0</td><td>2689.7</td><td>4462.0</td><td>931</td></tr><tr><td>rtac</td><td>MET_F3_MVARH_REC</td><td>2000.0</td><td>2000.0</td><td>2000.0</td><td>2000.0</td><td>3</td></tr><tr><td>site</td><td>PCS_P--P Follow Ramped</td><td>121.0</td><td>1823.2302</td><td>2403.3673</td><td>4059.9618</td><td>1003</td></tr><tr><td>rtac</td><td>MET_F2_P_WATTS</td><td>44.9219</td><td>1750.0</td><td>2506.8359</td><td>3755.8594</td><td>1698</td></tr><tr><td>site</td><td>SOC_Restricted_online_minimum_kWh</td><td>1554.0</td><td>1554.0</td><td>1554.0</td><td>1554.0</td><td>8</td></tr><tr><td>rtac</td><td>QSE_Minimum_Operating_State_of_Charge</td><td>1398.6</td><td>1398.6</td><td>1398.6</td><td>1398.6</td><td>8</td></tr><tr><td>site</td><td>SOC_Restricted_MinkWhPOILoss</td><td>1398.6</td><td>1398.6</td><td>1398.6</td><td>1398.6</td><td>8</td></tr><tr><td>site</td><td>SOC_Restricted_online_Max_Charge_kW_Power</td><td>2.9449</td><td>1340.639</td><td>2680.0568</td><td>9370.8145</td><td>6983</td></tr><tr><td>site</td><td>UnitOnline_MinP_Sum</td><td>2.2629</td><td>1340.3943</td><td>2679.8746</td><td>5361.8436</td><td>7628</td></tr><tr><td>site</td><td>MinP</td><td>2.1961</td><td>1340.3226</td><td>2679.4243</td><td>5361.1074</td><td>7657</td></tr><tr><td>site</td><td>PCS_P--P Correction</td><td>80.9745</td><td>1339.2722</td><td>2563.0565</td><td>4578.6783</td><td>7211</td></tr><tr><td>site</td><td>PCS_P</td><td>162.4038</td><td>1339.2622</td><td>2672.8776</td><td>4312.2595</td><td>6504</td></tr><tr><td>site</td><td>Group1_P</td><td>50.1308</td><td>1273.5835</td><td>2477.0063</td><td>5070.4356</td><td>9826</td></tr><tr><td>site</td><td>Ptot</td><td>50.1294</td><td>1273.5227</td><td>2476.9688</td><td>5070.4356</td><td>9836</td></tr><tr><td>site</td><td>BESSkW</td><td>6.0</td><td>1268.0</td><td>1965.56</td><td>4969.0</td><td>8897</td></tr><tr><td>rtac</td><td>MET_F3_P_WATTS</td><td>41.8701</td><td>1258.7891</td><td>2494.375</td><td>3500.0</td><td>1510</td></tr><tr><td>rtac</td><td>MET_F5_P_WATTS</td><td>1.4648</td><td>1254.6387</td><td>1360.3613</td><td>2519.2871</td><td>1899</td></tr></tbody></table>
+  <details>
+    <summary>Show SQL</summary>
+    <div class="sql-block">WITH deltas AS (
+      SELECT measurement, point_name,
+             ABS(value_f - LAG(value_f) OVER
+               (PARTITION BY measurement, point_name ORDER BY ts)) AS delta
+      FROM &#x27;/home/phil/parquet/*.parquet&#x27;
+      WHERE value_f IS NOT NULL
+    )
+    SELECT measurement, point_name,
+           ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY delta), 4) AS p50,
+           ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY delta), 4) AS p95,
+           ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY delta), 4) AS p99,
+           ROUND(MAX(delta), 4) AS max_delta,
+           COUNT(*) AS samples
+    FROM deltas
+    WHERE delta IS NOT NULL AND delta &gt; 0
+    GROUP BY measurement, point_name
+    ORDER BY p95 DESC
+    LIMIT 40</div>
+  </details>
+</div>
+
+<h2>3 — Frozen / Stuck Sensor Detection (consecutive identical values)</h2>
+<div class="qcard">
+  <p class="qdesc">Consecutive identical value runs identify frozen or stuck sensors. Long runs (&gt;20 identical readings) can indicate a sensor fault, a deadband filter already applied upstream, or a truly static signal.</p>
+  <p class="meta" style="margin-bottom:8px">40 rows returned (limit 40)</p>
+  <table><thead><tr><th>measurement</th><th>point_name</th><th>stuck_value</th><th>consecutive_count</th></tr></thead><tbody><tr><td>site</td><td>HS-CONTROL-AGC</td><td>0.0</td><td>90706</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>0.0</td><td>10176</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2413.0</td><td>10157</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>5479</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>4048</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2411.0</td><td>2451</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2395.0</td><td>2125</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2408.0</td><td>2049</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-85512.0</td><td>2010</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2408.0</td><td>2009</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-6026.0</td><td>1998</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-3614.0</td><td>1907</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-12060.0</td><td>1899</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-15652.0</td><td>1898</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-31248.0</td><td>1897</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-9650.0</td><td>1797</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-1203.0</td><td>1782</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-133835.0</td><td>1778</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>1768</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>1766</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2410.0</td><td>1680</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>0.0</td><td>1676</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>0.0</td><td>1671</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2409.0</td><td>1669</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-4829.0</td><td>1657</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>1584</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2412.0</td><td>1545</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2408.0</td><td>1272</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>1096</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>1074</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>1054</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>983</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>953</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>853</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>784</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>696</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>677</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>676</td></tr><tr><td>site</td><td>HS-CONTROL-P</td><td>0.0</td><td>672</td></tr><tr><td>site</td><td>HS-CONTROL-AGC</td><td>-2406.0</td><td>669</td></tr></tbody></table>
+  <details>
+    <summary>Show SQL</summary>
+    <div class="sql-block">WITH runs AS (
+      SELECT measurement, point_name, value_f,
+             ROW_NUMBER() OVER (PARTITION BY measurement, point_name ORDER BY ts)
+           - ROW_NUMBER() OVER (PARTITION BY measurement, point_name, value_f ORDER BY ts)
+             AS grp
+      FROM &#x27;/home/phil/parquet/*.parquet&#x27;
+      WHERE value_f IS NOT NULL
+    )
+    SELECT measurement, point_name,
+           value_f AS stuck_value,
+           COUNT(*) AS consecutive_count
+    FROM runs
+    GROUP BY measurement, point_name, value_f, grp
+    HAVING COUNT(*) &gt; 20
+    ORDER BY consecutive_count DESC
+    LIMIT 40</div>
+  </details>
+</div>
+
+<h2>4 — Z-score Outliers (readings &gt; 3σ from signal mean)</h2>
+<div class="qcard">
+  <p class="qdesc">Z-score &gt; 3 flags readings more than 3 standard deviations from the signal mean. These are statistical outliers — possible measurement errors, transients, or genuine events. Top entries show the most extreme individual readings.</p>
+  <p class="meta" style="margin-bottom:8px">40 rows returned (limit 40)</p>
+  <table><thead><tr><th>measurement</th><th>point_name</th><th>value</th><th>time</th><th>z_score</th></tr></thead><tbody><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>590.0</td><td>2026-03-23T17:21:28Z</td><td>20.1</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>586.0</td><td>2026-03-23T17:21:28Z</td><td>19.96</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>585.0</td><td>2026-03-23T17:21:28Z</td><td>19.92</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>578.0</td><td>2026-03-23T16:59:39Z</td><td>19.67</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>578.0</td><td>2026-03-23T15:27:09Z</td><td>19.67</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>578.0</td><td>2026-03-23T17:31:26Z</td><td>19.67</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>577.0</td><td>2026-03-23T15:38:21Z</td><td>19.63</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>573.0</td><td>2026-03-23T17:12:32Z</td><td>19.49</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>573.0</td><td>2026-03-23T15:47:30Z</td><td>19.49</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>573.0</td><td>2026-03-23T16:00:10Z</td><td>19.49</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>572.0</td><td>2026-03-23T15:17:31Z</td><td>19.45</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>572.0</td><td>2026-03-23T16:16:11Z</td><td>19.45</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>571.0</td><td>2026-03-23T15:38:21Z</td><td>19.42</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>571.0</td><td>2026-03-23T16:56:47Z</td><td>19.42</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>568.0</td><td>2026-03-23T15:24:26Z</td><td>19.31</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>565.0</td><td>2026-03-23T16:07:30Z</td><td>19.2</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>561.0</td><td>2026-03-23T17:13:08Z</td><td>19.06</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>559.0</td><td>2026-03-23T14:45:04Z</td><td>18.98</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>558.0</td><td>2026-03-23T15:36:42Z</td><td>18.95</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>556.0</td><td>2026-03-23T15:00:19Z</td><td>18.88</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>554.0</td><td>2026-03-23T16:22:01Z</td><td>18.8</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>550.0</td><td>2026-03-23T17:42:05Z</td><td>18.66</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>549.0</td><td>2026-03-23T16:53:16Z</td><td>18.62</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>548.0</td><td>2026-03-23T15:34:30Z</td><td>18.59</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>542.0</td><td>2026-03-23T17:31:26Z</td><td>18.37</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>541.0</td><td>2026-03-23T16:01:48Z</td><td>18.33</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>539.0</td><td>2026-03-23T16:34:20Z</td><td>18.26</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>539.0</td><td>2026-03-23T15:45:06Z</td><td>18.26</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>538.0</td><td>2026-03-23T17:25:08Z</td><td>18.23</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>537.0</td><td>2026-03-23T16:21:35Z</td><td>18.19</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>537.0</td><td>2026-03-23T16:07:30Z</td><td>18.19</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>537.0</td><td>2026-03-23T16:50:05Z</td><td>18.19</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>537.0</td><td>2026-03-23T16:28:44Z</td><td>18.19</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>536.0</td><td>2026-03-23T15:00:19Z</td><td>18.15</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>536.0</td><td>2026-03-23T15:20:47Z</td><td>18.15</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>536.0</td><td>2026-03-23T16:21:35Z</td><td>18.15</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>534.0</td><td>2026-03-23T17:43:21Z</td><td>18.08</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>534.0</td><td>2026-03-23T16:29:47Z</td><td>18.08</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>533.0</td><td>2026-03-23T15:23:46Z</td><td>18.05</td></tr><tr><td>pcs</td><td>CmdMsgr_Freq_ms</td><td>532.0</td><td>2026-03-23T17:02:33Z</td><td>18.01</td></tr></tbody></table>
+  <details>
+    <summary>Show SQL</summary>
+    <div class="sql-block">WITH stats AS (
+      SELECT measurement, point_name,
+             AVG(value_f) AS mu, STDDEV(value_f) AS sigma
+      FROM &#x27;/home/phil/parquet/*.parquet&#x27;
+      WHERE value_f IS NOT NULL
+      GROUP BY measurement, point_name
+      HAVING STDDEV(value_f) &gt; 0
+    ),
+    scored AS (
+      SELECT d.measurement, d.point_name,
+             ROUND(d.value_f, 4) AS value,
+             strftime(d.ts, &#x27;%Y-%m-%dT%H:%M:%SZ&#x27;) AS time,
+             ROUND(ABS(d.value_f - s.mu) / NULLIF(s.sigma, 0), 2) AS z_score
+      FROM &#x27;/home/phil/parquet/*.parquet&#x27; d
+      JOIN stats s USING (measurement, point_name)
+      WHERE d.value_f IS NOT NULL
+    )
+    SELECT * FROM scored
+    WHERE z_score &gt; 3
+    ORDER BY z_score DESC
+    LIMIT 40</div>
+  </details>
+</div>
+
+<h2>5 — Physics Consistency: Rack Voltage vs SOC residual  (V − (1145 + 0.5×SOC))</h2>
+<div class="qcard">
+  <p class="qdesc">Physics consistency check: joins rack/unit voltage with SOC readings within 5 seconds and computes the residual V − (1145 + 0.5×SOC). Large residuals indicate sensor miscalibration or the linear model doesn't fit this chemistry. The model coefficients were estimated from the observed mean voltage (~1145 V) and SOC range.</p>
+  <p class="meta" style="margin-bottom:8px">40 rows returned (limit 40)</p>
+  <table><thead><tr><th>volt_src</th><th>soc_src</th><th>time</th><th>voltage</th><th>soc</th><th>residual</th></tr></thead><tbody><tr><td>rack</td><td>site</td><td>2026-03-23T15:33:06Z</td><td>1137.0</td><td>94.13</td><td>-55.07</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:58Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:18Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:56Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:14Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:49Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:05Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:56Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:54Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:40Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:08Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:58Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:36Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:43Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:47Z</td><td>1137.0</td><td>94.12</td><td>-55.06</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:49Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:49Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:43Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:47Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:08Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:54Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:32:05Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:32:47Z</td><td>1137.0</td><td>94.11</td><td>-55.05</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:30:47Z</td><td>1137.0</td><td>94.1</td><td>-55.05</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:33Z</td><td>1137.0</td><td>94.09</td><td>-55.05</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:38Z</td><td>1137.0</td><td>94.09</td><td>-55.05</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:41Z</td><td>1137.0</td><td>94.09</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:29:32Z</td><td>1137.0</td><td>94.09</td><td>-55.05</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:29:27Z</td><td>1137.0</td><td>94.09</td><td>-55.04</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:29Z</td><td>1137.0</td><td>94.09</td><td>-55.04</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:29:27Z</td><td>1137.0</td><td>94.08</td><td>-55.04</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:29:15Z</td><td>1137.0</td><td>94.07</td><td>-55.04</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:14Z</td><td>1137.0</td><td>94.07</td><td>-55.04</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:16Z</td><td>1137.0</td><td>94.07</td><td>-55.04</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:28:23Z</td><td>1137.0</td><td>94.07</td><td>-55.03</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:28:26Z</td><td>1137.0</td><td>94.07</td><td>-55.03</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:28:21Z</td><td>1137.0</td><td>94.07</td><td>-55.03</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:16Z</td><td>1137.0</td><td>94.07</td><td>-55.03</td></tr><tr><td>rack</td><td>site</td><td>2026-03-23T15:29:15Z</td><td>1137.0</td><td>94.07</td><td>-55.03</td></tr><tr><td>unit</td><td>site</td><td>2026-03-23T15:29:14Z</td><td>1137.0</td><td>94.07</td><td>-55.03</td></tr></tbody></table>
+  <details>
+    <summary>Show SQL</summary>
+    <div class="sql-block">WITH volt AS (
+      SELECT measurement, ts, value_f AS voltage
+      FROM &#x27;/home/phil/parquet/*.parquet&#x27;
+      WHERE point_name IN (&#x27;RackVoltage&#x27;,&#x27;SysVoltage&#x27;)
+        AND value_f IS NOT NULL
+    ),
+    soc AS (
+      SELECT measurement, ts, value_f AS soc_pct
+      FROM &#x27;/home/phil/parquet/*.parquet&#x27;
+      WHERE point_name IN (&#x27;RackSOC&#x27;,&#x27;SOC&#x27;)
+        AND value_f IS NOT NULL
+    )
+    SELECT v.measurement AS volt_src,
+           s.measurement AS soc_src,
+           strftime(v.ts, &#x27;%Y-%m-%dT%H:%M:%SZ&#x27;) AS time,
+           ROUND(v.voltage, 2)   AS voltage,
+           ROUND(s.soc_pct, 2)   AS soc,
+           ROUND(v.voltage - (1145 + 0.5 * s.soc_pct), 2) AS residual
+    FROM volt v
+    JOIN soc s ON ABS(epoch(v.ts) - epoch(s.ts)) &lt; 5
+    ORDER BY ABS(v.voltage - (1145 + 0.5 * s.soc_pct)) DESC
+    LIMIT 40</div>
+  </details>
+</div>
+
+<h2>Key Findings</h2>
+<div class="qcard">
+  <ul style="font-size:.85rem;line-height:2;padding-left:1.2em">
+    <li><strong>Noisiest signals</strong> — <code>SysCurrent</code> (unit, CV=6.7) and power signals
+        <code>PCS_P--Frequency Response</code>, RTAC meter watts are the most variable.
+        Current near zero produces extreme CV; treat signals with |mean| &lt; 1 separately.</li>
+    <li><strong>Deadband sizing</strong> — Power signals (kW, kVAR, MW) need deadbands of
+        hundreds of units; voltage signals &lt;1 V; SOC &lt;0.1%.</li>
+    <li><strong>Frozen sensors</strong> — Several boolean/status signals hold the same value
+        for &gt;1,000 consecutive samples — expected for flags that rarely change.
+        Watch for analog signals appearing in this list.</li>
+    <li><strong>Z-score outliers</strong> — Outlier readings concentrated in power/control signals
+        during mode transitions; not sensor faults.</li>
+    <li><strong>Physics residual</strong> — All residuals negative (mean ≈ −47 V).
+        The linear model V = 1145 + 0.5×SOC overshoots; calibrated estimate is
+        <code>V ≈ 1098 + 0.5×SOC</code> for this site.  Residual range −55 V to −17 V
+        over the 3-hour window suggests some SOC-dependent non-linearity.</li>
+  </ul>
+</div>
+</body></html>

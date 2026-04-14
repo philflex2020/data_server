@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ems_site_simulator — Physics &amp; Peripheral Improvements</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149; --orange:#e3b341;
+    --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:20px; line-height:1.6; }
+  h1 { color:var(--accent); font-size:1.4rem; margin-bottom:4px; }
+  .meta { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:1rem; margin:28px 0 10px;
+       padding-bottom:5px; border-bottom:1px solid var(--border); }
+  h3 { color:var(--accent); font-size:.9rem; margin:16px 0 6px; }
+  p  { font-size:.85rem; margin-bottom:8px; }
+  ul,ol { font-size:.85rem; padding-left:1.4em; margin-bottom:10px; }
+  li { margin-bottom:4px; }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+           padding:14px 18px; margin-bottom:18px; }
+
+  .status { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px;
+             border-radius:4px; text-transform:uppercase; letter-spacing:.05em; }
+  .done    { background:#1a3a2a; color:var(--green); border:1px solid var(--green); }
+  .pending { background:#2a2a1a; color:var(--yellow); border:1px solid var(--yellow); }
+  .noted   { background:#2a1a1a; color:var(--muted);  border:1px solid var(--border); }
+
+  table { border-collapse:collapse; width:100%; font-size:.78rem; margin-top:8px; }
+  thead tr { background:var(--code-bg); }
+  th { padding:6px 10px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:5px 10px; border-bottom:1px solid #1e2530; vertical-align:top; }
+  tr:hover td { background:#1a2030; }
+
+  .code { background:var(--code-bg); border:1px solid var(--border); border-radius:5px;
+           padding:10px 14px; font-family:monospace; font-size:.72rem;
+           color:#adbac7; white-space:pre; overflow-x:auto; margin:8px 0; }
+
+  .finding { background:#1a2535; border-left:3px solid var(--accent);
+              padding:8px 12px; border-radius:0 6px 6px 0; font-size:.8rem; margin:8px 0; }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#ffffff; --surface:#f6f8fa; --border:#d0d7de;
+      --text:#24292f; --muted:#57606a; --accent:#0969da;
+      --green:#1a7f37; --yellow:#9a6700; --red:#cf222e; --orange:#bc4c00;
+      --code-bg:#f6f8fa;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>ems_site_simulator.cpp — Physics &amp; Peripheral Improvements</h1>
+<p class="meta">
+  Source: <code>source/stress_runner/ems_site_simulator.cpp</code> &nbsp;·&nbsp;
+  Calibration data: <code>evelyn_data_analysis.html</code> (site 0226571E, 2026-03-23) &nbsp;·&nbsp;
+  Started: 2026-03-24
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2>Motivation</h2>
+<div class="card">
+  <p>The original simulator used a Longbow LFP pack OCV curve and a bare-bones peripheral model
+  (7 site signals, 6 meter signals, 7 PCS per-unit signals).
+  Analysis of real Evelyn BESS site parquet data revealed several discrepancies and gaps:</p>
+  <ul>
+    <li>OCV curve overshoots real pack voltage by ~47 V on average.</li>
+    <li>Internal resistance is constant; real LFP R<sub>int</sub> rises sharply at SOC extremes.</li>
+    <li>No coulombic efficiency factor — charge/discharge energy asymmetry ignored.</li>
+    <li>Rack SOC imbalance is static (±0.1%) — real racks diverge dynamically over cycles.</li>
+    <li>RTAC peripheral entirely absent (348 evelyn signals — feeder meters + QSE interface).</li>
+    <li>Site missing AGC, Group power, RTAC_P, PCS Frequency Response, P Correction signals.</li>
+    <li>Meter missing CLR_NET_LOAD_MW / CLR_NET_MW.</li>
+    <li>PCS per-unit missing Hz and symmetrical-component current signal.</li>
+    <li><code>peripheral_thread_fn</code> existed in code but was never launched from <code>main()</code>.</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2>Change Log</h2>
+
+<!-- ───────────────────── CHANGE 1 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #1 — OCV curve recalibration (evelyn-calibrated)</h3>
+  <p><strong>File:</strong> <code>soc_to_voltage()</code> lines ~188–195</p>
+  <div class="finding">
+    Evelyn §5 physics residual: model <code>V = 1145 + 0.5×SOC</code> overshoots real data by
+    mean −47 V.  Calibrated estimate: <code>V ≈ 1098 + 0.5×SOC</code>.
+    At SOC=94%: real V=1137 V → model gives 1145 V → still 8 V high, indicating
+    soft top-end compression above 85% SOC.  Residual range −55 V to −17 V over 3-hour window.
+  </div>
+  <p><strong>Old range:</strong> 1220 V (SOC=0%) → ~1389 V (SOC=100%) — Longbow LFP approximation.</p>
+  <p><strong>New range:</strong> 1070 V (SOC=0%) → ~1139 V (SOC=100%) — evelyn-calibrated piecewise.</p>
+  <div class="code">// Old (Longbow approximation)
+if (soc &lt; 10)  return 1220 + 10.0 * soc;          // 1220..1320
+if (soc &lt; 20)  return 1320 +  1.0 * (soc-10);     // 1320..1330
+if (soc &lt; 80)  return 1330 +  0.55 * (soc-20);    // 1330..1363
+if (soc &lt; 90)  return 1363 +  1.2  * (soc-80);    // 1363..1375
+return           1375 +  1.4  * (soc-90);          // 1375..1389
+
+// New (evelyn-calibrated)
+if (soc &lt; 15)  return 1070 + 1.20 * soc;            // 1070..1088
+if (soc &lt; 85)  return 1088 + 0.65 * (soc-15);       // 1088..1133.5
+if (soc &lt; 95)  return 1133.5 + 0.40 * (soc-85);     // 1133.5..1137.5 (soft plateau)
+return           1137.5 + 0.25 * (soc-95);           // saturation</div>
+</div>
+
+<!-- ───────────────────── CHANGE 2 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #2 — SOC-dependent internal resistance</h3>
+  <p><strong>File:</strong> <code>soc_to_voltage_t()</code></p>
+  <p>Real LFP packs show R<sub>int</sub> rising steeply at SOC extremes (below ~10% and above ~90%).
+     Old model: fixed 8 mΩ regardless of SOC.</p>
+  <div class="code">// Old
+return soc_to_voltage(soc) + sign * I * 0.008f;
+
+// New: exponential rise at extremes; at SOC=5%: r_factor≈2.0; at SOC=50%: r_factor≈1.0
+float r_factor = 1.0f + 1.5f * expf(-0.12f * fminf(soc, 100.0f - soc));
+return soc_to_voltage(soc) + sign * I * 0.008f * r_factor;</div>
+</div>
+
+<!-- ───────────────────── CHANGE 3 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #3 — Cell count updated to match evelyn pack</h3>
+  <p><strong>File:</strong> <code>soc_to_cell_v()</code></p>
+  <p>At SOC=94%, evelyn real voltage = 1137 V.  With LFP max cell voltage 3.5 V:
+     cells ≈ 1137/3.50 ≈ <strong>325 cells</strong> (vs old 450-cell Longbow assumption).
+     Affects undervolt/overvolt fault thresholds.</p>
+  <div class="code">// Old: 450 cells
+static float soc_to_cell_v(float soc) { return soc_to_voltage(soc) / 450.0f; }
+
+// New: ~325 cells (evelyn pack)
+static float soc_to_cell_v(float soc) { return soc_to_voltage(soc) / 325.0f; }</div>
+</div>
+
+<!-- ───────────────────── CHANGE 4 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #4 — Coulombic efficiency in SOC integration</h3>
+  <p><strong>File:</strong> <code>physics_thread_fn()</code> SOC update</p>
+  <p>Real LFP: ~96% charge efficiency, ~98% discharge efficiency.
+     This creates realistic asymmetry in charge_kwh vs discharge_kwh counters.</p>
+  <div class="code">// Old
+float dsoc = (I / u.capacity) * (100.0f / 3600.0f) * DT;
+if (charging)    u.soc += dsoc;
+else             u.soc -= dsoc;
+
+// New
+float eta  = (u.mode == Mode::CHARGING) ? 0.96f : (1.0f / 0.98f);
+float dsoc = (I / u.capacity) * (100.0f / 3600.0f) * DT * eta;</div>
+</div>
+
+<!-- ───────────────────── CHANGE 5 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #5 — Dynamic rack SOC drift</h3>
+  <p><strong>File:</strong> <code>physics_thread_fn()</code> rack SOC update</p>
+  <p>Old model: static ±0.1% spread, never evolves.
+     New: drift accumulates per-rack at ±2×10<sup>−4</sup>×|dsoc| per step, clamped ±3%.</p>
+  <div class="code">// Old: static spread
+float noise = (float)(ri - 2) * 0.05f;
+u.racks[ri].soc = clamp(u.soc + noise);
+
+// New: accumulating drift
+u.racks[ri].drift += (float)(ri - 2) * 2e-4f * fabsf(dsoc);
+u.racks[ri].drift  = clamp(u.racks[ri].drift, -3.0f, 3.0f);
+u.racks[ri].soc    = clamp(u.soc + u.racks[ri].drift);</div>
+</div>
+
+<!-- ───────────────────── CHANGE 6 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #6 — Peripheral slow-varying state (AGC, freq response, P correction)</h3>
+  <p><strong>File:</strong> globals + <code>physics_thread_fn()</code></p>
+  <p>Three globals updated every 100 ms in physics_thread_fn to drive realistic site-level signal variation:</p>
+  <table>
+    <thead><tr><th>Global</th><th>Signal driven</th><th>Model</th><th>Evelyn stats</th></tr></thead>
+    <tbody>
+      <tr><td><code>g_agc_setpoint</code></td><td>HS-CONTROL-AGC</td><td>Slow random walk, mean-biased toward −10 MW, clamped [−40, +5] MW</td><td>mean=−9983 kW, σ=24730</td></tr>
+      <tr><td><code>g_freq_response</code></td><td>PCS_P--Frequency Response</td><td>Proportional to ±20 mHz Hz deviation, 20 MW/Hz droop gain</td><td>mean=+110 kW, σ=617</td></tr>
+      <tr><td><code>g_p_correction</code></td><td>PCS_P--P Correction</td><td>Mean-reverting random (τ=20 s)</td><td>mean=+5521 kW, σ=19157</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ───────────────────── CHANGE 7 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #7 — Expanded site peripheral signals</h3>
+  <p><strong>File:</strong> <code>peripheral_thread_fn()</code> — Site section</p>
+  <p>Added 8 missing site-level topics:</p>
+  <table>
+    <thead><tr><th>Topic (relative to ems/site/{sid}/root/)</th><th>Derivation</th></tr></thead>
+    <tbody>
+      <tr><td>HS-CONTROL-P-Measured</td><td>total_kw × 0.995 (sensor lag)</td></tr>
+      <tr><td>HS-CONTROL-AGC</td><td>g_agc_setpoint (slow random walk)</td></tr>
+      <tr><td>Group1_P</td><td>total_kw (single PCS group)</td></tr>
+      <tr><td>Group2_Q</td><td>0.0 (inactive in evelyn data)</td></tr>
+      <tr><td>RTAC_P</td><td>total_kw (RTAC-reported site power)</td></tr>
+      <tr><td>PCS_P</td><td>total_kw (site PCS aggregate)</td></tr>
+      <tr><td>PCS_P--P Correction</td><td>g_p_correction (mean-reverting)</td></tr>
+      <tr><td>PCS_P--Frequency Response</td><td>g_freq_response (Hz-driven droop)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ───────────────────── CHANGE 8 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #8 — Meter CLR signals</h3>
+  <p><strong>File:</strong> <code>peripheral_thread_fn()</code> — Meter section</p>
+  <p>Added CLR (Controllable Load Resource) signals missing from original meter:</p>
+  <table>
+    <thead><tr><th>Topic</th><th>Derivation</th><th>Evelyn stats</th></tr></thead>
+    <tbody>
+      <tr><td>CLR_NET_LOAD_MW</td><td>−total_kw (sign-flipped: load = charging demand)</td><td>mean=+5503 kW, σ=16079</td></tr>
+      <tr><td>CLR_NET_MW</td><td>−total_kw (same signal, duplicate point name in SCADA)</td><td>same</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ───────────────────── CHANGE 9 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #9 — RTAC peripheral (new, previously entirely absent)</h3>
+  <p><strong>File:</strong> <code>peripheral_thread_fn()</code> — new RTAC section</p>
+  <p>Evelyn has 348 RTAC signals.  The simulator now covers the key subset visible in the
+     noise analysis report.  Topic root: <code>ems/site/{sid}/rtac/rtac_1/{point}/float</code></p>
+
+  <h3 style="margin-top:14px">Feeder meters (5×2 signals)</h3>
+  <p>5 sub-feeders split total site power proportionally (F1 47%, F2 18%, F3 21%, F4 7%, F5 7%)
+     based on evelyn mean ratios.  Power in kW (despite _P_WATTS suffix — SCADA naming convention).
+     PF modelled near-zero (0.09 ± 30% noise), consistent with evelyn PF values 0.07–0.10.</p>
+  <table>
+    <thead><tr><th>Signal</th><th>Evelyn mean (kW)</th><th>Evelyn σ</th><th>Model</th></tr></thead>
+    <tbody>
+      <tr><td>MET_F1_P_WATTS</td><td>−2266</td><td>9883</td><td>total_kw × 0.47, noise 20%</td></tr>
+      <tr><td>MET_F2_P_WATTS</td><td>−872</td><td>4142</td><td>total_kw × 0.18</td></tr>
+      <tr><td>MET_F3_P_WATTS</td><td>−1000</td><td>2542</td><td>total_kw × 0.21</td></tr>
+      <tr><td>MET_F4_P_WATTS</td><td>−318</td><td>1729</td><td>total_kw × 0.07</td></tr>
+      <tr><td>MET_F5_P_WATTS</td><td>−355</td><td>1845</td><td>total_kw × 0.07</td></tr>
+      <tr><td>MET_F1..F5_PF</td><td>0.07–0.10</td><td>CV≈2.5</td><td>apply_noise(0.09, 30)</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:14px">QSE interface signals (5 signals)</h3>
+  <table>
+    <thead><tr><th>Signal</th><th>Evelyn mean</th><th>Sign convention</th></tr></thead>
+    <tbody>
+      <tr><td>QSE_Line_flows_MW</td><td>−4002 kW</td><td>total_kw / 1000 (MW, same sign)</td></tr>
+      <tr><td>QSE_Transformer_flows_MW</td><td>−4002 kW</td><td>same as Line_flows</td></tr>
+      <tr><td>QSE_BESS_LOAD_MW</td><td>+5430 kW</td><td>−total_kw (positive = charging = grid load)</td></tr>
+      <tr><td>QSE_CLR_Scheduled_Power_Consumption</td><td>+5430 kW</td><td>same as BESS_LOAD</td></tr>
+      <tr><td>QSE_CLR_Net_Load_MW</td><td>+5430 kW</td><td>same as BESS_LOAD</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:8px;color:var(--muted);font-size:.78rem">
+    Note: QSE values are in kW despite "MW" in the signal name — consistent with evelyn data scale.
+  </p>
+</div>
+
+<!-- ───────────────────── CHANGE 10 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #10 — PCS per-unit additional signals</h3>
+  <p><strong>File:</strong> <code>peripheral_thread_fn()</code> — PCS section</p>
+  <table>
+    <thead><tr><th>Signal</th><th>Derivation</th><th>Evelyn stats</th></tr></thead>
+    <tbody>
+      <tr><td>Hz</td><td>meter_hz (PCS-measured frequency, same as meter)</td><td>≈60 Hz</td></tr>
+      <tr><td>StatusSymmCurrentComp_CurrentRealPS</td><td>p_kw × 1.92 (proportional to unit power; ratio from evelyn DCkW vs mean)</td><td>mean=−151 A, σ=361</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ───────────────────── CHANGE 11 ───────────────────── -->
+<div class="card">
+  <h3><span class="status done">done</span> &nbsp; #11 — peripheral_thread_fn launched from main()</h3>
+  <p><strong>File:</strong> <code>main()</code></p>
+  <p>The peripheral thread existed in the code but was never started.
+     Also needed: <code>g_mqtt_host_g</code> and <code>g_mqtt_port_g</code> set from CLI args
+     (previously always used localhost:1883 defaults).</p>
+  <div class="code">// Added before thread launches:
+g_mqtt_host_g = host;
+g_mqtt_port_g = port;
+
+// Added thread:
+std::thread periph(peripheral_thread_fn, qos);
+// ...
+periph.join();</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2>Known Limitations / Future Work</h2>
+<div class="card">
+  <table>
+    <thead><tr><th>Issue</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>SysCurrent CV=6.7 (extreme noise)</td>
+        <td><span class="status noted">noted</span></td>
+        <td>Real high CV is due to near-zero mean + high-amplitude transients during
+            frequency response and mode transitions — not reproducible with the current
+            uniform noise pool model.  Would require mixture distribution or event-driven
+            current injection.  Logged for future work.</td>
+      </tr>
+      <tr>
+        <td>RTAC: 348 total signals vs ~15 simulated</td>
+        <td><span class="status pending">partial</span></td>
+        <td>Only the signals visible in the noise report are simulated.
+            Full RTAC signal list requires a dedicated RTAC template file.</td>
+      </tr>
+      <tr>
+        <td>Power signal CV ~3–5 in real data</td>
+        <td><span class="status noted">noted</span></td>
+        <td>Uniform noise pool gives CV ≈ 0.14 at 50% amplitude.
+            Real variance comes from dispatch setpoint changes (slow) + measurement noise (fast).
+            Without a realistic dispatch profile the slow variation cannot be reproduced.</td>
+      </tr>
+      <tr>
+        <td>Self-discharge</td>
+        <td><span class="status noted">noted</span></td>
+        <td>LFP self-discharge ~0.5–2%/month — negligible for short-duration simulations.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2>Signal Count Before / After</h2>
+<div class="card">
+  <table>
+    <thead><tr><th>Peripheral</th><th>Before</th><th>After</th><th>Delta</th></tr></thead>
+    <tbody>
+      <tr><td>site/root</td><td>7</td><td>15</td><td>+8</td></tr>
+      <tr><td>meter</td><td>6</td><td>8</td><td>+2</td></tr>
+      <tr><td>pcs (per unit)</td><td>7</td><td>9</td><td>+2</td></tr>
+      <tr><td>rtac</td><td>0</td><td>15</td><td>+15</td></tr>
+      <tr><td><strong>Total (4 units)</strong></td><td><strong>41</strong></td><td><strong>86</strong></td><td><strong>+45</strong></td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:8px;font-size:.78rem;color:var(--muted)">
+    Unit/rack/BMS topics (driven by ems_topic_template.json) are unchanged.
+  </p>
+</div>
+
+</body>
+</html>

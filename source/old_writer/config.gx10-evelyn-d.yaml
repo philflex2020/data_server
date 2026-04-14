@@ -1,0 +1,54 @@
+# real_writer config — gx10-d94c, Evelyn sim slice D
+#   prefix D, units 35-45 (11 units × 1770 = 19,470 topics/sweep)
+#   Companion: ems_site_simulator --topic-prefix D --units 11 --rate 19470 --ws-port 8799
+
+mqtt:
+  host: localhost
+  port: 1883
+  client_id: real-writer-evelyn-d
+  topic: "D/unit/#"
+  qos: 0
+
+  topic_parser: positional
+  topic_segments:
+    - "_"          # 0: "D" (prefix, skip)
+    - "_"          # 1: "unit" (literal, skip)
+    - unit_id      # 2: hex unit serial
+    - device       # 3: bms / pcs / rack
+    - instance     # 4: bms_1 / pcs_1 / etc.
+    - point_name   # 5: Batt1_SBMU1_Current etc.
+    - dtype_hint   # 6: float / integer / boolean_integer
+
+  partition_field: site_id
+  timestamp_field:  ts
+  timestamp_format: iso8601
+
+output:
+  base_path: /data/parquet-evelyn/d
+  project_id: 0
+  site_id: "0215D1D8"
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 5
+  max_messages_per_part: 10000000
+  max_total_buffer_rows: 140000    # ~7s at 19k msg/s
+
+wal:
+  enabled: true
+
+health:
+  enabled: true
+  port: 8774
+
+guard:
+  min_free_gb: 1.0
+
+compact:
+  enabled: false
+  interval_seconds: 600
+  min_files: 3
+  min_age_seconds: 0

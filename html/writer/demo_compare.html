@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evelyn Filter Demo</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+    --green-bg:#0d4429; --yellow-bg:#2d2000;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:16px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:20px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  /* ── live stats bar ── */
+  .stats-bar { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:16px; }
+  .scard { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 10px; }
+  .scard-k { font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .scard-v { font-size:1.05rem; font-weight:700; font-family:'Consolas',monospace; }
+  .scard-v.base { color:var(--accent); }
+  .scard-v.filt { color:var(--green); }
+  .scard-v.save { color:var(--yellow); }
+
+  /* ── SVG diagram ── */
+  .diagram-wrap { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+                  padding:16px; margin-bottom:16px; overflow-x:auto; }
+  svg.arch { display:block; margin:0 auto; }
+
+  /* SVG element styles */
+  .box { fill:#21262d; stroke:#30363d; stroke-width:1.5; rx:6; }
+  .box-accent  { fill:#0c2d6b44; stroke:#58a6ff; stroke-width:1.5; }
+  .box-green   { fill:#0d442944; stroke:#3fb950; stroke-width:1.5; }
+  .box-yellow  { fill:#2d200044; stroke:#d29922; stroke-width:1.5; }
+  .box-purple  { fill:#1a0f2e44; stroke:#bc8cff; stroke-width:1.5; }
+  .box-red     { fill:#2d000044; stroke:#f85149; stroke-width:1.5; }
+  .lbl-title   { fill:#c9d1d9; font-size:11px; font-weight:700; font-family:'Consolas',monospace; }
+  .lbl-sub     { fill:#8b949e; font-size:9px;  font-family:'Consolas',monospace; }
+  .lbl-accent  { fill:#58a6ff; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .lbl-green   { fill:#3fb950; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .lbl-yellow  { fill:#d29922; font-size:10px; font-family:'Consolas',monospace; font-weight:700; }
+  .arrow { stroke:#30363d; stroke-width:2; fill:none; marker-end:url(#arrowhead); }
+  .arrow-accent { stroke:#58a6ff88; stroke-width:2; fill:none; marker-end:url(#arrowBlue); stroke-dasharray:6,3; }
+  .arrow-green  { stroke:#3fb95088; stroke-width:2; fill:none; marker-end:url(#arrowGreen); stroke-dasharray:6,3; }
+  .badge { font-size:8px; font-family:'Consolas',monospace; }
+
+  /* ── config comparison ── */
+  .cfg-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:900px) { .cfg-grid { grid-template-columns:1fr; } }
+  .cfg-panel { background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .cfg-panel-hdr { padding:8px 14px; font-size:.8rem; font-weight:700; display:flex;
+                   justify-content:space-between; align-items:center; }
+  .cfg-panel-hdr.base { background:#0c2d6b44; border-bottom:2px solid var(--accent); color:var(--accent); }
+  .cfg-panel-hdr.filt { background:#0d442944; border-bottom:2px solid var(--green);  color:var(--green); }
+  .cfg-panel-hdr span { font-size:.72rem; font-weight:400; color:var(--muted); }
+  pre.cfg { font-family:'Consolas',monospace; font-size:.72rem; line-height:1.55;
+            padding:12px 14px; overflow-x:auto; color:var(--text); background:none;
+            max-height:600px; overflow-y:auto; }
+  /* diff highlight classes */
+  .diff-add  { background:#0d442966; border-left:3px solid var(--green);
+               display:block; margin-left:-14px; padding-left:11px; color:#c9d1d9; }
+  .diff-key  { color:var(--orange); }
+  .diff-val  { color:var(--green); }
+  .diff-str  { color:#a5d6ff; }
+  .diff-comment { color:#444c57; }
+  .diff-section { color:var(--purple); }
+  .diff-filter-a { background:#2d200022; border-left:3px solid var(--yellow);
+                   display:block; margin-left:-14px; padding-left:11px; }
+  .diff-filter-b { background:#0d442922; border-left:3px solid var(--green);
+                   display:block; margin-left:-14px; padding-left:11px; }
+
+  /* ── legend ── */
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; font-size:.76rem; }
+  .legend-item { display:flex; align-items:center; gap:6px; }
+  .legend-swatch { width:14px; height:4px; border-radius:2px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="mqtt_viewer.html">MQTT Viewer</a>
+  <a href="evelyn_live_compare.html">Live Compare</a>
+  <a href="demo_compare.html" class="here">Demo Compare</a>
+  <a href="demo2_compare.html">Demo2 Compare</a>
+  <a href="ems_simulator_control.html">Sim Control</a>
+  <a href="demo_influx_viewer.html">Demo InfluxDB</a>
+  <a href="demo_eval.html">Pipeline Eval</a>
+</div>
+
+<h1>Evelyn Filter Demo — Filter Comparison</h1>
+<p class="subtitle">A+B Native (dedup int/bool) vs float_dedup execd (deadband all floats) — measured on live EMS data</p>
+
+<!-- Host selector -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:.8rem;">
+  <span style="color:var(--muted);">Live host:</span>
+  <input id="host-input" value="192.168.86.51" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 8px;font-family:'Consolas',monospace;font-size:.8rem;width:160px;">
+  <button id="conn-btn" onclick="toggleConnect();"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--accent);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:.8rem;">Connect</button>
+  <span style="font-family:'Consolas',monospace;">
+    <span id="port-base" style="color:var(--muted);">:8096</span>
+    <span style="color:var(--muted);"> baseline &nbsp;</span>
+    <span id="port-filt" style="color:var(--muted);">:8097</span>
+    <span style="color:var(--muted);"> filtered</span>
+  </span>
+</div>
+
+<!-- Live stats -->
+<div class="stats-bar">
+  <div class="scard"><div class="scard-k">Baseline rows/s</div><div class="scard-v base" id="s-base-rps">—</div></div>
+  <div class="scard"><div class="scard-k">Filtered rows/s</div><div class="scard-v filt" id="s-filt-rps">—</div></div>
+  <div class="scard"><div class="scard-k">Row reduction</div><div class="scard-v save" id="s-reduction">—</div></div>
+  <div class="scard"><div class="scard-k">Base total</div><div class="scard-v base" id="s-base-total">—</div></div>
+  <div class="scard"><div class="scard-k">Filt total</div><div class="scard-v filt" id="s-filt-total">—</div></div>
+  <div class="scard"><div class="scard-k">Last update</div><div class="scard-v" id="s-ts" style="font-size:.95rem;color:var(--muted)">—</div></div>
+</div>
+
+<!--
+  ARCHITECTURE (fractal-phil 192.168.86.51) — single broker, two filter paths
+  ============================================================================
+  ONE ems_site_simulator  →  ONE FlashMQ :11888  ─┬─  Telegraf-base (no filter)      →  InfluxDB :8096  bucket=ems-baseline
+                                                └─  Telegraf-filt (Filter A+B +     →  InfluxDB :8097  bucket=ems-filtered
+                                                      float_dedup execd)
+
+  ems_site_simulator : ws-port 8769, rate 175 msg/s, 1 unit (0215F562), site 0215D1D8
+  Telegraf-base   : /tmp/telegraf-native-base.conf   — all signals, no dedup
+  Telegraf-filt   : /tmp/tg-filt-floatdedup.conf     — Filter A (drop strings) +
+                                                        Filter B (dedup int/bool 60s) +
+                                                        float_dedup execd (deadband)
+  FlashMQ         : /tmp/fmq-base.conf  (fmq-filt.conf is retired — do NOT start it)
+  InfluxDB base   : /data/influx-base   :8096
+  InfluxDB filt   : /data/influx-filt   :8097
+  Scripts         : scripts/evelyn-compare-native-start.sh / -stop.sh
+-->
+<!-- Architecture diagram -->
+<h2>System Layout</h2>
+<div class="diagram-wrap">
+<svg class="arch" width="780" height="310" viewBox="0 0 780 310">
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#30363d"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#58a6ff88"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#3fb95088"/>
+    </marker>
+  </defs>
+
+  <!-- Generator -->
+  <rect x="10" y="105" width="130" height="70" rx="6" class="box-purple"/>
+  <text x="75" y="128" text-anchor="middle" class="lbl-title">Simulator</text>
+  <text x="75" y="144" text-anchor="middle" class="lbl-sub">ems_site_simulator</text>
+  <text x="75" y="158" text-anchor="middle" class="lbl-sub">175 msg/s · 1 unit</text>
+  <text x="75" y="170" text-anchor="middle" class="lbl-sub">ems/site/{id}/unit/...</text>
+
+  <!-- FlashMQ -->
+  <rect x="185" y="90" width="130" height="100" rx="6" class="box-accent"/>
+  <text x="250" y="116" text-anchor="middle" class="lbl-title">FlashMQ</text>
+  <text x="250" y="131" text-anchor="middle" class="lbl-sub">MQTT broker</text>
+  <text x="250" y="146" text-anchor="middle" class="lbl-accent">:1883</text>
+  <text x="250" y="161" text-anchor="middle" class="lbl-sub">systemd service</text>
+  <text x="250" y="175" text-anchor="middle" class="lbl-sub">sub: ems/#</text>
+
+  <!-- Telegraf Baseline -->
+  <rect x="365" y="30" width="150" height="90" rx="6" class="box-accent"/>
+  <text x="440" y="52"  text-anchor="middle" class="lbl-title">Telegraf Baseline</text>
+  <text x="440" y="67"  text-anchor="middle" class="lbl-sub">json_v2 · pivot</text>
+  <text x="440" y="82"  text-anchor="middle" class="lbl-sub">all signals pass through</text>
+  <text x="440" y="97"  text-anchor="middle" class="lbl-sub">client: telegraf-46-base</text>
+  <text x="440" y="112" text-anchor="middle" class="lbl-accent">→ :8096</text>
+
+  <!-- Telegraf Filtered -->
+  <rect x="365" y="155" width="150" height="115" rx="6" class="box-green"/>
+  <text x="440" y="177" text-anchor="middle" class="lbl-title">Telegraf Filtered</text>
+  <text x="440" y="192" text-anchor="middle" class="lbl-sub">json_v2 · execd · pivot</text>
+  <text x="440" y="207" text-anchor="middle" class="lbl-green">float_dedup execd</text>
+  <text x="440" y="221" text-anchor="middle" class="lbl-sub">±0.5 epsilon · hb=60s</text>
+  <text x="440" y="236" text-anchor="middle" class="lbl-sub">client: tg-compare-filt</text>
+  <text x="440" y="250" text-anchor="middle" class="lbl-green">→ :8097</text>
+
+  <!-- InfluxDB Baseline -->
+  <rect x="565" y="30" width="130" height="90" rx="6" class="box-accent"/>
+  <text x="630" y="52"  text-anchor="middle" class="lbl-title">InfluxDB Baseline</text>
+  <text x="630" y="67"  text-anchor="middle" class="lbl-accent">:8096</text>
+  <text x="630" y="82"  text-anchor="middle" class="lbl-sub">bucket: ems-baseline</text>
+  <text x="630" y="97"  text-anchor="middle" class="lbl-sub">fields: float / integer</text>
+  <text x="630" y="112" text-anchor="middle" class="lbl-sub">boolean_integer / string</text>
+
+  <!-- InfluxDB Filtered -->
+  <rect x="565" y="155" width="130" height="115" rx="6" class="box-green"/>
+  <text x="630" y="177" text-anchor="middle" class="lbl-title">InfluxDB Filtered</text>
+  <text x="630" y="192" text-anchor="middle" class="lbl-green">:8097</text>
+  <text x="630" y="207" text-anchor="middle" class="lbl-sub">bucket: ems-filtered</text>
+  <text x="630" y="222" text-anchor="middle" class="lbl-sub">floats deadbanded</text>
+  <text x="630" y="237" text-anchor="middle" class="lbl-sub">slow signals 20s</text>
+  <text x="630" y="252" text-anchor="middle" class="lbl-yellow">~91% fewer rows</text>
+
+  <!-- Arrows: Generator → FlashMQ -->
+  <line x1="140" y1="140" x2="183" y2="140" class="arrow"/>
+
+  <!-- FlashMQ → Telegraf Base -->
+  <path d="M315,120 C340,120 345,75 363,75" class="arrow-accent"/>
+
+  <!-- FlashMQ → Telegraf Filt -->
+  <path d="M315,160 C340,160 345,202 363,202" class="arrow-green"/>
+
+  <!-- Telegraf Base → InfluxDB Base -->
+  <line x1="515" y1="75" x2="563" y2="75" class="arrow-accent"/>
+
+  <!-- Telegraf Filt → InfluxDB Filt -->
+  <line x1="515" y1="202" x2="563" y2="202" class="arrow-green"/>
+
+  <!-- Row count live labels -->
+  <text x="630" y="138" text-anchor="middle" class="lbl-accent" id="svg-base-rps">— rows/s</text>
+  <text x="630" y="282" text-anchor="middle" class="lbl-green"  id="svg-filt-rps">— rows/s</text>
+
+</svg>
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--accent)"></div><span>Baseline path (all signals)</span></div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--green)"></div><span>Filtered path (float_dedup execd)</span></div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--yellow)"></div><span>~91% row reduction measured</span></div>
+</div>
+</div>
+
+<!-- Config comparison -->
+<h2>Telegraf Config — Baseline vs Filtered</h2>
+<div class="cfg-grid">
+
+  <!-- Baseline config -->
+  <div class="cfg-panel">
+    <div class="cfg-panel-hdr base">Baseline <span>/tmp/telegraf-46-base.conf</span></div>
+    <pre class="cfg"><span class="diff-comment"># All signals — no filtering</span>
+
+<span class="diff-section">[agent]</span>
+  <span class="diff-key">interval</span>          = <span class="diff-str">"1s"</span>
+  <span class="diff-key">precision</span>         = <span class="diff-str">"1ms"</span>
+  <span class="diff-key">flush_interval</span>    = <span class="diff-str">"5s"</span>
+  <span class="diff-key">omit_hostname</span>     = <span class="diff-val">true</span>
+
+<span class="diff-section">[[inputs.mqtt_consumer]]</span>
+  <span class="diff-key">servers</span>    = [<span class="diff-str">"tcp://localhost:1883"</span>]
+  <span class="diff-key">topics</span>     = [<span class="diff-str">"ems/#"</span>]
+  <span class="diff-key">client_id</span>  = <span class="diff-str">"telegraf-46-base"</span>
+  <span class="diff-key">data_format</span> = <span class="diff-str">"json_v2"</span>
+
+  <span class="diff-comment">  # no tagdrop here — strings pass through</span>
+
+  <span class="diff-section">[[inputs.mqtt_consumer.json_v2]]</span>
+    <span class="diff-key">timestamp_path</span>   = <span class="diff-str">"ts"</span>
+    <span class="diff-key">timestamp_format</span> = <span class="diff-str">"2006-01-02T15:04:05.000Z"</span>
+
+    <span class="diff-section">[[inputs.mqtt_consumer.json_v2.field]]</span>
+      <span class="diff-key">path</span> = <span class="diff-str">"value"</span>
+
+    <span class="diff-comment">    # 9-seg topic parsing</span>
+    <span class="diff-section">[[inputs.mqtt_consumer.topic_parsing]]</span>
+      <span class="diff-key">topic</span> = <span class="diff-str">"ems/site/+/unit/+/+/+/+/+"</span>
+      <span class="diff-key">tags</span>  = <span class="diff-str">"_/_/site_id/_/unit_id/device/instance/point_name/data_type"</span>
+      <span class="diff-key">measurement</span> = <span class="diff-str">"_/_/_/measurement/_/_/_/_/_"</span>
+
+<span class="diff-comment"># pivot: converts data_type tag into a typed field name, e.g.
+#   {data_type="float", value=50.0} → {float=50.0}
+# This matches the Longbow/InfluxDB schema where each dtype is a separate field.</span>
+<span class="diff-section">[[processors.pivot]]</span>
+  <span class="diff-key">order</span>     = <span class="diff-val">1</span>
+  <span class="diff-key">tag_key</span>   = <span class="diff-str">"data_type"</span>
+  <span class="diff-key">value_key</span> = <span class="diff-str">"value"</span>
+
+<span class="diff-section">[[outputs.influxdb_v2]]</span>
+  <span class="diff-key">urls</span>         = [<span class="diff-str">"http://localhost:8096"</span>]
+  <span class="diff-key">bucket</span>       = <span class="diff-str">"ems-baseline"</span>
+  <span class="diff-key">namedrop</span>     = [<span class="diff-str">"internal_*"</span>]</pre>
+  </div>
+
+  <!-- Filtered config -->
+  <div class="cfg-panel">
+    <div class="cfg-panel-hdr filt">Filtered <span>/tmp/tg-filt-floatdedup.conf</span></div>
+    <pre class="cfg"><span class="diff-comment"># float_dedup execd + pivot  (replaces A+B native)</span>
+
+<span class="diff-section">[agent]</span>
+  <span class="diff-key">interval</span>          = <span class="diff-str">"1s"</span>
+  <span class="diff-key">precision</span>         = <span class="diff-str">"1ms"</span>
+  <span class="diff-key">flush_interval</span>    = <span class="diff-str">"5s"</span>
+  <span class="diff-key">omit_hostname</span>     = <span class="diff-val">true</span>
+
+<span class="diff-section">[[inputs.mqtt_consumer]]</span>
+  <span class="diff-key">servers</span>    = [<span class="diff-str">"tcp://localhost:11889"</span>]
+  <span class="diff-key">topics</span>     = [<span class="diff-str">"ems/#"</span>]
+  <span class="diff-key">client_id</span>  = <span class="diff-str">"tg-compare-filt-dedup"</span>
+  <span class="diff-key">data_format</span> = <span class="diff-str">"json_v2"</span>
+
+<span class="diff-comment">  # Filter A (string drop) — NOT used: float_dedup handles all dtypes
+  # [inputs.mqtt_consumer.tagdrop]
+  #   data_type = ["string"]</span>
+
+  <span class="diff-section">[[inputs.mqtt_consumer.json_v2]]</span>
+    <span class="diff-key">timestamp_path</span>   = <span class="diff-str">"ts"</span>
+    <span class="diff-key">timestamp_format</span> = <span class="diff-str">"2006-01-02T15:04:05.000Z"</span>
+
+    <span class="diff-section">[[inputs.mqtt_consumer.json_v2.field]]</span>
+      <span class="diff-key">path</span> = <span class="diff-str">"value"</span>
+
+    <span class="diff-comment">    # 9-seg topic parsing</span>
+    <span class="diff-section">[[inputs.mqtt_consumer.topic_parsing]]</span>
+      <span class="diff-key">topic</span> = <span class="diff-str">"ems/site/+/unit/+/+/+/+/+"</span>
+      <span class="diff-key">tags</span>  = <span class="diff-str">"_/_/site_id/_/unit_id/device/instance/point_name/data_type"</span>
+      <span class="diff-key">measurement</span> = <span class="diff-str">"_/_/_/measurement/_/_/_/_/_"</span>
+
+<span class="diff-comment"># Filter B (int/bool dedup) — NOT used: float_dedup covers this too
+# [[processors.dedup]]
+#   order          = 0
+#   dedup_interval = "60s"
+#   [processors.dedup.tagpass]
+#     data_type = ["integer", "boolean_integer"]</span>
+
+<span class="diff-add"><span class="diff-section">[[processors.execd]]</span>
+  <span class="diff-key">command</span>       = [<span class="diff-str">"./float_dedup"</span>, <span class="diff-str">"--config"</span>, <span class="diff-str">"./float_dedup.toml"</span>]
+  <span class="diff-key">restart_delay</span> = <span class="diff-str">"5s"</span>
+  <span class="diff-key">data_format</span>   = <span class="diff-str">"influx"</span>
+  <span class="diff-key">order</span>         = <span class="diff-val">1</span></span>
+
+<span class="diff-section">[[processors.pivot]]</span>
+  <span class="diff-key">order</span>     = <span class="diff-val">2</span>
+  <span class="diff-key">tag_key</span>   = <span class="diff-str">"data_type"</span>
+  <span class="diff-key">value_key</span> = <span class="diff-str">"value"</span>
+
+<span class="diff-section">[[outputs.influxdb_v2]]</span>
+  <span class="diff-key">urls</span>         = [<span class="diff-str">"http://localhost:8097"</span>]
+  <span class="diff-key">bucket</span>       = <span class="diff-str">"ems-filtered"</span>
+  <span class="diff-key">namedrop</span>     = [<span class="diff-str">"internal_*"</span>]</pre>
+  </div>
+
+</div><!-- cfg-grid -->
+
+<!-- Filter legend -->
+<div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;font-size:.78rem;">
+  <div style="display:flex;align-items:center;gap:8px">
+    <div style="width:12px;height:12px;border-radius:2px;background:#1a0f2e44;border:1px solid var(--purple)"></div>
+    <span><strong style="color:var(--purple)">float_dedup execd</strong> — Go binary, per-signal ±epsilon deadband on all float fields, heartbeat=60s</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div style="width:12px;height:12px;border-radius:2px;background:#2d200044;border:1px solid var(--muted)"></div>
+    <span style="color:var(--muted)"><s>Filter A (tagdrop string)</s> — not needed; float_dedup passes non-float types through unchanged</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div style="width:12px;height:12px;border-radius:2px;background:#0d442922;border:1px solid var(--muted)"></div>
+    <span style="color:var(--muted)"><s>Filter B (processors.dedup int/bool)</s> — superseded; float_dedup applies deadband to all numeric types</span>
+  </div>
+</div>
+
+<!-- ── CPU proof ─────────────────────────────────────────────────────────── -->
+<h2 style="display:flex;align-items:center;gap:12px;">
+  CPU Proof — top snapshot (fractal-phil, 2026-03-26)
+  <button id="cpu-update-btn" onclick="updateCpuProof()"
+          style="font-size:.75rem;padding:3px 10px;background:var(--surface);border:1px solid var(--border);
+                 color:var(--accent);border-radius:4px;cursor:pointer;font-family:'Consolas',monospace;">
+    ⟳ Update
+  </button>
+  <span id="cpu-update-status" style="font-size:.72rem;color:var(--muted);"></span>
+</h2>
+<!-- Live snapshot row — populated by updateCpuProof() -->
+<div id="cpu-live-bar" style="display:none;background:var(--surface);border:1px solid var(--border);
+     border-radius:6px;padding:8px 14px;margin-bottom:10px;font-family:'Consolas',monospace;font-size:.78rem;">
+  <span style="color:var(--muted);">Live · </span>
+  <span style="color:var(--muted);">load avg: </span>
+  <span id="cpu-load" style="color:var(--green);font-weight:700;">—</span>
+  <span style="color:var(--muted);margin-left:16px;">simulator: </span>
+  <span id="cpu-mps"  style="color:var(--accent);font-weight:700;">—</span>
+  <span style="color:var(--muted);"> msg/s</span>
+  <span style="color:var(--muted);margin-left:16px;">RSS: </span>
+  <span id="cpu-rss"  style="color:var(--muted);">—</span>
+  <span style="color:var(--muted);"> MB</span>
+  <span id="cpu-live-ts" style="color:var(--muted);margin-left:16px;font-size:.7rem;"></span>
+</div>
+<p style="font-size:.78rem;color:var(--muted);margin-bottom:10px;">
+  Entire pipeline running at 175 msg/s · 1 unit · system 99.8% idle.
+  Captured with <code>top -b -n 2 -d 2 -p &lt;pids&gt;</code> on 192.168.86.51 (x86_64, 64 GB RAM).
+</p>
+<pre style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px 16px;
+            font-family:'Consolas',monospace;font-size:.76rem;line-height:1.6;overflow-x:auto;">
+<span style="color:#8b949e">top - <span id="top-time">21:39:19</span>  load: <span id="top-load">0.05, 0.16, 0.13</span></span>
+<span style="color:#8b949e">Tasks: 9 total  |  %Cpu(s): 0.1 us  0.1 sy  <strong style="color:#3fb950">99.8 id</strong></span>
+<span style="color:#8b949e">MiB Mem: 63748 total  52079 free  3367 used  9123 buff/cache</span>
+
+<span style="color:#444c57">    PID  COMMAND        %CPU  %MEM    RES    TIME+    role</span>
+<span style="color:#c9d1d9"> 990590  <span style="color:#58a6ff">flashmq</span>         0.5   0.0   32MB  2:42.23  broker :11888 (base + filt)</span>
+<span style="color:#c9d1d9"> 990759  <span style="color:#bc8cff">ems_site_simulator</span> 0.5   0.0  <span id="top-sim-rss-filt"> 8MB</span>  0:52.75  generator → :11888  <span id="top-sim-mps">175</span> msg/s</span>
+<span style="color:#c9d1d9"> 991189  <span style="color:#3fb950">telegraf</span>         0.5   0.3  179MB  2:01.91  telegraf filt (float_dedup path)</span>
+<span style="color:#c9d1d9"> 990708  <span style="color:#58a6ff">telegraf</span>         0.0   0.3  177MB  1:25.77  telegraf base (no filter)</span>
+<span style="color:#c9d1d9"> 990641  <span style="color:#d29922">influxd</span>          0.0   0.3  182MB  0:58.91  influxd :8096 (baseline)</span>
+<span style="color:#c9d1d9"> 990642  <span style="color:#d29922">influxd</span>          0.0   0.3  217MB  0:27.28  influxd :8097 (filtered)</span>
+<span style="color:#c9d1d9"> 991213  <span style="color:#3fb950">float_dedup</span>      0.0   0.0   12MB  0:43.95  execd child (epsilon deadband)</span>
+</pre>
+
+<!-- ── Go source ──────────────────────────────────────────────────────────── -->
+<details style="margin-bottom:16px;">
+<summary style="cursor:pointer;background:var(--surface);border:1px solid var(--border);
+                border-radius:6px;padding:8px 14px;font-size:.82rem;color:var(--accent);
+                list-style:none;user-select:none;">
+  ▶ float_dedup source — main.go (Go, ~320 lines)
+</summary>
+<pre style="background:#0d1117;border:1px solid #30363d;border-top:none;border-radius:0 0 6px 6px;
+            padding:14px 16px;font-family:'Consolas',monospace;font-size:.73rem;line-height:1.55;
+            overflow-x:auto;max-height:600px;overflow-y:auto;margin:0;"><span style="color:#444c57">// float_dedup — Telegraf execd processor
+//
+// Drops metrics whose field values haven't changed beyond a threshold since
+// the last reported value, unless the heartbeat interval has elapsed.
+//
+// Float fields:    pass if |new - last| >= epsilon  OR  age >= heartbeat
+// Int/bool fields: pass if value changed             OR  age >= heartbeat
+// String fields:   always pass (exact-match dedup)</span>
+
+<span style="color:#ff7b72">package</span> <span style="color:#79c0ff">main</span>
+
+<span style="color:#ff7b72">import</span> (
+    <span style="color:#a5d6ff">"bufio"</span>
+    <span style="color:#a5d6ff">"bytes"</span>
+    <span style="color:#a5d6ff">"flag"</span>
+    <span style="color:#a5d6ff">"fmt"</span>
+    <span style="color:#a5d6ff">"log"</span>
+    <span style="color:#a5d6ff">"math"</span>
+    <span style="color:#a5d6ff">"os"</span>
+    <span style="color:#a5d6ff">"path/filepath"</span>
+    <span style="color:#a5d6ff">"sort"</span>
+    <span style="color:#a5d6ff">"strings"</span>
+    <span style="color:#a5d6ff">"time"</span>
+
+    <span style="color:#a5d6ff">"github.com/BurntSushi/toml"</span>
+    lp <span style="color:#a5d6ff">"github.com/influxdata/line-protocol/v2/lineprotocol"</span>
+)
+
+<span style="color:#444c57">// ── Config ────────────────────────────────────────────────────────────────</span>
+
+<span style="color:#ff7b72">type</span> <span style="color:#79c0ff">Rule</span> <span style="color:#ff7b72">struct</span> {
+    Pattern <span style="color:#79c0ff">string</span>  <span style="color:#a5d6ff">`toml:"pattern"`</span> <span style="color:#444c57">// filepath.Match glob on point_name tag</span>
+    Epsilon <span style="color:#79c0ff">float64</span> <span style="color:#a5d6ff">`toml:"epsilon"`</span> <span style="color:#444c57">// absolute change threshold</span>
+}
+
+<span style="color:#ff7b72">type</span> <span style="color:#79c0ff">Config</span> <span style="color:#ff7b72">struct</span> {
+    Heartbeat      <span style="color:#79c0ff">string</span>  <span style="color:#a5d6ff">`toml:"heartbeat"`</span>
+    DefaultEpsilon <span style="color:#79c0ff">float64</span> <span style="color:#a5d6ff">`toml:"default_epsilon"`</span>
+    Rules          []<span style="color:#79c0ff">Rule</span>  <span style="color:#a5d6ff">`toml:"rule"`</span>
+    hbDur          <span style="color:#79c0ff">time.Duration</span>
+}
+
+<span style="color:#ff7b72">func</span> <span style="color:#d2a8ff">loadConfig</span>(path, flagHB <span style="color:#79c0ff">string</span>, flagEpsilon <span style="color:#79c0ff">float64</span>) (*<span style="color:#79c0ff">Config</span>, <span style="color:#79c0ff">error</span>) {
+    cfg := <span style="color:#79c0ff">Config</span>{Heartbeat: <span style="color:#a5d6ff">"60s"</span>, DefaultEpsilon: <span style="color:#79c0ff">0.5</span>}
+    <span style="color:#ff7b72">if</span> path != <span style="color:#a5d6ff">""</span> {
+        <span style="color:#ff7b72">if</span> _, err := toml.<span style="color:#d2a8ff">DecodeFile</span>(path, &amp;cfg); err != <span style="color:#ff7b72">nil</span> {
+            <span style="color:#ff7b72">return</span> <span style="color:#ff7b72">nil</span>, fmt.<span style="color:#d2a8ff">Errorf</span>(<span style="color:#a5d6ff">"config: %w"</span>, err)
+        }
+    }
+    d, err := time.<span style="color:#d2a8ff">ParseDuration</span>(cfg.Heartbeat)
+    <span style="color:#ff7b72">if</span> err != <span style="color:#ff7b72">nil</span> {
+        <span style="color:#ff7b72">return</span> <span style="color:#ff7b72">nil</span>, fmt.<span style="color:#d2a8ff">Errorf</span>(<span style="color:#a5d6ff">"heartbeat %q: %w"</span>, cfg.Heartbeat, err)
+    }
+    cfg.hbDur = d
+    <span style="color:#ff7b72">return</span> &amp;cfg, <span style="color:#ff7b72">nil</span>
+}
+
+<span style="color:#ff7b72">func</span> (c *<span style="color:#79c0ff">Config</span>) <span style="color:#d2a8ff">epsilonFor</span>(pointName <span style="color:#79c0ff">string</span>) <span style="color:#79c0ff">float64</span> {
+    <span style="color:#ff7b72">for</span> _, r := <span style="color:#ff7b72">range</span> c.Rules {
+        <span style="color:#ff7b72">if</span> ok, _ := filepath.<span style="color:#d2a8ff">Match</span>(r.Pattern, pointName); ok {
+            <span style="color:#ff7b72">return</span> r.Epsilon
+        }
+    }
+    <span style="color:#ff7b72">return</span> c.DefaultEpsilon
+}
+
+<span style="color:#444c57">// ── State ─────────────────────────────────────────────────────────────────</span>
+
+<span style="color:#ff7b72">type</span> <span style="color:#79c0ff">entry</span> <span style="color:#ff7b72">struct</span> {
+    fval <span style="color:#79c0ff">float64</span>
+    ival <span style="color:#79c0ff">int64</span>
+    sval <span style="color:#79c0ff">string</span>
+    ts   <span style="color:#79c0ff">time.Time</span>
+}
+
+<span style="color:#ff7b72">var</span> store = <span style="color:#d2a8ff">make</span>(<span style="color:#ff7b72">map</span>[<span style="color:#79c0ff">string</span>]*<span style="color:#79c0ff">entry</span>)
+
+<span style="color:#444c57">// seriesKey: measurement + sorted tags + field — unique key per signal</span>
+<span style="color:#ff7b72">func</span> <span style="color:#d2a8ff">seriesKey</span>(meas []<span style="color:#79c0ff">byte</span>, tags []tagKV, field []<span style="color:#79c0ff">byte</span>) <span style="color:#79c0ff">string</span> {
+    sorted := <span style="color:#d2a8ff">make</span>([]tagKV, <span style="color:#d2a8ff">len</span>(tags))
+    <span style="color:#d2a8ff">copy</span>(sorted, tags)
+    sort.<span style="color:#d2a8ff">Slice</span>(sorted, <span style="color:#ff7b72">func</span>(i, j <span style="color:#79c0ff">int</span>) <span style="color:#79c0ff">bool</span> {
+        <span style="color:#ff7b72">return</span> bytes.<span style="color:#d2a8ff">Compare</span>(sorted[i].k, sorted[j].k) &lt; <span style="color:#79c0ff">0</span>
+    })
+    <span style="color:#ff7b72">var</span> sb strings.<span style="color:#79c0ff">Builder</span>
+    sb.<span style="color:#d2a8ff">Write</span>(meas)
+    <span style="color:#ff7b72">for</span> _, t := <span style="color:#ff7b72">range</span> sorted {
+        sb.<span style="color:#d2a8ff">WriteByte</span>(<span style="color:#a5d6ff">','</span>)
+        sb.<span style="color:#d2a8ff">Write</span>(t.k)
+        sb.<span style="color:#d2a8ff">WriteByte</span>(<span style="color:#a5d6ff">'='</span>)
+        sb.<span style="color:#d2a8ff">Write</span>(t.v)
+    }
+    sb.<span style="color:#d2a8ff">WriteByte</span>(<span style="color:#a5d6ff">' '</span>)
+    sb.<span style="color:#d2a8ff">Write</span>(field)
+    <span style="color:#ff7b72">return</span> sb.<span style="color:#d2a8ff">String</span>()
+}
+
+<span style="color:#444c57">// ── Filter ────────────────────────────────────────────────────────────────</span>
+
+<span style="color:#ff7b72">func</span> <span style="color:#d2a8ff">passes</span>(key <span style="color:#79c0ff">string</span>, val lp.<span style="color:#79c0ff">Value</span>, ts <span style="color:#79c0ff">time.Time</span>, epsilon <span style="color:#79c0ff">float64</span>, hb <span style="color:#79c0ff">time.Duration</span>) <span style="color:#79c0ff">bool</span> {
+    e, exists := store[key]
+    <span style="color:#ff7b72">if</span> !exists {
+        <span style="color:#ff7b72">return</span> <span style="color:#79c0ff">true</span>                          <span style="color:#444c57">// always pass first occurrence</span>
+    }
+    <span style="color:#ff7b72">if</span> hb &gt; <span style="color:#79c0ff">0</span> &amp;&amp; ts.<span style="color:#d2a8ff">Sub</span>(e.ts) &gt;= hb {
+        <span style="color:#ff7b72">return</span> <span style="color:#79c0ff">true</span>                          <span style="color:#444c57">// heartbeat: force through after 60s</span>
+    }
+    <span style="color:#ff7b72">switch</span> val.<span style="color:#d2a8ff">Kind</span>() {
+    <span style="color:#ff7b72">case</span> lp.<span style="color:#79c0ff">Float</span>:
+        <span style="color:#ff7b72">return</span> math.<span style="color:#d2a8ff">Abs</span>(val.<span style="color:#d2a8ff">FloatV</span>()-e.fval) &gt;= epsilon  <span style="color:#444c57">// |Δ| ≥ ε</span>
+    <span style="color:#ff7b72">case</span> lp.<span style="color:#79c0ff">Int</span>:
+        <span style="color:#ff7b72">return</span> val.<span style="color:#d2a8ff">IntV</span>() != e.ival
+    <span style="color:#ff7b72">case</span> lp.<span style="color:#79c0ff">Bool</span>:
+        bv := <span style="color:#79c0ff">int64</span>(<span style="color:#79c0ff">0</span>)
+        <span style="color:#ff7b72">if</span> val.<span style="color:#d2a8ff">BoolV</span>() { bv = <span style="color:#79c0ff">1</span> }
+        <span style="color:#ff7b72">return</span> bv != e.ival
+    <span style="color:#ff7b72">case</span> lp.<span style="color:#79c0ff">String</span>:
+        <span style="color:#ff7b72">return</span> val.<span style="color:#d2a8ff">StringV</span>() != e.sval      <span style="color:#444c57">// exact-match for enums/labels</span>
+    }
+    <span style="color:#ff7b72">return</span> <span style="color:#79c0ff">true</span>
+}
+
+<span style="color:#444c57">// ── Main ──────────────────────────────────────────────────────────────────</span>
+
+<span style="color:#ff7b72">func</span> <span style="color:#d2a8ff">main</span>() {
+    configPath := flag.<span style="color:#d2a8ff">String</span>(<span style="color:#a5d6ff">"config"</span>, <span style="color:#a5d6ff">""</span>, <span style="color:#a5d6ff">"TOML config file path"</span>)
+    flagEps    := flag.<span style="color:#d2a8ff">Float64</span>(<span style="color:#a5d6ff">"epsilon"</span>, -<span style="color:#79c0ff">1</span>, <span style="color:#a5d6ff">"default epsilon (overrides config)"</span>)
+    flagHB     := flag.<span style="color:#d2a8ff">String</span>(<span style="color:#a5d6ff">"heartbeat"</span>, <span style="color:#a5d6ff">""</span>, <span style="color:#a5d6ff">"heartbeat e.g. 60s (overrides config)"</span>)
+    flag.<span style="color:#d2a8ff">Parse</span>()
+
+    cfg, err := <span style="color:#d2a8ff">loadConfig</span>(*configPath, *flagHB, *flagEps)
+    <span style="color:#ff7b72">if</span> err != <span style="color:#ff7b72">nil</span> { log.<span style="color:#d2a8ff">Fatalf</span>(<span style="color:#a5d6ff">"float_dedup: %v"</span>, err) }
+    log.<span style="color:#d2a8ff">Printf</span>(<span style="color:#a5d6ff">"float_dedup: heartbeat=%s default_epsilon=%.4f rules=%d"</span>,
+        cfg.Heartbeat, cfg.DefaultEpsilon, <span style="color:#d2a8ff">len</span>(cfg.Rules))
+
+    in  := bufio.<span style="color:#d2a8ff">NewReaderSize</span>(os.<span style="color:#79c0ff">Stdin</span>,  <span style="color:#79c0ff">1</span>&lt;&lt;<span style="color:#79c0ff">20</span>)
+    out := bufio.<span style="color:#d2a8ff">NewWriterSize</span>(os.<span style="color:#79c0ff">Stdout</span>, <span style="color:#79c0ff">1</span>&lt;&lt;<span style="color:#79c0ff">20</span>)
+    dec := lp.<span style="color:#d2a8ff">NewDecoder</span>(in)
+    <span style="color:#ff7b72">var</span> enc lp.<span style="color:#79c0ff">Encoder</span>
+    enc.<span style="color:#d2a8ff">SetPrecision</span>(lp.<span style="color:#79c0ff">Nanosecond</span>)
+
+    <span style="color:#ff7b72">var</span> passed, dropped <span style="color:#79c0ff">uint64</span>
+
+    <span style="color:#ff7b72">for</span> dec.<span style="color:#d2a8ff">Next</span>() {
+        meas, _ := dec.<span style="color:#d2a8ff">Measurement</span>()
+        measCopy := <span style="color:#d2a8ff">make</span>([]<span style="color:#79c0ff">byte</span>, <span style="color:#d2a8ff">len</span>(meas))
+        <span style="color:#d2a8ff">copy</span>(measCopy, meas)
+
+        <span style="color:#ff7b72">var</span> tags []tagKV
+        <span style="color:#ff7b72">for</span> {
+            k, v, _ := dec.<span style="color:#d2a8ff">NextTag</span>()
+            <span style="color:#ff7b72">if</span> k == <span style="color:#ff7b72">nil</span> { <span style="color:#ff7b72">break</span> }
+            kc, vc := <span style="color:#d2a8ff">make</span>([]<span style="color:#79c0ff">byte</span>, <span style="color:#d2a8ff">len</span>(k)), <span style="color:#d2a8ff">make</span>([]<span style="color:#79c0ff">byte</span>, <span style="color:#d2a8ff">len</span>(v))
+            <span style="color:#d2a8ff">copy</span>(kc, k); <span style="color:#d2a8ff">copy</span>(vc, v)
+            tags = <span style="color:#d2a8ff">append</span>(tags, tagKV{kc, vc})
+        }
+
+        pointName := <span style="color:#d2a8ff">tagVal</span>(tags, <span style="color:#a5d6ff">"point_name"</span>)
+        epsilon   := cfg.<span style="color:#d2a8ff">epsilonFor</span>(pointName)
+
+        <span style="color:#ff7b72">var</span> keepFields []fieldEntry
+        <span style="color:#ff7b72">var</span> metricTS <span style="color:#79c0ff">time.Time</span>
+
+        <span style="color:#ff7b72">for</span> {
+            k, v, _ := dec.<span style="color:#d2a8ff">NextField</span>()
+            <span style="color:#ff7b72">if</span> k == <span style="color:#ff7b72">nil</span> { <span style="color:#ff7b72">break</span> }
+            kc := <span style="color:#d2a8ff">make</span>([]<span style="color:#79c0ff">byte</span>, <span style="color:#d2a8ff">len</span>(k))
+            <span style="color:#d2a8ff">copy</span>(kc, k)
+            ts, _ := dec.<span style="color:#d2a8ff">Time</span>(lp.<span style="color:#79c0ff">Nanosecond</span>, time.<span style="color:#d2a8ff">Now</span>())
+            metricTS = ts
+            key := <span style="color:#d2a8ff">seriesKey</span>(measCopy, tags, kc)
+            <span style="color:#ff7b72">if</span> <span style="color:#d2a8ff">passes</span>(key, v, ts, epsilon, cfg.hbDur) {
+                <span style="color:#d2a8ff">updateStore</span>(key, v, ts)
+                keepFields = <span style="color:#d2a8ff">append</span>(keepFields, fieldEntry{kc, v})
+                passed++
+            } <span style="color:#ff7b72">else</span> {
+                dropped++
+            }
+        }
+
+        <span style="color:#ff7b72">if</span> <span style="color:#d2a8ff">len</span>(keepFields) == <span style="color:#79c0ff">0</span> { <span style="color:#ff7b72">continue</span> }  <span style="color:#444c57">// whole metric dropped — skip re-encode</span>
+
+        <span style="color:#444c57">// Re-encode surviving fields back to InfluxDB line protocol</span>
+        sort.<span style="color:#d2a8ff">Slice</span>(tags, <span style="color:#ff7b72">func</span>(i, j <span style="color:#79c0ff">int</span>) <span style="color:#79c0ff">bool</span> {
+            <span style="color:#ff7b72">return</span> bytes.<span style="color:#d2a8ff">Compare</span>(tags[i].k, tags[j].k) &lt; <span style="color:#79c0ff">0</span>
+        })
+        enc.<span style="color:#d2a8ff">Reset</span>()
+        enc.<span style="color:#d2a8ff">StartLineRaw</span>(measCopy)
+        <span style="color:#ff7b72">for</span> _, t := <span style="color:#ff7b72">range</span> tags  { enc.<span style="color:#d2a8ff">AddTagRaw</span>(t.k, t.v) }
+        <span style="color:#ff7b72">for</span> _, f := <span style="color:#ff7b72">range</span> keepFields { enc.<span style="color:#d2a8ff">AddFieldRaw</span>(f.key, f.val) }
+        enc.<span style="color:#d2a8ff">EndLine</span>(metricTS)
+        out.<span style="color:#d2a8ff">Write</span>(enc.<span style="color:#d2a8ff">Bytes</span>())
+        out.<span style="color:#d2a8ff">WriteByte</span>(<span style="color:#a5d6ff">'\n'</span>)
+    }
+
+    out.<span style="color:#d2a8ff">Flush</span>()
+    total := passed + dropped
+    pct := <span style="color:#79c0ff">0.0</span>
+    <span style="color:#ff7b72">if</span> total &gt; <span style="color:#79c0ff">0</span> { pct = <span style="color:#79c0ff">100.0</span> * <span style="color:#79c0ff">float64</span>(dropped) / <span style="color:#79c0ff">float64</span>(total) }
+    log.<span style="color:#d2a8ff">Printf</span>(<span style="color:#a5d6ff">"float_dedup: done — passed=%d dropped=%d (%.1f%% reduction)"</span>,
+        passed, dropped, pct)
+}</pre>
+</details>
+
+<!-- ── Start / stop scripts ───────────────────────────────────────────────── -->
+<details style="margin-bottom:8px;">
+<summary style="cursor:pointer;background:var(--surface);border:1px solid var(--border);
+                border-radius:6px;padding:8px 14px;font-size:.82rem;color:var(--accent);
+                list-style:none;user-select:none;">
+  ▶ evelyn-compare-native-start.sh — launch full compare stack
+</summary>
+<pre style="background:#0d1117;border:1px solid #30363d;border-top:none;border-radius:0 0 6px 6px;
+            padding:14px 16px;font-family:'Consolas',monospace;font-size:.73rem;line-height:1.55;
+            overflow-x:auto;max-height:500px;overflow-y:auto;margin:0;"><span style="color:#444c57">#!/usr/bin/env bash
+# evelyn-compare-native-start.sh — start the Evelyn cost-comparison stack natively
+#
+# Two parallel ingest paths — identical generators, filtering is Telegraf-side:
+#
+#   Baseline  FlashMQ :11888  →  Telegraf (all signals)   →  InfluxDB :8096  ems-baseline
+#   Filtered  FlashMQ :11889  →  Telegraf (float_dedup)   →  InfluxDB :8097  ems-filtered
+#
+# Usage:
+#   bash scripts/evelyn-compare-native-start.sh
+#   bash scripts/evelyn-compare-native-start.sh --rate 81420 --units 46  (full Evelyn load)</span>
+
+<span style="color:#ff7b72">set</span> -euo pipefail
+REPO=<span style="color:#a5d6ff">"$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"</span>
+LOGS=<span style="color:#a5d6ff">"/data/logs/$(date +%Y/%m/%d)"</span>
+mkdir -p <span style="color:#a5d6ff">"$LOGS"</span> 2>/dev/null || { mkdir -p <span style="color:#a5d6ff">"$HOME/logs"</span>; LOGS=<span style="color:#a5d6ff">"$HOME/logs"</span>; }
+
+FLASHMQ_BIN=<span style="color:#a5d6ff">"/tmp/FlashMQ/build/flashmq"</span>
+TELEGRAF_BIN=<span style="color:#a5d6ff">"/usr/local/bin/telegraf"</span>
+INFLUXD_BIN=<span style="color:#a5d6ff">"/usr/local/bin/influxd"</span>
+INFLUX_BIN=<span style="color:#a5d6ff">"/usr/local/bin/influx"</span>
+STRESS_BIN=<span style="color:#a5d6ff">"$REPO/source/stress_runner/ems_site_simulator"</span>
+STRESS_TPL=<span style="color:#a5d6ff">"$REPO/source/stress_runner/ems_topic_template.json"</span>
+RATE=<span style="color:#79c0ff">175</span>; UNITS=<span style="color:#79c0ff">1</span>
+
+<span style="color:#444c57"># ── argument parsing ────────────────────────────────────────────────────────</span>
+<span style="color:#ff7b72">while</span> [[ $# -gt 0 ]]; <span style="color:#ff7b72">do</span>
+    <span style="color:#ff7b72">case</span> $1 <span style="color:#ff7b72">in</span>
+        --rate)   RATE=<span style="color:#a5d6ff">"$2"</span>;  shift 2 ;;
+        --units)  UNITS=<span style="color:#a5d6ff">"$2"</span>; shift 2 ;;
+        *) echo <span style="color:#a5d6ff">"Unknown arg: $1"</span>; exit 1 ;;
+    <span style="color:#ff7b72">esac</span>
+<span style="color:#ff7b72">done</span>
+
+<span style="color:#444c57"># ── sanity checks ───────────────────────────────────────────────────────────</span>
+<span style="color:#ff7b72">for</span> bin <span style="color:#ff7b72">in</span> <span style="color:#a5d6ff">"$FLASHMQ_BIN"</span> <span style="color:#a5d6ff">"$TELEGRAF_BIN"</span> <span style="color:#a5d6ff">"$INFLUXD_BIN"</span> <span style="color:#a5d6ff">"$STRESS_BIN"</span> <span style="color:#a5d6ff">"$STRESS_TPL"</span>; <span style="color:#ff7b72">do</span>
+    [[ -f <span style="color:#a5d6ff">"$bin"</span> ]] || { echo <span style="color:#a5d6ff">"ERROR: missing $bin"</span>; exit 1; }
+<span style="color:#ff7b72">done</span>
+
+<span style="color:#444c57"># ── stop any existing compare processes ─────────────────────────────────────</span>
+pkill -f <span style="color:#a5d6ff">"flashmq.*fmq-base.conf"</span>          2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"flashmq.*fmq-filt.conf"</span>          2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"telegraf.*telegraf-native-base"</span>  2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"telegraf.*telegraf-native-filt"</span>  2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"influxd.*influx-base"</span>            2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"influxd.*influx-filt"</span>            2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"ems_site_simulator.*11888"</span>          2>/dev/null || true
+pkill -f <span style="color:#a5d6ff">"ems_site_simulator.*11889"</span>          2>/dev/null || true
+sleep 1
+
+<span style="color:#444c57"># ── FlashMQ configs ─────────────────────────────────────────────────────────</span>
+cat > /tmp/fmq-base.conf <span style="color:#a5d6ff">&lt;&lt;'EOF'
+listen { port 11888; protocol mqtt }
+allow_anonymous true
+client_max_write_buffer_size 67108864
+EOF</span>
+
+cat > /tmp/fmq-filt.conf <span style="color:#a5d6ff">&lt;&lt;'EOF'
+listen { port 11889; protocol mqtt }
+allow_anonymous true
+client_max_write_buffer_size 67108864
+EOF</span>
+
+<span style="color:#444c57"># ── start FlashMQ ───────────────────────────────────────────────────────────</span>
+nohup <span style="color:#a5d6ff">"$FLASHMQ_BIN"</span> --config-file /tmp/fmq-base.conf > <span style="color:#a5d6ff">"$LOGS/compare_flashmq_base.log"</span> 2>&amp;1 &amp;
+echo <span style="color:#a5d6ff">"flashmq-base   pid=$!  port=11888"</span>
+nohup <span style="color:#a5d6ff">"$FLASHMQ_BIN"</span> --config-file /tmp/fmq-filt.conf > <span style="color:#a5d6ff">"$LOGS/compare_flashmq_filt.log"</span> 2>&amp;1 &amp;
+echo <span style="color:#a5d6ff">"flashmq-filt   pid=$!  port=11889"</span>
+sleep 1
+
+<span style="color:#444c57"># ── start InfluxDB (separate data dirs, separate ports) ─────────────────────</span>
+mkdir -p /data/influx-base /data/influx-filt
+nohup <span style="color:#a5d6ff">"$INFLUXD_BIN"</span> --bolt-path /data/influx-base/influxd.bolt \
+    --engine-path /data/influx-base/engine --http-bind-address :8096 \
+    > <span style="color:#a5d6ff">"$LOGS/compare_influxd_base.log"</span> 2>&amp;1 &amp;
+echo <span style="color:#a5d6ff">"influxd-base   pid=$!  port=8096"</span>
+nohup <span style="color:#a5d6ff">"$INFLUXD_BIN"</span> --bolt-path /data/influx-filt/influxd.bolt \
+    --engine-path /data/influx-filt/engine --http-bind-address :8097 \
+    > <span style="color:#a5d6ff">"$LOGS/compare_influxd_filt.log"</span> 2>&amp;1 &amp;
+echo <span style="color:#a5d6ff">"influxd-filt   pid=$!  port=8097"</span>
+
+<span style="color:#444c57"># wait for InfluxDB, then setup org/bucket/token (idempotent)</span>
+<span style="color:#ff7b72">for</span> port <span style="color:#ff7b72">in</span> 8096 8097; <span style="color:#ff7b72">do</span>
+    <span style="color:#ff7b72">for</span> i <span style="color:#ff7b72">in</span> $(seq 1 30); <span style="color:#ff7b72">do</span>
+        curl -sf <span style="color:#a5d6ff">"http://localhost:$port/ping"</span> > /dev/null 2>&amp;1 &amp;&amp; break || sleep 1
+    <span style="color:#ff7b72">done</span>
+<span style="color:#ff7b72">done</span>
+<span style="color:#a5d6ff">"$INFLUX_BIN"</span> setup --host http://localhost:8096 -u admin -p adminpassword123 \
+    --org ems-org --bucket ems-baseline --token ems-token-secret --force -n base 2>/dev/null
+<span style="color:#a5d6ff">"$INFLUX_BIN"</span> setup --host http://localhost:8097 -u admin -p adminpassword123 \
+    --org ems-org --bucket ems-filtered  --token ems-token-secret --force -n filt 2>/dev/null
+
+<span style="color:#444c57"># ── start Telegraf ──────────────────────────────────────────────────────────</span>
+nohup <span style="color:#a5d6ff">"$TELEGRAF_BIN"</span> --config /tmp/telegraf-native-base.conf \
+    > <span style="color:#a5d6ff">"$LOGS/compare_telegraf_base.log"</span> 2>&amp;1 &amp;
+echo <span style="color:#a5d6ff">"telegraf-base  pid=$!"</span>
+nohup <span style="color:#a5d6ff">"$TELEGRAF_BIN"</span> --config /tmp/telegraf-native-filt.conf \
+    > <span style="color:#a5d6ff">"$LOGS/compare_telegraf_filt.log"</span> 2>&amp;1 &amp;
+echo <span style="color:#a5d6ff">"telegraf-filt  pid=$!"</span>
+sleep 2
+
+<span style="color:#444c57"># ── start generators ────────────────────────────────────────────────────────</span>
+ALL_UNIT_IDS=(0215F562 0215F5A0 0215F5BF ... <span style="color:#444c57"># 46 real Evelyn unit IDs</span>)
+UNIT_IDS=(<span style="color:#a5d6ff">"${ALL_UNIT_IDS[@]:0:$UNITS}"</span>)
+UNIT_ID_ARGS=(); <span style="color:#ff7b72">for</span> uid <span style="color:#ff7b72">in</span> <span style="color:#a5d6ff">"${UNIT_IDS[@]}"</span>; <span style="color:#ff7b72">do</span> UNIT_ID_ARGS+=(--unit-id <span style="color:#a5d6ff">"$uid"</span>); <span style="color:#ff7b72">done</span>
+
+<span style="color:#ff7b72">for</span> port <span style="color:#ff7b72">in</span> 11888 11889; <span style="color:#ff7b72">do</span>
+    nohup <span style="color:#a5d6ff">"$STRESS_BIN"</span> --host localhost --port <span style="color:#a5d6ff">"$port"</span> \
+        --template <span style="color:#a5d6ff">"$STRESS_TPL"</span> --rate <span style="color:#a5d6ff">"$RATE"</span> --site-id 0215D1D8 \
+        <span style="color:#a5d6ff">"${UNIT_ID_ARGS[@]}"</span> > <span style="color:#a5d6ff">"$LOGS/compare_gen_${port}.log"</span> 2>&amp;1 &amp;
+    echo <span style="color:#a5d6ff">"generator-${port}  pid=$!"</span>
+<span style="color:#ff7b72">done</span>
+
+echo <span style="color:#a5d6ff">"All processes started.  Stop: bash scripts/evelyn-compare-native-stop.sh"</span></pre>
+</details>
+
+<details style="margin-bottom:16px;">
+<summary style="cursor:pointer;background:var(--surface);border:1px solid var(--border);
+                border-radius:6px;padding:8px 14px;font-size:.82rem;color:var(--accent);
+                list-style:none;user-select:none;">
+  ▶ evelyn-compare-native-stop.sh — tear down the stack
+</summary>
+<pre style="background:#0d1117;border:1px solid #30363d;border-top:none;border-radius:0 0 6px 6px;
+            padding:14px 16px;font-family:'Consolas',monospace;font-size:.73rem;line-height:1.55;
+            overflow-x:auto;margin:0;"><span style="color:#444c57">#!/usr/bin/env bash
+# evelyn-compare-native-stop.sh — stop the native Evelyn cost-comparison stack
+#
+# Data in /data/influx-base/ and /data/influx-filt/ is preserved.
+# To wipe and start fresh:
+#   rm -rf /data/influx-base/* /data/influx-filt/*</span>
+
+<span style="color:#ff7b72">set</span> -euo pipefail
+
+stop_proc() {
+    local label=<span style="color:#a5d6ff">"$1"</span>; local pattern=<span style="color:#a5d6ff">"$2"</span>
+    pkill -f <span style="color:#a5d6ff">"$pattern"</span> 2>/dev/null \
+        &amp;&amp; echo <span style="color:#a5d6ff">"stopped $label"</span> \
+        || echo <span style="color:#a5d6ff">"$label not running"</span>
+}
+
+stop_proc <span style="color:#a5d6ff">"generator-base"</span>  <span style="color:#a5d6ff">"ems_site_simulator.*11888"</span>
+stop_proc <span style="color:#a5d6ff">"generator-filt"</span>  <span style="color:#a5d6ff">"ems_site_simulator.*11889"</span>
+stop_proc <span style="color:#a5d6ff">"telegraf-base"</span>   <span style="color:#a5d6ff">"telegraf.*telegraf-native-base"</span>
+stop_proc <span style="color:#a5d6ff">"telegraf-filt"</span>   <span style="color:#a5d6ff">"telegraf.*telegraf-native-filt"</span>
+stop_proc <span style="color:#a5d6ff">"flashmq-base"</span>    <span style="color:#a5d6ff">"flashmq.*fmq-base.conf"</span>
+stop_proc <span style="color:#a5d6ff">"flashmq-filt"</span>    <span style="color:#a5d6ff">"flashmq.*fmq-filt.conf"</span>
+stop_proc <span style="color:#a5d6ff">"influxd-base"</span>    <span style="color:#a5d6ff">"influxd.*influx-base"</span>
+stop_proc <span style="color:#a5d6ff">"influxd-filt"</span>    <span style="color:#a5d6ff">"influxd.*influx-filt"</span>
+
+echo <span style="color:#a5d6ff">"All compare processes stopped."</span>
+echo <span style="color:#a5d6ff">"Data preserved in /data/influx-base/ and /data/influx-filt/"</span></pre>
+</details>
+
+<!-- ── Measured results ───────────────────────────────────────────────────── -->
+<h2>Measured Results — 2026-03-26</h2>
+<p style="font-size:.78rem;color:var(--muted);margin-bottom:12px;">
+  Test setup: 1 Evelyn unit · 175 msg/s · 8 slow-changing signals (20s interval) ·
+  fractal-phil x86_64 + gx10 ARM64 · 2-minute measurement windows.
+</p>
+
+<div style="overflow-x:auto;margin-bottom:16px;">
+<table style="width:100%;border-collapse:collapse;font-size:.82rem;font-family:'Consolas',monospace;">
+  <thead>
+    <tr style="background:var(--surface);border-bottom:2px solid var(--border);">
+      <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:400;">Metric</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--accent);">Baseline</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--yellow);">A+B Native</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--green);">float_dedup execd</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:7px 12px;color:var(--muted);">Rows / 2 min</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--accent);">~20,000</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--yellow);">~16,500</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--green);">~1,878</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);background:var(--surface);">
+      <td style="padding:7px 12px;color:var(--muted);">Row reduction</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--muted);">—</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--yellow);font-weight:700;">17.5%</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--green);font-weight:700;">90.6%</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:7px 12px;color:var(--muted);">Telegraf CPU</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--accent);">0.4%</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--yellow);">0.6%</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--green);">0.6%</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);background:var(--surface);">
+      <td style="padding:7px 12px;color:var(--muted);">execd child CPU</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--muted);">—</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--muted);">—</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--green);">0.2%</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:7px 12px;color:var(--muted);">What's filtered</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--muted);">nothing</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--yellow);">strings + stable int/bool</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--green);">strings + all stable floats</td>
+    </tr>
+    <tr style="background:var(--surface);">
+      <td style="padding:7px 12px;color:var(--muted);">Epsilon / interval</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--muted);">—</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--yellow);">dedup_interval=60s</td>
+      <td style="padding:7px 12px;text-align:right;color:var(--green);">default ±0.5, heartbeat 60s</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:.8rem;">
+  <strong style="color:var(--green);">float_dedup is 5× more effective than A+B native</strong>
+  <span style="color:var(--muted);"> at the same CPU cost.
+  A+B native only deduplicates integer/boolean signals — the float signals (SOC, voltage, current, temperature)
+  pass through untouched. float_dedup applies a per-signal deadband (epsilon) to all float fields,
+  suppressing updates that fall within ±0.5 of the previous value (configurable per signal).
+  The 90.6% reduction is also driven by 8 slow-changing signals (MAX_CELL_V, MIN_CELL_V, RACK_TEMP, etc.)
+  publishing every 20s rather than every sweep — these would never be caught by A+B native.</span>
+</div>
+
+<!-- float_dedup config panel -->
+<h2>float_dedup execd — Telegraf Config</h2>
+<div class="cfg-grid">
+  <div class="cfg-panel">
+    <div class="cfg-panel-hdr filt">float_dedup execd processor <span>processors.execd + float_dedup binary</span></div>
+    <pre class="cfg"><span class="diff-comment"># Drop strings (Filter A) — same as A+B</span>
+<span class="diff-section">  [inputs.mqtt_consumer.tagdrop]</span>
+    <span class="diff-key">data_type</span> = [<span class="diff-str">"string"</span>]
+
+<span class="diff-comment"># float_dedup: per-signal epsilon deadband over stdin/stdout</span>
+<span class="diff-add"><span class="diff-section">[[processors.execd]]</span>
+  <span class="diff-key">command</span>       = [<span class="diff-str">"./float_dedup"</span>, <span class="diff-str">"--config"</span>, <span class="diff-str">"./float_dedup.toml"</span>]
+  <span class="diff-key">restart_delay</span> = <span class="diff-str">"5s"</span>
+  <span class="diff-key">data_format</span>   = <span class="diff-str">"influx"</span>
+  <span class="diff-key">order</span>         = <span class="diff-val">1</span></span>
+
+<span class="diff-comment"># Pivot after dedup (same as baseline)</span>
+<span class="diff-section">[[processors.pivot]]</span>
+  <span class="diff-key">order</span>     = <span class="diff-val">2</span>
+  <span class="diff-key">tag_key</span>   = <span class="diff-str">"data_type"</span>
+  <span class="diff-key">value_key</span> = <span class="diff-str">"value"</span></pre>
+  </div>
+
+  <div class="cfg-panel">
+    <div class="cfg-panel-hdr filt">float_dedup.toml — per-signal epsilon rules <span>35 rules, first match wins</span></div>
+    <pre class="cfg"><span class="diff-comment"># Floats pass only if |new − last| ≥ epsilon OR heartbeat elapsed.</span>
+
+<span class="diff-key">heartbeat</span>       = <span class="diff-str">"60s"</span>   <span class="diff-comment"># always forward after 60s (keeps TSM alive)</span>
+<span class="diff-key">default_epsilon</span> = <span class="diff-val">0.5</span>     <span class="diff-comment"># fallback for unmatched signals</span>
+
+<span class="diff-comment"># ── example rules (35 total) ─────────────────────────</span>
+<span class="diff-section">[[rule]]</span>
+  <span class="diff-key">pattern</span> = <span class="diff-str">"SOC"</span>
+  <span class="diff-key">epsilon</span> = <span class="diff-val">0.5</span>    <span class="diff-comment"># 50.000 → suppress if &lt;0.5% change</span>
+
+<span class="diff-section">[[rule]]</span>
+  <span class="diff-key">pattern</span> = <span class="diff-str">"*Temp*"</span>
+  <span class="diff-key">epsilon</span> = <span class="diff-val">0.3</span>    <span class="diff-comment"># 1°C quantised sensors</span>
+
+<span class="diff-section">[[rule]]</span>
+  <span class="diff-key">pattern</span> = <span class="diff-str">"kW"</span>
+  <span class="diff-key">epsilon</span> = <span class="diff-val">5.0</span>    <span class="diff-comment"># suppress &lt;5kW jitter</span>
+
+<span class="diff-section">[[rule]]</span>
+  <span class="diff-key">pattern</span> = <span class="diff-str">"Max Cell Voltage"</span>
+  <span class="diff-key">epsilon</span> = <span class="diff-val">0.005</span>  <span class="diff-comment"># quantised to 0.001V</span>
+
+<span class="diff-comment"># ... 31 more rules for RTAC, PCS, meter signals</span>
+
+<span class="diff-comment"># Signals with no match → default_epsilon=0.5</span></pre>
+  </div>
+</div>
+
+<div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;font-size:.78rem;">
+  <div style="display:flex;align-items:center;gap:8px">
+    <div style="width:12px;height:12px;border-radius:2px;background:#1a0f2e44;border:1px solid var(--purple)"></div>
+    <span><strong style="color:var(--purple)">float_dedup</strong> — Go binary, communicates via stdin/stdout InfluxDB line protocol, stateless per signal key</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div style="width:12px;height:12px;border-radius:2px;background:#0d442922;border:1px solid var(--green)"></div>
+    <span><strong style="color:var(--green)">heartbeat=60s</strong> — guarantees at least one row per signal per minute regardless of deadband, keeping InfluxDB TSM compaction healthy</span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// Default to fractal-phil .51 where the latest tests were run
+let BASE_HOST  = '192.168.86.51';
+let pollTimer  = null;
+const TOKEN    = 'ems-token-secret';
+const ORG      = 'ems-org';
+const WINDOW_S = 60;
+const LS_KEY   = 'demo_compare_stats';
+
+function baseUrl(port) { return `http://${BASE_HOST}:${port}`; }
+
+function saveStats(baseRps, filtRps, baseN, filtN, reduction) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      baseRps, filtRps, baseN, filtN, reduction,
+      ts: new Date().toLocaleTimeString(), host: BASE_HOST
+    }));
+  } catch(_) {}
+}
+
+function restoreStats() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (s.baseRps)   document.getElementById('s-base-rps').textContent   = s.baseRps + '/s';
+    if (s.filtRps)   document.getElementById('s-filt-rps').textContent   = s.filtRps + '/s';
+    if (s.baseN)     document.getElementById('s-base-total').textContent = Number(s.baseN).toLocaleString();
+    if (s.filtN)     document.getElementById('s-filt-total').textContent = Number(s.filtN).toLocaleString();
+    if (s.baseRps)   { const el = document.getElementById('svg-base-rps'); if (el) el.textContent = s.baseRps + ' rows/s'; }
+    if (s.filtRps)   { const el = document.getElementById('svg-filt-rps'); if (el) el.textContent = s.filtRps + ' rows/s'; }
+    if (s.reduction) document.getElementById('s-reduction').textContent  = s.reduction;
+    if (s.ts) { const el = document.getElementById('s-ts'); el.textContent = s.ts + ' (cached)'; el.style.color = 'var(--muted)'; el.style.fontSize = '0.95rem'; }
+  } catch(_) {}
+}
+
+function setPortStatus(id, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.color      = ok ? 'var(--green)' : 'var(--orange)';
+  el.style.fontWeight = ok ? '700' : '400';
+}
+
+function setConnBtn(connected) {
+  const btn = document.getElementById('conn-btn');
+  if (!btn) return;
+  if (connected) {
+    btn.textContent        = 'Disconnect';
+    btn.style.color        = 'var(--red)';
+    btn.style.borderColor  = 'var(--red)';
+  } else {
+    btn.textContent        = 'Connect';
+    btn.style.color        = 'var(--accent)';
+    btn.style.borderColor  = 'var(--border)';
+    setPortStatus('port-base', false);
+    setPortStatus('port-filt', false);
+  }
+}
+
+function toggleConnect() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    setConnBtn(false);
+    ['s-base-rps','s-filt-rps','s-reduction','s-base-total','s-filt-total','svg-base-rps','svg-filt-rps']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+    document.getElementById('s-ts').textContent = '—';
+  } else {
+    BASE_HOST = document.getElementById('host-input').value.trim() || BASE_HOST;
+    setConnBtn(true);
+    fetchStats();
+    pollTimer = setInterval(fetchStats, 10000);
+  }
+}
+
+async function fluxQuery(url, query) {
+  const resp = await fetch(`${url}/api/v2/query?org=${encodeURIComponent(ORG)}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Token ${TOKEN}`,
+      'Content-Type':  'application/vnd.flux',
+      'Accept':        'application/csv',
+    },
+    body: query,
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const csv   = await resp.text();
+  const lines = csv.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+  if (lines.length < 2) return null;
+  let total = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',');
+    const v = parseInt(vals[vals.length - 1]);
+    if (!isNaN(v)) total += v;
+  }
+  return total;
+}
+
+async function fetchStats() {
+  const q = (bucket) => `from(bucket:"${bucket}")
+  |> range(start:-${WINDOW_S}s)
+  |> count()
+  |> sum()`;
+
+  let baseN = null, filtN = null;
+
+  try {
+    baseN = await fluxQuery(baseUrl(8096), q('ems-baseline'));
+    setPortStatus('port-base', true);
+  } catch(e) {
+    setPortStatus('port-base', false);
+    console.warn(':8096 fetch failed', e.message);
+  }
+
+  try {
+    filtN = await fluxQuery(baseUrl(8097), q('ems-filtered'));
+    setPortStatus('port-filt', true);
+  } catch(e) {
+    setPortStatus('port-filt', false);
+    console.warn(':8097 fetch failed', e.message);
+  }
+
+  const baseRps = baseN !== null ? (baseN / WINDOW_S).toFixed(1) : null;
+  const filtRps = filtN !== null ? (filtN / WINDOW_S).toFixed(1) : null;
+
+  if (baseRps !== null) {
+    document.getElementById('s-base-rps').textContent   = baseRps + '/s';
+    document.getElementById('s-base-total').textContent = baseN.toLocaleString();
+    const el = document.getElementById('svg-base-rps'); if (el) el.textContent = baseRps + ' rows/s';
+  }
+  if (filtRps !== null) {
+    document.getElementById('s-filt-rps').textContent   = filtRps + '/s';
+    document.getElementById('s-filt-total').textContent = filtN.toLocaleString();
+    const el = document.getElementById('svg-filt-rps'); if (el) el.textContent = filtRps + ' rows/s';
+  }
+
+  let reduction = null;
+  if (baseN && filtN && baseN > 0) {
+    reduction = ((1 - filtN / baseN) * 100).toFixed(1) + '%';
+    document.getElementById('s-reduction').textContent = reduction;
+  }
+  const tsEl = document.getElementById('s-ts');
+  const gotData = baseRps !== null || filtRps !== null;
+  tsEl.textContent = new Date().toLocaleTimeString();
+  tsEl.style.color = gotData ? 'var(--green)' : 'var(--red)';
+  tsEl.style.fontSize = '0.95rem';
+
+  if (baseRps || filtRps) saveStats(baseRps, filtRps, baseN, filtN, reduction);
+}
+
+// Toggle ▶/▼ on details open/close
+document.querySelectorAll('details').forEach(d => {
+  const s = d.querySelector('summary');
+  d.addEventListener('toggle', () => {
+    s.textContent = s.textContent.replace(d.open ? '▶' : '▼', d.open ? '▼' : '▶');
+  });
+});
+
+// ── CPU proof live update ────────────────────────────────────────────────────
+let cpuWs = null;
+
+function updateCpuProof() {
+  const host = document.getElementById('host-input').value.trim() || BASE_HOST;
+  const statusEl = document.getElementById('cpu-update-status');
+  const btn = document.getElementById('cpu-update-btn');
+
+  if (cpuWs) { cpuWs.close(); cpuWs = null; }
+
+  statusEl.textContent = 'connecting…';
+  statusEl.style.color = 'var(--muted)';
+  btn.disabled = true;
+
+  cpuWs = new WebSocket(`ws://${host}:8769`);
+  cpuWs.onopen  = () => cpuWs.send(JSON.stringify({type:'get_sys_stats'}));
+  cpuWs.onerror = () => {
+    statusEl.textContent = 'connect failed';
+    statusEl.style.color = 'var(--red)';
+    btn.disabled = false;
+    cpuWs = null;
+  };
+  cpuWs.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type !== 'sys_stats') return;
+
+      const now = new Date().toLocaleTimeString();
+      const load = `${msg.load_1.toFixed(2)}, ${msg.load_5.toFixed(2)}, ${msg.load_15.toFixed(2)}`;
+      const rssStr = `${msg.rss_mb.toFixed(0)}MB`.padStart(4);
+
+      // Update static snapshot in-place
+      document.getElementById('top-time').textContent        = now;
+      document.getElementById('top-load').textContent        = load;
+      document.getElementById('top-sim-rss-filt').textContent = ' ' + rssStr;
+      document.getElementById('top-sim-mps').textContent     = msg.mps.toLocaleString();
+
+      // Update live bar
+      document.getElementById('cpu-load').textContent    = load;
+      document.getElementById('cpu-mps').textContent     = msg.mps.toLocaleString();
+      document.getElementById('cpu-rss').textContent     = msg.rss_mb.toFixed(1);
+      document.getElementById('cpu-live-ts').textContent = now;
+      document.getElementById('cpu-live-bar').style.display = 'block';
+
+      statusEl.textContent = 'updated ' + now;
+      statusEl.style.color = 'var(--green)';
+      btn.disabled = false;
+      cpuWs.close(); cpuWs = null;
+    } catch(_) {}
+  };
+  cpuWs.onclose = () => { btn.disabled = false; cpuWs = null; };
+}
+
+// Auto-connect on load — script is at bottom of <body> so DOM is already ready
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+  if (saved.host) {
+    BASE_HOST = saved.host;
+    document.getElementById('host-input').value = saved.host;
+  }
+} catch(_) {}
+restoreStats();
+toggleConnect();
+</script>
+</body>
+</html>

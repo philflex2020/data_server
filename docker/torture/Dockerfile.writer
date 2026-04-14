@@ -1,0 +1,39 @@
+# ── Stage 1: build ─────────────────────────────────────────────────────────
+FROM ubuntu:22.04 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+
+# All build deps — keep apt lists so apt-get install can resolve .deb deps
+RUN apt-get update && apt-get install -y \
+    build-essential g++ \
+    libmosquitto-dev libyaml-cpp-dev libsimdjson-dev \
+    libsnappy-dev libbrotli-dev liblz4-dev libzstd-dev \
+    libthrift-dev libre2-dev
+
+# Arrow/Parquet dev headers — copied from host apt cache by setup.sh
+# Path is relative to build context (repo root), not Dockerfile location
+COPY docker/torture/debs/ /tmp/debs/
+RUN apt-get install -y /tmp/debs/*.deb && \
+    rm -rf /tmp/debs /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY source/parquet_writer_cpp/ .
+RUN make parquet_writer
+
+# ── Stage 2: runtime ────────────────────────────────────────────────────────
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    libmosquitto1 libyaml-cpp0.7 libsimdjson9 \
+    libsnappy1v5 libbrotli1 liblz4-1 libzstd1 \
+    libthrift-0.16.0 libre2-9
+
+COPY docker/torture/debs/libarrow2300*.deb docker/torture/debs/libparquet2300*.deb /tmp/debs/
+RUN apt-get install -y /tmp/debs/*.deb && \
+    rm -rf /tmp/debs /var/lib/apt/lists/*
+
+COPY --from=builder /build/parquet_writer /usr/local/bin/parquet_writer
+RUN mkdir -p /data /wal
+
+ENTRYPOINT ["/usr/local/bin/parquet_writer"]
+CMD ["--config", "/etc/writer/config.yaml"]

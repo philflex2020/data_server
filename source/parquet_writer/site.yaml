@@ -1,0 +1,104 @@
+# site.yaml — site deployment descriptor
+# Feed into generate_eks_manifests.py to produce all Kubernetes YAMLs.
+# One file per site. Commit to version control.
+# No secrets here — MQTT credentials go in a separate kubectl secret (see below).
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ MUST CHANGE per site                  │ Key              │ Example  │
+# ├───────────────────────────────────────┼──────────────────┼──────────┤
+# │ Site identifier (column in every row) │ site.id          │ SITE_A   │
+# │ Unit / asset serial number            │ site.unit_id     │ 0215D1D8 │
+# │ MQTT broker IP or hostname            │ mqtt.host        │ 10.0.1.5 │
+# │ MQTT subscription root                │ mqtt.topic_root  │ bench    │
+# │ MQTT client ID (unique per pod)       │ mqtt.client_id   │ pw-site-a│
+# │ ECR image URI                         │ eks.image        │ see below│
+# └───────────────────────────────────────┴──────────────────┴──────────┘
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ REVIEW per site (defaults usually fine)                             │
+# ├───────────────────────────────────────┬──────────────────┬──────────┤
+# │ Topic segment order                   │ mqtt.topic_seg.. │ positional│
+# │ Columns to drop                       │ mqtt.drop_columns│ see below│
+# │ Capture format                        │ capture.format   │ long/wide│
+# │ Flush interval                        │ capture.flush_.. │ 600 s    │
+# │ EBS storage size                      │ eks.storage_gb   │ 20 Gi    │
+# └───────────────────────────────────────┴──────────────────┴──────────┘
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ FIXED — do not change unless you know why                           │
+# ├───────────────────────────────────────┬──────────────────┬──────────┤
+# │ MQTT port                             │ mqtt.port        │ 1883     │
+# │ MQTT QoS                              │ mqtt.qos         │ 0        │
+# │ Health port                           │ eks.health_port  │ 8771     │
+# │ Liveness initial delay                │ eks.liveness_..  │ 30 s     │
+# │ Storage class                         │ eks.storage_class│ gp2      │
+# │ Compaction during capture             │ capture.compact  │ false    │
+# └───────────────────────────────────────┴──────────────────┴──────────┘
+#
+# Secret (never in this file):
+#   kubectl create secret generic parquet-writer-secrets \
+#     --from-literal=MQTT_HOST=<broker-ip> \
+#     --from-literal=SITE_ID=<site.id value> \
+#     -n <eks.namespace>
+
+# ── MUST CHANGE ────────────────────────────────────────────────────────
+site:
+  id:          SITE_A        # [CHANGE] written as site_id column in every parquet row
+  unit_id:     0215D1D8      # [CHANGE] asset serial / unit identifier — used as partition key
+  description: "Bench BESS unit 1"   # [CHANGE] human label, not used by writer
+
+mqtt:
+  host:        192.168.86.34 # [CHANGE] MQTT broker IP or hostname at the site
+  topic_root:  bench         # [CHANGE] root of MQTT topic tree — subscribes to <topic_root>/#
+  client_id:   parquet-writer-site-a  # [CHANGE] must be unique per running pod
+
+  # ── REVIEW ─────────────────────────────────────────────────────────
+  # topic_segments defines the positional parser — must match the site's topic structure exactly.
+  # Example topic: bench/0215D1D8/bms/bms_1/SysSOC/float
+  #   position 0: source_type (bench)   → dropped
+  #   position 1: unit_id    (0215D1D8) → partition key
+  #   position 2: device_type (bms)     → column / compound field
+  #   position 3: device     (bms_1)    → column / compound field
+  #   position 4: point_name (SysSOC)   → column / compound field
+  #   position 5: dtype_hint (float)    → dropped
+  topic_segments: [source_type, unit_id, device_type, device, point_name, dtype_hint]
+  drop_columns:   [source_type, dtype_hint]  # drop bookkeeping fields — not stored in parquet
+  partition_field: unit_id
+
+  # ── FIXED ───────────────────────────────────────────────────────────
+  port: 1883
+  qos:  0
+
+capture:
+  # ── REVIEW ─────────────────────────────────────────────────────────
+  format:                 long    # long  = one row per message (site capture default)
+                                  # wide  = one row per timestamp, one col per signal (bench)
+  flush_interval_seconds: 600     # 10 min flush per manager instructions; lower = smaller files
+
+  # ── FIXED ───────────────────────────────────────────────────────────
+  compression:            snappy
+  max_messages_per_part:  5000000
+  max_total_buffer_rows:  2000000
+  compact_enabled:        false   # never compact during live capture — do it offline
+
+eks:
+  # ── MUST CHANGE ─────────────────────────────────────────────────────
+  # ECR image location — three fields that combine to form the full URI:
+  #   <account_id>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>
+  #
+  # account_id: set to 'auto' to resolve via `aws sts get-caller-identity`
+  #             or paste the 12-digit AWS account ID explicitly
+  account_id: auto              # [CHANGE] 'auto' or 12-digit AWS account ID e.g. 123456789012
+  region:     us-east-1         # [CHANGE] AWS region where ECR repo lives
+  repo:       parquet-writer    # [CHANGE] ECR repository name (created with aws ecr create-repository)
+  tag:        latest
+
+  # ── REVIEW ─────────────────────────────────────────────────────────
+  storage_gb:       20              # EBS volume size; 20 Gi ~ 3 days at 63 signals / 1 Hz
+  namespace:        data-capture
+  deployment_name:  parquet-writer-long
+
+  # ── FIXED ───────────────────────────────────────────────────────────
+  storage_class:    gp2             # default EKS StorageClass; check: kubectl get storageclass
+  health_port:      8771
+  liveness_initial_delay_seconds: 30  # health only opens after MQTT connects

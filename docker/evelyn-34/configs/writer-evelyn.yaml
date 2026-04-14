@@ -1,0 +1,54 @@
+mqtt:
+  client_id: parquet-writer-evelyn
+  host: broker
+  port: 1883
+  topic: "ems/#"
+  qos: 0
+  reconnect_min_seconds: 1
+  reconnect_max_seconds: 5
+  # Multi-depth EMS topic patterns (mirrors telegraf-conf-v2-cloud.conf).
+  # schema: narrow (point_name + value columns, better compression).
+  # For wide-sparse, replace "point_name" with "field_name" in each pattern.
+  topic_parser: positional
+  topic_patterns:
+    # 6 seg: ems/site/{site_id}/root/{point_name}/{dtype}
+    - match: "ems/site/+/root/+/+"
+      segments: ["_", "_", "site_id", "_", "point_name", "dtype_hint"]
+    # 8 seg: ems/site/{site_id}/unit/{unit_id}/root/{point_name}/{dtype}
+    - match: "ems/site/+/unit/+/root/+/+"
+      segments: ["_", "_", "site_id", "_", "unit_id", "_", "point_name", "dtype_hint"]
+    # 9 seg: ems/site/{site_id}/unit/{unit_id}/{device}/{instance}/{point_name}/{dtype}
+    - match: "ems/site/+/unit/+/+/+/+/+"
+      segments: ["_", "_", "site_id", "_", "unit_id", "device", "instance", "point_name", "dtype_hint"]
+    # 7 seg: ems/site/{site_id}/{comp}/{device_id}/{point_name}/{dtype}
+    - match: "ems/site/+/+/+/+/+"
+      segments: ["_", "_", "site_id", "_", "device", "point_name", "dtype_hint"]
+    # Catch-all fallback: unknown topic depth — extract point_name + dtype from end
+    # Logged once per unique depth+prefix so unrecognised formats are discoverable.
+    - match: "#"
+      reverse: true
+      segments: ["dtype_hint", "point_name"]
+output:
+  base_path: /data/parquet
+  site_id: ""          # extracted from topic segment 2 (multi-site safe)
+  partitions:
+    - "site={site_id}"
+    - "{year}"
+    - "{month}"
+    - "{day}"
+  compression: snappy
+  flush_interval_seconds: 30
+  max_messages_per_part: 2000000
+  max_total_buffer_rows: 500000
+health:
+  enabled: true
+  port: 8771
+wal:
+  enabled: true
+  path: /data/parquet/.wal
+guard:
+  min_free_gb: 1.0
+compact:
+  enabled: false
+  interval_seconds: 600
+  min_files: 3

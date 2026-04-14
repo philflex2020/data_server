@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UPS Controller</title>
+<style>
+:root{--bg:#0d1117;--bg-card:#161b22;--bg-input:#1c2128;--accent:#fb923c;--green:#4ade80;--amber:#fbbf24;--red:#f87171;--blue:#38bdf8;--text:#e6edf3;--muted:#7d8590;--border:#30363d;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:14px}
+.topbar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.dot{width:9px;height:9px;border-radius:50%;background:#444;flex-shrink:0}
+.dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.warn{background:var(--amber);animation:blink 1.2s infinite}
+.dot.fault{background:var(--red);animation:blink .8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.lbl{font-size:12px;color:var(--muted)}.val{font-size:12px;font-variant-numeric:tabular-nums}
+.ip{background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:12px;width:130px}
+.btn{padding:5px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:opacity .15s}.btn:hover{opacity:.85}
+.btn-c{background:var(--accent);color:#000}.btn-g{background:var(--green);color:#000}.btn-a{background:var(--amber);color:#000}.btn-r{background:var(--red);color:#000}.btn-ghost{background:rgba(255,255,255,.07);color:var(--text);border:1px solid var(--border)}
+.ping{font-size:11px;padding:1px 5px;border-radius:3px;background:rgba(74,222,128,.1);color:var(--green)}.ping.w{background:rgba(251,191,36,.1);color:var(--amber)}.ping.b{background:rgba(248,113,113,.1);color:var(--red)}
+/* Mode badge */
+.mode-badge{padding:4px 10px;border-radius:6px;font-size:13px;font-weight:700}
+.mb-normal{background:rgba(74,222,128,.15);color:var(--green);border:1px solid var(--green)}
+.mb-battery{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid var(--amber)}
+.mb-bypass{background:rgba(56,189,248,.15);color:var(--blue);border:1px solid var(--blue)}
+.mb-test{background:rgba(251,191,36,.1);color:var(--amber)}
+.mb-fault{background:rgba(248,113,113,.2);color:var(--red);border:1px solid var(--red);animation:blink .8s infinite}
+.main{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:960px;margin:0 auto}
+@media(max-width:660px){.main{grid-template-columns:1fr}}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px}
+.card h3{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px}
+.gauges{display:flex;gap:10px;margin-bottom:12px}.g{flex:1;background:var(--bg-input);border-radius:7px;padding:10px;text-align:center}
+.g-lbl{font-size:10px;color:var(--muted);margin-bottom:3px}.g-val{font-size:20px;font-weight:700}.g-unit{font-size:11px;color:var(--muted)}
+.orange{color:var(--accent)}.blue{color:var(--blue)}.green{color:var(--green)}.amber{color:var(--amber)}.red{color:var(--red)}
+.bar{margin-bottom:8px}.bar-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
+.bar-track{height:7px;background:var(--bg-input);border-radius:4px;overflow:hidden}.bar-fill{height:100%;border-radius:4px;transition:width .35s}
+.f-o{background:var(--accent)}.f-g{background:var(--green)}.f-b{background:var(--blue)}.f-a{background:var(--amber)}.f-r{background:var(--red)}
+.ctrl{display:flex;gap:8px;align-items:center;margin-bottom:8px}.ctrl-lbl{font-size:12px;color:var(--muted);width:120px;flex-shrink:0}
+.ctrl input[type=range]{flex:1;accent-color:var(--accent)}.ctrl-v{width:60px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.mode-row{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}.m-btn{flex:1;min-width:70px;padding:7px;text-align:center}
+.m-btn.act-normal{background:var(--green);color:#000}.m-btn.act-bypass{background:var(--blue);color:#000}.m-btn.act-battery{background:var(--amber);color:#000}.m-btn.act-fault{background:var(--red);color:#000}
+.alm-row{display:flex;gap:7px;flex-wrap:wrap}.alm{padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
+.alm.on{background:rgba(248,113,113,.15);color:var(--red);border-color:var(--red);animation:blink 1.5s infinite}
+.log{background:var(--bg-input);border-radius:6px;height:110px;overflow-y:auto;padding:6px 8px;font-size:11px;font-family:monospace;color:var(--muted)}
+.ll{margin-bottom:2px}.ll.i{color:var(--accent)}.ll.w{color:var(--amber)}.ll.e{color:var(--red)}
+/* Runtime indicator */
+.runtime-big{font-size:36px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center;padding:10px 0}
+.transfer-row{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
+/* Discovery modal */
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:100;justify-content:center;align-items:center}
+.modal.show{display:flex}
+.discover-modal-content{background:var(--bg-card);border-radius:12px;padding:30px;min-width:560px;max-width:680px}
+.discover-modal-content h3{color:var(--accent);margin-bottom:15px}
+.discover-subnet-row{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.discover-subnet-row input{flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px}
+.discover-progress{height:6px;background:var(--bg-input);border-radius:3px;margin-bottom:14px;overflow:hidden}
+.discover-progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width 0.2s}
+.discover-status{font-size:12px;color:var(--muted);margin-bottom:10px;min-height:18px}
+.discover-table{width:100%;border-collapse:collapse;font-size:13px}
+.discover-table th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.discover-table td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,0.05);vertical-align:middle}
+.discover-table tr:last-child td{border-bottom:none}
+.discover-table .dev-ip{color:var(--accent);font-family:monospace}
+.discover-table .dev-ver{color:var(--green)}
+.discover-table .dev-host{color:var(--muted);font-size:12px}
+.discover-empty{color:var(--muted);font-size:13px;text-align:center;padding:20px 0}
+.btn-primary{background:var(--accent);color:#000}
+.btn-small{padding:4px 10px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="dot" id="dot"></div>
+  <span style="font-weight:700;color:var(--accent)">UPS</span>
+  <span class="lbl">IP</span>
+  <input class="ip" id="devIp" value="192.168.86.37">
+  <button class="btn btn-c" id="connBtn" onclick="toggleWS()">Connect</button>
+  <button class="btn btn-ghost btn-small" onclick="openDiscoverModal()" title="Discover devices">⊕ Scan</button>
+  <span class="mode-badge mb-normal" id="modeBadge">—</span>
+  <span class="lbl">v</span><span class="val" id="sVer">—</span>
+  <span class="lbl">Ping</span><span class="ping" id="pingEl">—</span>
+  <span class="lbl" style="margin-left:8px">Loc</span>
+  <span class="val" id="sLoc" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
+  <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="editLocation()">Set</button>
+</div>
+
+<div class="main">
+
+  <!-- Mains Input -->
+  <div class="card">
+    <h3>Mains Input</h3>
+    <div class="gauges">
+      <div class="g"><div class="g-lbl">Voltage</div><div><span class="g-val blue" id="gMainsV">—</span><span class="g-unit">V</span></div></div>
+      <div class="g"><div class="g-lbl">Frequency</div><div><span class="g-val blue" id="gMainsF">—</span><span class="g-unit">Hz</span></div></div>
+      <div class="g">
+        <div class="g-lbl">Status</div>
+        <div class="g-val" id="gMainsSt" style="font-size:14px">—</div>
+      </div>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Mains Voltage (195–255V nominal)</span><span id="bMainsV">—</span></div>
+      <div class="bar-track"><div class="bar-fill f-g" id="bMains" style="width:0%"></div></div>
+    </div>
+    <h3 style="margin-top:12px">Output</h3>
+    <div class="gauges">
+      <div class="g"><div class="g-lbl">Voltage</div><div><span class="g-val orange" id="gOutV">—</span><span class="g-unit">V</span></div></div>
+      <div class="g"><div class="g-lbl">Current</div><div><span class="g-val" id="gOutI">—</span><span class="g-unit">A</span></div></div>
+      <div class="g"><div class="g-lbl">Power</div><div><span class="g-val" id="gPow">—</span><span class="g-unit">W</span></div></div>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Load</span><span id="bLoadV">—</span></div>
+      <div class="bar-track"><div class="bar-fill f-o" id="bLoad" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Battery -->
+  <div class="card">
+    <h3>Battery</h3>
+    <div class="gauges">
+      <div class="g"><div class="g-lbl">Voltage</div><div><span class="g-val orange" id="gBatV">—</span><span class="g-unit">V</span></div></div>
+      <div class="g"><div class="g-lbl">SOC</div><div><span class="g-val" id="gBatSOC">—</span><span class="g-unit">%</span></div></div>
+      <div class="g"><div class="g-lbl">Current</div><div><span class="g-val" id="gBatI">—</span><span class="g-unit">A</span></div></div>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Battery SOC</span><span id="bSocV">—</span></div>
+      <div class="bar-track"><div class="bar-fill f-g" id="bSoc" style="width:0%"></div></div>
+    </div>
+    <div class="runtime-big orange" id="gRuntime">—<span style="font-size:16px;color:var(--muted)"> min</span></div>
+    <div class="transfer-row">
+      <span>Last transfer time</span>
+      <span id="gTransfer">—</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-a" onclick="batTest()">Battery Test</button>
+      <span id="batTestLbl" style="font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+  </div>
+
+  <!-- Mode & Controls -->
+  <div class="card">
+    <h3>Mode</h3>
+    <div class="mode-row">
+      <button class="btn m-btn" id="mNormal" onclick="setMode('normal')">Normal</button>
+      <button class="btn m-btn" id="mBypass" onclick="setMode('bypass')">Bypass</button>
+    </div>
+    <div class="bar">
+      <div class="bar-head"><span>Temperature</span><span id="bTmpV">—</span></div>
+      <div class="bar-track"><div class="bar-fill f-b" id="bTmp" style="width:0%"></div></div>
+    </div>
+    <div class="ctrl" style="margin-top:10px">
+      <span class="ctrl-lbl">Load % (sim)</span>
+      <input type="range" min="0" max="125" step="5" value="30" id="sLoad"
+        oninput="document.getElementById('vLoad').textContent=this.value+'%'">
+      <span class="ctrl-v" id="vLoad">30%</span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-c" onclick="sendLoad()">Set Load</button>
+      <button class="btn btn-r" onclick="send({cmd:'clear_fault'})">Clear Fault</button>
+    </div>
+  </div>
+
+  <!-- Alarms & Log -->
+  <div class="card">
+    <h3>Alarms</h3>
+    <div class="alm-row">
+      <div class="alm" id="almMains">MAINS FAIL</div>
+      <div class="alm" id="almBatt">BATT LOW</div>
+      <div class="alm" id="almOvld">OVERLOAD</div>
+      <div class="alm" id="almOT">OVERTEMP</div>
+    </div>
+    <h3 style="margin-top:12px">Log</h3>
+    <div class="log" id="logEl"></div>
+  </div>
+
+</div>
+
+<!-- Device Discovery Modal -->
+<div class="modal" id="discoverModal">
+  <div class="discover-modal-content">
+    <h3>Discover Controllers</h3>
+    <div id="discoverRelayPanel">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+        <span id="discoverRelayDot" style="width:10px;height:10px;border-radius:50%;background:#555;display:inline-block;flex-shrink:0"></span>
+        <span id="discoverRelayLabel" style="font-size:12px;color:var(--muted);flex:1">Connecting to beacon relay…</span>
+        <button class="btn btn-small" onclick="showScanPanel()" style="background:rgba(255,255,255,0.08);color:#888;font-size:11px;">Manual scan</button>
+        <button class="btn btn-small" onclick="closeDiscoverModal()" style="background:rgba(255,255,255,0.1);color:#aaa;">Close</button>
+      </div>
+    </div>
+    <div id="discoverScanPanel" style="display:none">
+      <div class="discover-subnet-row">
+        <input type="text" id="discoverSubnet" placeholder="192.168.86." value="192.168.86.">
+        <button class="btn btn-primary btn-small" id="discoverScanBtn" onclick="startScan()">Scan</button>
+        <button class="btn btn-small" onclick="showRelayPanel()" style="background:rgba(255,255,255,0.08);color:#888;font-size:11px;">mDNS</button>
+        <button class="btn btn-small" onclick="closeDiscoverModal()" style="background:rgba(255,255,255,0.1);color:#aaa;">Close</button>
+      </div>
+      <div class="discover-progress"><div class="discover-progress-fill" id="discoverProgressFill" style="width:0%"></div></div>
+      <div class="discover-status" id="discoverStatus">Enter subnet prefix and click Scan.</div>
+    </div>
+    <table class="discover-table">
+      <thead><tr><th>IP Address</th><th>Version</th><th>Type</th><th>Location</th><th>RTT</th><th></th></tr></thead>
+      <tbody id="discoverTableBody"></tbody>
+    </table>
+    <div class="discover-empty" id="discoverEmpty" style="display:none">No devices found. Try Manual scan if the relay is not running.</div>
+  </div>
+</div>
+
+<script>
+let ws=null,conn=false,pingSeq=0,pingT=0,pingTmr=null;
+function lg(m,c=''){const b=document.getElementById('logEl');const d=document.createElement('div');d.className='ll '+c;d.textContent=new Date().toLocaleTimeString()+' '+m;b.appendChild(d);b.scrollTop=b.scrollHeight;if(b.children.length>150)b.removeChild(b.firstChild);}
+function send(o){if(ws&&conn)ws.send(JSON.stringify(o));}
+function toggleWS(){
+  if(conn){ws.close();return;}
+  const ip=document.getElementById('devIp').value.trim();
+  ws=new WebSocket('ws://'+ip+':81');
+  document.getElementById('connBtn').textContent='…';
+  ws.onopen=()=>{conn=true;document.getElementById('dot').className='dot ok';document.getElementById('connBtn').textContent='Disconnect';lg('Connected to '+ip,'i');startPing();send({cmd:'get_status'});};
+  ws.onclose=()=>{conn=false;document.getElementById('dot').className='dot';document.getElementById('connBtn').textContent='Connect';stopPing();lg('Disconnected','w');document.getElementById('sVer').textContent='—';document.getElementById('sLoc').textContent='—';};
+  ws.onerror=()=>lg('Error','e');
+  ws.onmessage=(e)=>{try{handle(JSON.parse(e.data));}catch(_){}};
+}
+function handle(d){
+  if(d.type==='pong'){if(pingT&&d.t===pingSeq){const r=Date.now()-pingT;pingT=0;const el=document.getElementById('pingEl');el.textContent=r+'ms';el.className='ping'+(r>150?' b':r>50?' w':'');}return;}
+  if(d.type!=='status')return;
+  document.getElementById('sVer').textContent=d.version||'—';
+  if(d.location!==undefined)document.getElementById('sLoc').textContent=d.location||'—';
+
+  // Mode badge
+  const mb=document.getElementById('modeBadge');
+  const modeClasses={normal:'mb-normal',battery:'mb-battery',bypass:'mb-bypass',test:'mb-test',fault:'mb-fault'};
+  mb.className='mode-badge '+(modeClasses[d.mode]||'mb-normal');
+  mb.textContent=(d.mode||'—').toUpperCase();
+
+  // Mains
+  const mv=parseFloat(d.mains_voltage||0),mf=parseFloat(d.mains_frequency||0);
+  const el_mv=document.getElementById('gMainsV');el_mv.textContent=mv.toFixed(0);
+  el_mv.className='g-val'+(mv<195||mv>255?'red':'blue');
+  const el_mf=document.getElementById('gMainsF');el_mf.textContent=mf.toFixed(2);
+  el_mf.className='g-val'+(mf<47.5||mf>52.5?'red':'blue');
+  const st=document.getElementById('gMainsSt');
+  st.textContent=d.mains_present?'OK':'FAIL';
+  st.className='g-val'+(d.mains_present?'green':'red');
+  document.getElementById('bMainsV').textContent=mv.toFixed(0)+'V';
+  const pct=Math.min((mv-195)/(255-195)*100,100);
+  document.getElementById('bMains').style.width=Math.max(pct,0)+'%';
+  document.getElementById('bMains').className='bar-fill'+(mv<195||mv>255?' f-r':mv<207||mv>243?' f-a':' f-g');
+
+  // Output
+  const ov=parseFloat(d.output_voltage||0),oi=parseFloat(d.output_current||0),op=parseFloat(d.output_power_w||0);
+  document.getElementById('gOutV').textContent=ov.toFixed(0);
+  document.getElementById('gOutI').textContent=oi.toFixed(1);
+  document.getElementById('gPow').textContent=op.toFixed(0);
+  const lp=parseFloat(d.load_pct||0);
+  document.getElementById('bLoadV').textContent=lp.toFixed(0)+'%';
+  document.getElementById('bLoad').style.width=Math.min(lp,100)+'%';
+  document.getElementById('bLoad').className='bar-fill'+(lp>100?' f-r':lp>80?' f-a':' f-o');
+
+  // Battery
+  const bv=parseFloat(d.battery_voltage||0),bs=parseFloat(d.battery_soc||0),bi=parseFloat(d.battery_current||0);
+  document.getElementById('gBatV').textContent=bv.toFixed(1);
+  const bsEl=document.getElementById('gBatSOC');bsEl.textContent=bs.toFixed(0);
+  bsEl.className='g-val'+(bs<15?' red':bs<30?' amber':' green');
+  const biEl=document.getElementById('gBatI');biEl.textContent=bi.toFixed(1);
+  biEl.className='g-val'+(bi>0?' green':bi<0?' amber':'');
+  document.getElementById('bSocV').textContent=bs.toFixed(0)+'%';
+  document.getElementById('bSoc').style.width=bs+'%';
+  document.getElementById('bSoc').className='bar-fill'+(bs<15?' f-r':bs<30?' f-a':' f-g');
+
+  const rt=parseFloat(d.runtime_min||0);
+  const rtEl=document.getElementById('gRuntime');
+  rtEl.innerHTML=(rt>998?'&infin;':rt.toFixed(0))+'<span style="font-size:16px;color:var(--muted)"> min</span>';
+  rtEl.style.color=rt<10?'var(--red)':rt<30?'var(--amber)':'var(--accent)';
+
+  document.getElementById('gTransfer').textContent=parseFloat(d.transfer_time_ms||0).toFixed(1)+' ms';
+  document.getElementById('batTestLbl').textContent=d.bat_test_running?'TEST RUNNING':'';
+
+  // Temperature
+  const tmp=parseFloat(d.temp_degc||0);
+  document.getElementById('bTmpV').textContent=tmp.toFixed(0)+'°C';
+  document.getElementById('bTmp').style.width=Math.min(tmp/80*100,100)+'%';
+  document.getElementById('bTmp').className='bar-fill'+(tmp>70?' f-r':tmp>55?' f-a':' f-b');
+
+  // Mode buttons
+  ['mNormal','mBypass'].forEach(id=>document.getElementById(id).className='btn m-btn btn-ghost');
+  const mn={normal:'mNormal',bypass:'mBypass'};
+  if(mn[d.mode])document.getElementById(mn[d.mode]).className='btn m-btn act-'+d.mode;
+
+  // Alarms
+  document.getElementById('almMains').className='alm'+(d.alarm_mains_fail?' on':'');
+  document.getElementById('almBatt').className='alm'+(d.alarm_batt_low?' on':'');
+  document.getElementById('almOvld').className='alm'+(d.alarm_overload?' on':'');
+  document.getElementById('almOT').className='alm'+(d.alarm_overtemp?' on':'');
+
+  // Dot state
+  if(d.alarm_bitmap)document.getElementById('dot').className='dot fault';
+  else if(d.mode==='battery'||d.mode==='test')document.getElementById('dot').className='dot warn';
+  else if(conn)document.getElementById('dot').className='dot ok';
+}
+function setMode(m){send({cmd:'set_mode',mode:m});lg('Mode → '+m);}
+function editLocation(){const cur=document.getElementById('sLoc').textContent;const n=prompt('Location name (e.g. ups_rack_1):',cur==='—'?'':cur);if(n!==null){const v=n.trim();send({cmd:'set_location',value:v});lg('Location → '+(v||'(cleared)'));document.getElementById('sLoc').textContent=v||'—';}}
+function batTest(){send({cmd:'battery_test'});lg('Battery test started','w');}
+function sendLoad(){const v=parseFloat(document.getElementById('sLoad').value);send({cmd:'set_load',value:v});lg('Load → '+v+'%');}
+function startPing(){pingTmr=setInterval(()=>{if(!conn)return;pingSeq=(pingSeq+1)&0xFFFF;pingT=Date.now();send({cmd:'ping',t:pingSeq});},2000);}
+function stopPing(){clearInterval(pingTmr);document.getElementById('pingEl').textContent='—';}
+(function(){const h=location.hash.slice(1);if(h&&h.match(/^\d+\.\d+\.\d+\.\d+$/)){document.getElementById('devIp').value=h;localStorage.setItem('upsCtrlIp',h);history.replaceState(null,'',location.pathname);}else{const sv=localStorage.getItem('upsCtrlIp');if(sv)document.getElementById('devIp').value=sv;}})();
+document.getElementById('devIp').addEventListener('change',()=>localStorage.setItem('upsCtrlIp',document.getElementById('devIp').value));
+
+// ── Device Discovery ──────────────────────────────────────────────────────────
+const RELAY_URL = `ws://${window.location.hostname}:5558`;
+const MY_DEVICE_TYPE = 'ups_control';
+const DEVICE_PAGE = {
+  'load_controller': 'load_simulator.html',
+  'chiller_control': 'chiller_ctrl.html',
+  'pcs_control':     'pcs_ctrl.html',
+  'ups_control':     'ups_ctrl.html',
+};
+let scanAbort=false, relayWs=null, relayConnected=false;
+
+function showRelayPanel(){document.getElementById('discoverScanPanel').style.display='none';document.getElementById('discoverRelayPanel').style.display='';if(!relayConnected)connectRelay();}
+function showScanPanel(){document.getElementById('discoverRelayPanel').style.display='none';document.getElementById('discoverScanPanel').style.display='';const ip=document.getElementById('devIp').value.trim();const m=ip.match(/^(\d+\.\d+\.\d+\.)/);if(m)document.getElementById('discoverSubnet').value=m[1];}
+function setRelayIndicator(state){const dot=document.getElementById('discoverRelayDot'),label=document.getElementById('discoverRelayLabel');if(state==='ok'){dot.style.background='#4ade80';label.textContent='Listening for OTA beacons (mDNS)…';}else if(state==='error'){dot.style.background='#f87171';label.textContent='Relay not running — start beacon_relay.py or use Manual scan.';}else{dot.style.background='#fbbf24';label.textContent='Connecting to beacon relay…';}}
+function connectRelay(){if(relayWs){try{relayWs.close();}catch(_){}}setRelayIndicator('connecting');try{relayWs=new WebSocket(RELAY_URL);}catch(_){setRelayIndicator('error');return;}relayWs.onopen=()=>{relayConnected=true;setRelayIndicator('ok');};relayWs.onmessage=(e)=>{try{const d=JSON.parse(e.data);if(d.type==='device'){upsertDeviceRow(d);document.getElementById('discoverEmpty').style.display='none';}else if(d.type==='remove'){const row=document.getElementById('devrow-'+d.ip.replace(/\./g,'-'));if(row)row.remove();}}catch(_){}};relayWs.onerror=()=>{relayConnected=false;setRelayIndicator('error');};relayWs.onclose=()=>{relayConnected=false;if(document.getElementById('discoverModal').classList.contains('show')&&document.getElementById('discoverRelayPanel').style.display!=='none')setRelayIndicator('error');};}
+function upsertDeviceRow(r){const tbody=document.getElementById('discoverTableBody');const rowId='devrow-'+r.ip.replace(/\./g,'-');let tr=document.getElementById(rowId);const rowHtml=`<td class="dev-ip">${r.ip}</td><td class="dev-ver">${r.version!=='?'?'v'+r.version:'?'}</td><td class="dev-host">${r.device_type||r.hostname||'?'}</td><td style="color:var(--muted);font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis">${r.location||'—'}</td><td style="color:var(--muted);font-size:12px">${r.rtt>=0?r.rtt+'ms':'—'}</td><td><button class="btn btn-primary btn-small" onclick="connectToDevice('${r.ip}','${r.device_type||''}')">Open</button></td>`;if(tr){tr.innerHTML=rowHtml;}else{tr=document.createElement('tr');tr.id=rowId;tr.innerHTML=rowHtml;tbody.appendChild(tr);}}
+function openDiscoverModal(){document.getElementById('discoverModal').classList.add('show');if(relayConnected&&relayWs){document.getElementById('discoverScanPanel').style.display='none';document.getElementById('discoverRelayPanel').style.display='';setRelayIndicator('ok');if(document.getElementById('discoverTableBody').childElementCount===0)document.getElementById('discoverEmpty').style.display='block';}else{showRelayPanel();}}
+function closeDiscoverModal(){scanAbort=true;document.getElementById('discoverModal').classList.remove('show');}
+function probeDevice(ip,port){return new Promise((resolve)=>{const t0=Date.now();let done=false;const finish=(r)=>{if(done)return;done=true;try{sock.close();}catch(_){}resolve(r);};let sock;try{sock=new WebSocket(`ws://${ip}:${port}`);}catch(_){resolve(null);return;}const timeout=setTimeout(()=>finish(null),1000);sock.onopen=()=>sock.send(JSON.stringify({cmd:'get_status'}));sock.onmessage=(e)=>{try{const d=JSON.parse(e.data);if(d.type==='status'){clearTimeout(timeout);finish({ip,port,version:d.version||'?',hostname:d.hostname||'device',device_type:d.device_type||'',location:d.location||'',rtt:Date.now()-t0});}}catch(_){}};sock.onerror=()=>{clearTimeout(timeout);finish(null);};sock.onclose=()=>{setTimeout(()=>finish(null),100);}});}
+async function startScan(){scanAbort=false;const subnet=document.getElementById('discoverSubnet').value.trim();if(!subnet.match(/^\d+\.\d+\.\d+\.$/)){document.getElementById('discoverStatus').textContent='Invalid subnet — use format: 192.168.86.';return;}const tbody=document.getElementById('discoverTableBody');const empty=document.getElementById('discoverEmpty');const statusEl=document.getElementById('discoverStatus');const progressFill=document.getElementById('discoverProgressFill');const scanBtn=document.getElementById('discoverScanBtn');tbody.innerHTML='';empty.style.display='none';scanBtn.textContent='Stop';scanBtn.onclick=()=>{scanAbort=true;};const BATCH=8;let found=0;for(let start=1;start<=254&&!scanAbort;start+=BATCH){const ips=[];for(let i=start;i<start+BATCH&&i<=254;i++)ips.push(subnet+i);const results=await Promise.all(ips.map(ip=>probeDevice(ip,81)));results.forEach(r=>{if(!r)return;found++;upsertDeviceRow(r);});const pct=Math.min(100,Math.round(((start+BATCH-1)/254)*100));progressFill.style.width=pct+'%';statusEl.textContent=`Scanning ${subnet}${start}–${Math.min(start+BATCH-1,254)} … found ${found}`;}progressFill.style.width='100%';statusEl.textContent=scanAbort?`Scan stopped. Found ${found} device(s).`:`Scan complete. Found ${found} device(s).`;if(found===0)empty.style.display='block';scanBtn.textContent='Scan';scanBtn.onclick=startScan;}
+function connectToDevice(ip,deviceType){closeDiscoverModal();if(deviceType===MY_DEVICE_TYPE||!DEVICE_PAGE[deviceType]){document.getElementById('devIp').value=ip;localStorage.setItem('upsCtrlIp',ip);if(conn)ws.close();else toggleWS();}else{window.location.href=DEVICE_PAGE[deviceType]+'#'+ip;}}
+(function(){try{const bgWs=new WebSocket(RELAY_URL);bgWs.onopen=()=>{relayConnected=true;relayWs=bgWs;};bgWs.onmessage=(e)=>{try{const d=JSON.parse(e.data);if(d.type==='device')upsertDeviceRow(d);else if(d.type==='remove'){const row=document.getElementById('devrow-'+d.ip.replace(/\./g,'-'));if(row)row.remove();}}catch(_){}};bgWs.onerror=()=>{relayConnected=false;};bgWs.onclose=()=>{relayConnected=false;relayWs=null;};}catch(_){}})();
+</script>
+</body>
+</html>

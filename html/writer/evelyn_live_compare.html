@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evelyn — Live Ingest Cost Comparison</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149; --orange:#e3b341;
+    --green-bg:#0d4429; --red-bg:#3d0a0a; --yellow-bg:#2d2000;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:24px; line-height:1.5; }
+  h1   { color:var(--accent); font-size:1.3rem; margin-bottom:4px; }
+  h2   { color:var(--orange); font-size:.95rem; margin:28px 0 10px;
+         padding-bottom:5px; border-bottom:1px solid var(--border); }
+  .meta { color:var(--muted); font-size:.8rem; margin-bottom:24px; }
+
+  /* ── top stat cards ── */
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:28px; }
+  .card  { background:var(--surface); border:1px solid var(--border);
+           border-radius:8px; padding:16px; }
+  .card.red    { border-color:var(--red);    background:var(--red-bg); }
+  .card.green  { border-color:var(--green);  background:var(--green-bg); }
+  .card.yellow { border-color:var(--yellow); background:var(--yellow-bg); }
+  .card-label { font-size:.72rem; color:var(--muted); text-transform:uppercase;
+                letter-spacing:.07em; margin-bottom:4px; }
+  .card-value { font-size:2rem; font-weight:700; line-height:1.1; }
+  .card.red   .card-value { color:var(--red); }
+  .card.green .card-value { color:var(--green); }
+  .card.yellow .card-value { color:var(--yellow); }
+  .card-sub   { font-size:.75rem; color:var(--muted); margin-top:4px; }
+
+  /* ── chart ── */
+  .chart-wrap { background:var(--surface); border:1px solid var(--border);
+                border-radius:8px; padding:16px; margin-bottom:28px; }
+  .chart-title { font-size:.85rem; color:var(--muted); margin-bottom:10px; }
+  canvas { width:100%; height:180px; display:block; }
+
+  /* ── tables ── */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:28px; }
+  .tcard { background:var(--surface); border:1px solid var(--border);
+           border-radius:8px; padding:16px; }
+  .tcard h3 { font-size:.85rem; color:var(--accent); margin-bottom:10px; }
+  table { border-collapse:collapse; width:100%; font-size:.8rem; }
+  th { padding:6px 10px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); }
+  td { padding:6px 10px; border-bottom:1px solid #1e2530; }
+  tr:last-child td { border-bottom:none; }
+  .num { text-align:right; font-family:monospace; }
+  .bad  { color:var(--red); }
+  .warn { color:var(--yellow); }
+  .good { color:var(--green); }
+
+  /* ── status bar ── */
+  .status { display:flex; align-items:center; gap:12px;
+            font-size:.76rem; color:var(--muted); margin-bottom:20px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
+  .dot.ok  { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .dot.err { background:var(--red);   box-shadow:0 0 6px var(--red); }
+  .spinner { font-size:.7rem; color:var(--accent); }
+
+  /* ── settings ── */
+  .settings { background:var(--surface); border:1px solid var(--border);
+              border-radius:8px; padding:14px; margin-bottom:20px;
+              display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+  .settings label { font-size:.78rem; color:var(--muted); }
+  .settings input  { background:#0d1117; border:1px solid var(--border); color:var(--text);
+                     padding:4px 8px; border-radius:4px; font-size:.78rem; width:180px; }
+</style>
+</head>
+<body>
+
+<h1>Evelyn EMS — Live Ingest Cost Comparison</h1>
+<p class="meta">Baseline (no filter) vs Conservative Filter A+B — queried live from InfluxDB2</p>
+
+<div class="settings">
+  <label>Baseline host:port
+    <input id="hostBase" value="192.168.86.48:8096">
+  </label>
+  <label>Filtered host:port
+    <input id="hostFilt" value="192.168.86.48:8097">
+  </label>
+  <label>Token
+    <input id="token" value="ems-token-secret">
+  </label>
+  <label>Org
+    <input id="org" value="ems-org">
+  </label>
+  <button onclick="restart()" style="padding:5px 14px;background:var(--accent);color:#000;border:none;border-radius:4px;cursor:pointer;font-size:.78rem">Apply</button>
+  <button onclick="testConn()" style="padding:5px 14px;background:#333;color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.78rem">Test Connection</button>
+</div>
+<pre id="debugOut" style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:.75rem;color:var(--accent);white-space:pre-wrap;margin-bottom:16px;display:none"></pre>
+
+<div class="status">
+  <span class="dot" id="dotBase"></span><span id="lblBase">Baseline —</span>
+  <span class="dot" id="dotFilt"></span><span id="lblFilt">Filtered —</span>
+  <span class="spinner" id="spinner"></span>
+  <span id="lastUpdate"></span>
+  <span id="errMsg" style="color:var(--red);font-size:.75rem"></span>
+</div>
+
+<!-- stat cards -->
+<div class="cards">
+  <div class="card red">
+    <div class="card-label">Baseline rows/s</div>
+    <div class="card-value" id="baseRate">—</div>
+    <div class="card-sub" id="baseSub">measuring…</div>
+  </div>
+  <div class="card green">
+    <div class="card-label">Filtered rows/s</div>
+    <div class="card-value" id="filtRate">—</div>
+    <div class="card-sub" id="filtSub">measuring…</div>
+  </div>
+  <div class="card yellow">
+    <div class="card-label">Measured reduction</div>
+    <div class="card-value" id="reduction">—</div>
+    <div class="card-sub">target: 26.8% (conservative A+B)</div>
+  </div>
+  <div class="card green">
+    <div class="card-label">Annual savings (46 units)</div>
+    <div class="card-value" id="savings">—</div>
+    <div class="card-sub">InfluxDB Cloud est.</div>
+  </div>
+</div>
+
+<!-- sparkline chart -->
+<div class="chart-wrap">
+  <div class="chart-title">Rows/s over time — <span style="color:var(--red)">■ Baseline</span> &nbsp; <span style="color:var(--green)">■ Filtered</span></div>
+  <canvas id="chart"></canvas>
+</div>
+
+<!-- cost + projection tables -->
+<div class="grid2">
+  <div class="tcard">
+    <h3>Cost projection — 46 Evelyn units (this system)</h3>
+    <table id="costTable">
+      <thead><tr><th>Scenario</th><th class="num">Rows/yr</th><th class="num">Storage</th><th class="num">Cost/yr</th><th class="num">Saves/yr</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td>              <td class="num bad">444B</td>  <td class="num bad">26.7 TB</td>  <td class="num bad">$855</td>  <td class="num">—</td></tr>
+        <tr><td>Conservative (−26.8%)</td> <td class="num warn">325B</td> <td class="num warn">19.5 TB</td> <td class="num warn">$625</td> <td class="num good">$230</td></tr>
+        <tr><td>Moderate (−40.6%)</td>     <td class="num warn">263B</td> <td class="num warn">15.8 TB</td> <td class="num warn">$507</td> <td class="num good">$348</td></tr>
+        <tr><td>Aggressive (−85.5%)</td>   <td class="num good">64B</td>  <td class="num good">3.9 TB</td>  <td class="num good">$125</td> <td class="num good">$730</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:8px">
+      InfluxDB Cloud Serverless: $0.008/GB data-in + $0.002/GB-month storage. ~60 B/point.
+    </p>
+  </div>
+
+  <div class="tcard">
+    <h3>Fleet projection — 50 units, self-hosted AWS (EBS gp3)</h3>
+    <table>
+      <thead><tr><th>Scenario</th><th class="num">Storage/yr</th><th class="num">Disk cost/yr</th><th class="num">Est. total</th><th class="num">Saves/yr</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td>              <td class="num bad">58 TB</td>   <td class="num bad">$55,680</td>  <td class="num bad">~$76k</td>   <td class="num">—</td></tr>
+        <tr><td>Conservative (−26.8%)</td> <td class="num warn">42 TB</td>  <td class="num warn">$40,320</td> <td class="num warn">~$55k</td>  <td class="num good">~$21k</td></tr>
+        <tr><td>Moderate (−40.6%)</td>     <td class="num warn">34 TB</td>  <td class="num warn">$32,640</td> <td class="num warn">~$45k</td>  <td class="num good">~$31k</td></tr>
+        <tr><td>Aggressive (−85.5%)</td>   <td class="num good">8.4 TB</td> <td class="num good">$8,064</td>  <td class="num good">~$11k</td>  <td class="num good">~$65k</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:8px">
+      EBS gp3 @ $0.08/GB-month. Compute scales proportionally with write rate.
+    </p>
+  </div>
+</div>
+
+<script>
+// ── config ────────────────────────────────────────────────────────────────
+let WINDOW_S = 30;
+let timer = null;
+
+// ── chart history ─────────────────────────────────────────────────────────
+const MAX_PTS = 60;
+let baseHistory = [], filtHistory = [], timeHistory = [];
+
+// ── InfluxDB query ────────────────────────────────────────────────────────
+async function queryInflux(hostPort, token, org, flux) {
+  const url = `http://${hostPort}/api/v2/query?org=${encodeURIComponent(org)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Token ${token}`,
+      'Content-Type': 'application/vnd.flux'
+    },
+    body: flux
+  });
+  if (!resp.ok) {
+    const msg = await resp.text().catch(() => '');
+    throw new Error(`HTTP ${resp.status}: ${msg.slice(0,120)}`);
+  }
+  const text = await resp.text();
+  // parse annotated CSV — skip comment lines, find _value column
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  if (lines.length < 2) return null;
+  const headers = lines[0].split(',');
+  const vi = headers.indexOf('_value');
+  if (vi < 0) return null;
+  // find last non-empty data line
+  for (let i = lines.length - 1; i >= 1; i--) {
+    const parts = lines[i].split(',');
+    const v = parseFloat(parts[vi]);
+    if (!isNaN(v)) return v;
+  }
+  return null;
+}
+
+// ── main poll ─────────────────────────────────────────────────────────────
+async function poll() {
+  const hostBase = document.getElementById('hostBase').value.trim();
+  const hostFilt = document.getElementById('hostFilt').value.trim();
+  const token    = document.getElementById('token').value.trim();
+  const org      = document.getElementById('org').value.trim();
+
+  document.getElementById('spinner').textContent = '⟳ querying…';
+
+  // After processors.pivot the field name = data_type value (float/integer/boolean_integer).
+  // measurement = "unit" (p[3] of ems/site/.../unit/... topic). Count all fields —
+  // each MQTT message produces exactly one field row after pivot.
+  const fluxBase = `from(bucket:"ems-baseline") |> range(start:-${WINDOW_S}s) |> filter(fn:(r)=>r._measurement=="unit") |> group() |> count() |> map(fn:(r)=>({r with _value: float(v:r._value) / ${WINDOW_S}.0}))`;
+  const fluxFilt = `from(bucket:"ems-filtered") |> range(start:-${WINDOW_S}s) |> filter(fn:(r)=>r._measurement=="unit") |> group() |> count() |> map(fn:(r)=>({r with _value: float(v:r._value) / ${WINDOW_S}.0}))`;
+
+  let baseVal = null, filtVal = null;
+
+  await Promise.all([
+    queryInflux(hostBase, token, org, fluxBase).then(v => {
+      baseVal = v;
+      const ok = v !== null;
+      document.getElementById('dotBase').className = 'dot ' + (ok ? 'ok' : 'err');
+      document.getElementById('lblBase').textContent = ok ? `Baseline OK` : 'Baseline ERROR';
+    }).catch(e => {
+      document.getElementById('dotBase').className = 'dot err';
+      document.getElementById('lblBase').textContent = `Baseline: ${e.message}`;
+      document.getElementById('errMsg').textContent = e.message;
+    }),
+    queryInflux(hostFilt, token, org, fluxFilt).then(v => {
+      filtVal = v;
+      const ok = v !== null;
+      document.getElementById('dotFilt').className = 'dot ' + (ok ? 'ok' : 'err');
+      document.getElementById('lblFilt').textContent = ok ? `Filtered OK` : 'Filtered ERROR';
+    }).catch(e => {
+      document.getElementById('dotFilt').className = 'dot err';
+      document.getElementById('lblFilt').textContent = `Filtered: ${e.message}`;
+      document.getElementById('errMsg').textContent = e.message;
+    })
+  ]);
+
+  document.getElementById('spinner').textContent = '';
+  document.getElementById('lastUpdate').textContent =
+    'Last update: ' + new Date().toLocaleTimeString();
+
+  // update cards
+  if (baseVal !== null) {
+    document.getElementById('baseRate').textContent = fmt(baseVal);
+    document.getElementById('baseSub').textContent =
+      `${fmtM(baseVal * 86400 * 365)} rows/yr · ${fmtGB(baseVal)} GB/yr`;
+  }
+  if (filtVal !== null) {
+    document.getElementById('filtRate').textContent = fmt(filtVal);
+    document.getElementById('filtSub').textContent =
+      `${fmtM(filtVal * 86400 * 365)} rows/yr · ${fmtGB(filtVal)} GB/yr`;
+  }
+  if (baseVal !== null && filtVal !== null && baseVal > 0) {
+    const pct = (1 - filtVal / baseVal) * 100;
+    document.getElementById('reduction').textContent = pct.toFixed(1) + '%';
+    // annual savings: GB/yr difference × $0.008 data-in + $0.002×12 storage
+    const baseGB = baseVal * 86400 * 365 * 46 * 60e-9; // 60 bytes/row → GB
+    const filtGB = filtVal * 86400 * 365 * 46 * 60e-9;
+    const save = (baseGB - filtGB) * (0.008 + 0.024);
+    document.getElementById('savings').textContent =
+      '$' + Math.round(save).toLocaleString();
+    // update reduction card colour
+    const card = document.getElementById('reduction').closest('.card');
+    card.className = 'card ' + (pct >= 20 ? 'green' : pct >= 10 ? 'yellow' : 'red');
+  }
+
+  // history
+  const now = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  timeHistory.push(now);
+  baseHistory.push(baseVal ?? 0);
+  filtHistory.push(filtVal ?? 0);
+  if (timeHistory.length > MAX_PTS) { timeHistory.shift(); baseHistory.shift(); filtHistory.shift(); }
+
+  drawChart();
+}
+
+// ── sparkline canvas chart ────────────────────────────────────────────────
+function drawChart() {
+  const canvas = document.getElementById('chart');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  if (baseHistory.length < 2) return;
+
+  const allVals = [...baseHistory, ...filtHistory].filter(v => v > 0);
+  const maxV = allVals.length ? Math.max(...allVals) * 1.1 : 1;
+  const pad = { t:10, r:10, b:24, l:60 };
+  const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+
+  const x = i => pad.l + (i / (MAX_PTS - 1)) * cW;
+  const y = v => pad.t + cH - (v / maxV) * cH;
+
+  // grid lines
+  ctx.strokeStyle = '#1e2530'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const yy = pad.t + (i / 4) * cH;
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(W - pad.r, yy); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmt(maxV * (1 - i / 4)), pad.l - 4, yy + 3);
+  }
+
+  // series
+  function drawLine(data, color) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const n = baseHistory.length;
+      const offset = MAX_PTS - n;
+      if (i === 0) ctx.moveTo(x(i + offset), y(v));
+      else         ctx.lineTo(x(i + offset), y(v));
+    });
+    ctx.stroke();
+  }
+
+  drawLine(baseHistory, '#f85149');
+  drawLine(filtHistory, '#3fb950');
+
+  // x-axis label (latest time)
+  if (timeHistory.length) {
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(timeHistory[timeHistory.length - 1], W - pad.r, H - 4);
+    ctx.textAlign = 'left';
+    ctx.fillText(timeHistory[0], pad.l, H - 4);
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────
+function fmt(v)   { return v === null ? '—' : Math.round(v).toLocaleString(); }
+function fmtM(v)  { return v >= 1e9 ? (v/1e9).toFixed(1)+'B' : (v/1e6).toFixed(0)+'M'; }
+function fmtGB(rowsPerSec) {
+  const gb = rowsPerSec * 86400 * 365 * 60e-9;
+  return gb >= 1000 ? (gb/1000).toFixed(1)+' TB/yr' : Math.round(gb)+' GB/yr';
+}
+
+// ── start / restart ───────────────────────────────────────────────────────
+async function testConn() {
+  const hostBase = document.getElementById('hostBase').value.trim();
+  const token    = document.getElementById('token').value.trim();
+  const org      = document.getElementById('org').value.trim();
+  const out      = document.getElementById('debugOut');
+  out.style.display = 'block';
+  out.textContent = 'Testing…\n';
+  const url = `http://${hostBase}/api/v2/query?org=${encodeURIComponent(org)}`;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/vnd.flux' },
+      body: 'from(bucket:"ems-baseline") |> range(start:-10s) |> filter(fn:(r)=>r._measurement=="unit") |> group() |> count()'
+    });
+    const text = await resp.text();
+    out.textContent = `HTTP ${resp.status}\n\nHeaders:\n`;
+    resp.headers.forEach((v,k) => out.textContent += `  ${k}: ${v}\n`);
+    out.textContent += `\nBody length: ${text.length}\n`;
+    out.textContent += `Body repr: ${JSON.stringify(text.slice(0,500))}`;
+  } catch(e) {
+    out.textContent = `FETCH ERROR: ${e}\n\nThis usually means CORS preflight failed or host unreachable.\nCheck browser DevTools → Network tab for details.`;
+  }
+}
+
+function restart() {
+  if (timer) clearInterval(timer);
+  baseHistory = []; filtHistory = []; timeHistory = [];
+  poll();
+  timer = setInterval(poll, 10000);
+}
+
+window.addEventListener('resize', drawChart);
+restart();
+</script>
+</body>
+</html>

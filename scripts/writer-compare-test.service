@@ -1,0 +1,56 @@
+# writer-compare-test.service
+# Schema comparison benchmark: norm-long vs long-cmp vs wide-pivot
+#
+# Install:
+#   sudo cp scripts/writer-compare-test.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#
+# Run:
+#   sudo systemctl start writer-compare-test
+#   journalctl -u writer-compare-test -f
+#
+# On .34 the output lands on /mnt/tort-sdi/bench/
+# Override OUTDIR/SWEEPS via drop-in:
+#   sudo systemctl edit writer-compare-test
+#   [Service]
+#   Environment=SWEEPS=300
+#   Environment=OUTDIR=/mnt/tort-sdf/bench
+
+[Unit]
+Description=Parquet Writer Schema Comparison Benchmark
+After=network.target flashmq.service mosquitto.service
+Wants=flashmq.service mosquitto.service
+
+[Service]
+# Type=simple when LOOP=1 (runs forever); oneshot for a single run
+# Default: oneshot (single run). Set LOOP=1 for continuous operation.
+Type=simple
+User=phil
+
+# Auto-detect repo root from service file location
+# Works for both ~/data_server (.34) and ~/work/gen-ai/data_server (.46)
+ExecStart=/bin/bash -c '\
+  REPO=$(find /home/phil -maxdepth 4 -name "writer_compare_test.sh" \
+         -path "*/scripts/*" 2>/dev/null | head -1 | xargs dirname | xargs dirname); \
+  echo "repo=$REPO"; \
+  ARGS="--sweeps ${SWEEPS:-600} --site ${SITE:-SITE_A}"; \
+  [ -n "${OUTDIR:-}" ]   && ARGS="$ARGS --outdir $OUTDIR"; \
+  [ -n "${COV:-}" ]      && ARGS="$ARGS $COV"; \
+  [ "${LOOP:-0}" = "1" ] && ARGS="$ARGS --loop --interval ${INTERVAL:-30}"; \
+  exec bash "$REPO/scripts/writer_compare_test.sh" $ARGS'
+
+Environment=SWEEPS=600
+Environment=SITE=SITE_A
+Environment=COV=
+Environment=LOOP=0          # set to 1 for continuous runs
+Environment=INTERVAL=30     # seconds between runs (loop mode only)
+# Environment=OUTDIR=/mnt/tort-sdi/bench   # uncomment to override
+
+# single run ≈ 15min; loop runs indefinitely — no timeout needed
+TimeoutStartSec=infinity
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

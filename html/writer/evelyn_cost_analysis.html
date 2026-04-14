@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evelyn — Ingest Cost Reduction Analysis</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149; --orange:#e3b341;
+    --purple:#bc8cff; --code-bg:#21262d;
+    --green-bg:#0d4429; --yellow-bg:#2d2000; --red-bg:#3d0a0a; --blue-bg:#0c2d6b;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:20px; line-height:1.6; }
+  h1  { color:var(--accent); font-size:1.4rem; margin-bottom:4px; }
+  h2  { color:var(--orange); font-size:1rem; margin:28px 0 10px;
+        padding-bottom:5px; border-bottom:1px solid var(--border); }
+  h3  { color:var(--accent); font-size:.9rem; margin:16px 0 8px; }
+  .meta { color:var(--muted); font-size:.82rem; margin-bottom:24px; }
+  p   { font-size:.88rem; margin-bottom:10px; }
+  code { background:var(--code-bg); padding:1px 5px; border-radius:3px;
+         font-size:.85em; color:var(--accent); }
+
+  /* ── summary cards ── */
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:24px; }
+  .card  { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+           padding:14px; }
+  .card.green  { border-color:var(--green); background:var(--green-bg); }
+  .card.yellow { border-color:var(--yellow); background:var(--yellow-bg); }
+  .card.red    { border-color:var(--red); background:var(--red-bg); }
+  .card.blue   { border-color:var(--accent); background:var(--blue-bg); }
+  .card-label  { font-size:.72rem; color:var(--muted); text-transform:uppercase;
+                 letter-spacing:.05em; margin-bottom:4px; }
+  .card-value  { font-size:2rem; font-weight:700; line-height:1; margin-bottom:3px; }
+  .card-sub    { font-size:.76rem; color:var(--muted); }
+  .card.green  .card-value  { color:var(--green); }
+  .card.yellow .card-value  { color:var(--yellow); }
+  .card.red    .card-value  { color:var(--red); }
+  .card.blue   .card-value  { color:var(--accent); }
+
+  /* ── breakdown table ── */
+  .section { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+             padding:16px; margin-bottom:20px; }
+  table  { border-collapse:collapse; width:100%; font-size:.82rem; margin-top:10px; }
+  thead tr { background:var(--code-bg); }
+  th { padding:7px 12px; text-align:left; color:var(--muted); font-weight:600;
+       border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:6px 12px; border-bottom:1px solid #1e2530; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#1a2030; }
+  .num  { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
+  .pct  { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; font-weight:600; }
+  .good { color:var(--green); }
+  .warn { color:var(--yellow); }
+  .bad  { color:var(--red); }
+
+  /* ── scenario bar ── */
+  .scenarios { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:20px; }
+  .scenario  { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+               padding:14px; }
+  .scenario h3 { margin-top:0; }
+  .bar-wrap   { background:#1e2530; border-radius:4px; height:18px; margin:10px 0 4px; overflow:hidden; }
+  .bar-fill   { height:100%; border-radius:4px; display:flex; align-items:center;
+                padding:0 6px; font-size:.7rem; font-weight:700; color:#fff; white-space:nowrap; }
+  .bar-remain { background:var(--red); }
+  .bar-save   { background:var(--green); }
+  .scenario-stat { font-size:1.5rem; font-weight:700; }
+  .scenario-sub  { font-size:.76rem; color:var(--muted); margin-top:2px; }
+
+  /* ── projection table ── */
+  .proj-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+  .proj-card { background:var(--surface); border:1px solid var(--border);
+               border-radius:8px; padding:14px; }
+
+  /* ── notes ── */
+  .note { background:var(--code-bg); border-left:3px solid var(--accent);
+          padding:10px 14px; border-radius:0 6px 6px 0; margin:12px 0; font-size:.82rem; }
+  .warn-note { border-left-color:var(--yellow); }
+
+  /* ── code blocks ── */
+  pre.code-block {
+    background:var(--code-bg); border:1px solid var(--border); border-radius:6px;
+    padding:12px 16px; font-family:'Cascadia Code','Fira Mono',monospace;
+    font-size:.76rem; color:var(--accent); white-space:pre; overflow-x:auto;
+    margin:10px 0 14px; line-height:1.6;
+  }
+  ul { font-size:.85rem; padding-left:1.2em; line-height:2; margin-bottom:10px; }
+
+  /* light mode */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#fff; --surface:#f6f8fa; --border:#d0d7de; --text:#24292f;
+      --muted:#57606a; --accent:#0969da; --green:#1a7f37; --yellow:#9a6700;
+      --red:#cf222e; --orange:#bc4c00; --code-bg:#f6f8fa;
+      --green-bg:#dafbe1; --yellow-bg:#fff8c5; --red-bg:#ffebe9; --blue-bg:#ddf4ff;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>Evelyn BESS — Telegraf / InfluxDB2 Ingest Cost Reduction Analysis</h1>
+<p class="meta">
+  Source: <code>/home/phil/parquet/*.parquet</code> &nbsp;·&nbsp;
+  Site <code>0226571E</code> &nbsp;·&nbsp; Unit <code>0215F404</code> &nbsp;·&nbsp;
+  1 rack &nbsp;·&nbsp; 201-minute sample (2026-03-23) &nbsp;·&nbsp;
+  Generated 2026-03-24
+</p>
+
+<!-- ── Baseline ───────────────────────────────────────────────────────── -->
+<h2>Baseline — Current Ingest Rate</h2>
+<div class="cards">
+  <div class="card red">
+    <div class="card-label">Rows in 3-hour sample</div>
+    <div class="card-value">3.69M</div>
+    <div class="card-sub">3,694,546 total rows</div>
+  </div>
+  <div class="card red">
+    <div class="card-label">Write rate</div>
+    <div class="card-value">18,381</div>
+    <div class="card-sub">rows / minute (307 writes/sec)</div>
+  </div>
+  <div class="card red">
+    <div class="card-label">Projected annual (single unit)</div>
+    <div class="card-value">9.66B</div>
+    <div class="card-sub">rows/year extrapolated</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Signals</div>
+    <div class="card-value">630</div>
+    <div class="card-sub">across 6 measurement types</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Row composition</h3>
+  <table>
+    <thead><tr>
+      <th>Measurement</th><th>Total rows</th><th>Float</th><th>Int/Bool</th><th>String</th><th>Signals</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>site</td>  <td class="num">2,719,701</td><td class="num">2,434,352</td><td class="num">236,184</td><td class="num bad">49,165</td> <td class="num">139</td></tr>
+      <tr><td>pcs</td>   <td class="num">326,104</td>  <td class="num">162,469</td>  <td class="num">98,181</td> <td class="num bad">65,454</td> <td class="num">48</td></tr>
+      <tr><td>meter</td> <td class="num">216,097</td>  <td class="num">216,097</td>  <td class="num">—</td>      <td class="num">—</td>          <td class="num">27</td></tr>
+      <tr><td>rtac</td>  <td class="num">208,590</td>  <td class="num">208,590</td>  <td class="num">—</td>      <td class="num">—</td>          <td class="num">348</td></tr>
+      <tr><td>unit</td>  <td class="num">179,705</td>  <td class="num">70,605</td>   <td class="num">76,370</td> <td class="num bad">32,730</td> <td class="num">40</td></tr>
+      <tr><td>rack</td>  <td class="num">44,349</td>   <td class="num">33,440</td>   <td class="num">10,909</td> <td class="num">—</td>          <td class="num">22</td></tr>
+      <tr style="font-weight:600;background:var(--code-bg)">
+        <td>Total</td>
+        <td class="num">3,694,546</td><td class="num">3,125,553</td>
+        <td class="num">421,644</td><td class="num bad">147,349</td><td class="num">630+</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Filters ───────────────────────────────────────────────────────── -->
+<h2>Three Applicable Filters</h2>
+
+<div class="section">
+  <h3>Filter A — Drop string rows (4.0% of total)</h3>
+  <p>
+    147,349 rows carry string values (<code>FEMS_PCS_State</code>, <code>InvStatus</code>,
+    <code>Mode</code>, <code>Application</code>, <code>ChaSt</code> etc.).
+    These are logged as text enumerations but have <strong>no numeric time-series value</strong>
+    for analytics. They inflate write counts and storage with no query benefit
+    — state changes should be tracked via boolean/integer flags instead.
+  </p>
+  <table>
+    <thead><tr><th>Signal</th><th>Measurement</th><th class="num">Rows</th></tr></thead>
+    <tbody>
+      <tr><td>FEMS_PCS_State</td><td>pcs</td><td class="num">32,727</td></tr>
+      <tr><td>InvStatus</td><td>pcs</td><td class="num">32,727</td></tr>
+      <tr><td>FEMS_PCS_State</td><td>unit</td><td class="num">10,910</td></tr>
+      <tr><td>RunMode / InvStatus</td><td>unit</td><td class="num">21,820</td></tr>
+      <tr><td>Mode / LocRemCtl / Status / ChaSt / Application</td><td>site</td><td class="num">49,165</td></tr>
+      <tr style="font-weight:600"><td colspan="2">Total string rows</td><td class="num bad">147,349</td></tr>
+    </tbody>
+  </table>
+  <div class="note warn-note" style="margin-top:12px">
+    <strong>Implementation:</strong> Telegraf <code>fieldpass</code> or
+    <code>namepass</code> filter, or InfluxDB task that drops string fields on ingest.
+    No schema change required.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Filter B — Integer/boolean COV (change-on-value): 90% reduction target</h3>
+  <p>
+    Integer and boolean signals (status flags, mode codes, breaker states) are
+    published at the EMS poll rate even when the value has not changed.
+    These signals are effectively <strong>static for long periods</strong>:
+  </p>
+  <table>
+    <thead><tr>
+      <th>Measurement</th><th class="num">Int rows</th><th class="num">Redundant</th>
+      <th class="pct">% redundant</th><th class="num">Saved @ 90%</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>site</td>  <td class="num">236,184</td><td class="num bad">236,143</td><td class="pct bad">~100%</td><td class="num good">212,529</td></tr>
+      <tr><td>unit</td>  <td class="num">76,370</td> <td class="num bad">76,363</td> <td class="pct bad">~100%</td><td class="num good">68,733</td></tr>
+      <tr><td>pcs</td>   <td class="num">98,181</td> <td class="num">67,815</td>     <td class="pct warn">69.1%</td> <td class="num good">88,363</td></tr>
+      <tr><td>rack</td>  <td class="num">10,909</td> <td class="num bad">10,908</td> <td class="pct bad">~100%</td><td class="num good">9,818</td></tr>
+      <tr style="font-weight:600"><td>Total</td>
+        <td class="num">421,644</td><td class="num bad">391,229</td>
+        <td class="pct bad">92.8%</td><td class="num good">379,480</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note" style="margin-top:12px">
+    <strong>Note:</strong> site and unit integers are <em>nearly 100% redundant</em> —
+    they never change in this 3-hour window. Rack booleans (contactors, faults)
+    are similarly static. The PCS integers show more activity at 69%.
+    A 90% reduction target is conservative for site/unit/rack; aggressive for PCS.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Filter C — Float deadband (p95 Δ threshold per signal)</h3>
+  <p>
+    A deadband filter passes a new sample only when
+    <code>|value − last_sent| ≥ threshold</code>.
+    Using the <strong>95th-percentile sample-to-sample delta</strong> as the threshold
+    means only the top 5% of changes are transmitted — the rest are noise.
+    This is the most aggressive filter but also the most impactful.
+  </p>
+  <table>
+    <thead><tr>
+      <th>Measurement</th><th class="num">Float rows</th><th class="num">Eliminated</th>
+      <th class="pct">% eliminated</th><th class="num">Remaining</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>meter</td><td class="num">216,097</td><td class="num good">204,964</td><td class="pct good">94.8%</td><td class="num">11,133</td></tr>
+      <tr><td>pcs</td>  <td class="num">162,469</td><td class="num good">145,011</td><td class="pct good">89.3%</td><td class="num">17,458</td></tr>
+      <tr><td>unit</td> <td class="num">70,605</td> <td class="num good">63,605</td> <td class="pct good">90.1%</td><td class="num">7,000</td></tr>
+      <tr><td>rtac</td> <td class="num">208,590</td><td class="num good">154,773</td><td class="pct good">74.2%</td><td class="num">53,817</td></tr>
+      <tr><td>site</td> <td class="num">2,434,352</td><td class="num good">2,048,738</td><td class="pct good">84.2%</td><td class="num">385,614</td></tr>
+      <tr><td>rack</td> <td class="num">33,440</td> <td class="num">13,443</td>      <td class="pct warn">40.2%</td><td class="num">19,997</td></tr>
+      <tr style="font-weight:600"><td>Total floats</td>
+        <td class="num">3,125,553</td><td class="num good">2,630,534</td>
+        <td class="pct good">84.2%</td><td class="num">494,019</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note warn-note" style="margin-top:12px">
+    <strong>Rack caveat:</strong> The rack filter only achieves 40.2% because
+    <code>Max Cell Voltage</code> and <code>Min Cell Voltage</code> are
+    genuinely variable (active charge/discharge). Rack signals need tighter
+    per-signal threshold tuning rather than a single p95 cut.
+    <br><br>
+    <strong>Meter:</strong> 94.8% eliminated — meter signals change slowly.
+    <code>Hz</code> is 89.8% frozen. A 60-second aggregation window in Telegraf
+    would be more appropriate than 1-second polling.
+  </div>
+</div>
+
+<!-- ── Scenarios ─────────────────────────────────────────────────────── -->
+<h2>Reduction Scenarios</h2>
+<div class="scenarios">
+
+  <div class="scenario">
+    <h3 style="color:var(--yellow)">Conservative</h3>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px">
+      Filter A (strings) + Filter B (int COV 90%) only.<br>
+      No change to float ingest. Safe to deploy immediately.
+    </p>
+    <div class="scenario-stat" style="color:var(--yellow)">−26.8%</div>
+    <div class="scenario-sub">3.69M → 2.70M rows / 3h</div>
+    <div class="bar-wrap">
+      <div class="bar-fill bar-remain" style="width:73.2%">73.2% remains</div>
+    </div>
+    <table style="font-size:.78rem;margin-top:8px">
+      <tr><td>Drop strings</td>       <td class="num good">−147,349</td></tr>
+      <tr><td>Int COV 90%</td>        <td class="num good">−379,480</td></tr>
+      <tr style="font-weight:600"><td>Saved</td><td class="num good">−526,829</td></tr>
+      <tr><td>Remaining</td>          <td class="num">3,167,717</td></tr>
+    </table>
+  </div>
+
+  <div class="scenario">
+    <h3 style="color:var(--orange)">Moderate</h3>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px">
+      A + B + float stuck 90% (COV on floats too, no aggressive deadband).
+      Requires EMS-side change-on-value config or Telegraf dedup.
+    </p>
+    <div class="scenario-stat" style="color:var(--orange)">−40.6%</div>
+    <div class="scenario-sub">3.69M → 2.19M rows / 3h</div>
+    <div class="bar-wrap">
+      <div class="bar-fill bar-remain" style="width:59.4%">59.4% remains</div>
+    </div>
+    <table style="font-size:.78rem;margin-top:8px">
+      <tr><td>Drop strings</td>       <td class="num good">−147,349</td></tr>
+      <tr><td>Int COV 90%</td>        <td class="num good">−379,480</td></tr>
+      <tr><td>Float stuck 90%</td>    <td class="num good">−463,049</td></tr>
+      <tr style="font-weight:600"><td>Saved</td><td class="num good">−989,878</td></tr>
+      <tr><td>Remaining</td>          <td class="num">2,704,668</td></tr>
+    </table>
+  </div>
+
+  <div class="scenario">
+    <h3 style="color:var(--green)">Aggressive</h3>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px">
+      A + B + Filter C (p95 deadband on all float signals).
+      Requires per-signal deadband config at EMS or Telegraf aggregator.
+    </p>
+    <div class="scenario-stat" style="color:var(--green)">−85.5%</div>
+    <div class="scenario-sub">3.69M → 537K rows / 3h</div>
+    <div class="bar-wrap">
+      <div class="bar-fill bar-remain" style="width:14.5%">14.5%</div>
+    </div>
+    <table style="font-size:.78rem;margin-top:8px">
+      <tr><td>Drop strings</td>       <td class="num good">−147,349</td></tr>
+      <tr><td>Int COV 90%</td>        <td class="num good">−379,480</td></tr>
+      <tr><td>Float p95 deadband</td> <td class="num good">−2,630,534</td></tr>
+      <tr style="font-weight:600"><td>Saved</td><td class="num good">−3,157,363</td></tr>
+      <tr><td>Remaining</td>          <td class="num">537,183</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<!-- ── Cost projections ────────────────────────────────────────────────── -->
+<h2>Cost Projections</h2>
+<p>
+  Evelyn is a single-unit, single-rack site. Cost projections below are given
+  <strong>per-unit</strong> so you can multiply by fleet size.
+  InfluxDB Cloud pricing used: <strong>~$0.008/GB data-in + $0.002/GB-month storage</strong>
+  (approximate Serverless tier). Self-hosted costs scale with CPU/IOPS/disk.
+</p>
+
+<div class="proj-grid">
+  <div class="proj-card">
+    <h3>Write rate</h3>
+    <table>
+      <thead><tr><th>Scenario</th><th class="num">rows/min</th><th class="num">writes/sec</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td>    <td class="num bad">18,381</td> <td class="num bad">307</td></tr>
+        <tr><td>Conservative</td><td class="num warn">13,463</td><td class="num warn">224</td></tr>
+        <tr><td>Moderate</td>    <td class="num warn">10,914</td><td class="num warn">182</td></tr>
+        <tr><td>Aggressive</td>  <td class="num good">2,673</td> <td class="num good">45</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="proj-card">
+    <h3>Projected annual rows (single unit)</h3>
+    <table>
+      <thead><tr><th>Scenario</th><th class="num">rows/year</th><th class="num">vs baseline</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td>    <td class="num bad">9.66B</td>  <td class="num">—</td></tr>
+        <tr><td>Conservative</td><td class="num warn">7.07B</td> <td class="num good">−2.59B</td></tr>
+        <tr><td>Moderate</td>    <td class="num warn">5.74B</td> <td class="num good">−3.92B</td></tr>
+        <tr><td>Aggressive</td>  <td class="num good">1.40B</td> <td class="num good">−8.26B</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="proj-card">
+    <h3>InfluxDB Cloud data-in (est. ~60 bytes/point)</h3>
+    <table>
+      <thead><tr><th>Scenario</th><th class="num">GB/year/unit</th><th class="num">Est. cost/unit/yr</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td>    <td class="num bad">580 GB</td>  <td class="num bad">~$4.60</td></tr>
+        <tr><td>Conservative</td><td class="num warn">424 GB</td> <td class="num warn">~$3.39</td></tr>
+        <tr><td>Moderate</td>    <td class="num warn">344 GB</td> <td class="num warn">~$2.75</td></tr>
+        <tr><td>Aggressive</td>  <td class="num good">84 GB</td>  <td class="num good">~$0.67</td></tr>
+      </tbody>
+    </table>
+    <div class="note warn-note" style="margin-top:10px;font-size:.76rem">
+      Data-in cost alone is modest at per-unit scale.
+      <strong>The real savings are CPU/IOPS/storage at scale</strong>
+      — see fleet projection below.
+    </div>
+  </div>
+
+  <div class="proj-card">
+    <h3>Fleet projection (50 units, 10 racks/unit)</h3>
+    <p style="font-size:.78rem;color:var(--muted);margin-bottom:8px">
+      Scale factor: 50 units × 10 racks ≈ 100× more data than Evelyn
+    </p>
+    <table>
+      <thead><tr><th>Scenario</th><th class="num">TB/year</th><th class="num">Rows/year</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td>    <td class="num bad">58 TB</td>  <td class="num bad">966B</td></tr>
+        <tr><td>Conservative</td><td class="num warn">42 TB</td> <td class="num warn">707B</td></tr>
+        <tr><td>Moderate</td>    <td class="num warn">34 TB</td> <td class="num warn">574B</td></tr>
+        <tr><td>Aggressive</td>  <td class="num good">8.4 TB</td><td class="num good">140B</td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:10px;font-size:.76rem">
+      At 50-unit fleet scale: aggressive filter saves <strong>~49.6 TB/year</strong>
+      of storage and proportional CPU/IOPS. At InfluxDB Cloud storage rates
+      (~$0.002/GB-month), that's <strong>~$100/month</strong> in storage alone —
+      plus write bandwidth, query compute, and Telegraf server sizing.
+    </div>
+  </div>
+</div>
+
+<!-- ── Specific findings ──────────────────────────────────────────────── -->
+<h2>Highest-Impact Specific Findings</h2>
+<div class="section">
+  <table>
+    <thead><tr>
+      <th>Signal</th><th>Measurement</th><th class="num">Total rows</th>
+      <th class="num">Redundant</th><th class="pct">% wasted</th><th>Recommendation</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><code>HS-CONTROL-AGC</code></td><td>site</td>
+        <td class="num">271,967</td><td class="num bad">268,458</td>
+        <td class="pct bad">98.7%</td>
+        <td>Write only on change; this signal almost never changes</td>
+      </tr>
+      <tr>
+        <td><code>HS-CONTROL-P</code></td><td>site</td>
+        <td class="num">271,967</td><td class="num bad">145,286</td>
+        <td class="pct bad">53.4%</td>
+        <td>Deadband ≥ p95 delta; slow-moving setpoint</td>
+      </tr>
+      <tr>
+        <td>All site integers</td><td>site</td>
+        <td class="num">236,184</td><td class="num bad">236,143</td>
+        <td class="pct bad">~100%</td>
+        <td>COV — never changed in 3h window</td>
+      </tr>
+      <tr>
+        <td>All unit integers</td><td>unit</td>
+        <td class="num">76,370</td><td class="num bad">76,363</td>
+        <td class="pct bad">~100%</td>
+        <td>COV — never changed in 3h window</td>
+      </tr>
+      <tr>
+        <td><code>Hz</code></td><td>meter</td>
+        <td class="num">1,448</td><td class="num bad">1,301</td>
+        <td class="pct bad">89.8%</td>
+        <td>60s aggregation window; grid frequency barely moves</td>
+      </tr>
+      <tr>
+        <td><code>CMD_CmdBits / CMD_Enable</code></td><td>pcs</td>
+        <td class="num">537 each</td><td class="num bad">536 each</td>
+        <td class="pct bad">99.8%</td>
+        <td>COV — command bits almost never change</td>
+      </tr>
+      <tr>
+        <td>String enumerations</td><td>pcs/unit/site</td>
+        <td class="num">147,349</td><td class="num bad">147,349</td>
+        <td class="pct bad">100%</td>
+        <td>Drop entirely; replace with boolean/int flags</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Implementation ────────────────────────────────────────────────── -->
+<h2>Implementation Path</h2>
+<div class="section">
+  <h3>Phase 1 — Zero-risk (Conservative, −26.8%)</h3>
+  <p>Telegraf config changes only. No EMS changes. No data loss risk.</p>
+  <ul style="font-size:.85rem;padding-left:1.2em;line-height:2">
+    <li>Add <code>fieldexclude</code> in <code>[[inputs.mqtt_consumer]]</code> to drop
+        <code>FEMS_PCS_State</code>, <code>InvStatus</code>, <code>RunMode</code>,
+        <code>Mode</code>, <code>Application</code>, <code>ChaSt</code>, <code>LocRemCtl</code>,
+        <code>Status</code></li>
+    <li>Add <code>[[processors.dedup]]</code> with <code>dedup_interval = "10m"</code>
+        to suppress repeated integer/boolean values (COV approximation)</li>
+    <li>Redeploy Telegraf — no InfluxDB schema change needed</li>
+  </ul>
+
+  <h3 style="margin-top:16px">Phase 2 — Moderate (−40.6%): add float COV</h3>
+  <ul style="font-size:.85rem;padding-left:1.2em;line-height:2">
+    <li>Extend <code>[[processors.dedup]]</code> to also cover float fields with
+        <code>dedup_interval</code> of 60s for site/unit, 10s for pcs/rack</li>
+    <li>Or configure EMS change-on-value publishing at the source controller</li>
+  </ul>
+
+  <h3 style="margin-top:16px">Phase 3 — Aggressive (−85.5%): deadband per signal</h3>
+  <ul style="font-size:.85rem;padding-left:1.2em;line-height:2">
+    <li>Use <code>[[processors.starlark]]</code> or a custom Telegraf processor
+        with per-signal deadband thresholds derived from the p95 delta table
+        in the noise analysis report</li>
+    <li>Or configure deadbands at the EMS/BMS controller level (preferred —
+        reduces network traffic before Telegraf)</li>
+    <li>Use <code>[[aggregators.basicstats]]</code> with 60s windows for
+        meter/site signals that only need minute-level resolution</li>
+  </ul>
+
+  <div class="note warn-note" style="margin-top:14px">
+    <strong>Important:</strong> The p95 deadband filter loses transient events
+    (fault onsets, mode transitions) that may fall below the threshold.
+    Recommend keeping a separate <em>high-fidelity raw stream</em> to a short-retention
+    bucket (e.g. 24h) and writing the filtered stream to the long-retention bucket.
+    This preserves event detection while cutting long-term storage cost.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     METHODS APPENDIX
+     ══════════════════════════════════════════════════════════════════════ -->
+
+<!-- ── A. Extracting CSV from InfluxDB ─────────────────────────────────── -->
+<h2>Appendix A — Extracting CSV from InfluxDB2</h2>
+<div class="section">
+  <p>
+    InfluxDB2 exports data as <strong>annotated CSV</strong> — a superset of plain CSV
+    that prefixes each table block with three annotation rows (<code>#group</code>,
+    <code>#datatype</code>, <code>#default</code>) describing column types and grouping,
+    followed by a blank line and then the column header.  Multiple "tables" (one per
+    unique tag-set + field combination) are concatenated in the same file.
+  </p>
+
+  <h3>Method 1 — InfluxDB UI export</h3>
+  <p>
+    In the InfluxDB Data Explorer, build a Flux query, run it, then click
+    <strong>CSV</strong> in the download toolbar.  Suitable for ad-hoc exports up to a
+    few million rows.
+  </p>
+
+  <h3>Method 2 — Flux query via HTTP API (used by <code>influx_to_parquet.py</code>)</h3>
+  <pre class="code-block">POST /api/v2/query?org=&lt;org&gt;
+Authorization: Token &lt;token&gt;
+Content-Type: application/json
+Accept: application/csv
+
+{
+  "query": "from(bucket:\"battery-data\") |> range(start: -3h) |> filter(fn: (r) =&gt; r._measurement == \"site\")",
+  "type": "flux"
+}</pre>
+  <p>
+    The response is streamed annotated CSV.  <code>influx_to_parquet.py</code> uses
+    Python <code>requests</code> with <code>stream=True</code> and reads the response
+    line-by-line to avoid holding the entire payload in memory.
+  </p>
+
+  <h3>Method 3 — <code>influx</code> CLI</h3>
+  <pre class="code-block">influx query \
+  --org battery-org \
+  --token "$INFLUX_TOKEN" \
+  --raw \
+  'from(bucket:"battery-data") |> range(start:-3h) |> filter(fn:(r)=>r._measurement=="site")' \
+  &gt; site.csv</pre>
+
+  <h3>Method 4 — Flux <code>to()</code> for large exports (server-side)</h3>
+  <pre class="code-block">// Run as an InfluxDB task — writes directly to another bucket or CSV task result
+from(bucket: "battery-data")
+  |&gt; range(start: 2026-03-23T00:00:00Z, stop: 2026-03-24T00:00:00Z)
+  |&gt; filter(fn: (r) =&gt; r._measurement == "site")
+  |&gt; to(bucket: "export-bucket")</pre>
+
+  <h3>Annotated CSV structure</h3>
+  <pre class="code-block">#group,false,false,true,true,false,false,true,true,true,true,true
+#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,double,string,string,string,string,string
+#default,_result,,,,,,,,,,
+,result,table,_start,_stop,_time,_value,_field,_measurement,point_name,site_controller_id,topic
+,,0,2026-03-23T18:23:49Z,2026-03-23T21:23:49Z,2026-03-23T18:24:18Z,250000,float,site,AllowedMaxP,0226571E,ems/site/…
+,,0,…
+                    ← blank line separates table blocks →
+#group,false,false,true,…      ← next table block starts here</pre>
+
+  <p>Key columns in the EMS schema:</p>
+  <table>
+    <thead><tr><th>Column</th><th>Role in EMS data</th><th>Role in standard Telegraf data</th></tr></thead>
+    <tbody>
+      <tr><td><code>_time</code></td><td colspan="2">ISO 8601 timestamp (renamed → <code>ts</code>)</td></tr>
+      <tr><td><code>_measurement</code></td><td colspan="2">Measurement name: <code>site</code>, <code>unit</code>, <code>pcs</code>, <code>rack</code>, <code>meter</code>, <code>rtac</code></td></tr>
+      <tr><td><code>_field</code></td><td><strong>Dtype hint</strong>: <code>float</code>, <code>integer</code>, <code>boolean_integer</code>, <code>string</code></td><td><strong>Signal name</strong>: e.g. <code>voltage</code>, <code>current</code></td></tr>
+      <tr><td><code>_value</code></td><td colspan="2">The numeric or string value</td></tr>
+      <tr><td><code>point_name</code></td><td>Signal name: <code>AllowedMaxP</code>, <code>SOC</code>, …</td><td>Not present (signal name is in <code>_field</code>)</td></tr>
+      <tr><td><code>site_controller_id</code></td><td>Site ID hex: <code>0226571E</code></td><td>—</td></tr>
+      <tr><td><code>unit_controller_id</code></td><td>Unit ID hex: <code>0215F404</code></td><td>—</td></tr>
+      <tr><td><code>source_device_id</code></td><td>Device instance: <code>pcs_1</code>, <code>bms_1_rack_1</code></td><td>—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ── B. CSV → Parquet conversion ─────────────────────────────────────── -->
+<h2>Appendix B — CSV → Parquet Conversion</h2>
+<div class="section">
+  <p>
+    The <code>influx_to_parquet.py</code> script (and the standalone
+    <code>evelyn_to_parquet.py</code> batch converter) parse the annotated CSV into a
+    Pandas DataFrame and write Parquet using PyArrow with Snappy compression.
+  </p>
+
+  <h3>Parsing annotated CSV</h3>
+  <p>
+    Because each file contains multiple table blocks with repeated header rows, a
+    plain <code>pd.read_csv()</code> call fails.  The parser works as a state machine
+    reading one line at a time:
+  </p>
+  <pre class="code-block">for line in file:
+    if line.startswith('#'):   flush buffer; reset header    # annotation row
+    if line == '':             flush buffer; reset header    # block separator
+    if ',result,table' in line[:30]:
+        flush buffer; header = line                          # new column header
+    else:
+        buf.append(line)                                     # data row
+
+# flush() → pd.read_csv(StringIO(header + "\n" + "\n".join(buf)))</pre>
+  <p>
+    Each flushed chunk becomes a DataFrame; all chunks are concatenated at the end.
+    This handles arbitrarily many table blocks per file without loading the whole
+    file into memory at once.
+  </p>
+
+  <h3>Schema auto-detection (EMS vs standard)</h3>
+  <pre class="code-block">EMS_DTYPES = {'float', 'integer', 'boolean_integer', 'string'}
+unique_fields = set(df['_field'].unique())
+is_ems = unique_fields.issubset(EMS_DTYPES)
+
+if is_ems:
+    # _field is a dtype hint, not a signal name
+    df.rename({'_field': 'dtype'})
+    mask_int = df['dtype'].isin(['integer','boolean_integer'])
+    df['value_f'] = pd.to_numeric(df.loc[~mask_int, '_value'])
+    df['value_i'] = pd.to_numeric(df.loc[mask_int,  '_value']).astype('Int64')
+else:
+    # _field IS the signal name (standard Telegraf schema)
+    df.rename({'_field': 'point_name'})
+    df['value_f'] = pd.to_numeric(df['_value'])</pre>
+
+  <h3>Parquet output schema</h3>
+  <table>
+    <thead><tr><th>Column</th><th>Type</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>ts</code></td><td>TIMESTAMP (tz-aware)</td><td><code>_time</code></td><td>Parsed with <code>format='ISO8601'</code> to handle both <code>…Z</code> and <code>…+00:00</code></td></tr>
+      <tr><td><code>measurement</code></td><td>STRING</td><td><code>_measurement</code></td><td>site / unit / pcs / rack / meter / rtac</td></tr>
+      <tr><td><code>point_name</code></td><td>STRING</td><td><code>point_name</code> tag</td><td>Signal name (EMS schema)</td></tr>
+      <tr><td><code>dtype</code></td><td>STRING</td><td><code>_field</code></td><td>float / integer / boolean_integer / string</td></tr>
+      <tr><td><code>value_f</code></td><td>DOUBLE</td><td><code>_value</code></td><td>Populated for float rows; NULL for integer/string</td></tr>
+      <tr><td><code>value_i</code></td><td>INT64 (nullable)</td><td><code>_value</code></td><td>Populated for integer/boolean_integer rows; NULL otherwise</td></tr>
+      <tr><td>tag columns</td><td>STRING</td><td>tag columns</td><td><code>site_controller_id</code>, <code>unit_controller_id</code>, <code>source_device_id</code>, <code>topic</code>, …</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Compression results (Evelyn site)</h3>
+  <table>
+    <thead><tr>
+      <th>File</th><th class="num">CSV size</th><th class="num">Parquet size</th>
+      <th class="num">Rows</th><th class="pct">Ratio</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>site.csv</td>  <td class="num">500 MB</td><td class="num">32.3 MB</td><td class="num">2,719,701</td><td class="pct good">15.5×</td></tr>
+      <tr><td>pcs.csv</td>   <td class="num">69 MB</td> <td class="num">1.3 MB</td> <td class="num">326,104</td>  <td class="pct good">52.3×</td></tr>
+      <tr><td>meter.csv</td> <td class="num">41 MB</td> <td class="num">1.7 MB</td> <td class="num">216,097</td>  <td class="pct good">23.5×</td></tr>
+      <tr><td>rtac.csv</td>  <td class="num">43 MB</td> <td class="num">0.9 MB</td> <td class="num">208,590</td>  <td class="pct good">50.3×</td></tr>
+      <tr><td>unit.csv</td>  <td class="num">35 MB</td> <td class="num">0.7 MB</td> <td class="num">179,705</td>  <td class="pct good">48.7×</td></tr>
+      <tr><td>rack.csv</td>  <td class="num">10 MB</td> <td class="num">0.3 MB</td> <td class="num">44,349</td>   <td class="pct good">40.3×</td></tr>
+      <tr style="font-weight:600">
+        <td>Total</td><td class="num">698 MB</td><td class="num">37.2 MB</td>
+        <td class="num">3,694,546</td><td class="pct good">~18.8×</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top:10px">
+    The high ratios (15–52×) come from Parquet's columnar layout and Snappy compression
+    acting on repeated string values (<code>point_name</code>, <code>measurement</code>,
+    <code>site_controller_id</code>) that compress extremely well, and on the
+    dictionary-encoded numeric columns.  The low ratio for <code>site</code> (15.5×)
+    reflects its larger variety of float values that compress less than repeated strings.
+  </p>
+
+  <h3>Running the conversion</h3>
+  <pre class="code-block"># Full pipeline: query InfluxDB → parquet → noise report
+python3 scripts/influx_to_parquet.py \
+    --url    http://192.168.86.51:8086 \
+    --token  battery-token-secret \
+    --org    battery-org \
+    --bucket battery-data \
+    --start  -3h \
+    --out-dir /tmp/parquet \
+    --report  /tmp/noise_report.html
+
+# Skip InfluxDB fetch, re-run analysis on existing parquet
+python3 scripts/influx_to_parquet.py \
+    --bucket evelyn --skip-fetch \
+    --out-dir /home/phil/parquet \
+    --report  /tmp/noise_report.html
+
+# Restrict to specific measurements (avoids slow full-bucket scan)
+python3 scripts/influx_to_parquet.py \
+    ... --measurements site,unit,pcs,rack,meter,rtac
+
+# Batch-convert local CSV files (no InfluxDB connection needed)
+python3 scripts/evelyn_to_parquet.py   # hardcoded paths, edit INPUT_DIR / OUTPUT_DIR</pre>
+</div>
+
+<!-- ── C. Noise analysis SQL queries ───────────────────────────────────── -->
+<h2>Appendix C — Noise Analysis SQL Queries (DuckDB)</h2>
+<div class="section">
+  <p>
+    All five queries run against the Parquet glob using DuckDB's
+    <code>read_parquet('.../*.parquet', union_by_name=true)</code>.
+    The <code>union_by_name</code> flag is required because different measurement files
+    have different tag columns (e.g. <code>unit_controller_id</code> is present in
+    <code>pcs.parquet</code> but not <code>site.parquet</code>); missing columns are
+    filled with <code>NULL</code>.
+    All queries operate on <code>value_f</code> (float rows only) and group by
+    <code>measurement</code> + <code>point_name</code>.
+  </p>
+
+  <h3>Query 1 — Coefficient of Variation (CV)</h3>
+  <p><strong>What it measures:</strong>
+    CV = σ / |μ|.  A dimensionless ratio of how large the signal's typical fluctuation is
+    relative to its mean.  CV = 0.01 means typical noise is 1% of the signal value;
+    CV = 6 means the signal swings ±600% relative to its mean — usually because the
+    mean is near zero (e.g. current during standby) making the denominator tiny.
+    <strong>Use CV to rank signals by noisiness</strong> and identify which need
+    the most aggressive deadbanding.  Always check the <em>mean</em> column alongside
+    CV: a near-zero mean inflates CV artificially even for low-amplitude noise.
+  </p>
+  <pre class="code-block">SELECT measurement, point_name,
+       ROUND(AVG(value_f), 4)    AS mean,
+       ROUND(STDDEV(value_f), 4) AS stddev,
+       ROUND(STDDEV(value_f) / NULLIF(ABS(AVG(value_f)), 0), 6) AS cv
+FROM read_parquet('*.parquet', union_by_name=true)
+WHERE value_f IS NOT NULL
+GROUP BY measurement, point_name
+HAVING STDDEV(value_f) &gt; 0        -- exclude perfectly static signals
+ORDER BY cv DESC
+LIMIT 40;</pre>
+  <p><strong>Evelyn findings:</strong>
+    Top signals were <code>SysCurrent</code> (CV=6.7, mean=−63 A — near-zero standby current),
+    <code>PCS_P--Frequency Response</code> (CV=5.6, mean=110 kW), and RTAC meter watt signals
+    (CV=4–5, sign-alternating power flow).  These are all legitimately noisy signals rather
+    than sensor faults.
+  </p>
+
+  <h3>Query 2 — Delta Percentiles</h3>
+  <p><strong>What it measures:</strong>
+    For each signal, computes the absolute sample-to-sample change (Δ) using the SQL
+    window function <code>LAG()</code>, then calculates the 50th, 95th, and 99th percentile
+    of those deltas.  <strong>p95 is the recommended deadband threshold</strong>: setting the
+    deadband to p95 means 95% of updates will be suppressed (only the top 5% of
+    changes get through).  The p99/p95 ratio reveals "spikiness" — a ratio &gt; 5
+    means there are rare very large jumps that a deadband should still pass.
+    <code>LAG()</code> is a window function that returns the previous row's value in the
+    partition ordered by timestamp, giving the most recent prior reading per signal.
+  </p>
+  <pre class="code-block">WITH deltas AS (
+  SELECT measurement, point_name,
+         ABS(value_f - LAG(value_f) OVER
+           (PARTITION BY measurement, point_name ORDER BY ts)) AS delta
+  FROM read_parquet('*.parquet', union_by_name=true)
+  WHERE value_f IS NOT NULL
+)
+SELECT measurement, point_name,
+       ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY delta), 4) AS p50,
+       ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY delta), 4) AS p95,
+       ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY delta), 4) AS p99,
+       ROUND(MAX(delta), 4) AS max_delta,
+       COUNT(*) AS samples
+FROM deltas
+WHERE delta IS NOT NULL AND delta &gt; 0   -- exclude zero-delta (stuck) rows
+GROUP BY measurement, point_name
+ORDER BY p95 DESC
+LIMIT 40;</pre>
+  <p><strong>How to use the results:</strong>
+    For a signal with p95=12.4 kW, configure a deadband of 12.4 kW in Telegraf or the EMS.
+    That signal will only publish when power changes by more than 12.4 kW, suppressing 95%
+    of updates.  The p50 column tells you the <em>typical</em> change — if p50 ≈ 0,
+    the signal is mostly static with occasional large jumps.
+  </p>
+
+  <h3>Query 3 — Frozen / Stuck Sensor Detection</h3>
+  <p><strong>What it measures:</strong>
+    Uses the "row-number gap" trick to identify consecutive runs of identical values.
+    The idea: if you number all rows globally and also number rows within each
+    (signal, value) group, the difference between those two row numbers is constant
+    within a consecutive run of the same value — so <code>GROUP BY</code> on that
+    difference collapses each run to a single group whose <code>COUNT(*)</code> is
+    the run length.  Runs longer than 20 are reported.
+    <strong>Use this to detect sensors that have stopped updating</strong> (stuck at
+    a constant value), or to identify signals where an upstream deadband is already
+    applied (many runs of exactly the same value).
+  </p>
+  <pre class="code-block">WITH runs AS (
+  SELECT measurement, point_name, value_f,
+         -- global row number within signal
+         ROW_NUMBER() OVER (PARTITION BY measurement, point_name ORDER BY ts)
+         -- row number within (signal, value) group
+       - ROW_NUMBER() OVER (PARTITION BY measurement, point_name, value_f ORDER BY ts)
+         AS grp      -- constant within each consecutive run of the same value
+  FROM read_parquet('*.parquet', union_by_name=true)
+  WHERE value_f IS NOT NULL
+)
+SELECT measurement, point_name,
+       value_f AS stuck_value,
+       COUNT(*) AS consecutive_count
+FROM runs
+GROUP BY measurement, point_name, value_f, grp
+HAVING COUNT(*) &gt; 20       -- only report runs longer than 20
+ORDER BY consecutive_count DESC
+LIMIT 40;</pre>
+  <p><strong>Evelyn findings:</strong>
+    <code>HS-CONTROL-AGC</code> had 268,458 consecutive identical readings (98.7% of its
+    3h history at the same value).  All site and unit integer signals were effectively
+    static — never changing across the entire 3-hour window.  These are prime COV
+    (change-on-value) candidates.
+  </p>
+
+  <h3>Query 4 — Z-score Outlier Scan</h3>
+  <p><strong>What it measures:</strong>
+    For each signal, computes the population mean (μ) and standard deviation (σ) in a
+    CTE, then joins back to the raw data to compute a Z-score for every reading:
+    Z = |value − μ| / σ.  Readings with Z &gt; 3 are more than 3 standard deviations
+    from the mean — statistically rare (&lt;0.3% of a normal distribution).
+    <strong>High Z-score readings are candidates for investigation</strong>: they may
+    be sensor glitches, mode transitions (e.g. charge↔discharge), control commands,
+    or genuine physical events.  Unlike the CV query which is per-signal, the Z-score
+    query finds individual <em>timestamps</em> when a reading was anomalous.
+  </p>
+  <pre class="code-block">WITH stats AS (
+  SELECT measurement, point_name,
+         AVG(value_f) AS mu, STDDEV(value_f) AS sigma
+  FROM read_parquet('*.parquet', union_by_name=true)
+  WHERE value_f IS NOT NULL
+  GROUP BY measurement, point_name
+  HAVING STDDEV(value_f) &gt; 0
+),
+scored AS (
+  SELECT d.measurement, d.point_name,
+         ROUND(d.value_f, 4) AS value,
+         strftime(d.ts, '%Y-%m-%dT%H:%M:%SZ') AS time,
+         ROUND(ABS(d.value_f - s.mu) / NULLIF(s.sigma, 0), 2) AS z_score
+  FROM read_parquet('*.parquet', union_by_name=true) d
+  JOIN stats s USING (measurement, point_name)
+  WHERE d.value_f IS NOT NULL
+)
+SELECT * FROM scored
+WHERE z_score &gt; 3
+ORDER BY z_score DESC
+LIMIT 40;</pre>
+  <p><strong>When Z-scores are misleading:</strong>
+    If a signal has a bimodal distribution (e.g. it runs at −100 kW half the time and
+    +100 kW the other half), the mean μ ≈ 0 and nearly all readings will show high
+    Z-scores.  Use the CV and delta queries together to distinguish genuine outliers
+    from bimodal or highly variable signals.
+  </p>
+
+  <h3>Query 5 — Physics Consistency Check</h3>
+  <p><strong>What it measures:</strong>
+    Joins voltage readings and SOC readings that are within 5 seconds of each other,
+    then tests a simple linear physics model: <strong>V ≈ V₀ + k × SOC</strong>.
+    The slope <em>k</em> and intercept <em>V₀</em> are estimated from the data's own
+    means (not hardcoded), making the query portable across chemistries and pack sizes.
+    The <strong>residual</strong> = measured voltage − model prediction.
+    Large residuals indicate: (a) the linear model is too simple for this chemistry,
+    (b) the voltage or SOC sensor is miscalibrated, or (c) there is a significant
+    temperature or rate effect not captured by the model.
+  </p>
+  <pre class="code-block">WITH params AS (
+  -- estimate V₀ and k from the data (intercept = v_mean - 0.5*soc_mean)
+  SELECT
+    AVG(CASE WHEN point_name IN ('RackVoltage','SysVoltage') THEN value_f END) AS v_mean,
+    AVG(CASE WHEN point_name IN ('RackSOC','SOC')            THEN value_f END) AS soc_mean
+  FROM read_parquet('*.parquet', union_by_name=true)
+  WHERE value_f IS NOT NULL
+),
+volt AS (
+  SELECT measurement, ts, value_f AS voltage
+  FROM read_parquet('*.parquet', union_by_name=true)
+  WHERE point_name IN ('RackVoltage','SysVoltage') AND value_f IS NOT NULL
+),
+soc AS (
+  SELECT measurement, ts, value_f AS soc_pct
+  FROM read_parquet('*.parquet', union_by_name=true)
+  WHERE point_name IN ('RackSOC','SOC') AND value_f IS NOT NULL
+)
+SELECT v.measurement AS volt_src, s.measurement AS soc_src,
+       strftime(v.ts, '%Y-%m-%dT%H:%M:%SZ') AS time,
+       ROUND(v.voltage, 2) AS voltage, ROUND(s.soc_pct, 2) AS soc,
+       -- residual: measured V minus model prediction
+       ROUND(v.voltage - (p.v_mean - 0.5*p.soc_mean + 0.5*s.soc_pct), 2) AS residual
+FROM volt v
+JOIN soc s     ON ABS(epoch(v.ts) - epoch(s.ts)) &lt; 5   -- within 5 seconds
+CROSS JOIN params p
+WHERE p.v_mean IS NOT NULL
+ORDER BY ABS(residual) DESC
+LIMIT 40;</pre>
+  <p><strong>Evelyn findings:</strong>
+    All residuals were negative (mean ≈ −47 V), meaning the model consistently
+    over-predicts voltage.  The residual range was −55 V to −17 V — the 38 V spread
+    suggests a SOC-dependent non-linearity at the extremes of the charge curve
+    (common in LFP chemistry).  The calibrated model for this site is approximately
+    <code>V ≈ 1098 + 0.5 × SOC</code> rather than the data-mean estimate of
+    <code>V ≈ 1145 + 0.5 × SOC</code>.  A physicist would fit a higher-order polynomial
+    (or use a lookup table) rather than a linear model for production use.
+  </p>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,40 @@
+# Subscriber API — fractal-phil (192.168.86.51) production config
+#
+# Hot:  InfluxDB2 :8086  — last 90 days live data
+# Cold: DuckDB local     — parquet archive on /srv/data/parquet-aws-sim/batteries
+# Live: FlashMQ :1884    — MQTT topic unit/#
+
+server:
+  host:      "0.0.0.0"
+  ws_port:   8767
+  http_port: 8768
+
+router:
+  hot_window_seconds: 600   # 10 min — only InfluxDB2 for data not yet in parquet
+  hot_backend:  "influxdb2"
+  cold_backend: "duckdb"
+  # hot_window_days: 90     # InfluxDB2 *retention* stays at 90d; not the routing window
+
+influxdb2:
+  url:         "http://localhost:8086"
+  token:       "battery-token-secret"
+  org:         "battery-org"
+  bucket:      "battery-data"
+  measurement: "battery_cell"
+  site_tag:         "site_id"   # InfluxDB tag that maps to 'site' API param
+  site_tag_prefix:  "site="    # tag stores "site=0"; API receives "0"
+  # instance_tag:        "rack_id"
+  # instance_tag_prefix: "rack="
+
+s3:
+  # Existing parquet files use project=0/site=X layout — path as-is on local disk
+  local_path: "/srv/data/parquet-aws-sim/batteries/project=0"
+  region:     "us-east-1"
+  # Future archive files will land at:
+  #   /srv/data/parquet-archive/{site}/{instance}/{yyyy}/{mm}/{dd}/
+
+live:
+  backend: "mqtt"
+  mqtt:
+    url:    "tcp://localhost:1884"
+    topics: ["unit/#"]

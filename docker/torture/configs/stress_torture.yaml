@@ -1,0 +1,15 @@
+mqtt:
+  host: broker
+  port: 1883
+  qos: 0
+  client_id: stress-torture
+
+topology:
+  sites: 2
+  racks: 12
+  modules: 8
+  cells: 52
+  mode: per_cell_item
+
+rate:
+  out_packet_guard: 20000

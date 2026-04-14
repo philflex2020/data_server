@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modbus Proxy Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #333;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #00d4ff;
+            font-size: 1.8rem;
+        }
+        
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .status-connected {
+            background: #00c853;
+            color: #fff;
+        }
+        
+        .status-disconnected {
+            background: #ff5252;
+            color: #fff;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .card {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card h3 {
+            color: #00d4ff;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #222;
+        }
+        
+        .metric:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            color: #888;
+        }
+        
+        .metric-value {
+            font-weight: bold;
+            color: #fff;
+        }
+        
+        .metric-value.highlight {
+            color: #00d4ff;
+            font-size: 1.2rem;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        
+        th {
+            background: #0f3460;
+            color: #00d4ff;
+            font-weight: 600;
+        }
+        
+        tr:hover {
+            background: #1f4287;
+        }
+        
+        .success {
+            color: #00c853;
+        }
+        
+        .error {
+            color: #ff5252;
+        }
+        
+        .cache-miss {
+            color: #ffc107;
+        }
+        
+        .cache-hit {
+            color: #00c853;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #333;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            color: #fff;
+        }
+        
+        .tab.active {
+            color: #00d4ff;
+            border-bottom: 2px solid #00d4ff;
+            margin-bottom: -2px;
+        }
+        
+        .tab-content {
+            display: none;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .chart-container {
+            height: 200px;
+            background: #0f3460;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 5px;
+            padding: 10px;
+        }
+        
+        .bar {
+            flex: 1;
+            background: linear-gradient(to top, #00d4ff, #00c853);
+            border-radius: 4px 4px 0 0;
+            min-width: 30px;
+            position: relative;
+            transition: height 0.3s;
+        }
+        
+        .bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            color: #888;
+        }
+        
+        .bar-value {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            color: #fff;
+        }
+        
+        .refresh-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #00c853;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .timestamp {
+            color: #666;
+            font-size: 0.8rem;
+        }
+        
+        #request-log {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .file-record-badge {
+            background: #e040fb;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        /* New styles for enhanced file records view */
+        .monospace {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.8rem;
+        }
+        
+        .data-preview {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #aaa;
+            cursor: pointer;
+        }
+        
+        .data-preview:hover {
+            color: #00d4ff;
+        }
+        
+        .age-fresh {
+            background: rgba(0, 200, 83, 0.3) !important;
+        }
+        
+        .age-recent {
+            background: rgba(255, 193, 7, 0.2) !important;
+        }
+        
+        .age-stale {
+            background: rgba(100, 100, 100, 0.2) !important;
+        }
+        
+        .expand-btn {
+            background: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            margin-right: 5px;
+        }
+        
+        .expand-btn:hover {
+            background: #00a8cc;
+        }
+        
+        .copy-btn {
+            background: #333;
+            color: #00d4ff;
+            border: 1px solid #00d4ff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+        
+        .copy-btn:hover {
+            background: #00d4ff;
+            color: #1a1a2e;
+        }
+        
+        .copy-btn.copied {
+            background: #00c853;
+            border-color: #00c853;
+            color: #fff;
+        }
+        
+        .data-panel {
+            display: none;
+            background: #0f3460;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #00d4ff;
+        }
+        
+        .data-panel.expanded {
+            display: block;
+        }
+        
+        .data-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .data-tab {
+            padding: 8px 16px;
+            background: #333;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        
+        .data-tab.active {
+            background: #00d4ff;
+            color: #1a1a2e;
+        }
+        
+        .data-view {
+            display: none;
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .data-view.active {
+            display: block;
+        }
+        
+        .hex-dump {
+            white-space: pre;
+            line-height: 1.8;
+        }
+        
+        .hex-dump .offset {
+            color: #888;
+        }
+        
+        .hex-dump .bytes {
+            color: #00d4ff;
+        }
+        
+        .integers-view {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+        }
+        
+        .int-item {
+            background: #16213e;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        
+        .int-index {
+            color: #888;
+            margin-right: 5px;
+        }
+        
+        .int-value {
+            color: #00c853;
+        }
+        
+        .filter-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        
+        .filter-group input, .filter-group select {
+            background: #0f3460;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            width: 100px;
+        }
+        
+        .filter-group input:focus, .filter-group select:focus {
+            border-color: #00d4ff;
+            outline: none;
+        }
+        
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .toggle {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: #333;
+            border-radius: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .toggle.active {
+            background: #00c853;
+        }
+        
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .toggle.active::after {
+            left: 27px;
+        }
+        
+        .live-indicator {
+            width: 8px;
+            height: 8px;
+            background: #00c853;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+            margin-left: 5px;
+        }
+        
+        .file-record-row {
+            cursor: pointer;
+        }
+        
+        .file-record-row td {
+            vertical-align: top;
+        }
+        
+        .tooltip {
+            position: relative;
+        }
+        
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        
+        .tooltip:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+        }
+        
+        .data-summary {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+        
+        .data-summary span {
+            color: #888;
+        }
+        
+        .data-summary strong {
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔌 Modbus Proxy Monitor <span class="refresh-indicator"></span></h1>
+            <div>
+                <span id="remote-status" class="status-badge status-disconnected">Remote: Disconnected</span>
+                <span id="current-time" class="timestamp" style="margin-left: 15px;"></span>
+            </div>
+        </header>
+        
+        <!-- Section 1: System Status -->
+        <div class="grid">
+            <div class="card">
+                <h3>📊 System Status</h3>
+                <div class="metric">
+                    <span class="metric-label">Uptime</span>
+                    <span class="metric-value" id="uptime">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Active Clients</span>
+                    <span class="metric-value" id="active-clients">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Remote Gateway</span>
+                    <span class="metric-value" id="remote-connected">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Sync Queue</span>
+                    <span class="metric-value" id="sync-queue">0</span>
+                </div>
+            </div>
+            
+            <!-- Section 2: Real-Time Metrics -->
+            <div class="card">
+                <h3>⚡ Real-Time Metrics</h3>
+                <div class="metric">
+                    <span class="metric-label">Requests/Second</span>
+                    <span class="metric-value highlight" id="rps">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Response Time</span>
+                    <span class="metric-value highlight" id="avg-response">0 ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total Requests</span>
+                    <span class="metric-value" id="total-requests">0</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>💾 Cache Statistics</h3>
+                <div class="metric">
+                    <span class="metric-label">Register Cache Hit Rate</span>
+                    <span class="metric-value highlight" id="hit-rate">0%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Holding Registers</span>
+                    <span class="metric-value" id="holding-count">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Input Registers</span>
+                    <span class="metric-value" id="input-count">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Coils</span>
+                    <span class="metric-value" id="coils-count">0</span>
+                </div>
+            </div>
+            
+            <!-- File Record Cache Stats -->
+            <div class="card">
+                <h3>📁 File Record Cache</h3>
+                <div class="metric">
+                    <span class="metric-label">File Record Hit Rate</span>
+                    <span class="metric-value highlight" id="file-record-hit-rate">0%</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cached Records</span>
+                    <span class="metric-value" id="file-record-count">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cache Hits</span>
+                    <span class="metric-value success" id="file-record-hits">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Cache Misses</span>
+                    <span class="metric-value cache-miss" id="file-record-misses">0</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 5: Function Code Statistics -->
+        <div class="grid">
+            <div class="card">
+                <h3>📈 Function Code Distribution</h3>
+                <div class="bar-chart" id="fc-chart"></div>
+            </div>
+            
+            <div class="card">
+                <h3>📋 Function Code Counts</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Function</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fc-table"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Section 3: Request Log Table -->
+        <div class="card full-width">
+            <h3>📝 Request Log (Last 100)</h3>
+            <div id="request-log">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Function</th>
+                            <th>Address/File</th>
+                            <th>Count/Record</th>
+                            <th>Data Preview</th>
+                            <th>Response (ms)</th>
+                            <th>Cache</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="request-table"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Section 4: Cache Contents -->
+        <div class="card full-width">
+            <h3>🗄️ Cache Contents</h3>
+            <div class="tabs">
+                <button class="tab active" onclick="showCacheTab('holding')">Holding Registers</button>
+                <button class="tab" onclick="showCacheTab('input')">Input Registers</button>
+                <button class="tab" onclick="showCacheTab('coils')">Coils</button>
+                <button class="tab" onclick="showCacheTab('discrete')">Discrete Inputs</button>
+                <button class="tab" onclick="showCacheTab('file-records')">📁 File Records</button>
+            </div>
+            <div id="cache-holding" class="tab-content active">
+                <table>
+                    <thead>
+                        <tr><th>Address</th><th>Value</th><th>Last Updated</th></tr>
+                    </thead>
+                    <tbody id="cache-holding-table"></tbody>
+                </table>
+            </div>
+            <div id="cache-input" class="tab-content">
+                <table>
+                    <thead>
+                        <tr><th>Address</th><th>Value</th><th>Last Updated</th></tr>
+                    </thead>
+                    <tbody id="cache-input-table"></tbody>
+                </table>
+            </div>
+            <div id="cache-coils" class="tab-content">
+                <table>
+                    <thead>
+                        <tr><th>Address</th><th>Value</th><th>Last Updated</th></tr>
+                    </thead>
+                    <tbody id="cache-coils-table"></tbody>
+                </table>
+            </div>
+            <div id="cache-discrete" class="tab-content">
+                <table>
+                    <thead>
+                        <tr><th>Address</th><th>Value</th><th>Last Updated</th></tr>
+                    </thead>
+                    <tbody id="cache-discrete-table"></tbody>
+                </table>
+            </div>
+            <div id="cache-file-records" class="tab-content">
+                <!-- Filter controls for file records -->
+                <div class="filter-controls">
+                    <div class="filter-group">
+                        <label>File #:</label>
+                        <input type="number" id="filter-file" placeholder="All" min="1">
+                    </div>
+                    <div class="filter-group">
+                        <label>Record #:</label>
+                        <input type="number" id="filter-record" placeholder="All" min="0">
+                    </div>
+                    <div class="filter-group">
+                        <label>Max Age (s):</label>
+                        <input type="number" id="filter-age" placeholder="∞" min="1">
+                    </div>
+                    <div class="toggle-container">
+                        <label>Live View:</label>
+                        <div class="toggle" id="live-view-toggle" onclick="toggleLiveView()"></div>
+                        <div id="live-indicator" class="live-indicator" style="display: none;"></div>
+                    </div>
+                    <button class="copy-btn" onclick="clearFilters()">Clear Filters</button>
+                </div>
+                
+                <div class="data-summary">
+                    <span>Showing: <strong id="showing-count">0</strong> records</span>
+                    <span>Total: <strong id="total-file-records">0</strong></span>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="tooltip" data-tooltip="File number in the device">File #</th>
+                            <th class="tooltip" data-tooltip="Record number within the file">Record #</th>
+                            <th class="tooltip" data-tooltip="Number of data bytes">Length</th>
+                            <th class="tooltip" data-tooltip="When this data was last updated">Last Updated</th>
+                            <th class="tooltip" data-tooltip="Time since last update">Age</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cache-file-records-table"></tbody>
+                </table>
+                
+                <!-- Expanded data panels will be inserted here -->
+                <div id="file-record-panels"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Update interval (milliseconds)
+        const UPDATE_INTERVAL = 2000;
+        
+        // State
+        let fileRecordsData = [];
+        let expandedRecords = new Set();
+        let liveViewEnabled = false;
+        
+        // Fetch and update status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update system status
+                document.getElementById('uptime').textContent = formatUptime(data.uptime_seconds);
+                document.getElementById('active-clients').textContent = data.active_clients;
+                document.getElementById('sync-queue').textContent = data.sync_queue_size;
+                document.getElementById('current-time').textContent = data.current_time;
+                
+                // Update remote status
+                const remoteStatus = document.getElementById('remote-status');
+                const remoteConnected = document.getElementById('remote-connected');
+                if (data.remote_connected) {
+                    remoteStatus.textContent = 'Remote: Connected';
+                    remoteStatus.className = 'status-badge status-connected';
+                    remoteConnected.textContent = 'Connected';
+                    remoteConnected.className = 'metric-value success';
+                } else {
+                    remoteStatus.textContent = 'Remote: Disconnected';
+                    remoteStatus.className = 'status-badge status-disconnected';
+                    remoteConnected.textContent = 'Disconnected';
+                    remoteConnected.className = 'metric-value error';
+                }
+                
+                // Update cache stats
+                if (data.cache_stats) {
+                    document.getElementById('hit-rate').textContent = 
+                        (data.cache_stats.hit_rate * 100).toFixed(1) + '%';
+                    document.getElementById('holding-count').textContent = data.cache_stats.holding_count;
+                    document.getElementById('input-count').textContent = data.cache_stats.input_count;
+                    document.getElementById('coils-count').textContent = data.cache_stats.coils_count;
+                    
+                    // File record stats
+                    document.getElementById('file-record-count').textContent = data.cache_stats.file_record_count || 0;
+                    document.getElementById('file-record-hits').textContent = data.cache_stats.file_record_hits || 0;
+                    document.getElementById('file-record-misses').textContent = data.cache_stats.file_record_misses || 0;
+                    document.getElementById('file-record-hit-rate').textContent = 
+                        ((data.cache_stats.file_record_hit_rate || 0) * 100).toFixed(1) + '%';
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+        
+        // Fetch and update metrics
+        async function updateMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+                
+                document.getElementById('rps').textContent = data.requests_per_second.toFixed(1);
+                document.getElementById('avg-response').textContent = data.avg_response_time_ms.toFixed(2) + ' ms';
+                document.getElementById('total-requests').textContent = data.total_requests;
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+            }
+        }
+        
+        // Fetch and update request log
+        async function updateRequests() {
+            try {
+                const response = await fetch('/api/requests');
+                const data = await response.json();
+                
+                const tbody = document.getElementById('request-table');
+                tbody.innerHTML = data.reverse().map(req => {
+                    // Determine if this is a file record operation
+                    const isFileRecord = req.function_code === 20 || req.function_code === 21;
+                    const addressCol = isFileRecord 
+                        ? `<span class="file-record-badge">File ${req.file_number}</span>`
+                        : req.address;
+                    const countCol = isFileRecord
+                        ? `Record ${req.record_number}`
+                        : req.count_or_value;
+                    
+                    // Data preview for file records
+                    let dataPreview = '-';
+                    if (isFileRecord && req.data_preview) {
+                        dataPreview = `<span class="data-preview monospace" title="${req.data_preview}">${req.data_preview.substring(0, 24)}${req.data_preview.length > 24 ? '...' : ''}</span>`;
+                    }
+                    
+                    return `
+                        <tr>
+                            <td>${req.datetime}</td>
+                            <td>${req.function_name}</td>
+                            <td>${addressCol}</td>
+                            <td>${countCol}</td>
+                            <td>${dataPreview}</td>
+                            <td>${req.response_time_ms}</td>
+                            <td class="${req.cache_hit ? 'cache-hit' : 'cache-miss'}">
+                                ${req.cache_hit ? '✓ Hit' : '✗ Miss'}
+                            </td>
+                            <td class="${req.success ? 'success' : 'error'}">
+                                ${req.success ? '✓ OK' : '✗ ' + req.error_msg}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error fetching requests:', error);
+            }
+        }
+        
+        // Fetch and update function code stats
+        async function updateStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                // Update table
+                const tbody = document.getElementById('fc-table');
+                tbody.innerHTML = data.function_codes.map(fc => `
+                    <tr>
+                        <td>${fc.code}</td>
+                        <td>${fc.name}</td>
+                        <td>${fc.count}</td>
+                    </tr>
+                `).join('');
+                
+                // Update chart
+                const chart = document.getElementById('fc-chart');
+                const maxCount = Math.max(...data.function_codes.map(fc => fc.count), 1);
+                chart.innerHTML = data.function_codes.map(fc => `
+                    <div class="bar" style="height: ${(fc.count / maxCount * 100)}%">
+                        <span class="bar-value">${fc.count}</span>
+                        <span class="bar-label">FC${fc.code}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+        
+        // Fetch and update cache contents
+        async function updateCache() {
+            try {
+                const response = await fetch('/api/cache');
+                const data = await response.json();
+                
+                updateCacheTable('cache-holding-table', data.holding_registers);
+                updateCacheTable('cache-input-table', data.input_registers);
+                updateCacheTable('cache-coils-table', data.coils);
+                updateCacheTable('cache-discrete-table', data.discrete_inputs);
+            } catch (error) {
+                console.error('Error fetching cache:', error);
+            }
+        }
+        
+        // Fetch and update file records
+        async function updateFileRecords() {
+            try {
+                const response = await fetch('/api/file_records');
+                const data = await response.json();
+                
+                fileRecordsData = data.file_records || [];
+                document.getElementById('total-file-records').textContent = data.total_count || 0;
+                
+                renderFileRecordsTable();
+                
+                // Live view: auto-expand most recently updated
+                if (liveViewEnabled && fileRecordsData.length > 0) {
+                    const mostRecent = fileRecordsData[0];
+                    const key = `${mostRecent.file_number}-${mostRecent.record_number}`;
+                    expandedRecords.clear();
+                    expandedRecords.add(key);
+                    renderFileRecordsTable();
+                }
+            } catch (error) {
+                console.error('Error fetching file records:', error);
+            }
+        }
+        
+        function renderFileRecordsTable() {
+            const tbody = document.getElementById('cache-file-records-table');
+            const panelsContainer = document.getElementById('file-record-panels');
+            
+            // Get filter values
+            const filterFile = document.getElementById('filter-file').value;
+            const filterRecord = document.getElementById('filter-record').value;
+            const filterAge = document.getElementById('filter-age').value;
+            
+            // Filter records
+            let filteredRecords = fileRecordsData.filter(record => {
+                if (filterFile && record.file_number != filterFile) return false;
+                if (filterRecord && record.record_number != filterRecord) return false;
+                if (filterAge && record.age_seconds > parseFloat(filterAge)) return false;
+                return true;
+            });
+            
+            document.getElementById('showing-count').textContent = filteredRecords.length;
+            
+            if (filteredRecords.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="no-data">No file records match the filters</td></tr>';
+                panelsContainer.innerHTML = '';
+                return;
+            }
+            
+            // Render table rows
+            tbody.innerHTML = filteredRecords.map(record => {
+                const key = `${record.file_number}-${record.record_number}`;
+                const isExpanded = expandedRecords.has(key);
+                
+                // Determine age class for visual indicator
+                let ageClass = 'age-stale';
+                if (record.age_seconds <= 5) ageClass = 'age-fresh';
+                else if (record.age_seconds <= 30) ageClass = 'age-recent';
+                
+                return `
+                    <tr class="file-record-row ${ageClass}" onclick="toggleRecordExpand('${key}')">
+                        <td><strong>${record.file_number}</strong></td>
+                        <td>${record.record_number}</td>
+                        <td>${record.data_length} bytes</td>
+                        <td class="timestamp">${record.last_updated}</td>
+                        <td class="${record.age_seconds <= 5 ? 'success' : (record.age_seconds <= 30 ? 'cache-miss' : '')}">${record.age_seconds.toFixed(1)}s ago</td>
+                        <td>
+                            <button class="expand-btn" onclick="event.stopPropagation(); toggleRecordExpand('${key}')">${isExpanded ? '▼ Hide' : '▶ View'}</button>
+                            <button class="copy-btn" onclick="event.stopPropagation(); copyHexData('${key}')" id="copy-btn-${key}">📋 Copy</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            // Render expanded panels
+            panelsContainer.innerHTML = filteredRecords
+                .filter(record => expandedRecords.has(`${record.file_number}-${record.record_number}`))
+                .map(record => {
+                    const key = `${record.file_number}-${record.record_number}`;
+                    return `
+                        <div class="data-panel expanded" id="panel-${key}">
+                            <div class="data-summary">
+                                <span>File: <strong>${record.file_number}</strong></span>
+                                <span>Record: <strong>${record.record_number}</strong></span>
+                                <span>Size: <strong>${record.data_length} bytes</strong></span>
+                                <span>PDU Length: <strong>${record.pdu_length} bytes</strong></span>
+                            </div>
+                            
+                            <div class="data-tabs">
+                                <button class="data-tab active" onclick="showDataView('${key}', 'hex')">Hex Dump</button>
+                                <button class="data-tab" onclick="showDataView('${key}', 'int')">16-bit Integers</button>
+                                <button class="data-tab" onclick="showDataView('${key}', 'raw')">Raw Bytes</button>
+                                <button class="data-tab" onclick="showDataView('${key}', 'ascii')">ASCII</button>
+                            </div>
+                            
+                            <div class="data-view active monospace" id="view-${key}-hex">
+                                <div class="hex-dump">${formatHexDump(record.data.hex_dump)}</div>
+                            </div>
+                            
+                            <div class="data-view" id="view-${key}-int">
+                                <div class="integers-view">
+                                    ${record.data.integers.map((val, i) => `
+                                        <div class="int-item">
+                                            <span class="int-index">[${i}]:</span>
+                                            <span class="int-value">${val}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            
+                            <div class="data-view monospace" id="view-${key}-raw">
+                                ${record.data.raw_bytes || 'No data'}
+                            </div>
+                            
+                            <div class="data-view monospace" id="view-${key}-ascii">
+                                <pre style="margin: 0;">${record.data.ascii || 'No printable data'}</pre>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+        }
+        
+        function formatHexDump(lines) {
+            if (!lines || lines.length === 0) return 'No data';
+            return lines.map(line => {
+                const parts = line.split(': ');
+                return `<span class="offset">${parts[0]}:</span> <span class="bytes">${parts[1] || ''}</span>`;
+            }).join('\n');
+        }
+        
+        function toggleRecordExpand(key) {
+            if (expandedRecords.has(key)) {
+                expandedRecords.delete(key);
+            } else {
+                expandedRecords.add(key);
+            }
+            renderFileRecordsTable();
+        }
+        
+        function showDataView(key, type) {
+            // Update tab buttons
+            const panel = document.getElementById(`panel-${key}`);
+            if (!panel) return;
+            
+            panel.querySelectorAll('.data-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update views
+            panel.querySelectorAll('.data-view').forEach(view => view.classList.remove('active'));
+            document.getElementById(`view-${key}-${type}`).classList.add('active');
+        }
+        
+        function copyHexData(key) {
+            const record = fileRecordsData.find(r => `${r.file_number}-${r.record_number}` === key);
+            if (!record) return;
+            
+            navigator.clipboard.writeText(record.data.hex_string).then(() => {
+                const btn = document.getElementById(`copy-btn-${key}`);
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+        
+        function toggleLiveView() {
+            liveViewEnabled = !liveViewEnabled;
+            document.getElementById('live-view-toggle').classList.toggle('active', liveViewEnabled);
+            document.getElementById('live-indicator').style.display = liveViewEnabled ? 'block' : 'none';
+        }
+        
+        function clearFilters() {
+            document.getElementById('filter-file').value = '';
+            document.getElementById('filter-record').value = '';
+            document.getElementById('filter-age').value = '';
+            renderFileRecordsTable();
+        }
+        
+        function updateCacheTable(tableId, entries) {
+            const tbody = document.getElementById(tableId);
+            const now = Date.now() / 1000;
+            
+            tbody.innerHTML = entries.slice(0, 100).map(entry => {
+                const age = now - entry.timestamp;
+                const isRecent = age < 5;
+                return `
+                    <tr style="${isRecent ? 'background: #1f4287;' : ''}">
+                        <td>${entry.address}</td>
+                        <td>${entry.value}</td>
+                        <td class="timestamp">${age.toFixed(1)}s ago</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function showCacheTab(type) {
+            // Update tab buttons
+            document.querySelectorAll('.tabs .tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('cache-' + type).classList.add('active');
+            
+            // If file records tab, refresh data
+            if (type === 'file-records') {
+                updateFileRecords();
+            }
+        }
+        
+        function formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hours > 0) {
+                return `${hours}h ${mins}m ${secs}s`;
+            } else if (mins > 0) {
+                return `${mins}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+        
+        // Filter change handlers
+        document.getElementById('filter-file').addEventListener('input', renderFileRecordsTable);
+        document.getElementById('filter-record').addEventListener('input', renderFileRecordsTable);
+        document.getElementById('filter-age').addEventListener('input', renderFileRecordsTable);
+        
+        // Initial load
+        updateStatus();
+        updateMetrics();
+        updateRequests();
+        updateStats();
+        updateCache();
+        updateFileRecords();
+        
+        // Set up periodic updates
+        setInterval(updateStatus, UPDATE_INTERVAL);
+        setInterval(updateMetrics, UPDATE_INTERVAL);
+        setInterval(updateRequests, UPDATE_INTERVAL);
+        setInterval(updateStats, UPDATE_INTERVAL * 2);
+        setInterval(updateCache, UPDATE_INTERVAL * 2);
+        setInterval(updateFileRecords, UPDATE_INTERVAL);
+    </script>
+</body>
+</html>

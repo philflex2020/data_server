@@ -1,0 +1,2014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>parquet_writer — Real-Time Query API Design</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.6; padding: 0 0 80px 0; }
+  h1 { font-size: 2em; color: #61dafb; padding: 40px 40px 10px; border-bottom: 2px solid #2a2a4a; margin-bottom: 20px; }
+  h2 { font-size: 1.4em; color: #e5c07b; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #2a2a4a; }
+  h3 { font-size: 1.1em; color: #98c379; margin: 24px 0 8px; }
+  h4 { font-size: 1em; color: #56b6c2; margin: 16px 0 6px; }
+  p { margin: 10px 0; max-width: 860px; }
+  ul, ol { margin: 10px 0 10px 24px; max-width: 860px; }
+  li { margin: 4px 0; }
+  .content { padding: 0 40px; }
+  pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; margin: 12px 0; max-width: 900px; }
+  code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: #e5c07b; }
+  .kw { color: #56b6c2; }
+  .str { color: #98c379; }
+  .fn { color: #e5c07b; }
+  .cm { color: #5c6370; font-style: italic; }
+  .num { color: #d19a66; }
+  .tag { color: #e06c75; }
+  table { border-collapse: collapse; margin: 16px 0; max-width: 900px; width: 100%; }
+  th { background: #2a2a4a; color: #61dafb; padding: 8px 14px; text-align: left; border: 1px solid #30363d; }
+  td { padding: 7px 14px; border: 1px solid #30363d; vertical-align: top; }
+  tr:nth-child(even) td { background: #16213e; }
+  .toc { background: #16213e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 20px 28px; margin: 20px 40px 30px; display: inline-block; min-width: 340px; }
+  .toc h2 { margin-top: 0; border: none; font-size: 1.1em; }
+  .toc ol { margin-left: 18px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: #61dafb; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #2a2a4a; margin: 36px 0; }
+  details { border: 1px solid #dee2e6; border-radius: 6px; margin: 10px 0; }
+  details + details { margin-top: 8px; }
+  summary { background: #1e2a38; color: #cfe2ff; padding: 10px 16px; cursor: pointer;
+            border-radius: 5px; font-weight: 600; font-size: 0.9rem; list-style: none;
+            display: flex; align-items: center; gap: 8px; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▶"; font-size: 0.7rem; transition: transform 0.2s; color: #79c0ff; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details[open] summary { border-radius: 5px 5px 0 0; }
+  .detail-body { padding: 14px 18px; background: #fff; border-radius: 0 0 5px 5px; }
+  .detail-body pre { margin: 8px 0; }
+  .detail-body p  { margin: 8px 0; font-size: 0.9rem; }
+  .detail-body h5 { color: #2c4a6e; margin: 14px 0 4px; font-size: 0.9rem; }
+  details.sub { margin: 10px 0; border-color: #adb5bd; }
+  details.sub summary { background: #2d3e52; font-size: 0.85rem; padding: 8px 14px; }
+  .tag-before { background: #f8d7da; color: #721c24; border-radius: 4px; padding: 2px 8px;
+                font-size: 0.78rem; font-weight: 700; margin-right: 6px; }
+  .tag-after  { background: #d4edda; color: #155724; border-radius: 4px; padding: 2px 8px;
+                font-size: 0.78rem; font-weight: 700; margin-right: 6px; }
+  .tag-why    { background: #cce5ff; color: #004085; border-radius: 4px; padding: 2px 8px;
+                font-size: 0.78rem; font-weight: 700; margin-right: 6px; }
+  .step-num   { background: #4a90d9; color: #fff; border-radius: 50%; width: 22px; height: 22px;
+                display: inline-flex; align-items: center; justify-content: center;
+                font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+  .note { background: #1e2d1e; border-left: 3px solid #98c379; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .warn { background: #2d2a1e; border-left: 3px solid #e5c07b; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .done { background: #1e2d1e; border-left: 3px solid #98c379; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .todo { background: #2d1e2d; border-left: 3px solid #c678dd; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .diagram { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 20px; font-family: monospace; font-size: 13px; line-height: 1.7; max-width: 860px; margin: 12px 0; white-space: pre; overflow-x: auto; }
+  .timeline { display: flex; align-items: stretch; margin: 16px 0; max-width: 860px; font-size: 13px; font-family: monospace; }
+  .tl-seg { border: 1px solid #30363d; padding: 10px 14px; }
+  .tl-flushed { background: #1e3a1e; border-color: #98c379; color: #98c379; flex: 3; }
+  .tl-gap    { background: #2d2a1e; border-color: #e5c07b; color: #e5c07b; flex: 2; }
+  .tl-now    { background: #16213e; border-color: #61dafb; color: #61dafb; flex: 1; }
+  .badge-done { display: inline-block; background: #1e4d1e; color: #98c379; padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: bold; vertical-align: middle; margin-left: 6px; }
+  .badge-todo { display: inline-block; background: #3d1e4d; color: #c678dd; padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: bold; vertical-align: middle; margin-left: 6px; }
+  .page-nav { padding: 14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:#abb2bf; text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid #2a2a4a; border-radius:4px; }
+  .page-nav a:hover { color:#61dafb; border-color:#61dafb; }
+  .theme-btn { position:fixed; top:14px; right:20px; background:#16213e; border:1px solid #30363d; color:#abb2bf; border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  .theme-btn:hover { color:#e0e0e0; border-color:#61dafb; }
+  body.light { background:#f5f5f0; color:#1a1a2e; }
+  body.light h1 { color:#0066aa; border-color:#d0d0c0; }
+  body.light h2 { color:#8a6000; border-color:#d0d0c0; }
+  body.light h3 { color:#2a6e2a; }
+  body.light h4 { color:#006688; }
+  body.light pre, body.light code { background:#e8e8e0; border-color:#c8c8b8; color:#1a1a2e; }
+  body.light .kw { color:#006688; } body.light .str { color:#2a6e2a; } body.light .fn { color:#8a6000; } body.light .cm { color:#888877; } body.light .num { color:#aa4400; }
+  body.light table th { background:#e0e0d0; color:#0066aa; border-color:#c0c0b0; }
+  body.light table td { border-color:#d0d0c0; }
+  body.light tr:nth-child(even) td { background:#f0f0e8; }
+  body.light .toc { background:#ffffff; border-color:#d0d0c0; }
+  body.light .note { background:#d4f0d4; }
+  body.light .warn { background:#f0f0d4; }
+  body.light .done { background:#d4f0d4; }
+  body.light .todo { background:#f0d4f0; }
+  body.light .diagram { background:#e8e8e0; border-color:#c0c0b0; }
+  body.light .page-nav a { color:#555; border-color:#d0d0c0; }
+  body.light .page-nav a:hover { color:#0066aa; border-color:#0066aa; }
+  body.light .theme-btn { background:#ffffff; border-color:#c0c0b0; color:#555; }
+  body.light .tl-flushed { background:#d4f0d4; }
+  body.light .tl-gap    { background:#f0f0d4; }
+  body.light .tl-now    { background:#ddeeff; }
+</style>
+</head>
+<body>
+
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="page-nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="writer_compare_test.html">Compare Test</a>
+  <a href="evelyn_real_time_data.html">Real-Time Web Interface Design</a>
+  <a href="wide_parquet_writer.html">Wide Writer Docs</a>
+</div>
+
+<h1>parquet_writer — Real-Time Query API Design</h1>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#problem">The Gap Problem</a></li>
+    <li><a href="#existing">What Already Exists</a></li>
+    <li><a href="#endpoints">Three HTTP Endpoints</a></li>
+    <li><a href="#rolling">Rolling 60s Buffer Design</a></li>
+    <li><a href="#duckdb">DuckDB In-Process Query Engine</a></li>
+    <li><a href="#wal-live">WAL-as-Live-Buffer (Local SSD)</a>
+      <ul>
+        <li><a href="#rle-vs-cov">RLE vs COV null-fill — why both matter</a></li>
+        <li><a href="#forward-fill-strategies">Forward-fill strategies — when and where</a></li>
+        <li><a href="#cov-config">Per-point COV null-fill config</a></li>
+      </ul></li>
+    <li><a href="#impl">Implementation Steps</a></li>
+    <li><a href="#partial">Partial Dataset Queries</a></li>
+    <li><a href="#ducklake">DuckLake — Open Table Format Option</a></li>
+    <li><a href="#longspan">Longer Time-Span Queries</a>
+      <ul><li><a href="#cpp-changes">parquet_writer.cpp — exact code changes</a></li></ul></li>
+    <li><a href="#client">Client-Side Integration</a></li>
+    <li><a href="#notes">Notes from Related Designs</a></li>
+  </ol>
+</div>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<div class="content">
+
+<h2 id="problem">1. The Gap Problem</h2>
+
+<p>parquet_writer buffers incoming MQTT messages and flushes to disk every <code>flush_interval_seconds</code>
+(typically 60s). Between flushes, in-memory rows are inaccessible to any external reader.
+A dashboard asking "what is happening right now?" has three distinct time regions to cover:</p>
+
+<div class="timeline">
+  <div class="tl-seg tl-flushed">
+    ✔ Flushed parquet files<br>
+    <small>t=0 → t=(now − flush_interval)</small><br>
+    <small>Readable via DuckDB / bench_server</small>
+  </div>
+  <div class="tl-seg tl-gap">
+    ⚠ THE GAP<br>
+    <small>Last flush → now</small><br>
+    <small>Up to 60s invisible to external readers</small>
+  </div>
+  <div class="tl-seg tl-now">
+    ★ current_state<br>
+    <small>Latest value per signal</small><br>
+    <small>Written atomically on each flush</small>
+  </div>
+</div>
+
+<p>The gap contains rows already parsed and sitting in <code>g_buffer</code> (the in-memory partition map),
+but nothing exposes them via HTTP today. A rolling in-memory ring bridges this gap without
+requiring a flush and without adding write latency.</p>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="existing">2. What Already Exists <span class="badge-done">DONE</span></h2>
+
+<h3>g_current_state — latest value per sensor</h3>
+<p>Defined at <code>parquet_writer.cpp:1177</code>:</p>
+<pre><span class="kw">static</span> std::map&lt;SensorKey, Row&gt; g_current_state;</pre>
+<p>Updated on every MQTT message (line 1860):</p>
+<pre><span class="kw">if</span> (!g_cfg-&gt;current_state_path.<span class="fn">empty</span>())
+    g_current_state[SensorKey{info_opt-&gt;source_type, row.ints, row.strings}] = row;</pre>
+<p>This gives instant O(log n) lookup of the latest row for any sensor. It is the "now" snapshot.</p>
+
+<h3>current_state_path — atomic parquet snapshot on flush</h3>
+<p>Config option at line 165. After every successful flush, the full <code>g_current_state</code> map is
+serialized to a temp file and atomically renamed (lines 1340–1351):</p>
+<pre><span class="kw">auto</span> tmp = g_cfg-&gt;current_state_path + <span class="str">".tmp"</span>;
+<span class="fn">write_parquet_table</span>(tmp, table);
+fs::<span class="fn">rename</span>(tmp, g_cfg-&gt;current_state_path, ec);</pre>
+<p>Clients can fetch this file. It's always consistent (never half-written) and covers the latest
+known value for every signal even if the writer restarts.</p>
+
+<h3>health_thread_fn() — raw TCP HTTP server</h3>
+<p>Defined at line 1517. Listens on <code>health_port</code> (default 8771). Currently handles only
+<code>GET /health</code> — returns a JSON object with ~20 operational counters. Returns 404 for everything else.
+This is the extension point for the new endpoints.</p>
+
+<table>
+  <tr><th>What</th><th>Where in code</th><th>Status</th></tr>
+  <tr><td><code>g_current_state</code> map</td><td>line 1177</td><td><span class="badge-done">DONE</span></td></tr>
+  <tr><td><code>current_state_path</code> config + atomic write</td><td>lines 165, 1340–1351</td><td><span class="badge-done">DONE</span></td></tr>
+  <tr><td><code>health_thread_fn()</code> TCP server</td><td>line 1517</td><td><span class="badge-done">DONE</span></td></tr>
+  <tr><td><code>GET /health</code> JSON endpoint</td><td>line 1549</td><td><span class="badge-done">DONE</span></td></tr>
+  <tr><td>Rolling 60s buffer (<code>g_recent_rows</code>)</td><td>—</td><td><span class="badge-todo">TODO</span></td></tr>
+  <tr><td><code>GET /current</code> parquet binary endpoint</td><td>—</td><td><span class="badge-todo">TODO</span></td></tr>
+  <tr><td><code>GET /data?last=N&amp;unit=X</code> JSON endpoint</td><td>—</td><td><span class="badge-todo">TODO</span></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="endpoints">3. Three HTTP Endpoints</h2>
+
+<table>
+  <tr>
+    <th>Endpoint</th><th>Returns</th><th>Use case</th><th>Status</th>
+  </tr>
+  <tr>
+    <td><code>GET /health</code></td>
+    <td>JSON — operational counters, msg rate, flush stats, disk free</td>
+    <td>Liveness checks, writer_compare_test.html health tiles</td>
+    <td><span class="badge-done">DONE</span></td>
+  </tr>
+  <tr>
+    <td><code>GET /current</code></td>
+    <td>Binary parquet — latest value per signal (snapshot of <code>current_state.parquet</code>)</td>
+    <td>Dashboard "current values" panel; DuckDB-WASM reads it directly in browser</td>
+    <td><span class="badge-todo">TODO</span></td>
+  </tr>
+  <tr>
+    <td><code>GET /data?last=N[&amp;unit=X][&amp;device=Y][&amp;point=Z]</code></td>
+    <td>JSON array of rows from the rolling 60s buffer</td>
+    <td>Live strip chart, anomaly alerting, gap-bridging before first flush</td>
+    <td><span class="badge-todo">TODO</span></td>
+  </tr>
+</table>
+
+<h3>GET /current — query parameters (optional)</h3>
+<table>
+  <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>unit</code></td><td>string</td><td>Filter rows to a single unit_id</td></tr>
+  <tr><td><code>device</code></td><td>string</td><td>Filter by device/device_type string column</td></tr>
+  <tr><td><code>fmt</code></td><td><code>parquet</code> | <code>json</code></td><td>Default: <code>parquet</code>. <code>json</code> returns a JSON array for lightweight callers</td></tr>
+</table>
+
+<h3>GET /data — query parameters</h3>
+<table>
+  <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>last</code></td><td>int (seconds)</td><td>How far back to look in the rolling buffer. Max = buffer depth (default 60s).</td></tr>
+  <tr><td><code>unit</code></td><td>string</td><td>Filter rows by unit_id string column</td></tr>
+  <tr><td><code>device</code></td><td>string</td><td>Filter by device/device_type column</td></tr>
+  <tr><td><code>point</code></td><td>string</td><td>Filter by point_name column</td></tr>
+  <tr><td><code>since</code></td><td>epoch ms</td><td>Alternative to <code>last</code> — return rows with ts_ms &gt;= this value</td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="rolling">4. Rolling 60s Buffer Design</h2>
+
+<h3>Relationship between the live buffer and the WAL</h3>
+
+<p>The writer already has a WAL (Write-Ahead Log) that protects against data loss if the
+process crashes between flushes. The 60-second live buffer is a separate concern — it is
+not a replacement for the WAL and does not change when WAL files are written or deleted.
+The two mechanisms serve entirely different purposes:</p>
+
+<table>
+  <tr><th></th><th>WAL (<code>*.wal.arrow</code>)</th><th>Live buffer (<code>g_buffers</code>)</th></tr>
+  <tr><td><strong>Purpose</strong></td>
+      <td>Crash recovery — recover rows that were buffered but not yet flushed to Parquet</td>
+      <td>Query tail — expose the last N seconds of data to <code>GET /current</code> without waiting for the next flush</td></tr>
+  <tr><td><strong>Written</strong></td>
+      <td>On every flush, alongside the Parquet file</td>
+      <td>Continuously, on every parsed MQTT message</td></tr>
+  <tr><td><strong>Read</strong></td>
+      <td><strong>Only on restart</strong> — replayed once to repopulate <code>g_buffers</code>, then deleted</td>
+      <td>On every <code>GET /current</code> request, under a brief read lock</td></tr>
+  <tr><td><strong>Format</strong></td>
+      <td>Arrow IPC — lossless, low-write overhead, not readable by DuckDB</td>
+      <td>In-process <code>std::map&lt;PartitionKey, Partition&gt;</code> — serialised to Parquet on demand</td></tr>
+  <tr><td><strong>Lifetime</strong></td>
+      <td>From flush until restart replay completes (then deleted)</td>
+      <td>Rolling window — rows older than N seconds are evicted</td></tr>
+</table>
+
+<div class="note">
+  <strong>Normal operation:</strong> <code>GET /current</code> never reads WAL files.
+  It reads only <code>g_buffers</code> — the live in-memory map. WAL files are written and
+  deleted entirely within the flush cycle; the HTTP path does not touch them.<br><br>
+  <strong>After a restart:</strong> WAL replay runs before the MQTT connection is re-established.
+  It populates <code>g_buffers</code> with the rows that were buffered at crash time.
+  Once replay is complete, <code>GET /current</code> immediately has data — the gap between
+  the last successful flush and the crash is bridged automatically.
+</div>
+
+<p>Add a deque of rows that is appended on every MQTT parse and trimmed to the last N seconds.
+The buffer is read-locked only for serialisation (the same brief lock pattern as the existing
+buffer flush).</p>
+
+<pre><span class="cm">// parquet_writer.cpp — near g_current_state (line 1177)</span>
+
+<span class="kw">static constexpr int</span> RECENT_ROWS_SECONDS = <span class="num">60</span>;
+<span class="kw">struct</span> TimestampedRow {
+    <span class="kw">int64_t</span>     ts_ms;
+    Row         row;
+    std::string unit_id;    <span class="cm">// pre-extracted for fast filter</span>
+    std::string device;
+    std::string point_name;
+};
+<span class="kw">static</span> std::deque&lt;TimestampedRow&gt;  g_recent_rows;
+<span class="kw">static</span> std::mutex                  g_recent_mutex;</pre>
+
+<h3>Push side — in parse_thread (after g_current_state update)</h3>
+<pre><span class="cm">// After the g_current_state insert at line 1861:</span>
+{
+    TimestampedRow tr{ row.ts_ms, row,
+                       <span class="fn">get_string_col</span>(row, <span class="str">"unit_id"</span>),
+                       <span class="fn">get_string_col</span>(row, <span class="str">"device"</span>),
+                       <span class="fn">get_string_col</span>(row, <span class="str">"point_name"</span>) };
+    std::lock_guard&lt;std::mutex&gt; lk(g_recent_mutex);
+    g_recent_rows.<span class="fn">push_back</span>(std::move(tr));
+}
+<span class="cm">// Trim in a background pass (or lazily on each /data request):</span>
+<span class="kw">auto</span> cutoff = <span class="fn">now_ms</span>() - RECENT_ROWS_SECONDS * <span class="num">1000</span>;
+<span class="kw">while</span> (!g_recent_rows.<span class="fn">empty</span>() &amp;&amp; g_recent_rows.<span class="fn">front</span>().ts_ms &lt; cutoff)
+    g_recent_rows.<span class="fn">pop_front</span>();</pre>
+
+<h3>Memory estimate</h3>
+<table>
+  <tr><th>Load</th><th>msg/s</th><th>Rows in 60s</th><th>Approx RAM</th></tr>
+  <tr><td>Single Evelyn unit</td><td>1,770</td><td>106,200</td><td>~50 MB</td></tr>
+  <tr><td>12-unit slice</td><td>21,240</td><td>1,274,400</td><td>~600 MB</td></tr>
+  <tr><td>Full 46-unit load</td><td>81,420</td><td>4,885,200</td><td>~2.3 GB</td></tr>
+</table>
+<div class="warn">
+  <strong>Warning:</strong> At full 46-unit load, 60s of rows is large. Consider reducing
+  <code>RECENT_ROWS_SECONDS</code> to 10–15s for high-rate deployments, or adding a
+  <code>max_recent_rows</code> cap (e.g. 500,000) to bound memory regardless of rate.
+  The config option <code>recent_rows_seconds</code> (default 60, 0 = disabled) lets operators tune this.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="duckdb">4b. DuckDB In-Process Query Engine <span class="badge-todo">TODO</span></h2>
+
+<p>Instead of a hand-rolled deque + linear scan, embed DuckDB in-process as the rolling buffer store.
+parquet_writer already links Arrow; DuckDB is a single shared library (~6 MB) that uses the same
+Arrow columnar format internally. The payoff: <code>GET /data</code> becomes a SQL query — arbitrary
+<code>WHERE</code> clauses, aggregations, and window functions with zero custom filter code.</p>
+
+<h3>Setup — in-memory database on startup</h3>
+<pre><span class="cm">// parquet_writer.cpp — add near other globals</span>
+<span class="kw">#include</span> <span class="str">"duckdb.hpp"</span>   <span class="cm">// link -lduckdb  (see Makefile section below)</span>
+
+<span class="kw">static</span> duckdb::DuckDB     g_duck{<span class="kw">nullptr</span>};           <span class="cm">// nullptr = in-memory</span>
+<span class="kw">static</span> duckdb::Connection g_duck_write{g_duck};       <span class="cm">// owned by parse_thread</span>
+<span class="kw">static</span> duckdb::Connection g_duck_read {g_duck};       <span class="cm">// owned by health_thread (read queries)</span>
+
+<span class="cm">// On startup, before parse_thread starts:</span>
+g_duck_write.<span class="fn">Query</span>(<span class="str">R"SQL(
+    CREATE TABLE recent (
+        ts_ms      BIGINT  NOT NULL,
+        unit_id    VARCHAR,
+        device     VARCHAR,
+        point_name VARCHAR,
+        float_val  DOUBLE,
+        int_val    BIGINT,
+        bool_val   BOOLEAN,
+        string_val VARCHAR
+    )
+)SQL"</span>);</pre>
+
+<h3>Insert path — Appender API (no SQL parsing overhead)</h3>
+<p>The DuckDB <strong>Appender</strong> bypasses the SQL layer — it's essentially a column-batched memcpy.
+Accumulate rows in a small staging vector, flush the Appender every parse-thread loop iteration
+(or every 500 rows), then run the trim DELETE periodically (e.g. every 5 seconds):</p>
+<pre><span class="cm">// In parse_thread — after g_current_state update:</span>
+<span class="kw">if</span> (g_cfg-&gt;recent_rows_seconds &gt; <span class="num">0</span>) {
+    staged.<span class="fn">push_back</span>({row.ts_ms, unit_id, device, point_name,
+                      float_val, int_val, bool_val, string_val});
+}
+
+<span class="cm">// Flush batch (every N rows or on timeout):</span>
+<span class="kw">if</span> (staged.<span class="fn">size</span>() &gt;= <span class="num">500</span> || elapsed_since_flush &gt; <span class="num">100</span>ms) {
+    duckdb::<span class="fn">Appender</span> app(g_duck_write, <span class="str">"recent"</span>);
+    <span class="kw">for</span> (<span class="kw">auto</span>&amp; r : staged) {
+        app.<span class="fn">BeginRow</span>();
+        app.<span class="fn">Append</span>&lt;<span class="kw">int64_t</span>&gt;(r.ts_ms);
+        app.<span class="fn">Append</span>&lt;std::string&gt;(r.unit_id);
+        app.<span class="fn">Append</span>&lt;std::string&gt;(r.device);
+        app.<span class="fn">Append</span>&lt;std::string&gt;(r.point_name);
+        app.<span class="fn">Append</span>&lt;<span class="kw">double</span>&gt;(r.float_val);
+        app.<span class="fn">Append</span>&lt;<span class="kw">int64_t</span>&gt;(r.int_val);
+        app.<span class="fn">Append</span>&lt;<span class="kw">bool</span>&gt;(r.bool_val);
+        app.<span class="fn">Append</span>&lt;std::string&gt;(r.string_val);
+        app.<span class="fn">EndRow</span>();
+    }
+    app.<span class="fn">Flush</span>();
+    staged.<span class="fn">clear</span>();
+}
+
+<span class="cm">// Trim old rows (run every ~5 seconds, not per-row):</span>
+g_duck_write.<span class="fn">Query</span>(<span class="str">"DELETE FROM recent WHERE ts_ms &lt; "</span>
+    + std::<span class="fn">to_string</span>(<span class="fn">now_ms</span>() - g_cfg-&gt;recent_rows_seconds * <span class="num">1000LL</span>));</pre>
+
+<h3>Query path — handle_data() with SQL</h3>
+<p>Build a parameterized WHERE clause from the URL params and let DuckDB do the filtering.
+Use DuckDB's prepared statements to avoid SQL injection:</p>
+<pre><span class="cm">// In handle_data() — health_thread uses g_duck_read:</span>
+<span class="kw">auto</span> params  = <span class="fn">parse_query_string</span>(req);
+<span class="kw">int</span>  last_s  = params.<span class="fn">count</span>(<span class="str">"last"</span>) ? std::<span class="fn">stoi</span>(params[<span class="str">"last"</span>]) : <span class="num">30</span>;
+<span class="kw">int64_t</span> cutoff = <span class="fn">now_ms</span>() - (<span class="kw">int64_t</span>)last_s * <span class="num">1000</span>;
+
+<span class="cm">// Build safe WHERE clause — only known column names, values via prepared stmt</span>
+std::string sql =
+    <span class="str">"SELECT ts_ms, unit_id, device, point_name, float_val, int_val, bool_val"</span>
+    <span class="str">" FROM recent WHERE ts_ms >= $1"</span>;
+std::vector&lt;duckdb::Value&gt; binds;
+binds.<span class="fn">emplace_back</span>(cutoff);
+
+<span class="kw">if</span> (params.<span class="fn">count</span>(<span class="str">"unit"</span>))   { sql += <span class="str">" AND unit_id = $2"</span>;    binds.<span class="fn">emplace_back</span>(params[<span class="str">"unit"</span>]);   }
+<span class="kw">if</span> (params.<span class="fn">count</span>(<span class="str">"device"</span>)) { sql += <span class="str">" AND device = $"</span> + ...; binds.<span class="fn">emplace_back</span>(params[<span class="str">"device"</span>]); }
+<span class="kw">if</span> (params.<span class="fn">count</span>(<span class="str">"point"</span>))  { sql += <span class="str">" AND point_name = $"</span> + ...; }
+sql += <span class="str">" ORDER BY ts_ms DESC LIMIT 10000"</span>;
+
+<span class="kw">auto</span> stmt = g_duck_read.<span class="fn">Prepare</span>(sql);
+<span class="kw">auto</span> res  = stmt-&gt;<span class="fn">Execute</span>(binds);
+
+<span class="cm">// Serialize result to JSON:</span>
+std::ostringstream body;
+body &lt;&lt; <span class="str">"["</span>;
+<span class="kw">bool</span> first = <span class="kw">true</span>;
+<span class="kw">for</span> (<span class="kw">auto</span>&amp; chunk : *res) {
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; chunk.<span class="fn">size</span>(); ++i) {
+        <span class="kw">if</span> (!first) body &lt;&lt; <span class="str">","</span>;
+        body &lt;&lt; <span class="str">"{\"ts\":"</span>     &lt;&lt; chunk.<span class="fn">GetValue</span>&lt;<span class="kw">int64_t</span>&gt;(<span class="num">0</span>, i)
+             &lt;&lt; <span class="str">",\"unit\":\""</span> &lt;&lt; chunk.<span class="fn">GetValue</span>&lt;std::string&gt;(<span class="num">1</span>, i) &lt;&lt; <span class="str">"\""</span>
+             &lt;&lt; <span class="str">",\"device\":\""</span> &lt;&lt; chunk.<span class="fn">GetValue</span>&lt;std::string&gt;(<span class="num">2</span>, i) &lt;&lt; <span class="str">"\""</span>
+             &lt;&lt; <span class="str">",\"point\":\""</span> &lt;&lt; chunk.<span class="fn">GetValue</span>&lt;std::string&gt;(<span class="num">3</span>, i) &lt;&lt; <span class="str">"\""</span>
+             &lt;&lt; <span class="str">",\"v\":"</span>      &lt;&lt; chunk.<span class="fn">GetValue</span>&lt;<span class="kw">double</span>&gt;(<span class="num">4</span>, i)
+             &lt;&lt; <span class="str">"}"</span>;
+        first = <span class="kw">false</span>;
+    }
+}
+body &lt;&lt; <span class="str">"]"</span>;</pre>
+
+<h3>SQL pass-through option</h3>
+<p>Optionally expose <code>GET /data?sql=SELECT+...</code> for dashboards that want arbitrary queries
+against the rolling table. Guard against non-SELECT statements:</p>
+<pre><span class="kw">if</span> (params.<span class="fn">count</span>(<span class="str">"sql"</span>)) {
+    <span class="kw">auto</span> sql = <span class="fn">url_decode</span>(params[<span class="str">"sql"</span>]);
+    <span class="cm">// Reject anything that isn't a plain SELECT</span>
+    <span class="kw">if</span> (sql.<span class="fn">rfind</span>(<span class="str">"SELECT"</span>, <span class="num">0</span>) != <span class="num">0</span> &amp;&amp; sql.<span class="fn">rfind</span>(<span class="str">"select"</span>, <span class="num">0</span>) != <span class="num">0</span>) {
+        <span class="fn">send_error</span>(client_fd, <span class="num">403</span>, <span class="str">"only SELECT allowed"</span>);
+        <span class="kw">return</span>;
+    }
+    <span class="kw">auto</span> res = g_duck_read.<span class="fn">Query</span>(sql);
+    <span class="cm">// ... serialize to JSON as above</span>
+}</pre>
+<div class="note">
+  The <code>recent</code> table is in-memory only. SQL pass-through cannot escape the rolling
+  window — <code>SELECT *</code> will return at most the last <code>recent_rows_seconds</code> of data.
+</div>
+
+<h3>Thread safety</h3>
+<p>DuckDB supports multiple connections to the same in-memory database with MVCC isolation.
+Use two connections — one per thread — so the Appender in parse_thread never blocks queries
+from health_thread:</p>
+<ul>
+  <li><code>g_duck_write</code> — parse_thread only: Appender + DELETE trims</li>
+  <li><code>g_duck_read</code> — health_thread only: SELECT queries</li>
+  <li>No mutex needed between them — DuckDB serializes internally</li>
+</ul>
+<div class="warn">
+  Do <strong>not</strong> share a single <code>duckdb::Connection</code> across threads — it is not
+  thread-safe. Two connections from the same <code>duckdb::DuckDB</code> instance is the correct pattern.
+</div>
+
+<h3>Makefile changes</h3>
+<pre><span class="cm"># parquet_writer_cpp/Makefile — add DuckDB</span>
+DUCK_CFLAGS := $(shell pkg-config --cflags duckdb 2>/dev/null)
+DUCK_LIBS   := $(shell pkg-config --libs   duckdb 2>/dev/null || echo <span class="str">"-lduckdb"</span>)
+
+ALL_CFLAGS  := $(CXXFLAGS) $(ARROW_CFLAGS) $(MOSQ_CFLAGS) $(YAML_CFLAGS) $(SIMDJSON_CFLAGS) $(DUCK_CFLAGS)
+ALL_LIBS    := $(ARROW_LIBS) $(MOSQ_LIBS) $(YAML_LIBS) $(SIMDJSON_LIBS) $(DUCK_LIBS)
+
+<span class="cm"># Install (Ubuntu 22.04+):</span>
+<span class="cm">#   sudo apt install libduckdb-dev</span>
+<span class="cm"># Or use the single-file amalgamation (no apt needed):</span>
+<span class="cm">#   curl -Lo duckdb_amalgamation.zip https://github.com/duckdb/duckdb/releases/latest/download/libduckdb-src.zip</span>
+<span class="cm">#   unzip duckdb_amalgamation.zip duckdb.hpp duckdb.cpp</span>
+<span class="cm">#   Add duckdb.cpp to the build: $(CXX) ... parquet_writer.cpp duckdb.cpp ...</span></pre>
+
+<h3>DuckDB vs deque — trade-off summary</h3>
+<table>
+  <tr><th>Aspect</th><th>std::deque (§4)</th><th>DuckDB in-process (§4b)</th></tr>
+  <tr><td>New dependency</td><td>none</td><td>libduckdb (~6 MB .so) or amalgamation</td></tr>
+  <tr><td>Query flexibility</td><td>3 fixed filter params</td><td>arbitrary SQL + aggregations</td></tr>
+  <tr><td>Insert throughput</td><td>~200 ns/row</td><td>~500 ns/row (Appender, batched)</td></tr>
+  <tr><td>Query latency (30s, 1 unit at 80k msg/s)</td><td>~50ms linear scan</td><td>~5ms columnar scan</td></tr>
+  <tr><td>Aggregation support</td><td>none</td><td>full SQL (AVG, MAX, window fns)</td></tr>
+  <tr><td>Code to maintain</td><td>~145 LOC</td><td>~80 LOC + SQL strings</td></tr>
+  <tr><td>ARM (aarch64) support</td><td>yes</td><td>yes (official aarch64 binary)</td></tr>
+  <tr><td>Build complexity</td><td>no change</td><td>one extra lib / pkg-config line</td></tr>
+</table>
+<div class="note">
+  <strong>Recommendation:</strong> Start with the deque (§4) — no new dependency, working in ~145 LOC.
+  Switch to DuckDB when you need arbitrary query flexibility or when linear-scan latency is a problem
+  at full 46-unit load. The two-connection setup also makes it easy to later expose
+  <code>GET /data?sql=SELECT+AVG(float_val)+FROM+recent+GROUP+BY+device</code> for
+  dashboard aggregation without any additional server code.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="wal-live">4c. WAL-as-Live-Buffer <span class="badge-todo">OPTION</span></h2>
+
+<p>At low message rates (1 Hz per topic, coalesced at 250 ms) the rolling in-memory deque
+and the WAL can be unified into a single file: a <em>live WAL</em> that is rewritten on every
+incoming message and read directly by <code>GET /current</code>. This eliminates the separate
+in-memory serialisation path and means the WAL is always current — restart replay
+automatically bridges any gap with no extra code.</p>
+
+<div class="note">
+  <strong>Storage requirement:</strong> This design is only appropriate when the Parquet
+  output path is on <strong>local SSD</strong> (e.g. <code>/mnt/tort-sdi/</code>).
+  On NFS / EFS every file rewrite incurs a network round-trip and
+  <code>rename()</code> is not guaranteed atomic across AZ mounts — use the
+  in-memory deque (section 4) instead.
+</div>
+
+<h3>Data flow</h3>
+
+<pre>
+MQTT message  (1 Hz, coalesced at 250 ms)
+     │
+     ▼
+parse_payload() ──► append to g_buffers
+                          │
+                          ▼
+                   write_live_wal()          <span class="cm">// rewrite full g_buffers → live.arrow</span>
+                          │                  <span class="cm">// cost: ~60 rows Arrow IPC, once/sec</span>
+                          ▼
+             /mnt/.../bench/live.arrow       <span class="cm">// atomic: write tmp → rename</span>
+
+flush timer fires
+     │
+     ├──► write_parquet()                    <span class="cm">// unchanged</span>
+     ├──► rename live.arrow → &lt;ts&gt;.wal.arrow <span class="cm">// rotate: live becomes crash-recovery WAL</span>
+     └──► evict old rows from g_buffers
+
+GET /current
+     │
+     ▼
+read live.arrow from disk                    <span class="cm">// replace in-memory g_buffers snapshot</span>
+serve Parquet bytes with Range support
+</pre>
+
+<h3>Why the rewrite is cheap at this rate</h3>
+
+<table>
+  <tr><th>Factor</th><th>Value</th><th>Comment</th></tr>
+  <tr><td>Message rate</td><td>1 Hz / 250 ms coalesce</td><td>≤ 4 writes/sec to live.arrow</td></tr>
+  <tr><td>Rows in 60 s window</td><td>≤ 60</td><td>trivially small Arrow IPC file</td></tr>
+  <tr><td>Write amplification</td><td>~30×</td><td>1+2+…+60 rows written vs 60 at flush — negligible at byte scale</td></tr>
+  <tr><td>Local SSD IOPS</td><td>100 k+ available</td><td>4 IOPS/sec used</td></tr>
+  <tr><td>Atomic rename latency</td><td>&lt; 1 µs (VFS)</td><td>reader always gets a complete file</td></tr>
+</table>
+
+<h3>New helper — <code>write_live_wal()</code></h3>
+<pre><span class="cm">// Called after every parse_payload() that modifies g_buffers.</span>
+<span class="cm">// Serialises current g_buffers state to live.arrow atomically.</span>
+<span class="kw">static void</span> <span class="fn">write_live_wal</span>(<span class="kw">const</span> Config&amp; cfg) {
+    <span class="cm">// 1. snapshot under lock</span>
+    std::map&lt;PartitionKey, Partition&gt; snap;
+    {
+        std::lock_guard&lt;std::mutex&gt; lk(g_buffers_mutex);
+        snap = g_buffers;
+    }
+
+    <span class="cm">// 2. build Arrow table from snapshot (reuse build_table())</span>
+    <span class="kw">auto</span> table = <span class="fn">build_table</span>(snap);
+    <span class="kw">if</span> (!table || table-&gt;<span class="fn">num_rows</span>() == <span class="num">0</span>) <span class="kw">return</span>;
+
+    <span class="cm">// 3. write to tmp file then rename (atomic)</span>
+    std::string tmp  = cfg.output_dir + <span class="str">"/.live.arrow.tmp"</span>;
+    std::string dest = cfg.output_dir + <span class="str">"/live.arrow"</span>;
+
+    <span class="kw">auto</span> sink = <span class="fn">*arrow::io::FileOutputStream::Open</span>(tmp);
+    <span class="kw">auto</span> writer = <span class="fn">*arrow::ipc::MakeFileWriter</span>(sink, table-&gt;<span class="fn">schema</span>());
+    <span class="fn">ARROW_CHECK_OK</span>(writer-&gt;<span class="fn">WriteTable</span>(*table));
+    <span class="fn">ARROW_CHECK_OK</span>(writer-&gt;<span class="fn">Close</span>());
+    <span class="fn">ARROW_CHECK_OK</span>(sink-&gt;<span class="fn">Close</span>());
+    std::<span class="fn">rename</span>(tmp.<span class="fn">c_str</span>(), dest.<span class="fn">c_str</span>());
+}</pre>
+
+<h3>Flush rotation — <code>rotate_live_wal()</code></h3>
+<pre><span class="cm">// Called at the start of each flush cycle, before write_parquet().</span>
+<span class="cm">// Moves live.arrow out of the way so it becomes the crash-recovery WAL.</span>
+<span class="kw">static void</span> <span class="fn">rotate_live_wal</span>(<span class="kw">const</span> Config&amp; cfg, <span class="kw">int64_t</span> flush_ts_us) {
+    std::string src = cfg.output_dir + <span class="str">"/live.arrow"</span>;
+    std::string dst = cfg.output_dir + <span class="str">"/"</span>
+                    + <span class="fn">ts_to_filename</span>(flush_ts_us) + <span class="str">".wal.arrow"</span>;
+    <span class="kw">if</span> (std::<span class="fn">filesystem::exists</span>(src))
+        std::<span class="fn">rename</span>(src.<span class="fn">c_str</span>(), dst.<span class="fn">c_str</span>());
+    <span class="cm">// existing wal_replay_file() handles dst on next restart — no changes needed</span>
+}</pre>
+
+<h3>Updated <code>handle_current()</code></h3>
+<pre><span class="cm">// Replace in-memory snapshot + Arrow builder with a direct file read.</span>
+<span class="kw">static void</span> <span class="fn">handle_current</span>(int client_fd, <span class="kw">const</span> std::string&amp; query,
+                            <span class="kw">const</span> Config&amp; cfg) {
+    std::string path = cfg.output_dir + <span class="str">"/live.arrow"</span>;
+    <span class="kw">if</span> (!std::filesystem::<span class="fn">exists</span>(path)) {
+        <span class="fn">send_404</span>(client_fd); <span class="kw">return</span>;
+    }
+    <span class="cm">// Read Arrow IPC → convert to in-memory Parquet bytes → serve with Range</span>
+    <span class="kw">auto</span> in  = <span class="fn">*arrow::io::ReadableFile::Open</span>(path);
+    <span class="kw">auto</span> rdr = <span class="fn">*arrow::ipc::RecordBatchFileReader::Open</span>(in);
+    arrow::RecordBatchVector batches;
+    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i &lt; rdr-&gt;<span class="fn">num_record_batches</span>(); ++i)
+        batches.<span class="fn">push_back</span>(<span class="fn">*rdr</span>-&gt;<span class="fn">ReadRecordBatch</span>(i));
+    <span class="kw">auto</span> table = <span class="fn">*arrow::Table::FromRecordBatches</span>(batches);
+    <span class="kw">auto</span> buf   = <span class="fn">write_parquet_table_to_buffer</span>(*table);
+    <span class="fn">send_parquet_response</span>(client_fd, query, buf);
+}</pre>
+
+<h3>Option comparison</h3>
+<table>
+  <tr><th></th><th>Deque (§4)</th><th>DuckDB (§4b)</th><th>WAL-as-buffer (§4c)</th></tr>
+  <tr><td><strong>Storage</strong></td><td>RAM only</td><td>RAM only</td><td>Local SSD required</td></tr>
+  <tr><td><strong><code>/current</code> latency</strong></td><td>µs — in-memory</td><td>µs — in-memory</td><td>ms — disk read</td></tr>
+  <tr><td><strong>High message rate</strong></td><td>Good (capped by deque)</td><td>Best (DuckDB)</td><td>Poor — rewrite cost grows</td></tr>
+  <tr><td><strong>Low rate (1 Hz)</strong></td><td>Good</td><td>Good</td><td><strong>Best — simplest code</strong></td></tr>
+  <tr><td><strong>Crash recovery</strong></td><td>Separate WAL path</td><td>Separate WAL path</td><td><strong>Unified — WAL is always current</strong></td></tr>
+  <tr><td><strong>Restart replay</strong></td><td>Unchanged</td><td>Unchanged</td><td>Unchanged — same wal_replay_file()</td></tr>
+  <tr><td><strong>NFS / EFS safe</strong></td><td>Yes</td><td>Yes</td><td><strong>No</strong> — not atomic on NFS</td></tr>
+  <tr><td><strong>New code (approx)</strong></td><td>~80 LOC</td><td>~150 LOC</td><td>~40 LOC</td></tr>
+</table>
+
+<div class="note">
+  <strong>Recommendation for the current deployment</strong> (<code>/mnt/tort-sdi/</code> = local SSD,
+  1 Hz / 250 ms coalesce, single Evelyn unit): use <strong>§4c WAL-as-buffer</strong> —
+  fewest moving parts, WAL and live buffer are one file, restart replay works unchanged.<br><br>
+  If message rate rises to hundreds of Hz or the output path moves to NFS/EFS,
+  switch to the in-memory deque (§4) without changing the rest of the stack.
+</div>
+
+<h3>Config-driven strategy selection</h3>
+
+<p>A single <code>storage_type</code> config key selects the live-buffer strategy at startup,
+so the same binary runs correctly on local SSD or NFS/EFS without recompilation:</p>
+
+<pre><span class="cm"># parquet_writer.yaml</span>
+storage_type: local    <span class="cm"># "local" → §4c WAL-as-buffer | "nfs" → §4 in-memory deque</span>
+output_dir: /mnt/tort-sdi/bench/bench-wide</pre>
+
+<table>
+  <tr><th><code>storage_type</code></th><th>Live buffer strategy</th><th>When to use</th></tr>
+  <tr><td><code>local</code></td>
+      <td>§4c WAL-as-buffer — <code>write_live_wal()</code> rewrites <code>live.arrow</code> on every message,
+          <code>GET /current</code> reads file</td>
+      <td>Local SSD (<code>/mnt/tort-sdi/</code>, EBS gp3). Simplest path, unified WAL.</td></tr>
+  <tr><td><code>nfs</code></td>
+      <td>§4 in-memory deque — <code>g_recent_rows</code> rolling window,
+          <code>GET /current</code> snapshots memory</td>
+      <td>NFS / EFS / any network mount. No disk writes on the hot path, no rename atomicity concerns.</td></tr>
+</table>
+
+<h3>Runtime selection — startup check</h3>
+<pre><span class="cm">// In main(), after config load — auto-detect can supplement explicit config:</span>
+<span class="kw">if</span> (cfg.storage_type == <span class="str">"auto"</span>) {
+    <span class="cm">// stat() the output_dir filesystem type</span>
+    <span class="kw">struct</span> statfs fs;
+    <span class="fn">statfs</span>(cfg.output_dir.<span class="fn">c_str</span>(), &amp;fs);
+    <span class="cm">// NFS = 0x6969, EFS (via NFS) = same; local ext4/xfs/btrfs are different</span>
+    cfg.storage_type = (fs.f_type == <span class="num">0x6969</span>) ? <span class="str">"nfs"</span> : <span class="str">"local"</span>;
+    spdlog::<span class="fn">info</span>(<span class="str">"auto storage_type detected: {}"</span>, cfg.storage_type);
+}</pre>
+
+<div class="note">
+  <strong>NFS-specific write safety:</strong> when <code>storage_type: nfs</code> and the WAL
+  still needs to be written (crash recovery), always <code>fsync()</code> before
+  <code>rename()</code> and handle a missing or zero-byte <code>live.arrow</code> gracefully
+  in <code>handle_current()</code> (return empty 200, not a 500).<br><br>
+  <strong>Background write thread:</strong> on NFS, move <code>write_live_wal()</code> to a
+  dedicated thread signalled by a condition variable so the parse thread never
+  blocks on network I/O. On local SSD this is unnecessary — the rewrite is
+  sub-millisecond.
+</div>
+
+<h3 id="rle-vs-cov">RLE vs COV null-fill — why both matter</h3>
+
+<p>Parquet applies <strong>Run-Length Encoding (RLE)</strong> automatically to repeated values within
+a column — no configuration needed. A constant signal stored as
+<code>[23.5, 23.5, 23.5, 23.5, 23.5]</code> is encoded as <code>[23.5 &times; 5]</code>.
+It is tempting to conclude that RLE makes COV null-fill redundant. In the long schema
+(one row per signal per timestamp) that is largely true. In the <strong>wide-pivot schema</strong>
+the two mechanisms are complementary and null-fill adds significant value on top of RLE.</p>
+
+<h4>Why RLE alone is not enough in wide-pivot mode</h4>
+
+<p>In the wide schema every row spans a full timestamp sweep — 63 signal columns, most of
+which are changing at different rates. Even though a constant column like
+<code>bms/SysSOC = 85.0</code> compresses well with RLE, Parquet still writes a page for
+every row group that contains it. COV null-fill replaces those repeated values with
+<code>NULL</code>, which enables an additional level of compression:</p>
+
+<table>
+  <tr><th></th><th>RLE only</th><th>RLE + COV null-fill</th></tr>
+  <tr><td><strong>What is stored</strong></td>
+      <td>Repeated float value, RLE compressed</td>
+      <td>Mostly NULLs — 1-bit validity bitmap, tiny RLE run</td></tr>
+  <tr><td><strong>Page skipping at read time</strong></td>
+      <td>No — Parquet must read all pages to decode values</td>
+      <td>Yes — DuckDB skips null pages entirely during column scan</td></tr>
+  <tr><td><strong>Compression ratio</strong></td>
+      <td>Good — RLE reduces byte count</td>
+      <td>Better — nulls compress more aggressively than repeated floats</td></tr>
+  <tr><td><strong>Forward-fill required at query</strong></td>
+      <td>No</td>
+      <td>Yes — <code>LAST_VALUE IGNORE NULLS</code> or equivalent</td></tr>
+  <tr><td><strong>Observed null_pct (SBESS3 bench)</strong></td>
+      <td>~0% (all values present)</td>
+      <td>~78–85% (dynamic + constant signals)</td></tr>
+</table>
+
+<div class="note">
+  <strong>Page skipping</strong> is the key read-time benefit. A 63-column wide table where
+  50 signals are slow-moving will have most pages flagged all-null after COV fill.
+  DuckDB's Parquet reader skips those pages at the column chunk level — it reads only
+  the pages where the signal actually changed. RLE reduces write size; null-fill reduces
+  both write size <em>and</em> read work.<br><br>
+  <strong>Bottom line:</strong> RLE and COV null-fill are complementary. RLE is free and
+  always on. For wide-pivot tables with mostly slow-moving signals, adding
+  <code>null_fill_unchanged: true</code> cuts file size by a further 70–80% and
+  makes column scans faster by eliminating page reads for unchanged signals.
+</div>
+
+<h4 id="parquet-columnar-layout">How Parquet stores columns and timestamps</h4>
+
+<p>Parquet is a <strong>columnar</strong> format. All values for the same signal are stored
+adjacent on disk, compressed independently:</p>
+
+<pre>File
+└── Row Group  (default ~128 MB uncompressed)
+    ├── Column chunk: ts           → all N timestamps, delta-encoded then Snappy
+    ├── Column chunk: unit_id      → all N strings, dictionary + RLE
+    ├── Column chunk: bms/…/SysSOC → all N floats, Snappy
+    ├── Column chunk: bms/…/SysSOH → all N × 100.0, dictionary + RLE → ~55 bytes
+    ⋮
+    └── Column chunk: pcs/…/kW   → all N floats, Snappy</pre>
+
+<p>Because all values for the same column are adjacent, RLE and dictionary encoding work
+across the entire row group at once. A constant column
+(<code>SysSOH = 100.0</code> for 1440 rows) compresses to roughly 55&nbsp;bytes regardless
+of row count — the encoding is: <em>dictionary entry 0 = 100.0; RLE: index 0 repeated
+1440 times</em>.</p>
+
+<h4>Timestamp encoding — delta + Snappy</h4>
+
+<p>Timestamps are stored as <code>INT64 TIMESTAMP(MICROS, UTC)</code>.
+Parquet applies <strong>delta encoding</strong> before compression: instead of storing
+absolute epoch values, it stores the first timestamp then the successive differences.
+For a 1&nbsp;Hz signal the deltas are all <code>+1,000,000&nbsp;μs</code> — a run of
+identical small integers that Snappy compresses very efficiently.</p>
+
+<table>
+  <tr><th>Encoding stage</th><th>What happens</th><th>Why</th></tr>
+  <tr>
+    <td>Delta encode</td>
+    <td><code>[T, T+1000, T+2000, …]</code> → <code>[T, +1000, +1000, …]</code></td>
+    <td>Turns large INT64s into tiny repeated integers</td>
+  </tr>
+  <tr>
+    <td>RLE / bit-packing</td>
+    <td>Run of identical delta values → <code>(+1000 × N)</code></td>
+    <td>Further reduces the repeated delta to a single (value, count) pair</td>
+  </tr>
+  <tr>
+    <td>Snappy</td>
+    <td>Byte-level compression of the encoded stream</td>
+    <td>Catches any residual redundancy</td>
+  </tr>
+</table>
+
+<p>Observed on SBESS3 bench (1440 rows, 1&nbsp;Hz, 12 units interleaved):</p>
+
+<pre>ts column:  compressed = 955 B,  uncompressed = 2,268 B  (2.4×)
+            raw INT64 would be: 1440 × 8 = 11,520 B  → 12× overall</pre>
+
+<p>Timestamp compression is slightly worse when multiple units are interleaved in the
+same file (deltas are not perfectly uniform across unit boundaries).
+Partitioning by <code>unit_id</code> — which your config does — puts each unit in its
+own file so all deltas within a file are uniform, improving timestamp compression
+further.</p>
+
+<div class="note">
+  <strong>Practical rule:</strong> in the wide-pivot schema with 64 columns and 1&nbsp;Hz data,
+  constant columns compress to ~55&nbsp;bytes each regardless of row count (the RLE
+  overhead is fixed). Dynamic columns compress at 1.1–1.7×. The timestamp column
+  compresses at ~12× from raw INT64 due to delta + RLE. Overall the wide-pivot file
+  achieves <strong>~7&nbsp;bytes per row</strong> across all 64 columns — about 0.11&nbsp;bytes
+  per signal-value stored.
+</div>
+
+<h4 id="flush-compact-schema">Flush vs compact schema — why <code>union_by_name=true</code> is the standard read pattern</h4>
+
+<p>The writer produces two kinds of Parquet file in the same output directory:</p>
+
+<table>
+  <tr><th>File type</th><th>Name pattern</th><th>Columns</th><th>Has <code>unit_id</code>?</th></tr>
+  <tr>
+    <td><strong>Flush file</strong></td>
+    <td><code>0215D1D8_20260413T180650Z.parquet</code></td>
+    <td>63 (ts + 62 signals)</td>
+    <td>No — implicit in filename prefix</td>
+  </tr>
+  <tr>
+    <td><strong>Compact file</strong></td>
+    <td><code>compact_20260413T180849Z.parquet</code></td>
+    <td>64 (ts + unit_id + 62 signals)</td>
+    <td>Yes — injected from filename prefix during compaction</td>
+  </tr>
+</table>
+
+<p>The compactor reads the <code>0215D1D8_</code> prefix from each flush filename and adds
+<code>unit_id</code> as column 1 before merging all partitions. Flush files are lean by design —
+the partition key is already encoded in the filename so there is no point writing it per-row until
+compaction produces a multi-unit file.</p>
+
+<p>During a live run, flush files and compact files coexist in the same directory. Any query
+that reads both without schema reconciliation fails with <em>column not found: unit_id</em>.
+The correct pattern is always:</p>
+
+<pre><span class="cm">-- DuckDB: always read with union_by_name=true</span>
+SELECT *
+FROM read_parquet(<span class="st">'/mnt/tort-sdi/bench/bench-wide/**/*.parquet'</span>,
+                  union_by_name=<span class="kw">true</span>)
+WHERE unit_id = <span class="st">'0215D1D8'</span>
+
+<span class="cm">-- flush file rows: unit_id = NULL (not yet compacted)</span>
+<span class="cm">-- compact file rows: unit_id = '0215D1D8'</span>
+<span class="cm">-- compacted-only rows: WHERE unit_id IS NOT NULL</span></pre>
+
+<p><code>union_by_name=true</code> is also the correct approach for <strong>schema evolution</strong>:
+when a new signal appears (new column), older files return <code>NULL</code> for it rather than
+raising an error. Behaviour by change type:</p>
+
+<table>
+  <tr><th>Schema change</th><th>Effect with <code>union_by_name=true</code></th><th>Migration needed?</th></tr>
+  <tr>
+    <td>Add signal (new column)</td>
+    <td>Old files return NULL for new column; new files have values</td>
+    <td class="best">None</td>
+  </tr>
+  <tr>
+    <td>Remove signal</td>
+    <td>Old files return values; new files return NULL</td>
+    <td class="best">None</td>
+  </tr>
+  <tr>
+    <td>Rename signal</td>
+    <td>Old and new name both appear as separate columns; old = NULL in new files, new = NULL in old files</td>
+    <td class="mid">One-off recompaction of old files</td>
+  </tr>
+</table>
+
+<div class="note">
+  <strong>Always use <code>union_by_name=true</code></strong> when querying wide-pivot files.
+  This applies to bench_server, subscriber_api, and all ad-hoc DuckDB or PyArrow queries
+  against the output directory. Without it, any schema mismatch between two files in the
+  glob raises an error. With it, DuckDB fills missing columns with <code>NULL</code> silently.
+</div>
+
+
+
+<h3 id="forward-fill-strategies">Forward-fill strategies — when and where</h3>
+
+<p>COV null-fill writes <code>NULL</code> for unchanged values, which means any reader
+must reconstruct the last known value for a signal across rows. There are three points in
+the pipeline where forward-fill can happen, each with different trade-offs:</p>
+
+<table>
+  <tr><th>Strategy</th><th>Where</th><th>Files</th><th>Query</th><th>Compression</th></tr>
+  <tr><td><strong>A — None</strong></td>
+      <td>Never fill — store NULLs everywhere</td>
+      <td>Smallest — max null pages</td>
+      <td>Needs <code>LAST_VALUE IGNORE NULLS</code></td>
+      <td>Best</td></tr>
+  <tr><td><strong>B — Write-time fill</strong></td>
+      <td>Writer copies last value into every row</td>
+      <td>Self-contained, no NULLs</td>
+      <td>Plain <code>SELECT</code></td>
+      <td>Worst — RLE only, no page skipping</td></tr>
+  <tr><td><strong>C — Compact-time fill</strong> ⭐</td>
+      <td>Compactor forward-fills when merging flush files</td>
+      <td>Flush files: null-filled (small). Compact files: self-contained</td>
+      <td>Plain <code>SELECT</code> on compact files</td>
+      <td>Good — flush files stay compressed; compact adds small overhead</td></tr>
+  <tr><td><strong>D — Query-time fill</strong></td>
+      <td>DuckDB SQL does the fill at read time</td>
+      <td>Always null-filled (smallest)</td>
+      <td>Needs window function in every query</td>
+      <td>Best</td></tr>
+</table>
+
+<h4>Strategy C — compact-time forward-fill (recommended)</h4>
+
+<p>Flush files are written with <code>null_fill_unchanged: true</code> — small, compressed,
+fast to write. When the compactor merges N flush files into a single compact file it
+forward-fills the NULLs across the merge window. The resulting compact file is fully
+self-contained: every signal has a value at every timestamp, no lookback required.</p>
+
+<div class="timeline" style="margin:16px 0;">
+  <div class="tl-seg tl-flushed" style="flex:2">
+    Flush files<br>
+    <small>null-filled, small</small><br>
+    <small>→ compactor reads these</small>
+  </div>
+  <div class="tl-seg" style="flex:0.3;background:#64748b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.2em;">⟹</div>
+  <div class="tl-seg" style="flex:2;background:#166534;color:#fff">
+    Compact file<br>
+    <small>forward-filled, self-contained</small><br>
+    <small>plain SELECT works</small>
+  </div>
+</div>
+
+<p>The compactor already reads all flush rows into memory to merge them — forward-fill is
+a single pass over the merged row set before writing, adding negligible cost:</p>
+
+<pre><span class="cm">// compact_directory() — after merge_wide_rows(), before write_parquet_table()</span>
+<span class="cm">// For each column, carry the last non-null value forward.</span>
+<span class="kw">void</span> <span class="fn">forward_fill_rows</span>(std::vector&lt;Row&gt;&amp; rows) {
+    std::unordered_map&lt;std::string, double&gt; last_float;
+    std::unordered_map&lt;std::string, int64_t&gt; last_int;
+    <span class="kw">for</span> (<span class="kw">auto</span>&amp; row : rows) {
+        <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : last_float)   <span class="cm">// fill missing floats from last known</span>
+            row.floats.emplace(k, v);   <span class="cm">// emplace: only inserts if key absent (null)</span>
+        <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : row.floats)   <span class="cm">// update last known</span>
+            last_float[k] = v;
+        <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : last_int)
+            <span class="kw">if</span> (k != <span class="str">"ts"</span>) row.ints.emplace(k, v);
+        <span class="kw">for</span> (<span class="kw">auto</span>&amp; [k, v] : row.ints)
+            <span class="kw">if</span> (k != <span class="str">"ts"</span>) last_int[k] = v;
+    }
+}</pre>
+
+<div class="note">
+  <strong>null_fill_reset_interval no longer needed</strong> when using compact-time fill —
+  the compact file is always self-contained so there is no cross-file null gap to worry about.
+  The reset interval can be set to <code>0</code> (disabled) when this strategy is active.<br><br>
+  <strong>Query compatibility:</strong> plain <code>SELECT * FROM compact_*.parquet</code>
+  works without any window function. Flush files (pre-compaction) still need
+  <code>LAST_VALUE IGNORE NULLS</code> if queried directly — but in normal operation
+  dashboards query compact files only.
+</div>
+
+<h4>Config addition</h4>
+<pre><span class="cm"># parquet_writer.yaml</span>
+null_fill_unchanged: <span class="kw">true</span>          <span class="cm"># flush files: null-fill unchanged columns</span>
+null_fill_reset_interval_seconds: <span class="num">0</span>  <span class="cm"># not needed — compactor forward-fills</span>
+
+compact:
+  enabled: <span class="kw">true</span>
+  forward_fill: <span class="kw">true</span>               <span class="cm"># NEW — forward-fill nulls when merging flush files</span>
+  interval_seconds: <span class="num">300</span>
+  min_files: <span class="num">3</span></pre>
+
+<h3 id="cov-config">Per-point COV null-fill config (<code>NullFillCfg</code>)</h3>
+
+<p>Independent of the live-buffer strategy, wide-pivot flushes support
+<em>change-on-value</em> suppression: columns whose value has not changed
+(within an optional percentage threshold) are written as <code>NULL</code>
+instead of the repeated value. This compresses extremely well and is
+transparent at query time via forward-fill.</p>
+
+<h4>Config keys</h4>
+<table>
+  <tr><th>Key</th><th>Type</th><th>Default</th><th>Effect</th></tr>
+  <tr><td><code>null_fill_unchanged</code></td><td>bool</td><td><code>false</code></td>
+      <td>Enable COV null-fill. Only active in wide-pivot mode (<code>compound_field_name</code>).</td></tr>
+  <tr><td><code>null_fill_cov_pct</code></td><td>float</td><td><code>0.0</code></td>
+      <td>Global threshold. Suppress if |&Delta;|/|prev| &le; this value. <code>0.0</code> = exact equality.</td></tr>
+  <tr><td><code>null_fill_per_point</code></td><td>map</td><td><code>{}</code></td>
+      <td>Per-column threshold overrides. Pattern &rarr; threshold. First match wins.</td></tr>
+  <tr><td><code>null_fill_reset_interval_seconds</code></td><td>int</td><td><code>3600</code></td>
+      <td>Force a full write every N seconds so each compact window is self-contained. <code>0</code> = never.</td></tr>
+</table>
+
+<h4>Wildcard patterns in <code>null_fill_per_point</code></h4>
+<p>Pattern keys use shell-style glob syntax via <code>fnmatch()</code>.
+First matching pattern wins — list specific patterns before broad ones:</p>
+
+<table>
+  <tr><th>Wildcard</th><th>Matches</th><th>Example</th></tr>
+  <tr><td><code>*</code></td><td>Any sequence of characters (including <code>/</code>)</td>
+      <td><code>ems/*/battery/soc</code> — SOC for any site</td></tr>
+  <tr><td><code>?</code></td><td>Any single character</td>
+      <td><code>ems/site?/pcs/voltage</code> — single-char site suffix</td></tr>
+  <tr><td><code>0.0</code> threshold</td><td>Force exact equality for matched columns</td>
+      <td><code>ems/*/pcs/status_*: 0.0</code> — never suppress status bits</td></tr>
+</table>
+
+<h4>Full config example</h4>
+<pre><span class="cm"># Enable COV null-fill with per-point thresholds</span>
+null_fill_unchanged: <span class="kw">true</span>
+null_fill_cov_pct: <span class="num">0.01</span>              <span class="cm"># global 1% — suppress slow-moving signals</span>
+null_fill_per_point:
+  ems/*/battery/soc: <span class="num">0.005</span>           <span class="cm"># SOC any site — tighter, 0.5%</span>
+  ems/*/grid/freq*: <span class="num">0.001</span>            <span class="cm"># frequency signals — very tight, 0.1%</span>
+  ems/*/hvac/*: <span class="num">0.05</span>                 <span class="cm"># all HVAC signals — loose, 5%</span>
+  ems/*/pcs/dc_voltage: <span class="num">0.002</span>        <span class="cm"># DC voltage — 0.2%</span>
+  ems/*/pcs/status_*: <span class="num">0.0</span>            <span class="cm"># status bits — exact equality only</span>
+null_fill_reset_interval_seconds: <span class="num">3600</span></pre>
+
+<div class="note">
+  <strong>Priority rule:</strong> <code>null_fill_per_point</code> entries are evaluated in
+  yaml order — the first matching pattern wins. Put the most specific patterns at the top.
+  A threshold of <code>0.0</code> in a per-point entry overrides a non-zero
+  <code>null_fill_cov_pct</code>, forcing exact equality for that signal.<br><br>
+  <strong>Implementation:</strong> matching uses <code>NullFillCfg::threshold_for(col)</code>
+  via <code>fnmatch()</code> from <code>&lt;fnmatch.h&gt;</code> — no extra dependencies.
+  Per-point list stored as <code>std::vector&lt;std::pair&lt;string,double&gt;&gt;</code>
+  preserving yaml insertion order.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="impl">5. Implementation Steps</h2>
+
+<h3>Step 1 — Add config option</h3>
+<pre><span class="cm">// Config struct (~line 165)</span>
+<span class="kw">int</span> recent_rows_seconds{<span class="num">60</span>};   <span class="cm">// 0 = disabled</span>
+
+<span class="cm">// Parse (~line 274)</span>
+<span class="kw">if</span> (o[<span class="str">"recent_rows_seconds"</span>])
+    cfg.recent_rows_seconds = o[<span class="str">"recent_rows_seconds"</span>].<span class="fn">as</span>&lt;<span class="kw">int</span>&gt;();</pre>
+
+<h3>Step 2 — Add g_recent_rows and push/trim logic</h3>
+<p>After the <code>g_current_state</code> insert in <code>parse_thread_fn()</code>, append <code>TimestampedRow</code>
+and trim the front. Trim can be done lazily (on each request) or eagerly (every N pushes).</p>
+
+<h3>Step 3 — Extend health_thread_fn() to route new paths</h3>
+<p>The request routing block currently rejects everything except <code>/health</code>. Replace it:</p>
+<pre><span class="kw">bool</span> is_health  = req.<span class="fn">find</span>(<span class="str">" /health "</span>)  != npos || req.<span class="fn">find</span>(<span class="str">" /health\r"</span>)  != npos;
+<span class="kw">bool</span> is_current = req.<span class="fn">find</span>(<span class="str">" /current"</span>) != npos;
+<span class="kw">bool</span> is_data    = req.<span class="fn">find</span>(<span class="str">" /data?"</span>)   != npos || req.<span class="fn">find</span>(<span class="str">" /data "</span>)   != npos
+                                                    || req.<span class="fn">find</span>(<span class="str">" /data\r"</span>) != npos;
+
+<span class="kw">if</span>      (is_health)  <span class="fn">handle_health</span>(client_fd);
+<span class="kw">else if</span> (is_current) <span class="fn">handle_current</span>(client_fd, req);
+<span class="kw">else if</span> (is_data)    <span class="fn">handle_data</span>(client_fd, req);
+<span class="kw">else</span>                  <span class="fn">send_404</span>(client_fd);</pre>
+
+<h3>Step 4 — handle_current()</h3>
+<p>Serve <code>current_state.parquet</code> from disk (if <code>current_state_path</code> is set),
+or serialize <code>g_current_state</code> to a temp buffer in memory and return it directly.
+Set <code>Content-Type: application/octet-stream</code>.</p>
+<pre><span class="cm">// Simplest form — stream the file from disk:</span>
+<span class="kw">if</span> (!g_cfg-&gt;current_state_path.<span class="fn">empty</span>() &amp;&amp; fs::<span class="fn">exists</span>(g_cfg-&gt;current_state_path)) {
+    <span class="fn">serve_file</span>(client_fd, g_cfg-&gt;current_state_path,
+               <span class="str">"application/octet-stream"</span>);
+} <span class="kw">else</span> {
+    <span class="cm">// Fallback: serialise g_current_state on-the-fly</span>
+    <span class="kw">auto</span> snap = <span class="fn">snapshot_current_state</span>();   <span class="cm">// lock + copy</span>
+    <span class="kw">auto</span> buf  = <span class="fn">serialize_to_parquet_buffer</span>(snap);
+    <span class="fn">send_binary_response</span>(client_fd, buf, <span class="str">"application/octet-stream"</span>);
+}</pre>
+
+<h3>Step 5 — handle_data()</h3>
+<pre><span class="cm">// Parse ?last=N&amp;unit=X&amp;device=Y&amp;point=Z from request line</span>
+<span class="kw">auto</span> params = <span class="fn">parse_query_string</span>(req);
+<span class="kw">int</span>  last_s  = params.<span class="fn">count</span>(<span class="str">"last"</span>)   ? std::<span class="fn">stoi</span>(params[<span class="str">"last"</span>])   : <span class="num">30</span>;
+<span class="kw">auto</span> u_filt  = params.<span class="fn">count</span>(<span class="str">"unit"</span>)   ? params[<span class="str">"unit"</span>]   : <span class="str">""</span>;
+<span class="kw">auto</span> d_filt  = params.<span class="fn">count</span>(<span class="str">"device"</span>) ? params[<span class="str">"device"</span>] : <span class="str">""</span>;
+<span class="kw">auto</span> p_filt  = params.<span class="fn">count</span>(<span class="str">"point"</span>)  ? params[<span class="str">"point"</span>]  : <span class="str">""</span>;
+
+<span class="kw">int64_t</span> cutoff = <span class="fn">now_ms</span>() - (<span class="kw">int64_t</span>)last_s * <span class="num">1000</span>;
+
+std::vector&lt;TimestampedRow&gt; result;
+{
+    std::lock_guard&lt;std::mutex&gt; lk(g_recent_mutex);
+    <span class="kw">for</span> (<span class="kw">const auto</span>&amp; tr : g_recent_rows) {
+        <span class="kw">if</span> (tr.ts_ms &lt; cutoff) <span class="kw">continue</span>;
+        <span class="kw">if</span> (!u_filt.<span class="fn">empty</span>() &amp;&amp; tr.unit_id    != u_filt) <span class="kw">continue</span>;
+        <span class="kw">if</span> (!d_filt.<span class="fn">empty</span>() &amp;&amp; tr.device     != d_filt) <span class="kw">continue</span>;
+        <span class="kw">if</span> (!p_filt.<span class="fn">empty</span>() &amp;&amp; tr.point_name != p_filt) <span class="kw">continue</span>;
+        result.<span class="fn">push_back</span>(tr);
+    }
+}
+<span class="cm">// Serialize result to JSON and send with Content-Type: application/json</span></pre>
+
+<h3>Approximate LOC estimate</h3>
+<table>
+  <tr><th>Step</th><th>New lines (C++)</th></tr>
+  <tr><td>Config + deque struct</td><td>~20</td></tr>
+  <tr><td>Push/trim in parse_thread</td><td>~20</td></tr>
+  <tr><td>Router changes in health_thread_fn</td><td>~15</td></tr>
+  <tr><td>handle_current()</td><td>~30</td></tr>
+  <tr><td>handle_data() + query string parser</td><td>~60</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>~145 lines</strong></td></tr>
+</table>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="partial">6. Partial Dataset Queries</h2>
+
+<p>All filtering in <code>handle_data()</code> is string comparison on pre-extracted fields.
+This is intentionally simple — no query language, no index. At 80k msg/s for 60s
+the deque may hold 4–5M rows; a linear scan filtering by unit takes ~50ms on a single core.</p>
+
+<h3>Strategies to keep it fast</h3>
+<ul>
+  <li><strong>Require unit= parameter</strong> when recent_rows count exceeds a threshold (e.g. 100k rows).
+      Return HTTP 413 with a hint if omitted.</li>
+  <li><strong>Per-unit sub-deques</strong>: a <code>std::unordered_map&lt;string, deque&gt;</code> keyed by unit_id
+      gives O(1) unit lookup and eliminates the linear scan. Higher memory overhead but much faster
+      for multi-unit deployments.</li>
+  <li><strong>Limit response rows</strong>: add <code>&amp;limit=N</code> to cap output at N rows (default 10,000).
+      Return newest-first so partial results are useful.</li>
+</ul>
+
+<div class="diagram">Query flow for GET /data?last=30&amp;unit=0215F562&amp;device=BMS
+  │
+  ├─ parse_query_string(req)       → {last:"30", unit:"0215F562", device:"BMS"}
+  ├─ cutoff = now_ms() - 30000
+  ├─ lock g_recent_mutex
+  ├─ iterate g_recent_rows (deque, LIFO scan from back for recent-first)
+  │     filter: ts_ms ≥ cutoff AND unit_id == "0215F562" AND device == "BMS"
+  ├─ unlock
+  └─ serialize to JSON → send</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="longspan">7. Longer Time-Span Queries</h2>
+
+<p>For spans beyond the 60s rolling buffer (e.g. last 10 minutes, last hour), the client must
+stitch together flushed parquet files from disk with the rolling buffer tail.</p>
+
+<h3>Option A — bench_server + DuckDB-WASM (browser-side)</h3>
+<ol>
+  <li>Browser fetches parquet file list from <code>bench_server /api/ls?path=…</code></li>
+  <li>For files that fall in the requested time window, fetch each via HTTP and load into DuckDB-WASM</li>
+  <li>Fetch <code>/current</code> from the writer for the tail</li>
+  <li>Run a single DuckDB query across all loaded tables</li>
+</ol>
+<div class="note">This is already mostly implemented in <code>evelyn_real_time_data.html</code> —
+the DuckDB-WASM setup and file fetch loop are there. The missing piece is the <code>/current</code>
+endpoint to close the gap.</div>
+
+<h3>Option B — server-side stitch in parquet_writer</h3>
+<p>Add a <code>GET /query?from=T1&amp;to=T2&amp;unit=X</code> endpoint that:</p>
+<ol>
+  <li>Scans the output directory for parquet files whose names fall in <code>[T1, T2]</code></li>
+  <li>Reads matching files using the Arrow C++ API (same library already linked)</li>
+  <li>Appends rows from <code>g_recent_rows</code> that fall in the range</li>
+  <li>Returns combined result as JSON or parquet binary</li>
+</ol>
+<div class="warn">This is heavier to implement (~300 lines) and couples the query path to the file layout.
+Option A (browser DuckDB) keeps the writer lean and is sufficient for dashboards.</div>
+
+<h3>Option C — bridge_api (existing design)</h3>
+<p>The <code>evelyn_real_time_data.html</code> document describes a <strong>bridge_api</strong> approach
+where a small Python/Go service sits between parquet files and the browser, exposing
+<code>/query/current</code>, <code>/query/range</code>, and <code>/subscribe</code> (WebSocket).
+This is the cleanest architecture for production but requires an additional service to deploy and maintain.</p>
+
+<table>
+  <tr><th>Option</th><th>Complexity</th><th>Latency</th><th>Production suitability</th></tr>
+  <tr><td>A — bench_server + DuckDB-WASM</td><td>Low</td><td>~200ms (file fetch + parse)</td><td>Good for demo/internal dashboards</td></tr>
+  <tr><td>B — server-side stitch in parquet_writer</td><td>Medium</td><td>~50ms</td><td>Adds complexity to binary; avoid if possible</td></tr>
+  <tr><td>C — bridge_api service</td><td>High</td><td>~10ms (cached)</td><td>Best for production; deploy alongside writer</td></tr>
+  <tr><td>D — subscriber_api + /current (preferred)</td><td>Low</td><td>~30ms</td><td>Clean separation; recommended for parquet bench run</td></tr>
+</table>
+
+<h3 id="subscriber-current">Option D — subscriber_api merges files + /current (recommended)</h3>
+
+<p>The <code>subscriber_api</code> (Python, server-side DuckDB) already queries date-partitioned
+parquet files via <code>read_parquet([glob1, glob2, ...], union_by_name=true)</code>. Adding the
+live 60s buffer requires only two changes:</p>
+
+<ol>
+  <li>Writer exposes <code>GET /current</code> — serialises the in-memory buffer to parquet bytes
+      on demand and returns them as <code>application/octet-stream</code></li>
+  <li>subscriber_api adds the writer HTTP URL directly to the DuckDB source list — no temp file,
+      no separate fetch step. DuckDB's <code>httpfs</code> extension fetches it as part of the
+      same query execution</li>
+</ol>
+
+<p>DuckDB sees one unified source covering all three layers — local files and live HTTP buffer
+in a single statement:</p>
+
+<pre><span class="cm">-- what DuckDB runs inside subscriber_api._query_history()</span>
+SELECT * FROM read_parquet([
+    <span class="str">'.../2026/04/12/*.parquet'</span>,          <span class="cm">-- compact + flush files on disk</span>
+    <span class="str">'.../2026/04/11/*.parquet'</span>,          <span class="cm">-- previous day if range spans midnight</span>
+    <span class="str">'http://192.168.86.34:8771/current'</span>, <span class="cm">-- live buffer: writer fetched by DuckDB httpfs</span>
+    <span class="str">'http://192.168.86.48:8771/current'</span>  <span class="cm">-- second writer if multi-writer deployment</span>
+], union_by_name=<span class="kw">true</span>)
+WHERE timestamp BETWEEN from_ts AND to_ts
+ORDER BY timestamp
+LIMIT :limit</pre>
+
+<p>The subscriber_api just builds the sources list — HTTP URIs go in directly alongside local globs:</p>
+
+<pre><span class="cm"># subscriber_api._query_history() — full source list construction</span>
+<span class="kw">def</span> <span class="fn">_make_conn</span>(cfg):
+    conn = duckdb.<span class="fn">connect</span>()
+    conn.<span class="fn">execute</span>(<span class="str">"INSTALL httpfs; LOAD httpfs;"</span>)   <span class="cm"># once at startup</span>
+    <span class="cm"># S3 credentials if needed (omit for local HTTP)</span>
+    <span class="kw">return</span> conn
+
+<span class="kw">def</span> <span class="fn">_query_history</span>(cfg, site, instance, from_ts, to_ts, limit):
+    globs   = <span class="fn">_build_globs</span>(cfg, site, instance, from_ts, to_ts)
+    sources = globs + [
+        <span class="str">f"{url.rstrip('/')}/current?since={<span class="fn">_newest_row_ts</span>(globs):.3f}"</span>
+        <span class="kw">for</span> url <span class="kw">in</span> cfg.get(<span class="str">"writer_urls"</span>, [])
+    ]
+    src_str = <span class="str">", "</span>.<span class="fn">join</span>(<span class="str">f"'{s}'"</span> <span class="kw">for</span> s <span class="kw">in</span> sources)
+    <span class="kw">return</span> conn.<span class="fn">execute</span>(<span class="str">f"""
+        SELECT * FROM read_parquet([{src_str}], union_by_name=true)
+        WHERE timestamp BETWEEN {from_ts} AND {to_ts}
+        ORDER BY timestamp LIMIT {limit}
+    """</span>)</pre>
+
+<h4>HTTP Range requests — writer implementation detail</h4>
+
+<p>DuckDB's <code>httpfs</code> reads parquet files efficiently using HTTP Range requests. Rather
+than fetching the entire file, it issues two requests:</p>
+
+<ol>
+  <li><strong>Footer fetch</strong> — <code>Range: bytes=-8</code> then
+      <code>Range: bytes=N-M</code> to read the Parquet footer (schema + row group metadata).
+      This tells DuckDB the column layout and row group offsets without reading any data.</li>
+  <li><strong>Column page fetch</strong> — <code>Range: bytes=A-B</code> per column page
+      actually needed by the query's projection and predicate pushdown. Columns not referenced
+      in the <code>SELECT</code> or <code>WHERE</code> are never fetched.</li>
+</ol>
+
+<p>The writer's <code>/current</code> HTTP handler must therefore support the
+<code>Range</code> header. Implementation in the health thread:</p>
+
+<pre><span class="cm">// health_thread_fn() — /current handler with Range support</span>
+<span class="kw">auto</span> parquet_buf = <span class="fn">serialize_buffer_to_parquet</span>();   <span class="cm">// Arrow → parquet bytes in memory</span>
+<span class="kw">size_t</span> total = parquet_buf-&gt;<span class="fn">size</span>();
+
+<span class="cm">// Parse Range header if present: "bytes=START-END" or "bytes=-SUFFIX"</span>
+<span class="kw">size_t</span> range_start = <span class="num">0</span>, range_end = total - <span class="num">1</span>;
+<span class="kw">bool</span>   is_range    = <span class="kw">false</span>;
+<span class="kw">if</span> (<span class="kw">auto</span> pos = request.<span class="fn">find</span>(<span class="str">"Range: bytes="</span>) != npos) {
+    <span class="kw">auto</span> spec = request.<span class="fn">substr</span>(pos + <span class="num">13</span>);
+    <span class="kw">if</span> (spec[<span class="num">0</span>] == <span class="str">'-'</span>) {                              <span class="cm">// suffix: bytes=-N</span>
+        <span class="kw">size_t</span> suffix = <span class="fn">stoull</span>(spec.<span class="fn">substr</span>(<span class="num">1</span>));
+        range_start = total - suffix;
+    } <span class="kw">else</span> {                                            <span class="cm">// range: bytes=START-END</span>
+        <span class="kw">auto</span> dash  = spec.<span class="fn">find</span>(<span class="str">'-'</span>);
+        range_start = <span class="fn">stoull</span>(spec.<span class="fn">substr</span>(<span class="num">0</span>, dash));
+        range_end   = <span class="fn">stoull</span>(spec.<span class="fn">substr</span>(dash + <span class="num">1</span>));
+    }
+    is_range = <span class="kw">true</span>;
+}
+
+<span class="kw">size_t</span>      send_len = range_end - range_start + <span class="num">1</span>;
+std::string status   = is_range ? <span class="str">"206 Partial Content"</span> : <span class="str">"200 OK"</span>;
+std::string hdr =
+    <span class="str">"HTTP/1.1 "</span> + status + <span class="str">"\r\n"</span>
+    <span class="str">"Content-Type: application/octet-stream\r\n"</span>
+    <span class="str">"Accept-Ranges: bytes\r\n"</span>                          <span class="cm">// advertise Range support</span>
+    <span class="str">"Content-Length: "</span> + <span class="fn">to_string</span>(send_len) + <span class="str">"\r\n"</span>
+    <span class="str">"Content-Range: bytes "</span> + <span class="fn">to_string</span>(range_start) + <span class="str">"-"</span>
+                           + <span class="fn">to_string</span>(range_end)   + <span class="str">"/"</span>
+                           + <span class="fn">to_string</span>(total)       + <span class="str">"\r\n"</span>
+    <span class="str">"Cache-Control: no-store\r\n\r\n"</span>;
+
+<span class="fn">write</span>(client_fd, hdr.<span class="fn">data</span>(), hdr.<span class="fn">size</span>());
+<span class="fn">write</span>(client_fd, parquet_buf-&gt;<span class="fn">data</span>() + range_start, send_len);</pre>
+
+<div class="note">
+  For the small in-memory <code>/current</code> buffer (typically 50–200 KB for 60s of data),
+  DuckDB will likely fetch the entire file in two Range requests regardless. The overhead of
+  Range handling is minimal and the implementation above covers all cases DuckDB will generate.
+  Without <code>Accept-Ranges: bytes</code> in the response header DuckDB falls back to a full
+  read — functionally correct but slightly less efficient.
+</div>
+
+<h4>Overlap and deduplication</h4>
+
+<p class="warn"><strong>Important:</strong> the flush files on disk and the <code>/current</code>
+buffer will overlap. The writer flushes at T-N seconds but the in-memory buffer still contains
+all rows since the last flush start. <code>union_by_name=true</code> merges schemas but does
+<em>not</em> deduplicate rows — a naive union returns duplicate rows for the overlap window.</p>
+
+<p>Two clean solutions:</p>
+
+<ol>
+  <li><strong>Preferred — <code>?since=</code> parameter trims /current to post-flush rows only.</strong>
+      The writer tracks <code>last_flush_ts</code> and only serialises rows with
+      <code>ts &gt; since</code>. The subscriber_api passes the newest row timestamp from the
+      most recent flush file — shown in the code above as <code>_newest_row_ts(globs)</code>.
+      The writer returns only the true gap — zero overlap, zero duplicates.</li>
+
+  <li><strong>Fallback — deduplicate in DuckDB.</strong> If <code>since=</code> is not yet
+      implemented on the writer, wrap the query in a window dedup:
+<pre>SELECT * FROM (
+    SELECT *, row_number() OVER (PARTITION BY ts, unit_id ORDER BY ts) AS rn
+    FROM read_parquet([{sources}], union_by_name=<span class="kw">true</span>)
+    WHERE timestamp BETWEEN from_ts AND to_ts
+) WHERE rn = <span class="num">1</span>
+ORDER BY timestamp</pre>
+      Slightly heavier but works without any writer changes.</li>
+</ol>
+
+<h4>Multiple writers — URIs go straight into the source list</h4>
+
+<p>With <code>httpfs</code>, adding more writers requires no additional fetch code —
+just more URIs in the list. DuckDB fetches all sources in parallel internally:</p>
+
+<pre><span class="cm"># config.yaml</span>
+writer_urls:
+  - http://192.168.86.34:8771   <span class="cm"># .34 wide-pivot writer</span>
+  - http://192.168.86.34:8772   <span class="cm"># .34 second writer</span>
+  - http://192.168.86.48:8771   <span class="cm"># gx10 slice A</span>
+  - http://192.168.86.48:8772   <span class="cm"># gx10 slice B</span>
+s3:
+  local_path: /mnt/tort-sdi/bench/bench-wide/bench</pre>
+
+<p><code>union_by_name=true</code> handles schema differences between writers transparently —
+a wide-pivot writer and a long-format writer can both contribute to the same query; DuckDB
+null-fills columns absent from any given file.</p>
+
+<div class="note">
+  If a writer is unreachable, DuckDB raises an error for that URI. The subscriber_api should
+  catch per-source errors and retry without the failed URI — falling back to files-only for
+  that writer's contribution. The query still succeeds with whatever sources responded.
+</div>
+
+<h4>subscriber_api config</h4>
+<pre><span class="cm"># config.yaml — writer_urls added to existing s3/local config</span>
+writer_urls:
+  - http://192.168.86.34:8771
+s3:
+  local_path: /mnt/tort-sdi/bench/bench-wide/bench</pre>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h3 id="cpp-changes">parquet_writer.cpp — exact code changes for <code>/current</code></h3>
+
+<p>Two changes to <code>parquet_writer.cpp</code> are required to support
+<code>http://host:8771/current</code> as a URI in a DuckDB <code>read_parquet()</code> source list.
+No other files change. subscriber_api uses DuckDB's <code>httpfs</code> extension — it fetches the
+HTTP URI exactly like a local file, sending HTTP Range requests to read only the Parquet footer and
+the columns it needs.</p>
+
+<p>The two changes are independent — Change 1 adds a helper function, Change 2 adds the HTTP handler
+and wires it into the existing router. Click each section to expand the full code and explanation.</p>
+
+<h4>Change 1 — add <code>write_parquet_table_to_buffer()</code> helper (~line 853)</h4>
+
+<!-- ══ CHANGE 1 ══════════════════════════════════════════════════════════ -->
+<details open>
+<summary><span class="step-num">1</span> write_parquet_table_to_buffer() — in-memory Parquet serialisation helper &nbsp;<small style="font-weight:400;color:#8ba3bf;">~line 853 · +22 lines</small></summary>
+<div class="detail-body">
+
+<p>The existing <code>write_parquet_table()</code> writes to a file path using
+<code>arrow::io::FileOutputStream</code>. The new helper does the same serialisation but
+targets an <code>arrow::io::BufferOutputStream</code> — an Arrow-managed heap buffer —
+and returns the completed bytes as a <code>shared_ptr&lt;arrow::Buffer&gt;</code>.</p>
+
+<p>It is inserted immediately after <code>write_parquet_table()</code>, before
+<code>write_wal_ipc()</code>. No other functions change.</p>
+
+<details class="sub">
+<summary><span class="tag-before">BEFORE</span> write_parquet_table() — file-only, no buffer variant exists</summary>
+<div class="detail-body">
+<pre><span class="cm">// parquet_writer.cpp ~line 839 — BEFORE (this function is unchanged)</span>
+<span class="kw">static</span> arrow::Status <span class="fn">write_parquet_table</span>(<span class="kw">const</span> std::string&amp; path,
+                                          <span class="kw">const</span> std::shared_ptr&lt;arrow::Table&gt;&amp; table,
+                                          <span class="kw">const</span> std::string&amp; compression) {
+    <span class="kw">auto</span> props = parquet::WriterProperties::Builder()
+        .<span class="fn">compression</span>(<span class="fn">to_parquet_compression</span>(compression))
+        -&gt;<span class="fn">build</span>();
+    ARROW_ASSIGN_OR_RAISE(<span class="kw">auto</span> out, arrow::io::FileOutputStream::<span class="fn">Open</span>(path));
+    ARROW_RETURN_NOT_OK(parquet::arrow::<span class="fn">WriteTable</span>(
+        *table, arrow::<span class="fn">default_memory_pool</span>(), out,
+        <span class="kw">static_cast</span>&lt;<span class="kw">int64_t</span>&gt;(table-&gt;<span class="fn">num_rows</span>()), props));
+    <span class="kw">return</span> arrow::Status::<span class="fn">OK</span>();
+}
+<span class="cm">// &lt;— next function is write_wal_ipc(); no in-memory variant exists</span></pre>
+</div>
+</details>
+
+<details class="sub" open>
+<summary><span class="tag-after">AFTER</span> INSERT write_parquet_table_to_buffer() immediately below</summary>
+<div class="detail-body">
+<pre><span class="cm">// parquet_writer.cpp — INSERT after write_parquet_table(), ~line 853</span>
+<span class="cm">// Serialize an Arrow table to an in-memory parquet buffer.
+// Used by handle_current() to serve the live g_buffers snapshot over HTTP.
+// Returns nullptr on error (logs to stderr).</span>
+<span class="kw">static</span> std::shared_ptr&lt;arrow::Buffer&gt;
+<span class="fn">write_parquet_table_to_buffer</span>(<span class="kw">const</span> std::shared_ptr&lt;arrow::Table&gt;&amp; table,
+                               <span class="kw">const</span> std::string&amp; compression = <span class="str">"snappy"</span>) {
+    <span class="kw">auto</span> props = parquet::WriterProperties::Builder()
+        .<span class="fn">compression</span>(<span class="fn">to_parquet_compression</span>(compression))
+        -&gt;<span class="fn">build</span>();
+
+    <span class="cm">// Step 1 — open a resizable in-memory sink instead of a file</span>
+    <span class="kw">auto</span> sink_res = arrow::io::BufferOutputStream::<span class="fn">Create</span>();
+    <span class="kw">if</span> (!sink_res.<span class="fn">ok</span>()) {
+        std::cerr &lt;&lt; <span class="str">"[current] BufferOutputStream::Create: "</span>
+                  &lt;&lt; sink_res.<span class="fn">status</span>() &lt;&lt; <span class="str">"\n"</span>;
+        <span class="kw">return</span> <span class="kw">nullptr</span>;
+    }
+    <span class="kw">auto</span> sink = *sink_res;
+
+    <span class="cm">// Step 2 — write Parquet into the sink (identical call to the file variant)</span>
+    <span class="kw">auto</span> st = parquet::arrow::<span class="fn">WriteTable</span>(
+        *table, arrow::<span class="fn">default_memory_pool</span>(), sink,
+        <span class="kw">static_cast</span>&lt;<span class="kw">int64_t</span>&gt;(table-&gt;<span class="fn">num_rows</span>()), props);
+    <span class="kw">if</span> (!st.<span class="fn">ok</span>()) {
+        std::cerr &lt;&lt; <span class="str">"[current] WriteTable: "</span> &lt;&lt; st &lt;&lt; <span class="str">"\n"</span>;
+        <span class="kw">return</span> <span class="kw">nullptr</span>;
+    }
+
+    <span class="cm">// Step 3 — finalise the sink; returns an immutable arrow::Buffer</span>
+    <span class="kw">auto</span> buf_res = sink-&gt;<span class="fn">Finish</span>();
+    <span class="kw">if</span> (!buf_res.<span class="fn">ok</span>()) {
+        std::cerr &lt;&lt; <span class="str">"[current] Finish: "</span> &lt;&lt; buf_res.<span class="fn">status</span>() &lt;&lt; <span class="str">"\n"</span>;
+        <span class="kw">return</span> <span class="kw">nullptr</span>;
+    }
+    <span class="kw">return</span> *buf_res;   <span class="cm">// caller owns the buffer; it stays alive until last ref drops</span>
+}</pre>
+</div>
+</details>
+
+<details class="sub">
+<summary><span class="tag-why">WHY</span> BufferOutputStream instead of a temp file</summary>
+<div class="detail-body">
+<p><code>arrow::io::BufferOutputStream</code> is an Arrow-managed resizable byte buffer
+that satisfies the same <code>arrow::io::OutputStream</code> interface as
+<code>FileOutputStream</code>. <code>parquet::arrow::WriteTable()</code> receives a
+pointer to the interface — it has no idea whether bytes go to disk or memory.
+The three steps map directly onto the file variant:</p>
+<table>
+  <tr><th>File variant</th><th>Buffer variant</th></tr>
+  <tr><td><code>FileOutputStream::Open(path)</code></td>
+      <td><code>BufferOutputStream::Create()</code></td></tr>
+  <tr><td><code>WriteTable(..., out, ...)</code></td>
+      <td><code>WriteTable(..., sink, ...)</code> — identical</td></tr>
+  <tr><td>file on disk</td>
+      <td><code>sink-&gt;Finish()</code> → <code>shared_ptr&lt;arrow::Buffer&gt;</code></td></tr>
+</table>
+<p>Using a temp file would work but adds: a <code>mkstemp()</code> call, a filesystem
+write, a file-descriptor open + mmap/read to serve the bytes, and a
+<code>unlink()</code>. The buffer approach keeps everything in process memory and is
+the pattern Arrow recommends for network serialisation.</p>
+<p><strong>No new library dependency.</strong> <code>BufferOutputStream</code> is in
+<code>&lt;arrow/io/memory.h&gt;</code>, part of <code>libarrow</code> which is already
+linked. No Makefile change is needed.</p>
+</div>
+</details>
+
+</div>
+</details>
+
+<!-- ══ CHANGE 2 ══════════════════════════════════════════════════════════ -->
+<details open>
+<summary><span class="step-num">2</span> handle_current() + health_thread_fn() routing &nbsp;<small style="font-weight:400;color:#8ba3bf;">~line 1513 + 1554 · +76 / −9 lines</small></summary>
+<div class="detail-body">
+
+<p>This change has two parts that must be applied together:</p>
+<ol>
+  <li>Add <code>handle_current()</code> as a free function <em>before</em>
+      <code>health_thread_fn()</code> — it handles the full lifecycle of a
+      <code>GET /current</code> request.</li>
+  <li>Replace the 9-line 404-all routing block inside <code>health_thread_fn()</code>
+      with a 6-line dispatcher that calls <code>handle_current()</code>.</li>
+</ol>
+
+<!-- ── 2a routing ──────────────────────────────────────────── -->
+<details class="sub">
+<summary><span class="tag-before">BEFORE</span> health_thread_fn() routing — 404s everything except /health</summary>
+<div class="detail-body">
+<pre><span class="cm">// parquet_writer.cpp health_thread_fn() ~line 1554 — CURRENT CODE
+// This entire block is replaced in the AFTER.</span>
+
+<span class="cm">// Only respond to GET /health; return 404 for everything else</span>
+std::string req(rbuf, <span class="kw">static_cast</span>&lt;<span class="kw">size_t</span>&gt;(n));
+<span class="kw">bool</span> valid = (req.<span class="fn">rfind</span>(<span class="str">"GET "</span>, <span class="num">0</span>) == <span class="num">0</span>) &amp;&amp;
+             (req.<span class="fn">find</span>(<span class="str">" /health "</span>) != std::string::npos ||
+              req.<span class="fn">find</span>(<span class="str">" /health\r"</span>) != std::string::npos);
+<span class="kw">if</span> (!valid) {
+    <span class="kw">const char</span>* r404 = <span class="str">"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"</span>;
+    ::<span class="fn">send</span>(client_fd, r404, <span class="fn">strlen</span>(r404), MSG_NOSIGNAL);
+    ::<span class="fn">close</span>(client_fd); <span class="kw">continue</span>;
+}
+<span class="cm">// ... /health JSON response builds below this point ...</span></pre>
+<p>Any request to <code>/current</code>, <code>/data</code>, or any other path hits the
+<code>if (!valid)</code> branch and gets a 404. DuckDB httpfs receives a 404 and throws
+<code>IOException: HTTP Error: 404 Not Found</code>.</p>
+</div>
+</details>
+
+<details class="sub" open>
+<summary><span class="tag-after">AFTER</span> health_thread_fn() routing — 6-line dispatcher</summary>
+<div class="detail-body">
+<pre><span class="cm">// parquet_writer.cpp health_thread_fn() ~line 1554 — REPLACE the old block with:</span>
+std::string req(rbuf, <span class="kw">static_cast</span>&lt;<span class="kw">size_t</span>&gt;(n));
+<span class="kw">bool</span> is_get     = req.<span class="fn">rfind</span>(<span class="str">"GET "</span>, <span class="num">0</span>) == <span class="num">0</span>;
+<span class="kw">bool</span> is_health  = is_get &amp;&amp; (req.<span class="fn">find</span>(<span class="str">" /health "</span>)  != std::string::npos ||
+                              req.<span class="fn">find</span>(<span class="str">" /health\r"</span>) != std::string::npos);
+<span class="kw">bool</span> is_current = is_get &amp;&amp;  req.<span class="fn">find</span>(<span class="str">" /current"</span>) != std::string::npos;
+
+<span class="kw">if</span> (is_current) { <span class="fn">handle_current</span>(client_fd, req); <span class="kw">continue</span>; }  <span class="cm">// ← only new line</span>
+
+<span class="kw">if</span> (!is_health) {
+    <span class="kw">const char</span>* r404 = <span class="str">"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"</span>;
+    ::<span class="fn">send</span>(client_fd, r404, <span class="fn">strlen</span>(r404), MSG_NOSIGNAL);
+    ::<span class="fn">close</span>(client_fd); <span class="kw">continue</span>;
+}
+<span class="cm">// ... existing /health JSON response completely unchanged below this point ...</span></pre>
+<p>The <code>handle_current()</code> call uses <code>continue</code> — after it returns,
+the health thread loops back to <code>poll()</code> waiting for the next connection.
+<code>handle_current()</code> is responsible for closing <code>client_fd</code> itself.</p>
+</div>
+</details>
+
+<!-- ── 2b handle_current internals ────────────────────────── -->
+<details class="sub" open>
+<summary><span class="tag-after">NEW</span> handle_current() — full function, inserted before health_thread_fn()</summary>
+<div class="detail-body">
+<p>Five logical steps in sequence. Each is a separate sub-section below.</p>
+
+<details class="sub">
+<summary><span class="step-num">A</span> Parse <code>?since=UNIX_S</code> from the request line</summary>
+<div class="detail-body">
+<pre><span class="kw">static void</span> <span class="fn">handle_current</span>(<span class="kw">int</span> client_fd, <span class="kw">const</span> std::string&amp; req) {
+
+    <span class="cm">// ── A: parse ?since=UNIX_S (optional) ─────────────────────────────
+    // since_us = 0 means "return all buffered rows" (no filter).
+    // Caller (subscriber_api) passes the Unix timestamp of the newest row in
+    // the most recent flush file — the writer then returns only rows newer
+    // than that, which is exactly the gap between the last flush and now.
+    // This eliminates row duplication when DuckDB unions disk files + /current.</span>
+    int64_t since_us = 0;
+    <span class="kw">auto</span>    q = req.<span class="fn">find</span>(<span class="str">"?since="</span>);
+    <span class="kw">if</span> (q != std::string::npos) {
+        <span class="kw">try</span> {
+            double s = std::<span class="fn">stod</span>(req.<span class="fn">substr</span>(q + <span class="num">7</span>));   <span class="cm">// e.g. "1744473600.123"</span>
+            since_us = <span class="kw">static_cast</span>&lt;<span class="kw">int64_t</span>&gt;(s * 1'000'000.0);  <span class="cm">// → µs</span>
+        } <span class="kw">catch</span> (...) {}  <span class="cm">// malformed → since_us stays 0, return all rows</span>
+    }</pre>
+<p>The <code>?since=</code> value is a Unix timestamp in decimal seconds (float), matching
+the format returned by Python's <code>time.time()</code>. It is converted to microseconds
+to match the <code>int64_t</code> stored in <code>row.ints["ts"]</code>.</p>
+<p>If the parameter is absent or malformed, <code>since_us = 0</code> and all buffered
+rows are returned — safe fallback for a fresh query with no prior flush files.</p>
+</div>
+</details>
+
+<details class="sub">
+<summary><span class="step-num">B</span> Snapshot g_buffers under the global mutex</summary>
+<div class="detail-body">
+<pre>    <span class="cm">// ── B: snapshot g_buffers under mutex ─────────────────────────────
+    // g_buffers is a std::map&lt;PartitionKey, Partition&gt; — the same map that
+    // parse_thread fills and flush_thread drains.  We take the same g_mutex
+    // that flush_thread uses, copy the rows we need, then release immediately.
+    // All expensive work (Arrow build, Parquet serialise, HTTP write) happens
+    // outside the lock so the MQTT parse path is never blocked.</span>
+    std::vector&lt;Row&gt; rows;
+    {
+        std::lock_guard&lt;std::mutex&gt; lk(g_mutex);        <span class="cm">// same lock as flush path</span>
+        <span class="kw">for</span> (<span class="kw">const auto</span>&amp; [key, part] : g_buffers) {     <span class="cm">// iterate all partitions</span>
+            <span class="kw">for</span> (<span class="kw">const auto</span>&amp; r : part.rows) {            <span class="cm">// iterate rows in each</span>
+                <span class="kw">if</span> (since_us &gt; 0) {
+                    <span class="kw">auto</span> it = r.ints.<span class="fn">find</span>(<span class="str">"ts"</span>);
+                    <span class="cm">// skip rows whose ts is at or before the ?since= cutoff</span>
+                    <span class="kw">if</span> (it != r.ints.<span class="fn">end</span>() &amp;&amp; it-&gt;second &lt;= since_us) <span class="kw">continue</span>;
+                }
+                rows.<span class="fn">push_back</span>(r);                       <span class="cm">// copy Row (cheap — maps)</span>
+            }
+        }
+    }   <span class="cm">// &lt;— mutex released here; Row copies are now owned by this thread</span></pre>
+<p><strong>Lock scope is minimal.</strong> The mutex is held only while iterating and
+copying — typically &lt;1 ms even for a full 60-second buffer of 12-unit wide-pivot
+data (~50k rows). The subsequent Arrow build, Parquet serialisation, and TCP write
+all happen after the lock is released, so parse_thread is never delayed.</p>
+<p><code>g_buffers</code> is a <code>std::map&lt;PartitionKey, Partition&gt;</code> where
+each <code>Partition</code> holds a <code>std::vector&lt;Row&gt;</code>. A <code>Row</code>
+is three <code>std::map</code> fields (ints/floats/strings). The copy cost is
+proportional to the number of rows times the number of signal columns — for a
+60-second 12-unit bench run at 1 Hz with 63 signals, that is ~720 rows.</p>
+</div>
+</details>
+
+<details class="sub">
+<summary><span class="step-num">C</span> Build Arrow table using existing build_table()</summary>
+<div class="detail-body">
+<pre>    <span class="cm">// ── C: build Arrow table ──────────────────────────────────────────
+    // build_table() is the same function used by flush_thread — it collects all
+    // column names seen across the row vector, creates a typed Arrow builder per
+    // column (TimestampBuilder for "ts", Int64Builder for ints, DoubleBuilder for
+    // floats, StringBuilder for strings), appends each row's value or null, and
+    // returns a shared_ptr&lt;arrow::Table&gt;.
+    // Empty rows input produces an empty-schema table — not an error.</span>
+    <span class="kw">auto</span> table_res = <span class="fn">build_table</span>(rows);
+    <span class="kw">if</span> (!table_res.<span class="fn">ok</span>()) {
+        <span class="kw">const char</span>* e500 = <span class="str">"HTTP/1.1 500 Internal Server Error\r\n"</span>
+                           <span class="str">"Content-Length: 0\r\n\r\n"</span>;
+        ::<span class="fn">send</span>(client_fd, e500, <span class="fn">strlen</span>(e500), MSG_NOSIGNAL);
+        ::<span class="fn">close</span>(client_fd); <span class="kw">return</span>;
+    }
+    <span class="cm">// Step C2 — serialise table to parquet bytes in memory</span>
+    <span class="kw">auto</span> buf = <span class="fn">write_parquet_table_to_buffer</span>(*table_res, g_cfg-&gt;compression);
+    <span class="kw">if</span> (!buf) {
+        <span class="kw">const char</span>* e500 = <span class="str">"HTTP/1.1 500 Internal Server Error\r\n"</span>
+                           <span class="str">"Content-Length: 0\r\n\r\n"</span>;
+        ::<span class="fn">send</span>(client_fd, e500, <span class="fn">strlen</span>(e500), MSG_NOSIGNAL);
+        ::<span class="fn">close</span>(client_fd); <span class="kw">return</span>;
+    }</pre>
+<p><code>build_table()</code> (at ~line 635) uses <code>std::set</code> to collect column
+names — this ensures alphabetically sorted, schema-stable output across multiple
+calls, which is required for DuckDB to unify schemas when reading multiple parquet
+files with <code>union_by_name=true</code>. The schema of <code>/current</code> will
+match the schema of the flush files because both go through the same
+<code>build_table()</code> path.</p>
+<p>The compression codec (<code>g_cfg-&gt;compression</code>) is the same one used for
+flush files — typically <code>snappy</code>. For a small in-memory buffer this barely
+matters, but it ensures the wire format is consistent.</p>
+</div>
+</details>
+
+<details class="sub">
+<summary><span class="step-num">D</span> Parse the HTTP Range header</summary>
+<div class="detail-body">
+<pre>    <span class="cm">// ── D: Range header parsing ───────────────────────────────────────
+    // DuckDB httpfs NEVER fetches a parquet file in one shot. It always uses
+    // Range requests to minimise data transfer:
+    //
+    //   Request 1:  Range: bytes=-8
+    //               → last 8 bytes of the file (Parquet magic "PAR1" + footer length int32)
+    //               → from these 4 bytes DuckDB learns the footer size N
+    //
+    //   Request 2:  Range: bytes=TOTAL-N-TOTAL-9
+    //               → the Parquet footer block (schema, row group metadata, column offsets)
+    //               → DuckDB now knows every column name, type, and byte range
+    //
+    //   Request 3+: Range: bytes=A-B  (one per column needed by the query)
+    //               → only columns referenced in SELECT list / WHERE clause
+    //               → columns not in the query are never fetched
+    //
+    // Without Accept-Ranges: bytes in our response, DuckDB falls back to a full
+    // GET (no Range header), reads the whole file, and is still correct — but
+    // slightly less efficient.  For a small /current buffer (50–200 KB) the
+    // difference is negligible, but we implement Range for correctness.</span>
+
+    <span class="kw">size_t</span> total       = <span class="kw">static_cast</span>&lt;<span class="kw">size_t</span>&gt;(buf-&gt;<span class="fn">size</span>());
+    <span class="kw">size_t</span> range_start = <span class="num">0</span>, range_end = total - <span class="num">1</span>;  <span class="cm">// default: entire buffer</span>
+    <span class="kw">bool</span>   is_range    = <span class="kw">false</span>;
+
+    <span class="kw">auto</span>   rpos = req.<span class="fn">find</span>(<span class="str">"Range: bytes="</span>);
+    <span class="kw">if</span> (rpos != std::string::npos) {
+        std::string spec = req.<span class="fn">substr</span>(rpos + <span class="num">13</span>);                 <span class="cm">// skip "Range: bytes="</span>
+        <span class="kw">auto</span> nl = spec.<span class="fn">find_first_of</span>(<span class="str">"\r\n"</span>);
+        <span class="kw">if</span> (nl != std::string::npos) spec = spec.<span class="fn">substr</span>(<span class="num">0</span>, nl);   <span class="cm">// trim to end of header line</span>
+        <span class="kw">try</span> {
+            <span class="kw">if</span> (spec[<span class="num">0</span>] == <span class="str">'-'</span>) {
+                <span class="cm">// Suffix form: bytes=-8 → last 8 bytes (Parquet magic check)</span>
+                <span class="kw">size_t</span> suffix = std::<span class="fn">stoull</span>(spec.<span class="fn">substr</span>(<span class="num">1</span>));
+                range_start = total &gt; suffix ? total - suffix : <span class="num">0</span>;
+            } <span class="kw">else</span> {
+                <span class="cm">// Range form: bytes=START-END (footer block or column page)</span>
+                <span class="kw">auto</span> dash   = spec.<span class="fn">find</span>(<span class="str">'-'</span>);
+                range_start = std::<span class="fn">stoull</span>(spec.<span class="fn">substr</span>(<span class="num">0</span>, dash));
+                range_end   = std::<span class="fn">stoull</span>(spec.<span class="fn">substr</span>(dash + <span class="num">1</span>));
+            }
+            is_range = <span class="kw">true</span>;
+        } <span class="kw">catch</span> (...) {}    <span class="cm">// malformed → serve full buffer (200 OK)</span>
+    }
+    <span class="cm">// Clamp to valid byte range</span>
+    <span class="kw">if</span> (range_end   &gt;= total)     range_end   = total - <span class="num">1</span>;
+    <span class="kw">if</span> (range_start &gt;  range_end) range_start = range_end;
+    <span class="kw">size_t</span> send_len = range_end - range_start + <span class="num">1</span>;</pre>
+
+<p>Two Range header formats per RFC 7233:</p>
+<table>
+  <tr><th>Format</th><th>Example</th><th>Meaning</th><th>When DuckDB uses it</th></tr>
+  <tr><td>Suffix range</td><td><code>bytes=-8</code></td>
+      <td>Last N bytes of the resource</td>
+      <td>First request — reads Parquet magic + footer length</td></tr>
+  <tr><td>Byte range</td><td><code>bytes=12345-67890</code></td>
+      <td>Bytes from START to END inclusive</td>
+      <td>Footer block read; then each column page read</td></tr>
+</table>
+<p>The clamping at the end guards against a client sending a range that extends
+beyond the buffer size — returns the last valid byte rather than erroring.</p>
+</div>
+</details>
+
+<details class="sub">
+<summary><span class="step-num">E</span> Build HTTP response headers and send</summary>
+<div class="detail-body">
+<pre>    <span class="cm">// ── E: build response headers ─────────────────────────────────────</span>
+    std::string status = is_range ? <span class="str">"206 Partial Content"</span> : <span class="str">"200 OK"</span>;
+
+    std::ostringstream hdr;
+    hdr &lt;&lt; <span class="str">"HTTP/1.1 "</span> &lt;&lt; status &lt;&lt; <span class="str">"\r\n"</span>
+        <span class="cm">// Tell the client the body is raw Parquet bytes, not JSON</span>
+        &lt;&lt; <span class="str">"Content-Type: application/octet-stream\r\n"</span>
+        <span class="cm">// Required: tells DuckDB httpfs this server supports Range requests</span>
+        &lt;&lt; <span class="str">"Accept-Ranges: bytes\r\n"</span>
+        <span class="cm">// Required for browser-side DuckDB-WASM fetch() calls</span>
+        &lt;&lt; <span class="str">"Access-Control-Allow-Origin: *\r\n"</span>
+        <span class="cm">// Exact byte count of the slice being sent (not total file size)</span>
+        &lt;&lt; <span class="str">"Content-Length: "</span> &lt;&lt; send_len &lt;&lt; <span class="str">"\r\n"</span>
+        <span class="cm">// Range echo: "bytes START-END/TOTAL" — required for 206 responses</span>
+        &lt;&lt; <span class="str">"Content-Range: bytes "</span> &lt;&lt; range_start &lt;&lt; <span class="str">"-"</span>
+                                  &lt;&lt; range_end   &lt;&lt; <span class="str">"/"</span>
+                                  &lt;&lt; total       &lt;&lt; <span class="str">"\r\n"</span>
+        <span class="cm">// Prevent any proxy or client from caching stale buffer data</span>
+        &lt;&lt; <span class="str">"Cache-Control: no-store\r\n"</span>
+        &lt;&lt; <span class="str">"Connection: close\r\n\r\n"</span>;
+
+    std::string h = hdr.<span class="fn">str</span>();
+    ::<span class="fn">send</span>(client_fd, h.<span class="fn">c_str</span>(), h.<span class="fn">size</span>(), MSG_NOSIGNAL);   <span class="cm">// send headers</span>
+    ::<span class="fn">send</span>(client_fd,                                          <span class="cm">// send body slice</span>
+           <span class="kw">reinterpret_cast</span>&lt;<span class="kw">const char</span>*&gt;(buf-&gt;<span class="fn">data</span>()) + range_start,
+           send_len, MSG_NOSIGNAL);
+    ::<span class="fn">close</span>(client_fd);
+}  <span class="cm">// end handle_current()</span></pre>
+
+<p>Header details:</p>
+<table>
+  <tr><th>Header</th><th>Value</th><th>Why required</th></tr>
+  <tr><td><code>Content-Type</code></td><td><code>application/octet-stream</code></td>
+      <td>Signals binary payload; DuckDB httpfs parses it as Parquet regardless</td></tr>
+  <tr><td><code>Accept-Ranges: bytes</code></td><td>literal <code>bytes</code></td>
+      <td><strong>Critical</strong> — without this DuckDB falls back to a full GET and reads the entire buffer every time</td></tr>
+  <tr><td><code>Content-Length</code></td><td><code>send_len</code></td>
+      <td>Byte count of the slice being sent (not total file size)</td></tr>
+  <tr><td><code>Content-Range</code></td><td><code>bytes START-END/TOTAL</code></td>
+      <td>Required in all 206 responses; omit for 200 OK (no Range header in request)</td></tr>
+  <tr><td><code>Access-Control-Allow-Origin: *</code></td><td><code>*</code></td>
+      <td>Allows browser fetch() from DuckDB-WASM dashboards on any origin</td></tr>
+  <tr><td><code>Cache-Control: no-store</code></td><td></td>
+      <td>The buffer changes every second — must not be cached by any proxy</td></tr>
+</table>
+<p>Status code: <code>206 Partial Content</code> if a Range header was present in the
+request; <code>200 OK</code> otherwise. DuckDB httpfs handles both correctly.</p>
+</div>
+</details>
+
+</div><!-- end handle_current full function -->
+</details>
+
+</div>
+</details>
+
+<!-- ══ SUMMARY ══════════════════════════════════════════════════════════ -->
+<details>
+<summary><span class="step-num">∑</span> Summary — all changes to parquet_writer.cpp</summary>
+<div class="detail-body">
+<table>
+  <tr><th>Location</th><th>Change</th><th>Lines</th></tr>
+  <tr><td>~line 853 — after <code>write_parquet_table()</code></td>
+      <td>Add <code>write_parquet_table_to_buffer()</code></td><td>+22</td></tr>
+  <tr><td>~line 1513 — before <code>health_thread_fn()</code></td>
+      <td>Add <code>handle_current()</code> with ?since= + Range support</td><td>+70</td></tr>
+  <tr><td>~line 1554 — inside <code>health_thread_fn()</code></td>
+      <td>Replace 9-line 404-all block with 6-line dispatcher</td><td>+6 / −9</td></tr>
+  <tr><td><strong>Total</strong></td><td></td><td><strong>~89 net new lines</strong></td></tr>
+</table>
+<div class="note">
+  <strong>No other files change.</strong> <code>build_table()</code>,
+  <code>merge_wide_rows()</code>, and the flush path are all reused unchanged.
+  <code>arrow::io::BufferOutputStream</code> is in the same <code>libarrow</code> already
+  linked — no new dependencies or Makefile changes required.
+</div>
+</div>
+</details>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="ducklake">7b. DuckLake — Open Table Format Option <span class="badge-todo">EVALUATE</span></h2>
+
+<p><strong>DuckLake</strong> is an open table format introduced by the DuckDB team in early 2025.
+It adds a catalog and versioning layer on top of plain Parquet files, giving the query stack
+ACID transactions, time travel, and schema evolution — without changing the underlying storage format.
+It is DuckDB's answer to Apache Iceberg and Delta Lake, designed for simplicity: the catalog is
+a single DuckDB or SQLite database rather than a directory of JSON metadata files.</p>
+
+<h3>What DuckLake adds</h3>
+<table>
+  <tr><th>Feature</th><th>Description</th><th>Useful here?</th></tr>
+  <tr><td><strong>ACID transactions</strong></td>
+      <td>Safe concurrent reads during compaction — writer and reader never see a torn file</td>
+      <td>Moderate — single writer, but removes the tmp→rename dance</td></tr>
+  <tr><td><strong>Time travel</strong></td>
+      <td><code>SELECT * FROM table AT (TIMESTAMP '2026-04-13 14:32:00')</code></td>
+      <td>High — "what was SysSOC doing at 14:32 yesterday?" becomes trivial</td></tr>
+  <tr><td><strong>Schema evolution</strong></td>
+      <td>Add new signals (columns) without rewriting existing Parquet files</td>
+      <td>High — new device added mid-run just adds columns, old files unchanged</td></tr>
+  <tr><td><strong>Snapshot/version history</strong></td>
+      <td>Every write creates a new version; old versions retained until vacuumed</td>
+      <td>Moderate — useful for audit, not critical for bench data</td></tr>
+  <tr><td><strong>Catalog</strong></td>
+      <td>Single DB file replaces glob patterns in subscriber_api</td>
+      <td>High — eliminates manual path construction in queries</td></tr>
+</table>
+
+<h3>How it changes the current stack</h3>
+
+<p>Currently the pipeline is:</p>
+<pre>
+MQTT → parquet_writer → flush_*.parquet  →  compact_*.parquet
+                                                   ↓
+                          subscriber_api: glob paths + DuckDB read_parquet([...])
+</pre>
+
+<p>With DuckLake:</p>
+<pre>
+MQTT → parquet_writer → flush_*.parquet  ─┐
+                                           ├─→  DuckLake catalog (ducklake.db)
+                        compact_*.parquet ─┘         ↓
+                                          subscriber_api: ATTACH 'ducklake.db';
+                                                         SELECT * FROM bench_data
+                                                         AT (TIMESTAMP '...')
+</pre>
+
+<p>The compactor registers each new file with the catalog rather than renaming it into place.
+The subscriber_api drops its glob/path logic entirely — DuckLake knows which files make up
+the current table and handles union-by-name across schema versions automatically.</p>
+
+<h3>DuckLake vs current approach</h3>
+<table>
+  <tr><th></th><th>Current (manual Parquet)</th><th>DuckLake</th></tr>
+  <tr><td><strong>Query entry point</strong></td>
+      <td><code>read_parquet([glob])</code> — caller builds path list</td>
+      <td><code>SELECT * FROM table</code> — catalog resolves files</td></tr>
+  <tr><td><strong>Time travel</strong></td>
+      <td>Not supported — would need separate snapshot files</td>
+      <td>Built-in — <code>AT (TIMESTAMP ...)</code></td></tr>
+  <tr><td><strong>Schema evolution</strong></td>
+      <td><code>union_by_name=true</code> — handles column additions and removals; renames need a one-off migration script</td>
+      <td>First-class — catalog tracks column history</td></tr>
+  <tr><td><strong>Compaction</strong></td>
+      <td>Manual: write tmp → rename → delete sources</td>
+      <td>Catalog transaction: register new file, deregister sources atomically</td></tr>
+  <tr><td><strong>Forward-fill (Strategy C)</strong></td>
+      <td>Done in <code>compact_directory()</code></td>
+      <td>Same — DuckLake doesn't change the Parquet content</td></tr>
+  <tr><td><strong>Maturity</strong></td>
+      <td>Production — proven stack</td>
+      <td>New (2025) — evaluate before committing</td></tr>
+  <tr><td><strong>Dependency</strong></td>
+      <td>DuckDB only</td>
+      <td>DuckDB + DuckLake extension</td></tr>
+  <tr><td><strong>Local SSD</strong></td>
+      <td>Full support</td>
+      <td>Full support — catalog is a local file</td></tr>
+  <tr><td><strong>S3 / EFS</strong></td>
+      <td>Via DuckDB httpfs</td>
+      <td>Native — designed for object storage</td></tr>
+</table>
+
+<h3>Integration sketch</h3>
+<pre><span class="cm">-- One-time setup: create the DuckLake catalog and table</span>
+INSTALL ducklake;
+LOAD ducklake;
+ATTACH <span class="str">'ducklake:///mnt/zike/bench/catalog.db'</span> AS bench;
+CREATE TABLE bench.signals (
+    ts        TIMESTAMPTZ,
+    unit_id   VARCHAR,
+    <span class="cm">-- signal columns added automatically as schema evolves</span>
+);
+
+<span class="cm">-- Compactor registers each new compact file (replaces manual rename)</span>
+COPY bench.signals FROM <span class="str">'/mnt/zike/bench/compact_20260413T090000Z.parquet'</span>;
+
+<span class="cm">-- Time travel query</span>
+SELECT <span class="str">"bms/bms_1/SysSOC"</span>
+FROM bench.signals AT (TIMESTAMP <span class="str">'2026-04-13 09:15:00+00'</span>)
+WHERE unit_id = <span class="str">'UC61B5'</span>;
+
+<span class="cm">-- subscriber_api: attach catalog, query normally</span>
+conn.execute(<span class="str">"ATTACH 'ducklake:///mnt/zike/bench/catalog.db' AS bench"</span>)
+conn.execute(<span class="str">"SELECT * FROM bench.signals WHERE ts > ?"</span>, [since])</pre>
+
+<div class="note">
+  <strong>Caveat:</strong> DuckLake was released in early 2025 and is still maturing.
+  Verify extension availability (<code>INSTALL ducklake</code>) and API stability before
+  committing the stack to it. The parquet_writer flush path does not need to change —
+  DuckLake can ingest the existing Parquet files. The main integration point is the
+  compactor (catalog registration) and subscriber_api (ATTACH instead of glob).<br><br>
+  <strong>Recommended evaluation path:</strong> run DuckLake in parallel with the current
+  glob-based stack on the .51 test data. If time travel and schema evolution prove useful,
+  migrate the compactor and subscriber_api. The writer itself is unaffected.
+</div>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="client">8. Client-Side Integration</h2>
+
+<h3>Polling /data for a live strip chart</h3>
+<pre><span class="cm">// Poll every 5 seconds, request last 30s, filter by unit</span>
+<span class="kw">async function</span> <span class="fn">pollLiveData</span>(host, unit) {
+  <span class="kw">const</span> url = `http://${host}:8771/data?last=30&amp;unit=${unit}`;
+  <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(url);
+  <span class="kw">const</span> rows = <span class="kw">await</span> res.<span class="fn">json</span>();
+  <span class="cm">// rows: [{ts_ms, unit_id, device, point_name, float_val, int_val, ...}, ...]</span>
+  <span class="fn">updateChart</span>(rows);
+}
+<span class="fn">setInterval</span>(() =&gt; <span class="fn">pollLiveData</span>(<span class="str">"192.168.86.48"</span>, <span class="str">"0215F562"</span>), <span class="num">5000</span>);</pre>
+
+<h3>Fetching /current for a "latest values" panel</h3>
+<pre><span class="cm">// Using DuckDB-WASM to query the parquet snapshot</span>
+<span class="kw">const</span> buf = <span class="kw">await</span> (<span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">"http://192.168.86.48:8771/current"</span>)).<span class="fn">arrayBuffer</span>();
+<span class="kw">await</span> db.<span class="fn">registerFileBuffer</span>(<span class="str">"current.parquet"</span>, <span class="kw">new</span> <span class="fn">Uint8Array</span>(buf));
+<span class="kw">const</span> result = <span class="kw">await</span> conn.<span class="fn">query</span>(<span class="str">`
+  SELECT unit_id, device, point_name, float_val, ts_ms
+  FROM parquet_scan('current.parquet')
+  WHERE unit_id = '0215F562'
+  ORDER BY device, point_name
+`</span>);</pre>
+
+<h3>CORS note</h3>
+<p>The health_thread HTTP server must include <code>Access-Control-Allow-Origin: *</code> in responses
+for browser fetch() calls to succeed. Currently the health endpoint does not add CORS headers —
+this must be added to all new responses.</p>
+<pre><span class="cm">// Add to every HTTP response in health_thread_fn:</span>
+<span class="kw">const char</span>* cors = <span class="str">"Access-Control-Allow-Origin: *\r\n"</span>
+                   <span class="str">"Access-Control-Allow-Methods: GET\r\n"</span>;
+<span class="cm">// Prepend to existing response headers</span></pre>
+
+<hr>
+
+<!-- ──────────────────────────────────────────────────────────────── -->
+<h2 id="notes">9. Notes from Related Designs</h2>
+
+<h3>evelyn_real_time_data.html — bridge_api design</h3>
+<p>This document (also in <code>html/writer/</code>) was the original design for a real-time web interface.
+Key points relevant here:</p>
+<ul>
+  <li><strong>FlashMQ WebSocket</strong>: browsers can subscribe directly to FlashMQ's MQTT-over-WebSocket
+      (port 8083 / 9001) for true push. No polling needed. This bypasses parquet_writer entirely
+      for live values — useful for dashboards that need &lt;1s latency.</li>
+  <li><strong>DuckDB-WASM + parquet files</strong>: the demo in that file shows how to fetch a parquet
+      binary via HTTP, register it in DuckDB-WASM, and run SQL queries. This is the foundation
+      for the <code>/current</code> endpoint workflow above.</li>
+  <li><strong>/query/current</strong>: the bridge_api in that design exposed a JSON endpoint of
+      the same shape as <code>/data</code> above. The JSON schema proposed there is a good reference.</li>
+  <li><strong>Topic-to-sensor mapping</strong>: the bridge_api carried the topic-parser logic
+      (positional segments → unit_id/device/point_name). In the parquet_writer approach,
+      that mapping is already done by the time rows reach <code>g_recent_rows</code>.</li>
+</ul>
+
+<h3>Port map for new endpoints</h3>
+<table>
+  <tr><th>Port</th><th>Endpoint</th><th>Machine</th></tr>
+  <tr><td>8771</td><td><code>/health</code> <code>/current</code> <code>/data</code></td><td>gx10 slice A, phil-dev, lp3</td></tr>
+  <tr><td>8772</td><td>same</td><td>gx10 slice B</td></tr>
+  <tr><td>8773</td><td>same</td><td>gx10 slice C</td></tr>
+  <tr><td>8774</td><td>same</td><td>gx10 slice D</td></tr>
+</table>
+<p>All endpoints are served from the single <code>health_thread_fn()</code> — no new threads or ports needed.</p>
+
+<h3>Suggested yaml config additions</h3>
+<pre><span class="cm"># parquet_writer config.yaml additions</span>
+health:
+  enabled: <span class="kw">true</span>
+  port: <span class="num">8771</span>
+  recent_rows_seconds: <span class="num">60</span>    <span class="cm"># 0 = disable rolling buffer</span>
+  max_recent_rows: <span class="num">500000</span>    <span class="cm"># hard cap regardless of rate</span>
+  current_state_path: <span class="str">/data/parquet-evelyn/a/current_state.parquet</span></pre>
+
+<h3>Recommended implementation order</h3>
+<ol>
+  <li>Add <code>recent_rows_seconds</code> + <code>max_recent_rows</code> config options (no behaviour change yet)</li>
+  <li>Add CORS headers to existing <code>GET /health</code> response (needed for browser polling)</li>
+  <li>Add <code>handle_current()</code> — serve <code>current_state.parquet</code> file from disk</li>
+  <li>Add <code>TimestampedRow</code> deque + push/trim in parse_thread</li>
+  <li>Add <code>handle_data()</code> with query string parser</li>
+  <li>Build a small HTML panel (e.g. <code>writer_live_values.html</code>) to exercise the endpoints</li>
+</ol>
+
+</div><!-- .content -->
+
+<script>
+  // Highlight active section in TOC
+  const toc = document.querySelector('.toc');
+  if (toc) {
+    const links = toc.querySelectorAll('a');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          links.forEach(l => l.style.fontWeight = '');
+          const match = toc.querySelector(`a[href="#${e.target.id}"]`);
+          if (match) match.style.fontWeight = 'bold';
+        }
+      });
+    }, { threshold: 0.4 });
+    document.querySelectorAll('h2[id]').forEach(h => observer.observe(h));
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>writer.cpp — Critical Fixes #3</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --orange: #e3b341; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; line-height: 1.6; }
+  h1 { color: var(--accent); font-size: 1.5rem; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+  h2 { color: var(--accent); font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { color: var(--orange); font-size: 0.95rem; margin: 0 0 8px; }
+
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+  .nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav a.here { color: var(--accent); border-color: var(--accent); background: #0c2d6b22; }
+
+  .fix {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin-bottom: 20px;
+    border-left: 4px solid var(--border);
+  }
+  .fix.critical { border-left-color: var(--red); }
+  .fix.major    { border-left-color: var(--yellow); }
+  .fix.perf     { border-left-color: var(--purple); }
+  .fix.minor    { border-left-color: var(--muted); }
+  .fix.done     { border-left-color: var(--green); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-right: 8px; }
+  .badge-crit   { background: #3d0a0a; color: var(--red);    border: 1px solid #7a1515; }
+  .badge-major  { background: #2d2000; color: var(--yellow); border: 1px solid #5a4000; }
+  .badge-perf   { background: #1a0a2e; color: var(--purple); border: 1px solid #4a2080; }
+  .badge-minor  { background: #21262d; color: var(--muted);  border: 1px solid #30363d; }
+  .badge-done   { background: #0d4429; color: var(--green);  border: 1px solid #1a6e3a; }
+
+  pre  { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.5; overflow-x: auto; color: #e6edf3; margin: 10px 0; }
+  code { background: #21262d; border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 0.82rem; color: #e6edf3; }
+  .loc  { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
+  p { margin-bottom: 8px; font-size: 0.88rem; }
+  ul { padding-left: 20px; margin-bottom: 8px; }
+  li { font-size: 0.88rem; margin-bottom: 3px; }
+  .del { color: var(--red);    font-family: 'Consolas', monospace; font-size: 0.82rem; }
+  .add { color: var(--green);  font-family: 'Consolas', monospace; font-size: 0.82rem; }
+  .ctx { color: var(--muted);  font-family: 'Consolas', monospace; font-size: 0.82rem; }
+
+  .diff-block { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin: 10px 0; font-size: 0.82rem; line-height: 1.7; overflow-x: auto; }
+
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 16px; }
+  .comparison-table th { background: #21262d; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; }
+  .comparison-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .comparison-table tr:last-child td { border-bottom: none; }
+  .comparison-table tr:hover td { background: #1c2128; }
+
+  .summary-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .summary-pill { padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>writer.cpp — Critical Fixes #3</h1>
+<p class="subtitle">
+  Fixes for issues found in
+  <a href="writer_code_review_3.html" style="color:var(--accent)">Review #3</a> ·
+  2026-03-22 · writer.cpp 1328 lines
+</p>
+
+<div class="nav">
+  <a href="writer_code_review.html">Review 1</a>
+  <a href="writer_critical_fixes.html">Fixes 1</a>
+  <a href="writer_code_review_2.html">Review 2</a>
+  <a href="writer_critical_fixes_2.html">Fixes 2</a>
+  <a href="writer_code_review_3.html">Review 3</a>
+  <a href="writer_critical_fixes_3.html" class="here">Fixes 3</a>
+  <a href="writer_unit_kpi.html">Tests &amp; KPIs</a>
+  <a href="writer_torture_test.html">Torture Test</a>
+  <a href="writer_shm_ring.html">SHM Ring</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+</div>
+
+<div class="summary-bar">
+  <span class="summary-pill" style="background:#3d0a0a;color:var(--red);border:1px solid #7a1515">2 Critical</span>
+  <span class="summary-pill" style="background:#2d2000;color:var(--yellow);border:1px solid #5a4000">3 Major</span>
+  <span class="summary-pill" style="background:#1a0a2e;color:var(--purple);border:1px solid #4a2080">2 Performance</span>
+  <span class="summary-pill" style="background:#21262d;color:var(--muted);border:1px solid #30363d">2 Minor</span>
+</div>
+
+<!-- ── F3-1 ─────────────────────────────────────────────────────────── -->
+<h2>F3-1 · SIGPIPE — one line, prevents silent process death</h2>
+
+<div class="fix critical">
+  <h3><span class="badge badge-crit">CRITICAL</span>R3-C1 · Add SIGPIPE ignore + MSG_NOSIGNAL</h3>
+  <div class="loc">main() · after signal(SIGTERM, …) · line ~1231</div>
+  <p>
+    A monitor client that disconnects mid-response causes the kernel to deliver SIGPIPE.
+    Default disposition: terminate. One line in <code>main()</code> immunises the entire process.
+    Additionally pass <code>MSG_NOSIGNAL</code> on each <code>send()</code> in the health endpoint
+    for defence-in-depth (prevents the signal even on non-Linux POSIX systems).
+  </p>
+  <div class="diff-block">
+<span class="ctx">    std::signal(SIGINT,  handle_signal);</span>
+<span class="ctx">    std::signal(SIGTERM, handle_signal);</span>
+<span class="add">+   std::signal(SIGPIPE, SIG_IGN);           // health endpoint: client disconnect must not kill us</span>
+  </div>
+  <p>In <code>health_thread_fn</code>, two <code>send()</code> calls need the flag:</p>
+  <div class="diff-block">
+<span class="ctx">    // 404 response:</span>
+<span class="del">-   send(cli, r404, strlen(r404), 0);</span>
+<span class="add">+   send(cli, r404, strlen(r404), MSG_NOSIGNAL);</span>
+<span class="ctx">    </span>
+<span class="ctx">    // 200 response:</span>
+<span class="del">-   send(cli, resp.c_str(), resp.size(), 0);</span>
+<span class="add">+   send(cli, resp.c_str(), resp.size(), MSG_NOSIGNAL);</span>
+  </div>
+</div>
+
+<!-- ── F3-2 ─────────────────────────────────────────────────────────── -->
+<h2>F3-2 · WAL replay variable shadow — rename loop variable</h2>
+
+<div class="fix critical">
+  <h3><span class="badge badge-crit">CRITICAL</span>R3-C2 · Rename <code>wp</code> → <code>wf</code> in WAL replay loop</h3>
+  <div class="loc">replay_wal_files() · line ~632</div>
+  <div class="diff-block">
+<span class="ctx">    std::string wp = cfg.wal_path.empty() ? cfg.base_path + "/.wal" : cfg.wal_path;</span>
+<span class="ctx">    ...</span>
+<span class="del">-   for (const auto& wp : wal_files) {          // shadows outer 'wp'</span>
+<span class="del">-       auto rows = wal_replay_file(wp.string());</span>
+<span class="del">-       if (rows.empty()) { fs::remove(wp, ec); continue; }</span>
+<span class="add">+   for (const auto& wf : wal_files) {</span>
+<span class="add">+       auto rows = wal_replay_file(wf.string());</span>
+<span class="add">+       if (rows.empty()) { fs::remove(wf, ec); continue; }</span>
+<span class="ctx">        ...</span>
+<span class="del">-       if (all_ok) fs::remove(wp, ec);</span>
+<span class="add">+       if (all_ok) fs::remove(wf, ec);</span>
+<span class="ctx">    }</span>
+  </div>
+</div>
+
+<!-- ── F3-3 ─────────────────────────────────────────────────────────── -->
+<h2>F3-3 · mosquitto_loop_stop — avoid 30 s Docker timeout</h2>
+
+<div class="fix major">
+  <h3><span class="badge badge-major">MAJOR</span>R3-M1 · Change force=false → force=true</h3>
+  <div class="loc">main() · line ~1305</div>
+  <p>
+    With <code>force=false</code> the MQTT network thread will wait through its full reconnect
+    backoff (up to 30 s) before responding to the stop request. Docker's default
+    <code>stop</code> timeout is 10 s, meaning Docker sends SIGKILL before the writer exits cleanly
+    — skipping the final flush. With <code>force=true</code> the network thread is stopped
+    immediately; <code>mosquitto_destroy()</code> cleans up correctly either way.
+  </p>
+  <div class="diff-block">
+<span class="ctx">    mosquitto_disconnect(mosq);</span>
+<span class="del">-   mosquitto_loop_stop(mosq, /*force=*/false);</span>
+<span class="add">+   mosquitto_loop_stop(mosq, /*force=*/true);  // don't block up to reconnect_max_seconds</span>
+  </div>
+</div>
+
+<!-- ── F3-4 ─────────────────────────────────────────────────────────── -->
+<h2>F3-4 · ValueOrDie() → .Value() for Arrow 16 compatibility</h2>
+
+<div class="fix major">
+  <h3><span class="badge badge-major">MAJOR</span>R3-M3 · Two replacements in wal_replay_file()</h3>
+  <div class="loc">wal_replay_file() · lines ~583–585</div>
+  <p>
+    Required before cross-compiling against the Gumby SDK 0.11.0 which ships Arrow 16.0.1.
+    <code>.Value()</code> is the direct non-deprecated replacement — same assertion-on-error semantics.
+  </p>
+  <div class="diff-block">
+<span class="ctx">    auto r_in = arrow::io::ReadableFile::Open(path);</span>
+<span class="ctx">    if (!r_in.ok()) return rows;</span>
+<span class="del">-   auto r_rd = arrow::ipc::RecordBatchFileReader::Open(r_in.ValueOrDie());</span>
+<span class="add">+   auto r_rd = arrow::ipc::RecordBatchFileReader::Open(r_in.Value());</span>
+<span class="ctx">    if (!r_rd.ok()) return rows;</span>
+<span class="del">-   auto reader = r_rd.ValueOrDie();</span>
+<span class="add">+   auto reader = r_rd.Value();</span>
+  </div>
+</div>
+
+<!-- ── F3-5 ─────────────────────────────────────────────────────────── -->
+<h2>F3-5 · Narrow g_mutex scope in handle_sync_message</h2>
+
+<div class="fix major">
+  <h3><span class="badge badge-major">MAJOR</span>R3-M2 · Move simdjson parse outside the lock</h3>
+  <div class="loc">process_raw_message() → handle_sync_message() · line ~1010</div>
+  <p>
+    <code>handle_sync_message</code> currently does the full simdjson parse while holding
+    <code>g_mutex</code>. Refactor it into two phases: parse (outside lock) + update counters (inside lock).
+  </p>
+
+  <p><strong>Step 1</strong> — Change the call site in <code>process_raw_message()</code>:</p>
+  <div class="diff-block">
+<span class="ctx">    if (topic == "_sync") {</span>
+<span class="del">-       std::lock_guard&lt;std::mutex&gt; lock(g_mutex);</span>
+<span class="del">-       handle_sync_message(payload);</span>
+<span class="add">+       handle_sync_message(payload);   // acquires g_mutex internally, only for counter updates</span>
+<span class="ctx">        return;</span>
+<span class="ctx">    }</span>
+  </div>
+
+  <p><strong>Step 2</strong> — Restructure <code>handle_sync_message()</code>:</p>
+  <pre>static void handle_sync_message(const std::string& payload) {
+    // --- parse phase (no lock held) ---
+    thread_local simdjson::dom::parser sj;
+    simdjson::dom::element doc;
+    if (sj.parse(payload).get(doc) != simdjson::SUCCESS) return;
+
+    std::string_view session_sv;
+    int64_t seq = 0, interval_pub = 0, total_pub = 0;
+    if (doc["session_id"].get(session_sv)          != simdjson::SUCCESS) return;
+    if (doc["seq"].get(seq)                         != simdjson::SUCCESS) return;
+    if (doc["interval_published"].get(interval_pub) != simdjson::SUCCESS) return;
+    if (doc["total_published"].get(total_pub)       != simdjson::SUCCESS) total_pub = 0;
+    std::string session(session_sv);
+
+    // --- counter update phase (lock acquired here, briefly) ---
+    std::lock_guard&lt;std::mutex&gt; lock(g_mutex);
+
+    if (session != g_sync_session_id) {
+        if (!g_sync_session_id.empty())
+            std::cout &lt;&lt; "[sync] new session " &lt;&lt; session
+                      &lt;&lt; " (was " &lt;&lt; g_sync_session_id &lt;&lt; ") — counters reset\n";
+        g_sync_session_id     = session;
+        g_received_since_sync = 0;
+        g_sync_drops_detected = 0;
+        return;
+    }
+
+    int64_t received = (g_received_since_sync &gt; static_cast&lt;uint64_t&gt;(INT64_MAX))
+                       ? INT64_MAX
+                       : static_cast&lt;int64_t&gt;(g_received_since_sync);
+    int64_t dropped  = interval_pub - received;
+    g_received_since_sync = 0;
+
+    if (dropped &gt; 0) {
+        g_sync_drops_detected += static_cast&lt;uint64_t&gt;(dropped);
+        std::cerr &lt;&lt; "[sync] #" &lt;&lt; seq
+                  &lt;&lt; "  DROPS: expected=" &lt;&lt; interval_pub
+                  &lt;&lt; "  received=" &lt;&lt; received
+                  &lt;&lt; "  dropped=" &lt;&lt; dropped
+                  &lt;&lt; "  cumulative=" &lt;&lt; g_sync_drops_detected &lt;&lt; "\n";
+    } else {
+        std::cout &lt;&lt; "[sync] #" &lt;&lt; seq
+                  &lt;&lt; "  OK  received=" &lt;&lt; received
+                  &lt;&lt; "  expected=" &lt;&lt; interval_pub
+                  &lt;&lt; "  total_published=" &lt;&lt; total_pub &lt;&lt; "\n";
+    }
+}</pre>
+</div>
+
+<!-- ── F3-6 ─────────────────────────────────────────────────────────── -->
+<h2>F3-6 · Row: std::map → std::unordered_map (performance)</h2>
+
+<div class="fix perf">
+  <h3><span class="badge badge-perf">PERF</span>R3-P2 · Eliminate red-black tree allocations in hot path</h3>
+  <div class="loc">struct Row · line ~227</div>
+  <p>
+    <code>std::unordered_map</code> uses open addressing with no per-element allocation after the
+    initial bucket array. For small maps (5–15 fields) this is 2–4× faster than <code>std::map</code>
+    and eliminates ~4.5M heap allocations/second at 300k msg/s. No interface changes to callers —
+    both containers expose the same <code>operator[]</code>, <code>find()</code>, <code>erase()</code>, iterators.
+  </p>
+  <div class="diff-block">
+<span class="ctx"> // A single decoded message row: integer metadata + float measurements</span>
+<span class="ctx"> struct Row {</span>
+<span class="del">-    std::map&lt;std::string, int64_t&gt; ints;</span>
+<span class="del">-    std::map&lt;std::string, double&gt;  floats;</span>
+<span class="add">+    std::unordered_map&lt;std::string, int64_t&gt; ints;</span>
+<span class="add">+    std::unordered_map&lt;std::string, double&gt;  floats;</span>
+<span class="ctx"> };</span>
+  </div>
+  <p>
+    Also update <code>struct SensorKey</code> which uses a nested map for its identity fields:
+  </p>
+  <div class="diff-block">
+<span class="ctx"> struct SensorKey {</span>
+<span class="ctx">     std::string source_type;</span>
+<span class="del">-    std::map&lt;std::string, int64_t&gt; ints;</span>
+<span class="add">+    std::unordered_map&lt;std::string, int64_t&gt; ints;</span>
+<span class="ctx">     bool operator&lt;(const SensorKey&amp; o) const { ... }</span>
+<span class="ctx"> };</span>
+  </div>
+  <p>
+    ⚠ <strong>Note on SensorKey:</strong> <code>SensorKey</code> is used as a <code>std::map</code> key and relies on
+    <code>operator&lt;</code> which iterates the inner map in sorted order. Switching the inner map to
+    <code>unordered_map</code> means the iteration order in <code>operator&lt;</code> is no longer deterministic.
+    Two workarounds:
+  </p>
+  <ul>
+    <li><strong>Option A</strong> (simple): keep <code>SensorKey::ints</code> as <code>std::map</code> since the current-state map is only updated on flush (cold path), not the hot ingestion path.</li>
+    <li><strong>Option B</strong> (correct fix): rewrite <code>operator&lt;</code> to sort keys explicitly before comparing.</li>
+  </ul>
+  <p>Apply Option A now: change only <code>Row::ints</code> and <code>Row::floats</code>, leave <code>SensorKey::ints</code> as <code>std::map</code>.</p>
+  <div class="diff-block">
+<span class="ctx"> // Row — hot path, changed to unordered_map:</span>
+<span class="add">+    std::unordered_map&lt;std::string, int64_t&gt; ints;</span>
+<span class="add">+    std::unordered_map&lt;std::string, double&gt;  floats;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // SensorKey — cold path (current_state), keep std::map for deterministic ordering:</span>
+<span class="ctx">     std::map&lt;std::string, int64_t&gt; ints;   // keep as std::map (used in operator&lt;)</span>
+  </div>
+</div>
+
+<!-- ── F3-7 ─────────────────────────────────────────────────────────── -->
+<h2>F3-7 · parse_topic: replace std::istringstream with pointer walk</h2>
+
+<div class="fix perf">
+  <h3><span class="badge badge-perf">PERF</span>R3-P1 · Zero-allocation topic parser using string_view</h3>
+  <div class="loc">parse_topic() · line ~276</div>
+  <p>
+    Replaces the <code>std::istringstream</code> + <code>std::getline</code> split with a
+    pointer walk over the <code>const char*</code> already sitting in the ring slot.
+    No heap allocation. No string copies. ~3–5× faster on the critical parse path.
+  </p>
+  <pre>std::optional&lt;TopicInfo&gt; parse_topic(const std::string& topic) {
+    TopicInfo info;
+    const char* p   = topic.c_str();
+    const char* end = p + topic.size();
+    bool first = true;
+
+    while (p &lt;= end) {
+        const char* slash = static_cast&lt;const char*&gt;(memchr(p, '/', end - p));
+        const char* seg_end = slash ? slash : end;
+        std::string_view seg(p, static_cast&lt;size_t&gt;(seg_end - p));
+
+        if (first) {
+            // source_type — sanitize and validate
+            std::string st(seg);
+            auto slash_pos = st.find_first_of("/\\");
+            if (slash_pos != std::string::npos) st = st.substr(0, slash_pos);
+            if (st.empty() || st == "." || st == "..") return std::nullopt;
+            info.source_type = std::move(st);
+            first = false;
+        } else if (!seg.empty()) {
+            auto eq = seg.find('=');
+            if (eq != std::string_view::npos) {
+                std::string kv_key(seg.substr(0, eq));
+                std::string_view val_sv = seg.substr(eq + 1);
+                // stoi from string_view — avoid string copy
+                int kv_val = 0;
+                bool neg = (!val_sv.empty() && val_sv[0] == '-');
+                size_t i = neg ? 1 : 0;
+                bool has_digit = false;
+                for (; i &lt; val_sv.size(); ++i) {
+                    if (val_sv[i] &lt; '0' || val_sv[i] &gt; '9') { has_digit = false; break; }
+                    has_digit = true;
+                    kv_val = kv_val * 10 + (val_sv[i] - '0');
+                }
+                if (!has_digit) { p = slash ? slash + 1 : end + 1; continue; }
+                if (neg) kv_val = -kv_val;
+                if (info.kv.count(kv_key))
+                    std::cerr &lt;&lt; "[topic] duplicate key '" &lt;&lt; kv_key &lt;&lt; "' in: " &lt;&lt; topic &lt;&lt; "\n";
+                info.kv[kv_key] = kv_val;
+            } else {
+                // per_cell_item field name (last non-kv segment)
+                info.field_name = std::string(seg);
+            }
+        }
+
+        p = slash ? slash + 1 : end + 1;
+    }
+
+    if (info.source_type.empty()) return std::nullopt;
+    return info;
+}</pre>
+  <p>
+    ⚠ The existing <code>sanitize_path_segment()</code> helper is still used for
+    source_type extraction above. The kv segments do not need sanitisation since
+    they are integer-valued (non-numeric values are skipped by the parse).
+  </p>
+</div>
+
+<!-- ── F3-8 ─────────────────────────────────────────────────────────── -->
+<h2>F3-8 · Health endpoint: add SHM ring metrics (placeholder)</h2>
+
+<div class="fix minor">
+  <h3><span class="badge badge-minor">MINOR</span>R3-N3 · Add shm_ring fields to /health JSON — implement with SHM ring (SHM-2)</h3>
+  <div class="loc">health_thread_fn() · JSON body · line ~727</div>
+  <p>
+    When <code>shm_ring.h</code> is integrated, add these fields to the health JSON body.
+    Include them as zeros now so the monitor does not need changes later.
+  </p>
+  <div class="diff-block">
+<span class="ctx">    ",\"ring_drops\":"       + std::to_string(g_ring_drops.load())        +</span>
+<span class="add">+   ",\"shm_ring_used\":"    + std::to_string(g_shm_ring_used.load())    +   // ← add when SHM ring lands</span>
+<span class="add">+   ",\"shm_ring_cap\":"     + std::to_string(SHM_RING_CAPACITY)         +</span>
+<span class="add">+   ",\"shm_ring_drops\":"   + std::to_string(g_shm_ring_drops.load())   +</span>
+<span class="ctx">    ",\"flush_active\":"     + std::to_string(g_flush_active.load() ? 1 : 0) +</span>
+  </div>
+</div>
+
+<!-- ── Apply table ────────────────────────────────────────────────────── -->
+<h2>Apply Order</h2>
+
+<table class="comparison-table">
+  <thead>
+    <tr><th>#</th><th>Fix</th><th>File location</th><th>Lines changed</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>F3-1</td>
+      <td>SIGPIPE ignore + MSG_NOSIGNAL</td>
+      <td><code>main()</code> line ~1231; <code>health_thread_fn</code> line ~719, ~749</td>
+      <td>3</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-2</td>
+      <td>Rename <code>wp</code> → <code>wf</code> in WAL replay</td>
+      <td><code>replay_wal_files()</code> line ~632–684</td>
+      <td>4 (search/replace)</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-3</td>
+      <td>loop_stop force=true</td>
+      <td><code>main()</code> line ~1305</td>
+      <td>1</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-4</td>
+      <td>ValueOrDie() → .Value()</td>
+      <td><code>wal_replay_file()</code> lines ~583–585</td>
+      <td>2</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-5</td>
+      <td>sync parse outside g_mutex</td>
+      <td><code>handle_sync_message()</code> + call site</td>
+      <td>~10</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-6</td>
+      <td>Row: map → unordered_map</td>
+      <td><code>struct Row</code> line ~227</td>
+      <td>2</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-7</td>
+      <td>parse_topic: pointer walk</td>
+      <td><code>parse_topic()</code> line ~276</td>
+      <td>~30 (replace function)</td>
+      <td><span style="color:var(--yellow)">Pending</span></td>
+    </tr>
+    <tr>
+      <td>F3-8</td>
+      <td>Health: SHM ring metric fields</td>
+      <td><code>health_thread_fn()</code> line ~727</td>
+      <td>3 (implement with SHM-2)</td>
+      <td><span style="color:var(--muted)">Deferred to SHM-2</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Testing After Apply</h2>
+<pre># 1. Build and smoke-test:
+make -C source/parquet_writer_cpp parquet_writer
+
+# 2. Unit tests (F3-6 and F3-7 touch hot path — run full suite):
+make -C source/parquet_writer_cpp test
+
+# 3. KPI baseline after Row hotpath changes (F3-6, F3-7):
+make -C source/parquet_writer_cpp kpi
+
+# 4. Verify SIGPIPE fix (F3-1) — kill the health client mid-response:
+curl -v http://localhost:8771/health &amp;  kill -PIPE $(pgrep parquet_writer)
+# writer should continue running
+
+# 5. Verify fast shutdown (F3-3) — stop when broker is down:
+time kill -TERM $(pgrep parquet_writer)   # should exit in &lt;2s, not 30s</pre>
+
+</body>
+</html>

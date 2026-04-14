@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>writer.cpp — Unit &amp; KPI Tests</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2128;
+    --border:   #30363d;
+    --text:     #c9d1d9;
+    --muted:    #8b949e;
+    --critical: #f85149;
+    --green:    #3fb950;
+    --blue:     #58a6ff;
+    --yellow:   #e3b341;
+    --purple:   #bc8cff;
+    --tag-ok:   rgba(63,185,80,0.12);
+    --tag-fail: rgba(248,81,73,0.12);
+    --tag-kpi:  rgba(188,140,255,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.6; padding: 2rem 1rem;
+  }
+  .page { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: .2rem; }
+  .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 1.5rem; }
+  .subtitle a { color: var(--blue); text-decoration: none; }
+  .subtitle a:hover { text-decoration: underline; }
+
+  /* section headings */
+  h2.section {
+    font-size: 1.1rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .08em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: .4rem; margin: 2rem 0 1rem;
+  }
+
+  /* nav pills */
+  .nav { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .nav a {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 2em; padding: .25rem .8rem; font-size: .8rem;
+    color: var(--muted); text-decoration: none; transition: all .15s;
+  }
+  .nav a:hover { border-color: var(--blue); color: var(--blue); }
+  .nav a.kpi { color: var(--purple); }
+  .nav a.kpi:hover { border-color: var(--purple); color: var(--purple); }
+
+  /* test card */
+  .test {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 1.2rem; overflow: hidden;
+  }
+  .test-header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .8rem 1.1rem; border-bottom: 1px solid var(--border);
+  }
+  .test-id {
+    background: rgba(88,166,255,.12); color: var(--blue);
+    border: 1px solid rgba(88,166,255,.3);
+    border-radius: 4px; padding: .15rem .45rem;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: .75rem; font-weight: 700; flex-shrink: 0;
+  }
+  .test-id.kpi {
+    background: var(--tag-kpi); color: var(--purple);
+    border-color: rgba(188,140,255,.3);
+  }
+  .test-title { font-weight: 600; font-size: .95rem; }
+  .test-fn {
+    margin-left: auto; flex-shrink: 0;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: .75rem; color: var(--muted);
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; padding: .1rem .4rem;
+  }
+  .test-body { padding: .9rem 1.1rem; }
+  .test-body > p { margin-bottom: .7rem; color: var(--muted); font-size: .9rem; }
+
+  /* cases table */
+  .cases {
+    width: 100%; border-collapse: collapse;
+    font-size: .82rem; margin: .5rem 0 .8rem;
+  }
+  .cases thead tr { background: var(--surface2); }
+  .cases th {
+    padding: .4rem .7rem; text-align: left;
+    color: var(--muted); font-weight: 600; font-size: .75rem;
+    text-transform: uppercase; letter-spacing: .05em;
+    border-bottom: 1px solid var(--border);
+  }
+  .cases td { padding: .35rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .cases tr:last-child td { border-bottom: none; }
+  .cases code {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: .82rem; color: var(--blue);
+    background: rgba(88,166,255,.08); border-radius: 3px; padding: .05rem .25rem;
+  }
+  .pass  { color: var(--green);    font-weight: 600; }
+  .fail  { color: var(--critical); font-weight: 600; }
+  .note  { color: var(--muted);    font-size: .78rem; }
+
+  /* code block */
+  pre {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: .8rem 1rem; overflow-x: auto;
+    font-family: "SF Mono", Consolas, monospace; font-size: .8rem;
+    line-height: 1.5; color: var(--text); margin: .5rem 0 .8rem;
+  }
+  code {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: .85em; color: var(--blue);
+  }
+
+  /* KPI threshold row */
+  .kpi-table { width: 100%; border-collapse: collapse; font-size: .83rem; margin: .5rem 0; }
+  .kpi-table th {
+    padding: .4rem .7rem; text-align: left; color: var(--muted);
+    font-weight: 600; font-size: .75rem; text-transform: uppercase;
+    letter-spacing: .05em; border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .kpi-table td { padding: .35rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .kpi-table tr:last-child td { border-bottom: none; }
+  .kpi-pass { color: var(--green); font-weight: 700; font-family: "SF Mono", Consolas, monospace; }
+  .kpi-warn { color: var(--yellow); font-weight: 700; font-family: "SF Mono", Consolas, monospace; }
+  .kpi-fail { color: var(--critical); font-weight: 700; font-family: "SF Mono", Consolas, monospace; }
+
+  /* build box */
+  .build-box {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    border-radius: 6px; padding: .8rem 1rem; margin: .8rem 0;
+    font-size: .85rem;
+  }
+  .build-box p { margin-bottom: .4rem; color: var(--muted); }
+  .build-box pre { background: var(--bg); margin: 0; }
+
+  /* tag */
+  .tag {
+    display: inline-block; font-size: .7rem; font-weight: 700;
+    padding: .1rem .4rem; border-radius: 3px; letter-spacing: .04em;
+    text-transform: uppercase; vertical-align: middle;
+  }
+  .tag-pure   { background: rgba(63,185,80,.15);   color: var(--green);  }
+  .tag-io     { background: rgba(227,179,65,.15);   color: var(--yellow); }
+  .tag-global { background: rgba(248,81,73,.12);    color: var(--critical); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>writer.cpp — Unit &amp; KPI Tests</h1>
+  <p class="subtitle">
+    Companion to <a href="writer_critical_fixes.html">writer_critical_fixes.html</a> ·
+    Build with <code>-DPARQUET_WRITER_NO_MAIN</code> to link without <code>main()</code>
+  </p>
+
+  <div class="build-box">
+    <p><strong>Test binary build command</strong></p>
+    <pre>g++ -std=c++17 -O2 -Wall -DPARQUET_WRITER_NO_MAIN -pthread \
+    -DUTF8PROC_EXPORTS -I/usr/include/x86_64-linux-gnu \
+    writer_tests.cpp writer.cpp \
+    -o writer_tests \
+    -lparquet -larrow -lmosquitto -lyaml-cpp -lsimdjson</pre>
+    <p style="margin-top:.5rem">
+      Test harness is a plain <code>main()</code> in <code>writer_tests.cpp</code> that
+      calls assertion helpers. No external test framework required — Arrow, simdjson,
+      and YAML are already linked. See template at the bottom of this page.
+    </p>
+  </div>
+
+  <div class="nav">
+    <a href="#U1">U1 sanitize</a>
+    <a href="#U2">U2 parse_topic</a>
+    <a href="#U3">U3 parse_payload</a>
+    <a href="#U4">U4 validate_config</a>
+    <a href="#U5">U5 replace_vars</a>
+    <a href="#U6">U6 compression map</a>
+    <a href="#U7">U7 time_suffix</a>
+    <a href="#U8">U8 rows_to_arrow_table</a>
+    <a href="#U9">U9 handle_sync</a>
+    <a href="#U10">U10 load_config</a>
+    <a href="#U11">U11 make_output_path</a>
+    <a href="#I1">I1 flush_partition round-trip</a>
+    <a href="#I2">I2 WAL write + replay</a>
+    <a href="#I3">I3 WAL source_type parsing</a>
+    <a href="#I4">I4 WAL multi-chunk replay</a>
+    <a href="#I5">I5 check_disk_space</a>
+    <a href="#I6">I6 full flush cycle</a>
+    <a href="#K1" class="kpi">K1 parse_topic throughput</a>
+    <a href="#K2" class="kpi">K2 parse_payload throughput</a>
+    <a href="#K3" class="kpi">K3 rows_to_arrow_table throughput</a>
+    <a href="#K4" class="kpi">K4 flush_partition I/O rate</a>
+    <a href="#K5" class="kpi">K5 WAL write throughput</a>
+    <a href="#K6" class="kpi">K6 WAL replay throughput</a>
+    <a href="#K7" class="kpi">K7 buffer insert rate</a>
+    <a href="#K8" class="kpi">K8 compression ratio</a>
+  <a href="writer_real_data.html">Real Data</a>
+  <a href="ems_site_simulator.html">ems_site_simulator</a>
+  <a href="ems_simulator_control.html">EMS Control</a>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       UNIT TESTS
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <h2 class="section" id="unit">Unit Tests</h2>
+  <p style="color:var(--muted);font-size:.88rem;margin-bottom:1rem">
+    <span class="tag tag-pure">pure</span> — no I/O, no globals &nbsp;
+    <span class="tag tag-io">I/O</span> — touches filesystem &nbsp;
+    <span class="tag tag-global">global</span> — reads/writes process globals
+  </p>
+
+  <!-- U1 -->
+  <div class="test" id="U1">
+    <div class="test-header">
+      <span class="test-id">U1</span>
+      <span class="test-title">sanitize_path_segment — path traversal rejection and truncation</span>
+      <span class="test-fn">sanitize_path_segment() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Input</th><th>Expected output</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td><code>"batteries"</code></td><td><span class="pass">"batteries"</span></td><td>normal segment passes through</td></tr>
+          <tr><td><code>"batteries/site"</code></td><td><span class="pass">"batteries"</span></td><td>truncated at first <code>/</code></td></tr>
+          <tr><td><code>"bat\\evil"</code></td><td><span class="pass">"bat"</span></td><td>truncated at backslash</td></tr>
+          <tr><td><code>"."</code></td><td><span class="pass">""</span></td><td>current-dir rejected</td></tr>
+          <tr><td><code>".."</code></td><td><span class="pass">""</span></td><td>parent-dir traversal rejected</td></tr>
+          <tr><td><code>""</code></td><td><span class="pass">""</span></td><td>empty input rejected</td></tr>
+          <tr><td><code>"../etc/passwd"</code></td><td><span class="pass">".."</span> → then <span class="pass">""</span></td><td>truncated at <code>/</code> → <code>".."</code> then rejected</td></tr>
+          <tr><td><code>"data_2026"</code></td><td><span class="pass">"data_2026"</span></td><td>underscores and digits allowed</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U2 -->
+  <div class="test" id="U2">
+    <div class="test-header">
+      <span class="test-id">U2</span>
+      <span class="test-title">parse_topic — segment parsing, kv extraction, field name, error paths</span>
+      <span class="test-fn">parse_topic() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Input topic</th><th>Expected result</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>"batteries/site=0/rack=1/module=2/cell=3"</code></td>
+            <td>source_type=<code>"batteries"</code>, kv={site:0, rack:1, module:2, cell:3}, field_name=<code>""</code></td>
+          </tr>
+          <tr>
+            <td><code>"batteries/site=0/rack=1/voltage"</code></td>
+            <td>source_type=<code>"batteries"</code>, kv={site:0, rack:1}, field_name=<code>"voltage"</code></td>
+          </tr>
+          <tr>
+            <td><code>"batteries"</code></td>
+            <td>source_type=<code>"batteries"</code>, kv={}, field_name=<code>""</code></td>
+          </tr>
+          <tr>
+            <td><code>"/site=0"</code></td>
+            <td><span class="fail">nullopt</span> — source_type empty after sanitize</td>
+          </tr>
+          <tr>
+            <td><code>"../etc/site=0"</code></td>
+            <td><span class="fail">nullopt</span> — sanitize rejects <code>".."</code></td>
+          </tr>
+          <tr>
+            <td><code>"batteries/site=not_a_number"</code></td>
+            <td>source_type=<code>"batteries"</code>, kv={} <span class="note">(stoi fails, segment skipped)</span></td>
+          </tr>
+          <tr>
+            <td><code>"batteries/site=0/site=5"</code></td>
+            <td>kv={site:5} <span class="note">(second value wins; stderr warning emitted)</span></td>
+          </tr>
+          <tr>
+            <td><code>"batteries/site=0/temp/voltage"</code></td>
+            <td>field_name=<code>"voltage"</code> <span class="note">(last non-kv segment wins)</span></td>
+          </tr>
+          <tr>
+            <td><code>""</code></td>
+            <td><span class="fail">nullopt</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U3 -->
+  <div class="test" id="U3">
+    <div class="test-header">
+      <span class="test-id">U3</span>
+      <span class="test-title">parse_payload — JSON decoding, type coercion, collision prevention</span>
+      <span class="test-fn">parse_payload() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <p>Use default Config (topic_kv_map: site→site_id, rack→rack_id…). TopicInfo: source_type="batteries", kv={site:2, rack:5}, project_id=0.</p>
+      <table class="cases">
+        <thead><tr><th>Payload</th><th>Expected row.ints</th><th>Expected row.floats</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>'{"voltage": 3.7, "current": -1.2}'</code></td>
+            <td>{project_id:0, site_id:2, rack_id:5}</td>
+            <td>{voltage:3.7, current:-1.2}</td>
+          </tr>
+          <tr>
+            <td><code>'{"voltage": {"value": 3.7, "unit": "V"}}'</code></td>
+            <td>{project_id:0, site_id:2, rack_id:5}</td>
+            <td>{voltage:3.7}</td>
+          </tr>
+          <tr>
+            <td><code>'{"current": 5}'</code> (integer)</td>
+            <td>{project_id:0, site_id:2, rack_id:5}</td>
+            <td>{current:5.0} <span class="note">int promoted to double</span></td>
+          </tr>
+          <tr>
+            <td><code>'{"site_id": 999}'</code></td>
+            <td>{project_id:0, site_id:2, rack_id:5} <span class="note">payload field ignored — topic wins (M14)</span></td>
+            <td>{}</td>
+          </tr>
+          <tr>
+            <td><code>'{}'</code> (empty)</td>
+            <td>{project_id:0, site_id:2, rack_id:5}</td>
+            <td>{}</td>
+          </tr>
+          <tr>
+            <td><code>"not json"</code></td>
+            <td>{project_id:0, site_id:2, rack_id:5} <span class="note">parse fails gracefully</span></td>
+            <td>{}</td>
+          </tr>
+          <tr>
+            <td><code>'{"v": null}'</code></td>
+            <td>{project_id:0, site_id:2, rack_id:5}</td>
+            <td>{} <span class="note">null field skipped</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top:.5rem"><strong>per_cell_item mode:</strong> If TopicInfo.field_name = <code>"voltage"</code> and payload = <code>'{"value": 3.8}'</code>, the outer on_message code renames <code>"value"</code> → <code>"voltage"</code> in row.floats. Test this rename step explicitly.</p>
+    </div>
+  </div>
+
+  <!-- U4 -->
+  <div class="test" id="U4">
+    <div class="test-header">
+      <span class="test-id">U4</span>
+      <span class="test-title">validate_config — rejects invalid values, accepts valid config</span>
+      <span class="test-fn">validate_config() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Config mutation</th><th>Expected return</th></tr></thead>
+        <tbody>
+          <tr><td>Default Config (all valid)</td><td><span class="pass">true</span></td></tr>
+          <tr><td><code>flush_interval_seconds = 0</code></td><td><span class="fail">false</span></td></tr>
+          <tr><td><code>flush_interval_seconds = -1</code></td><td><span class="fail">false</span></td></tr>
+          <tr><td><code>max_total_buffer_rows = 0</code></td><td><span class="fail">false</span></td></tr>
+          <tr><td><code>max_messages_per_part = 0</code></td><td><span class="fail">false</span></td></tr>
+          <tr><td><code>compression = "invalid"</code></td><td><span class="fail">false</span></td></tr>
+          <tr><td><code>compression = "lz4"</code></td><td><span class="pass">true</span> <span class="note">(lz4 is valid)</span></td></tr>
+          <tr><td><code>base_path = ""</code></td><td><span class="fail">false</span></td></tr>
+          <tr><td>Two invalid fields simultaneously</td><td><span class="fail">false</span> and both errors printed to stderr</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U5 -->
+  <div class="test" id="U5">
+    <div class="test-header">
+      <span class="test-id">U5</span>
+      <span class="test-title">replace_vars — template substitution correctness</span>
+      <span class="test-fn">replace_vars() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Template</th><th>Vars</th><th>Expected output</th></tr></thead>
+        <tbody>
+          <tr><td><code>"project={project_id}"</code></td><td>{project_id:"42"}</td><td><span class="pass">"project=42"</span></td></tr>
+          <tr><td><code>"{year}/{month}/{day}"</code></td><td>{year:"2026", month:"03", day:"21"}</td><td><span class="pass">"2026/03/21"</span></td></tr>
+          <tr><td><code>"no_placeholders"</code></td><td>{}</td><td><span class="pass">"no_placeholders"</span></td></tr>
+          <tr><td><code>"{missing}"</code></td><td>{}</td><td><span class="pass">"{missing}"</span> <span class="note">unmatched placeholder preserved</span></td></tr>
+          <tr><td><code>"{x}{x}{x}"</code></td><td>{x:"A"}</td><td><span class="pass">"AAA"</span> <span class="note">all occurrences replaced</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U6 -->
+  <div class="test" id="U6">
+    <div class="test-header">
+      <span class="test-id">U6</span>
+      <span class="test-title">to_parquet_compression — string → Arrow enum mapping</span>
+      <span class="test-fn">to_parquet_compression() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Input</th><th>Expected enum</th></tr></thead>
+        <tbody>
+          <tr><td><code>"snappy"</code></td><td><code>parquet::Compression::SNAPPY</code></td></tr>
+          <tr><td><code>"zstd"</code></td><td><code>parquet::Compression::ZSTD</code></td></tr>
+          <tr><td><code>"gzip"</code></td><td><code>parquet::Compression::GZIP</code></td></tr>
+          <tr><td><code>"none"</code></td><td><code>parquet::Compression::UNCOMPRESSED</code></td></tr>
+          <tr><td><code>"unknown"</code></td><td><code>parquet::Compression::SNAPPY</code> <span class="note">(default fallback)</span></td></tr>
+          <tr><td><code>""</code></td><td><code>parquet::Compression::SNAPPY</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U7 -->
+  <div class="test" id="U7">
+    <div class="test-header">
+      <span class="test-id">U7</span>
+      <span class="test-title">time_suffix — UTC ISO8601 formatting</span>
+      <span class="test-fn">time_suffix() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Input time_point</th><th>Expected string</th></tr></thead>
+        <tbody>
+          <tr><td>Unix epoch (1970-01-01T00:00:00Z)</td><td><span class="pass">"19700101T000000Z"</span></td></tr>
+          <tr><td>2026-03-21T12:34:56 UTC</td><td><span class="pass">"20260321T123456Z"</span></td></tr>
+          <tr><td>2026-12-31T23:59:59 UTC</td><td><span class="pass">"20261231T235959Z"</span></td></tr>
+        </tbody>
+      </table>
+      <p>Verify string is exactly 16 characters in all cases and ends with <code>Z</code>.</p>
+    </div>
+  </div>
+
+  <!-- U8 -->
+  <div class="test" id="U8">
+    <div class="test-header">
+      <span class="test-id">U8</span>
+      <span class="test-title">rows_to_arrow_table — schema inference, null filling, column order</span>
+      <span class="test-fn">rows_to_arrow_table() <span class="tag tag-pure">pure</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>#</th><th>Input rows</th><th>Expected table</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>a</td>
+            <td>Empty vector</td>
+            <td>Status OK, table with 0 rows and 0 columns</td>
+          </tr>
+          <tr>
+            <td>b</td>
+            <td>1 row: ints={site_id:1}, floats={voltage:3.7}</td>
+            <td>2 columns: <code>site_id</code> (Int64), <code>voltage</code> (Float64); 1 row; no nulls</td>
+          </tr>
+          <tr>
+            <td>c</td>
+            <td>Row 1: floats={voltage:3.7}; Row 2: floats={voltage:3.8, current:1.0}</td>
+            <td>Columns: <code>current</code>, <code>voltage</code> (alphabetical); row 1 has null current</td>
+          </tr>
+          <tr>
+            <td>d</td>
+            <td>Rows with int cols: {z_col, a_col, m_col}</td>
+            <td>Column order: <code>a_col</code>, <code>m_col</code>, <code>z_col</code> (M3: alphabetical)</td>
+          </tr>
+          <tr>
+            <td>e</td>
+            <td>100 rows, same schema</td>
+            <td>Status OK, 100 rows, no nulls</td>
+          </tr>
+          <tr>
+            <td>f</td>
+            <td>Column order stable across two identical calls with same rows</td>
+            <td>Both tables have identical schema (same field names, same order)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U9 -->
+  <div class="test" id="U9">
+    <div class="test-header">
+      <span class="test-id">U9</span>
+      <span class="test-title">handle_sync_message — drop detection, session reset, counter clamping</span>
+      <span class="test-fn">handle_sync_message() <span class="tag tag-global">global</span></span>
+    </div>
+    <div class="test-body">
+      <p>Must reset globals before each sub-test: <code>g_sync_session_id=""</code>, <code>g_received_since_sync=0</code>, <code>g_sync_drops_detected=0</code>.</p>
+      <table class="cases">
+        <thead><tr><th>#</th><th>Setup</th><th>Payload</th><th>Expected state</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>a</td>
+            <td>Fresh start</td>
+            <td><code>{"session_id":"s1","seq":1,"interval_published":100,"total_published":100}</code></td>
+            <td>New session: g_sync_session_id="s1", counters reset, no drop comparison</td>
+          </tr>
+          <tr>
+            <td>b</td>
+            <td>Same session "s1", g_received_since_sync=100</td>
+            <td><code>{"session_id":"s1","seq":2,"interval_published":100,"total_published":200}</code></td>
+            <td>dropped=0; g_sync_drops_detected=0; g_received_since_sync reset to 0; OK logged</td>
+          </tr>
+          <tr>
+            <td>c</td>
+            <td>Same session "s1", g_received_since_sync=80</td>
+            <td><code>{"session_id":"s1","seq":3,"interval_published":100,"total_published":300}</code></td>
+            <td>dropped=20; g_sync_drops_detected=20; error logged to stderr</td>
+          </tr>
+          <tr>
+            <td>d</td>
+            <td>Session changes to "s2"</td>
+            <td><code>{"session_id":"s2","seq":1,"interval_published":100,"total_published":100}</code></td>
+            <td>g_sync_session_id="s2"; g_sync_drops_detected=0 (reset M2); no comparison</td>
+          </tr>
+          <tr>
+            <td>e</td>
+            <td>g_received_since_sync = UINT64_MAX</td>
+            <td><code>{"session_id":"s1","seq":2,"interval_published":100,"total_published":200}</code></td>
+            <td>received clamped to INT64_MAX; no underflow; dropped ≤ 0; OK logged</td>
+          </tr>
+          <tr>
+            <td>f</td>
+            <td>—</td>
+            <td><code>"invalid json"</code></td>
+            <td>Returns silently; no state change</td>
+          </tr>
+          <tr>
+            <td>g</td>
+            <td>—</td>
+            <td><code>{"no_session_id": 1}</code></td>
+            <td>Returns silently; no state change</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U10 -->
+  <div class="test" id="U10">
+    <div class="test-header">
+      <span class="test-id">U10</span>
+      <span class="test-title">load_config — YAML parsing, defaults preservation, section coverage</span>
+      <span class="test-fn">load_config() <span class="tag tag-io">I/O</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Expected result</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>File not found</td>
+            <td>Returns default Config; no crash; error logged to stderr</td>
+          </tr>
+          <tr>
+            <td>Empty file</td>
+            <td>Returns default Config</td>
+          </tr>
+          <tr>
+            <td>Only <code>mqtt.host: mybroker</code></td>
+            <td>mqtt_host="mybroker"; all other fields are defaults</td>
+          </tr>
+          <tr>
+            <td><code>guard.min_free_gb: 5.5</code></td>
+            <td>min_free_bytes = 5905580032 (5.5 × 1024³)</td>
+          </tr>
+          <tr>
+            <td>Full <code>writer_config.yaml</code></td>
+            <td>All fields parsed; spot-check: base_path="/srv/data/parquet", compression="snappy"</td>
+          </tr>
+          <tr>
+            <td><code>mqtt.keepalive_seconds: 120</code></td>
+            <td>mqtt_keepalive_seconds=120</td>
+          </tr>
+          <tr>
+            <td>Invalid YAML syntax</td>
+            <td>Returns default Config; error logged; no exception thrown</td>
+          </tr>
+          <tr>
+            <td>Custom topic_kv_map</td>
+            <td>Replaces entire map; defaults (site→site_id etc.) not present unless in file</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- U11 -->
+  <div class="test" id="U11">
+    <div class="test-header">
+      <span class="test-id">U11</span>
+      <span class="test-title">make_output_path — path construction, timestamp injection, dir creation</span>
+      <span class="test-fn">make_output_path() <span class="tag tag-io">I/O</span></span>
+    </div>
+    <div class="test-body">
+      <p>Use a temp dir for base_path. Pin <code>collection_ts</code> to 2026-03-21T12:30:00 UTC.</p>
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Expected path suffix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Default partitions, source="batteries", site=1, project=0</td>
+            <td><code>batteries/project=0/site=1/2026/03/21/20260321T123000Z.parquet</code></td>
+          </tr>
+          <tr>
+            <td>Same inputs, called twice with same collection_ts</td>
+            <td>Identical paths both times (deterministic)</td>
+          </tr>
+          <tr>
+            <td>Same inputs, called twice with different collection_ts</td>
+            <td>Different filenames (different timestamp component)</td>
+          </tr>
+          <tr>
+            <td>collection_ts not provided</td>
+            <td>Path uses current time — verify directory structure is correct even without pinned ts</td>
+          </tr>
+          <tr>
+            <td>Directory does not exist before call</td>
+            <td>Directory created; path returned; no error</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       INTEGRATION TESTS
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <h2 class="section" id="integration">Integration Tests</h2>
+
+  <!-- I1 -->
+  <div class="test" id="I1">
+    <div class="test-header">
+      <span class="test-id">I1</span>
+      <span class="test-title">flush_partition — Parquet round-trip: write then read back via Arrow</span>
+      <span class="test-fn">flush_partition() <span class="tag tag-io">I/O</span></span>
+    </div>
+    <div class="test-body">
+      <p>Write N rows of known content; read back with Arrow Parquet reader; verify row count, column names, values, and null pattern. Run for each compression codec.</p>
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Verification</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1000 rows, snappy, 2 int cols + 3 float cols</td>
+            <td>Read-back row count = 1000; all values match; no unexpected nulls</td>
+          </tr>
+          <tr>
+            <td>Same 1000 rows, compression = none/zstd/gzip</td>
+            <td>Round-trip values identical across all codecs</td>
+          </tr>
+          <tr>
+            <td>Rows with sparse columns (row 500 missing "current")</td>
+            <td>Row 500 has null in "current" column; all others have value</td>
+          </tr>
+          <tr>
+            <td>Empty rows vector</td>
+            <td>Returns OK; no file created at path</td>
+          </tr>
+          <tr>
+            <td>Path in non-existent directory</td>
+            <td>Returns error status; no crash</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- I2 -->
+  <div class="test" id="I2">
+    <div class="test-header">
+      <span class="test-id">I2</span>
+      <span class="test-title">WAL write + replay round-trip — zero data loss</span>
+      <span class="test-fn">write_wal_ipc() + wal_replay_file() <span class="tag tag-io">I/O</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Verification</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Write 500 rows; read back</td>
+            <td>Replayed rows == written rows (count, all field values)</td>
+          </tr>
+          <tr>
+            <td>Rows with mixed int + float columns</td>
+            <td>All columns preserved; types correct (int64 / float64)</td>
+          </tr>
+          <tr>
+            <td>Rows with sparse columns</td>
+            <td>Missing fields absent from replayed row maps (not as null)</td>
+          </tr>
+          <tr>
+            <td>Replay non-existent file</td>
+            <td>Returns empty vector; no crash</td>
+          </tr>
+          <tr>
+            <td>Replay truncated/corrupt file</td>
+            <td>Returns empty vector; error logged; no crash</td>
+          </tr>
+          <tr>
+            <td>Empty rows vector</td>
+            <td>write_wal_ipc returns OK; no file created; replay of absent file returns empty</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- I3 -->
+  <div class="test" id="I3">
+    <div class="test-header">
+      <span class="test-id">I3</span>
+      <span class="test-title">WAL filename source_type parsing (C3) — correct grouping on replay</span>
+      <span class="test-fn">replay_wal_files() <span class="tag tag-io">I/O</span> <span class="tag tag-global">global</span></span>
+    </div>
+    <div class="test-body">
+      <p>Create WAL files with known names in a temp WAL directory; call <code>replay_wal_files()</code>; verify Parquet output paths contain the correct source_type.</p>
+      <table class="cases">
+        <thead><tr><th>WAL filename</th><th>Expected source_type in Parquet path</th></tr></thead>
+        <tbody>
+          <tr><td><code>batteries_1_20260321T120000Z.wal.arrow</code></td><td><code>batteries</code></td></tr>
+          <tr><td><code>inverters_0_20260321T120000Z.wal.arrow</code></td><td><code>inverters</code></td></tr>
+          <tr><td><code>data_3_20260321T120000Z.wal.arrow</code></td><td><code>data</code></td></tr>
+          <tr><td><code>nounderscore.wal.arrow</code></td><td><code>"data"</code> fallback</td></tr>
+          <tr><td>WAL dir empty</td><td>Function returns immediately; no Parquet files created</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- I4 -->
+  <div class="test" id="I4">
+    <div class="test-header">
+      <span class="test-id">I4</span>
+      <span class="test-title">WAL multi-chunk replay (C6) — arrow::Concatenate handles all chunk counts</span>
+      <span class="test-fn">wal_replay_file() <span class="tag tag-io">I/O</span></span>
+    </div>
+    <div class="test-body">
+      <p>Construct a WAL Arrow file manually using <code>Table::FromRecordBatches</code> with multiple record batches to force a multi-chunk <code>ChunkedArray</code>. Verify replay returns all rows from all chunks.</p>
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Expected</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>WAL file built from 3 record batches × 100 rows each</td>
+            <td>wal_replay_file returns 300 rows, all values correct</td>
+          </tr>
+          <tr>
+            <td>Single-chunk WAL (normal case)</td>
+            <td>Returns correct rows unchanged (zero-overhead path)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- I5 -->
+  <div class="test" id="I5">
+    <div class="test-header">
+      <span class="test-id">I5</span>
+      <span class="test-title">check_disk_space — guard logic and metric update</span>
+      <span class="test-fn">check_disk_space() <span class="tag tag-global">global</span></span>
+    </div>
+    <div class="test-body">
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Expected return</th><th>g_disk_free_gb_x10</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>min_bytes=0 (guard disabled), any path</td>
+            <td><span class="pass">true</span></td>
+            <td>Updated to actual free space</td>
+          </tr>
+          <tr>
+            <td>min_bytes=1 (1 byte), existing path with GB of free space</td>
+            <td><span class="pass">true</span></td>
+            <td>Updated</td>
+          </tr>
+          <tr>
+            <td>min_bytes=UINT64_MAX, existing path</td>
+            <td><span class="fail">false</span> (no disk has enough space)</td>
+            <td>Updated before guard check</td>
+          </tr>
+          <tr>
+            <td>Non-existent path</td>
+            <td><span class="pass">true</span> (fail-open)</td>
+            <td>Unchanged (fs::space failed)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- I6 -->
+  <div class="test" id="I6">
+    <div class="test-header">
+      <span class="test-id">I6</span>
+      <span class="test-title">Full flush cycle — buffer → WAL → Parquet → WAL deleted</span>
+      <span class="test-fn">do_flush() <span class="tag tag-io">I/O</span> <span class="tag tag-global">global</span></span>
+    </div>
+    <div class="test-body">
+      <p>Directly call <code>do_flush()</code> with a prepared buffer map and config pointing at a temp dir. Verify the entire pipeline atomically.</p>
+      <table class="cases">
+        <thead><tr><th>Scenario</th><th>Verification</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>WAL enabled, 200 rows, single partition</td>
+            <td>Parquet file created; WAL file deleted on success; g_flush_count incremented; g_total_rows_written += 200</td>
+          </tr>
+          <tr>
+            <td>WAL enabled, simulated write failure (read-only path)</td>
+            <td>WAL file retained (not deleted); error logged; g_total_rows_written unchanged</td>
+          </tr>
+          <tr>
+            <td>disk space guard blocks flush (min_free_bytes=UINT64_MAX)</td>
+            <td>No Parquet files created; no WAL files created; warning logged</td>
+          </tr>
+          <tr>
+            <td>hot_file_path configured</td>
+            <td>Hot file created at expected path; contains merged rows from all partitions</td>
+          </tr>
+          <tr>
+            <td>current_state_path configured, 3 sensors</td>
+            <td>Current-state Parquet contains exactly 3 rows (latest per sensor)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       KPI TESTS
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <h2 class="section" id="kpi">KPI Tests</h2>
+  <p style="color:var(--muted);font-size:.88rem;margin-bottom:1rem">
+    Target machine: x86-64 Linux, build with <code>-O2</code>.
+    The system must sustain ~80k MQTT messages/sec at steady state.
+    KPI thresholds are set with 2× headroom above that operational rate.
+  </p>
+
+  <!-- K1 -->
+  <div class="test" id="K1">
+    <div class="test-header">
+      <span class="test-id kpi">K1</span>
+      <span class="test-title">parse_topic throughput</span>
+      <span class="test-fn">parse_topic()</span>
+    </div>
+    <div class="test-body">
+      <p>Measure sustained call rate on a representative topic string using a tight loop. This is called for every non-sync MQTT message on the event thread.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Metric</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Calls / second (topic: <code>"batteries/site=1/rack=2/module=3/cell=4/voltage"</code>)</td>
+            <td class="kpi-pass">&gt; 2 M/sec</td>
+            <td class="kpi-warn">500k–2M/sec</td>
+            <td class="kpi-fail">&lt; 500k/sec</td>
+          </tr>
+          <tr>
+            <td>Calls / second (short topic: <code>"data/site=0"</code>)</td>
+            <td class="kpi-pass">&gt; 5 M/sec</td>
+            <td class="kpi-warn">1M–5M/sec</td>
+            <td class="kpi-fail">&lt; 1M/sec</td>
+          </tr>
+          <tr>
+            <td>No allocation after warm-up (valgrind massif: zero heap growth in loop)</td>
+            <td class="kpi-pass">Zero growth</td>
+            <td class="kpi-warn">—</td>
+            <td class="kpi-fail">Any growth</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K2 -->
+  <div class="test" id="K2">
+    <div class="test-header">
+      <span class="test-id kpi">K2</span>
+      <span class="test-title">parse_payload throughput (simdjson)</span>
+      <span class="test-fn">parse_payload()</span>
+    </div>
+    <div class="test-body">
+      <p>Use a representative 14-field battery JSON payload. simdjson is on-demand (lazy parse); this measures actual field extraction time.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Metric</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Calls / second (14-float payload: <code>{"voltage":3.7,"current":-1.2,…}</code>)</td>
+            <td class="kpi-pass">&gt; 500k/sec</td>
+            <td class="kpi-warn">200k–500k/sec</td>
+            <td class="kpi-fail">&lt; 200k/sec</td>
+          </tr>
+          <tr>
+            <td>Calls / second (nested value format: <code>{"voltage":{"value":3.7,"unit":"V"},…}</code>)</td>
+            <td class="kpi-pass">&gt; 300k/sec</td>
+            <td class="kpi-warn">100k–300k/sec</td>
+            <td class="kpi-fail">&lt; 100k/sec</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K3 -->
+  <div class="test" id="K3">
+    <div class="test-header">
+      <span class="test-id kpi">K3</span>
+      <span class="test-title">rows_to_arrow_table build rate</span>
+      <span class="test-fn">rows_to_arrow_table()</span>
+    </div>
+    <div class="test-body">
+      <p>Called once per partition per flush — not on the hot path. Measures Arrow builder throughput with 19 columns (5 int, 14 float).</p>
+      <table class="kpi-table">
+        <thead><tr><th>Batch size</th><th>Pass (wall time)</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>100k rows, 19 cols</td>
+            <td class="kpi-pass">&lt; 200 ms</td>
+            <td class="kpi-warn">200–500 ms</td>
+            <td class="kpi-fail">&gt; 500 ms</td>
+          </tr>
+          <tr>
+            <td>1M rows, 19 cols</td>
+            <td class="kpi-pass">&lt; 2 s</td>
+            <td class="kpi-warn">2–5 s</td>
+            <td class="kpi-fail">&gt; 5 s</td>
+          </tr>
+          <tr>
+            <td>Memory overhead (bytes / row, 19 cols)</td>
+            <td class="kpi-pass">&lt; 300 B/row</td>
+            <td class="kpi-warn">300–600 B/row</td>
+            <td class="kpi-fail">&gt; 600 B/row</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K4 -->
+  <div class="test" id="K4">
+    <div class="test-header">
+      <span class="test-id kpi">K4</span>
+      <span class="test-title">flush_partition I/O write rate</span>
+      <span class="test-fn">flush_partition()</span>
+    </div>
+    <div class="test-body">
+      <p>End-to-end wall time from vector of rows to closed Parquet file on local disk. Includes <code>rows_to_arrow_table</code>, compression, and fsync. Run with snappy (default) and zstd.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Scenario</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1M rows, 19 cols, snappy — wall time</td>
+            <td class="kpi-pass">&lt; 3 s</td>
+            <td class="kpi-warn">3–8 s</td>
+            <td class="kpi-fail">&gt; 8 s</td>
+          </tr>
+          <tr>
+            <td>1M rows, 19 cols, snappy — rows/sec</td>
+            <td class="kpi-pass">&gt; 333k rows/sec</td>
+            <td class="kpi-warn">125k–333k/sec</td>
+            <td class="kpi-fail">&lt; 125k/sec</td>
+          </tr>
+          <tr>
+            <td>1M rows, snappy — output file size (bytes / row)</td>
+            <td class="kpi-pass">&lt; 15 B/row</td>
+            <td class="kpi-warn">15–30 B/row</td>
+            <td class="kpi-fail">&gt; 30 B/row</td>
+          </tr>
+          <tr>
+            <td>1M rows, zstd — file size vs snappy</td>
+            <td class="kpi-pass">zstd ≤ snappy × 0.7</td>
+            <td class="kpi-warn">0.7–0.9 ×</td>
+            <td class="kpi-fail">&gt; snappy</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K5 -->
+  <div class="test" id="K5">
+    <div class="test-header">
+      <span class="test-id kpi">K5</span>
+      <span class="test-title">WAL write throughput</span>
+      <span class="test-fn">write_wal_ipc()</span>
+    </div>
+    <div class="test-body">
+      <p>WAL write must complete well within one flush interval (60s). Target: 60s of data (4.8M rows at 80k/sec) in under 10s.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Scenario</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1M rows, 19 cols — wall time</td>
+            <td class="kpi-pass">&lt; 2 s</td>
+            <td class="kpi-warn">2–5 s</td>
+            <td class="kpi-fail">&gt; 5 s</td>
+          </tr>
+          <tr>
+            <td>1M rows, 19 cols — file size vs Parquet (ratio)</td>
+            <td class="kpi-pass">&lt; 3× Parquet snappy</td>
+            <td class="kpi-warn">3–5×</td>
+            <td class="kpi-fail">&gt; 5× (Arrow IPC is uncompressed by default)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K6 -->
+  <div class="test" id="K6">
+    <div class="test-header">
+      <span class="test-id kpi">K6</span>
+      <span class="test-title">WAL replay throughput</span>
+      <span class="test-fn">wal_replay_file() + flush_partition()</span>
+    </div>
+    <div class="test-body">
+      <p>Startup replay must complete before live data is accepted. At most one missed flush interval of data in the WAL (typically ≤ 5M rows). Target: replay + re-flush within 30s.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Scenario</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Replay + re-flush 1M rows (one WAL file)</td>
+            <td class="kpi-pass">&lt; 5 s total</td>
+            <td class="kpi-warn">5–15 s</td>
+            <td class="kpi-fail">&gt; 15 s</td>
+          </tr>
+          <tr>
+            <td>wal_replay_file only (read + deserialise 1M rows)</td>
+            <td class="kpi-pass">&lt; 2 s</td>
+            <td class="kpi-warn">2–5 s</td>
+            <td class="kpi-fail">&gt; 5 s</td>
+          </tr>
+          <tr>
+            <td>Zero data loss: rows written == rows replayed</td>
+            <td class="kpi-pass">100%</td>
+            <td class="kpi-warn">—</td>
+            <td class="kpi-fail">Any loss</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K7 -->
+  <div class="test" id="K7">
+    <div class="test-header">
+      <span class="test-id kpi">K7</span>
+      <span class="test-title">Buffer insert rate (on_message hot path)</span>
+      <span class="test-fn">on_message() inner logic</span>
+    </div>
+    <div class="test-body">
+      <p>Measure the time from topic string to row inserted in buffer, including parse_topic + parse_payload + mutex lock + map insert. This is the MQTT ingest bottleneck.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Metric</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Single-threaded insert rate (no contention)</td>
+            <td class="kpi-pass">&gt; 200k msgs/sec</td>
+            <td class="kpi-warn">100k–200k/sec</td>
+            <td class="kpi-fail">&lt; 100k/sec</td>
+          </tr>
+          <tr>
+            <td>Time under lock per message (mutex hold time)</td>
+            <td class="kpi-pass">&lt; 2 µs</td>
+            <td class="kpi-warn">2–5 µs</td>
+            <td class="kpi-fail">&gt; 5 µs</td>
+          </tr>
+          <tr>
+            <td>g_current_state insert with 10k sensors (std::map worst case)</td>
+            <td class="kpi-pass">&lt; 5 µs / insert</td>
+            <td class="kpi-warn">5–15 µs</td>
+            <td class="kpi-fail">&gt; 15 µs</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- K8 -->
+  <div class="test" id="K8">
+    <div class="test-header">
+      <span class="test-id kpi">K8</span>
+      <span class="test-title">Compression ratio vs raw MQTT payload size</span>
+      <span class="test-fn">flush_partition() — file size measurement</span>
+    </div>
+    <div class="test-body">
+      <p>The system's core storage claim: Parquet is dramatically smaller than raw MQTT. Baseline: ~109 B per MQTT message (JSON payload + topic). Known measured ratio: 11.4× compression.</p>
+      <table class="kpi-table">
+        <thead><tr><th>Metric</th><th>Pass</th><th>Warn</th><th>Fail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Bytes / row in output Parquet (snappy, 19-col battery row)</td>
+            <td class="kpi-pass">&lt; 12 B/row</td>
+            <td class="kpi-warn">12–20 B/row</td>
+            <td class="kpi-fail">&gt; 20 B/row</td>
+          </tr>
+          <tr>
+            <td>Compression ratio vs raw JSON (109 B/msg baseline)</td>
+            <td class="kpi-pass">&gt; 9×</td>
+            <td class="kpi-warn">5–9×</td>
+            <td class="kpi-fail">&lt; 5×</td>
+          </tr>
+          <tr>
+            <td>Bytes / row with zstd</td>
+            <td class="kpi-pass">&lt; 10 B/row</td>
+            <td class="kpi-warn">10–15 B/row</td>
+            <td class="kpi-fail">&gt; 15 B/row</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TEST HARNESS TEMPLATE
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <h2 class="section" id="harness">Test Harness Template</h2>
+
+  <div class="test">
+    <div class="test-header">
+      <span class="test-id" style="background:rgba(227,179,65,.12);color:var(--yellow);border-color:rgba(227,179,65,.3)">TPL</span>
+      <span class="test-title">writer_tests.cpp — minimal harness, no external framework</span>
+    </div>
+    <div class="test-body">
+<pre>// writer_tests.cpp
+// Build:
+//   g++ -std=c++17 -O2 -Wall -DPARQUET_WRITER_NO_MAIN -pthread \
+//       -DUTF8PROC_EXPORTS -I/usr/include/x86_64-linux-gnu \
+//       writer_tests.cpp writer.cpp -o writer_tests \
+//       -lparquet -larrow -lmosquitto -lyaml-cpp -lsimdjson
+// Run:
+//   ./writer_tests
+
+#include &lt;cassert&gt;
+#include &lt;cstdio&gt;
+#include &lt;chrono&gt;
+#include &lt;filesystem&gt;
+#include &lt;functional&gt;
+#include &lt;string&gt;
+#include &lt;vector&gt;
+namespace fs = std::filesystem;
+
+// ── Tiny assertion/reporting helpers ──────────────────────────────────────
+
+static int g_pass = 0, g_fail = 0;
+
+#define EXPECT(cond, msg) do { \
+    if (cond) { ++g_pass; printf("  PASS  %s\n", msg); } \
+    else      { ++g_fail; printf("  FAIL  %s  (line %d)\n", msg, __LINE__); } \
+} while(0)
+
+#define EXPECT_EQ(a, b, msg) EXPECT((a) == (b), msg)
+
+// ── Benchmark helper ──────────────────────────────────────────────────────
+
+template&lt;typename F&gt;
+double bench_mps(F fn, int iters = 1'000'000) {
+    auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i &lt; iters; ++i) fn();
+    auto t1 = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration&lt;double, std::milli&gt;(t1-t0).count();
+    return iters / (ms / 1000.0);
+}
+
+// ── Temp directory RAII ───────────────────────────────────────────────────
+
+struct TempDir {
+    fs::path path;
+    TempDir() : path(fs::temp_directory_path() / "writer_test_XXXXXX") {
+        char tmpl[256]; snprintf(tmpl, sizeof(tmpl), "%s", path.string().c_str());
+        mkdtemp(tmpl); path = tmpl;
+    }
+    ~TempDir() { fs::remove_all(path); }
+};
+
+// ── Forward-declare writer.cpp internals ─────────────────────────────────
+// (they are static — include via the PARQUET_WRITER_NO_MAIN compile unit)
+// Access via the compiled object; declare extern for linkage where needed.
+
+// ── Test functions ────────────────────────────────────────────────────────
+
+void test_sanitize() {
+    printf("[U1] sanitize_path_segment\n");
+    // Direct calls — sanitize_path_segment is static; use parse_topic as proxy
+    // or expose with a test-only declaration in writer.cpp:
+    //   #ifdef PARQUET_WRITER_NO_MAIN
+    //   std::string sanitize_path_segment(std::string);  // extern for tests
+    //   #endif
+    // Alternatively test indirectly via parse_topic:
+    EXPECT(!parse_topic("/site=0").has_value(),   "empty source_type → nullopt");
+    EXPECT(!parse_topic("../x").has_value(),       ".. source_type → nullopt");
+    EXPECT( parse_topic("batteries").has_value(),  "normal → valid");
+}
+
+void test_parse_topic() {
+    printf("[U2] parse_topic\n");
+    {
+        auto r = parse_topic("batteries/site=0/rack=1/module=2/cell=3/voltage");
+        EXPECT(r.has_value(), "full topic parses");
+        EXPECT_EQ(r->source_type, std::string("batteries"), "source_type");
+        EXPECT_EQ(r->kv.at("site"), 0, "site=0");
+        EXPECT_EQ(r->kv.at("cell"), 3, "cell=3");
+        EXPECT_EQ(r->field_name, std::string("voltage"), "field_name=voltage");
+    }
+    EXPECT(!parse_topic("").has_value(), "empty topic → nullopt");
+    EXPECT(!parse_topic("/").has_value(), "only slash → nullopt");
+}
+
+void test_validate_config() {
+    printf("[U4] validate_config\n");
+    Config good;
+    EXPECT(validate_config(good), "default config is valid");
+
+    Config bad1 = good; bad1.flush_interval_seconds = 0;
+    EXPECT(!validate_config(bad1), "flush_interval=0 invalid");
+
+    Config bad2 = good; bad2.compression = "bz2";
+    EXPECT(!validate_config(bad2), "unknown compression invalid");
+
+    Config bad3 = good; bad3.base_path = "";
+    EXPECT(!validate_config(bad3), "empty base_path invalid");
+}
+
+void bench_parse_topic() {
+    printf("[K1] parse_topic throughput\n");
+    const std::string topic = "batteries/site=1/rack=2/module=3/cell=4/voltage";
+    double mps = bench_mps([&]{ (void)parse_topic(topic); });
+    printf("  %.2f M calls/sec  (%s)\n", mps / 1e6, mps &gt; 2e6 ? "PASS" : mps &gt; 500e3 ? "WARN" : "FAIL");
+}
+
+// ... additional test and bench functions ...
+
+int main() {
+    printf("=== writer.cpp unit tests ===\n\n");
+    test_sanitize();
+    test_parse_topic();
+    test_validate_config();
+    // ... more unit tests ...
+
+    printf("\n=== KPI benchmarks ===\n\n");
+    bench_parse_topic();
+    // ... more benchmarks ...
+
+    printf("\n=== Results: %d passed, %d failed ===\n", g_pass, g_fail);
+    return g_fail == 0 ? 0 : 1;
+}</pre>
+      <p style="margin-top:.8rem;color:var(--muted);font-size:.85rem">
+        <strong>Note on static functions:</strong> most writer functions are <code>static</code> (translation-unit scope). To test them directly, add a small block in <code>writer.cpp</code> guarded by <code>#ifdef PARQUET_WRITER_NO_MAIN</code> that re-declares them as <code>extern</code>, or move the function bodies to a shared <code>writer_core.cpp</code> and keep only <code>main()</code> in <code>writer.cpp</code>. The latter is the cleaner long-term approach (see minor improvement candidate).
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 class="section">Last Run Results</h2>
+<div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem">
+  phil-dev · 2026-03-22 (post F3 fixes) · <code>make test &amp;&amp; make kpi</code>
+  &nbsp;·&nbsp; <a href="writer_critical_fixes_3.html" style="color:var(--accent)">F3-1…F3-7 applied</a>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem">
+
+  <!-- Unit test output -->
+  <div>
+    <div style="font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">
+      Unit Tests — <code>make test</code>
+    </div>
+    <pre style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1rem;font-size:.78rem;line-height:1.55;overflow-x:auto">
+=== parquet_writer unit tests ===
+  <span style="color:var(--green)">PASS</span>  parse_topic: batteries fully-qualified
+  <span style="color:var(--green)">PASS</span>  parse_topic: solar source type
+  <span style="color:var(--green)">PASS</span>  parse_topic: wind source type
+  <span style="color:var(--green)">PASS</span>  parse_topic: source only, no kv
+  <span style="color:var(--green)">PASS</span>  parse_topic: empty string returns nullopt
+  <span style="color:var(--green)">PASS</span>  parse_topic: unknown extra kv keys ignored
+  <span style="color:var(--green)">PASS</span>  parse_topic: non-numeric value in kv skipped
+  <span style="color:var(--green)">PASS</span>  parse_payload: nested {value,unit} format
+  <span style="color:var(--green)">PASS</span>  parse_payload: flat scalar format
+  <span style="color:var(--green)">PASS</span>  parse_payload: metadata from topic injected
+  <span style="color:var(--green)">PASS</span>  parse_payload: bad JSON does not crash
+  <span style="color:var(--green)">PASS</span>  parse_payload: empty JSON object
+  <span style="color:var(--green)">PASS</span>  parse_payload: int columns from payload
+  <span style="color:var(--green)">PASS</span>  parse_payload: full battery payload (7 meas)
+  <span style="color:var(--green)">PASS</span>  parse_payload: full solar payload (6 meas)
+  <span style="color:var(--green)">PASS</span>  replace_vars: single substitution
+  <span style="color:var(--green)">PASS</span>  replace_vars: multiple substitutions
+  <span style="color:var(--green)">PASS</span>  replace_vars: partial — unknown left intact
+  <span style="color:var(--green)">PASS</span>  replace_vars: repeated placeholder
+  <span style="color:var(--green)">PASS</span>  replace_vars: empty template
+  <span style="color:var(--green)">PASS</span>  replace_vars: no placeholders unchanged
+  <span style="color:var(--green)">PASS</span>  flush_partition: empty rows writes no file
+  <span style="color:var(--green)">PASS</span>  flush_partition: single row valid parquet
+  <span style="color:var(--green)">PASS</span>  flush_partition: N rows round-trips correctly
+  <span style="color:var(--green)">PASS</span>  flush_partition: correct column count (9)
+  <span style="color:var(--green)">PASS</span>  flush_partition: sparse columns null-padded
+  <span style="color:var(--green)">PASS</span>  flush_partition: zstd compression valid
+  <span style="color:var(--green)">PASS</span>  hot file: merges rows from 2 partitions
+  <span style="color:var(--green)">PASS</span>  hot file: atomic rename (.tmp removed)
+  <span style="color:var(--green)">PASS</span>  hot file: disabled when path empty
+  <span style="color:var(--green)">PASS</span>  hot file: overwritten on second flush
+  <span style="color:var(--green)">PASS</span>  hot file: mixed source types merged
+  <span style="color:var(--green)">PASS</span>  current_state: one row per unique sensor
+  <span style="color:var(--green)">PASS</span>  current_state: latest reading wins
+  <span style="color:var(--green)">PASS</span>  current_state: disabled when path empty
+  <span style="color:var(--green)">PASS</span>  current_state: atomic rename (.tmp absent)
+  <span style="color:var(--green)">PASS</span>  current_state: mixed source types null-padded
+
+<span style="color:var(--green);font-weight:600">37 passed, 0 failed</span></pre>
+  </div>
+
+  <!-- KPI output -->
+  <div>
+    <div style="font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">
+      KPI Benchmarks — <code>make kpi</code>
+    </div>
+    <pre style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1rem;font-size:.78rem;line-height:1.55;overflow-x:auto">
+=== parquet_writer KPI benchmarks ===
+
+--- KPI 1: parse throughput ---
+parse_topic (1M calls)  [F3-7: memchr pointer walk]
+  <span style="color:var(--green);font-weight:600">2 672 549 ops/s</span>  (0.374s for 1M)
+  <span style="color:var(--muted)">178× fleet target of 14 976 msg/s ✓  (+62% vs run #2)</span>
+
+parse_topic + parse_payload (1M)
+  <span style="color:var(--green);font-weight:600">491 121 ops/s</span>  (2.036s for 1M)
+  <span style="color:var(--muted)">33× fleet target ✓</span>
+
+parse_topic + parse_payload solar (1M)
+  <span style="color:var(--green);font-weight:600">431 224 ops/s</span>  (2.319s for 1M)
+  <span style="color:var(--muted)">29× fleet target ✓</span>
+
+Fleet target (24× scale): 14 976 msg/s
+
+--- KPI 2: parquet write throughput ---
+flush_partition snappy batch=1 000
+  <span style="color:var(--green);font-weight:600">821 263 rows/s   16.0 MB/s</span>
+  (0.244s for 200 000 rows)
+
+flush_partition snappy batch=10 000
+  <span style="color:var(--green);font-weight:600">914 050 rows/s   14.6 MB/s</span>
+  (0.219s for 200 000 rows)
+
+flush_partition snappy batch=50 000
+  <span style="color:var(--green);font-weight:600">865 072 rows/s   13.9 MB/s</span>
+  (0.231s for 200 000 rows)
+
+--- KPI 3: end-to-end ingest sim ---
+parse+buffer 14 976 msg × 10 rounds
+  <span style="color:var(--green);font-weight:600">434 587 ops/s</span>  (0.344s for 149 760)
+  96 partitions buffered, 149 760 rows
+
+Flush 149 760 rows → 96 parquet files:
+  <span style="color:var(--green);font-weight:600">0.137s  (1 094 874 rows/s)</span>
+
+Done.</pre>
+
+    <!-- delta note -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.78rem;margin-top:.8rem;color:var(--muted)">
+      <strong style="color:var(--fg)">F3 changes in this run:</strong>
+      F3-1 SIGPIPE SIG_IGN · F3-2 wp→wf · F3-3 loop_stop force=true · F3-4 ValueUnsafe() ·
+      F3-5 sync parse outside g_mutex · F3-6 Row unordered_map · <strong style="color:var(--green)">F3-7 parse_topic memchr walk (+62%)</strong>
+    </div>
+
+    <!-- KPI summary cards -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:.8rem">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Parse headroom</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">33×</div>
+        <div style="color:var(--muted);font-size:.75rem">above 14 976 msg/s fleet target</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">parse_topic alone</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">178× <span style="font-size:.75rem">(+62%)</span></div>
+        <div style="color:var(--muted);font-size:.75rem">2.67M ops/s — memchr walk (F3-7)</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Flush throughput</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">~1 M rows/s</div>
+        <div style="color:var(--muted);font-size:.75rem">149 k rows in 0.137s</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem;font-size:.8rem">
+        <div style="color:var(--muted);margin-bottom:.2rem">Tests</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">37 / 37</div>
+        <div style="color:var(--muted);font-size:.75rem">all passing incl. unordered_map (F3-6)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

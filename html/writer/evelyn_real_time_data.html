@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evelyn — Real-Time Web Interface Design</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.6; padding: 0 0 60px 0; }
+  h1 { font-size: 2em; color: #61dafb; padding: 40px 40px 10px; border-bottom: 2px solid #2a2a4a; margin-bottom: 20px; }
+  h2 { font-size: 1.4em; color: #e5c07b; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #2a2a4a; }
+  h3 { font-size: 1.1em; color: #98c379; margin: 24px 0 8px; }
+  h4 { font-size: 1em; color: #56b6c2; margin: 16px 0 6px; }
+  p { margin: 10px 0; max-width: 860px; }
+  ul, ol { margin: 10px 0 10px 24px; max-width: 860px; }
+  li { margin: 4px 0; }
+  .content { padding: 0 40px; }
+  pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; margin: 12px 0; max-width: 860px; }
+  code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: #e5c07b; }
+  .kw { color: #56b6c2; }
+  .str { color: #98c379; }
+  .fn { color: #e5c07b; }
+  .cm { color: #5c6370; font-style: italic; }
+  .num { color: #d19a66; }
+  .tag { color: #e06c75; }
+  table { border-collapse: collapse; margin: 16px 0; max-width: 860px; width: 100%; }
+  th { background: #2a2a4a; color: #61dafb; padding: 8px 14px; text-align: left; border: 1px solid #30363d; }
+  td { padding: 7px 14px; border: 1px solid #30363d; vertical-align: top; }
+  tr:nth-child(even) td { background: #16213e; }
+  .toc { background: #16213e; border: 1px solid #2a2a4a; border-radius: 8px; padding: 20px 28px; margin: 20px 40px 30px; display: inline-block; min-width: 340px; }
+  .toc h2 { margin-top: 0; border: none; font-size: 1.1em; }
+  .toc ol { margin-left: 18px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: #61dafb; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #2a2a4a; margin: 36px 0; }
+  .note { background: #1e2d1e; border-left: 3px solid #98c379; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .warn { background: #2d2a1e; border-left: 3px solid #e5c07b; padding: 12px 16px; border-radius: 0 4px 4px 0; margin: 12px 0; max-width: 860px; font-size: 14px; }
+  .demo-box { background: #16213e; border: 2px solid #56b6c2; border-radius: 8px; padding: 20px; margin: 20px 0; max-width: 860px; }
+  .demo-box h3 { color: #61dafb; margin-top: 0; font-size: 1em; letter-spacing: 0.05em; text-transform: uppercase; }
+  .demo-box input, .demo-box textarea, .demo-box select {
+    background: #0d1117; color: #e0e0e0; border: 1px solid #30363d; border-radius: 4px;
+    padding: 6px 10px; font-family: monospace; font-size: 13px;
+  }
+  .demo-box input { width: 180px; }
+  .demo-box button {
+    background: #2a4a6a; color: #61dafb; border: 1px solid #56b6c2; border-radius: 4px;
+    padding: 6px 16px; cursor: pointer; font-size: 13px; margin: 4px 4px 4px 0;
+  }
+  .demo-box button:hover { background: #1a5a8a; }
+  .demo-box button.danger { background: #4a1a1a; color: #e06c75; border-color: #e06c75; }
+  .demo-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: monospace; margin-top: 10px; }
+  .demo-table th { background: #0d1117; color: #56b6c2; padding: 5px 8px; border: 1px solid #30363d; }
+  .demo-table td { padding: 4px 8px; border: 1px solid #1e2a3a; }
+  body.light { background:#f5f5f0; color:#1a1a2e; }
+  body.light h1 { color:#0066aa; border-color:#d0d0c0; }
+  body.light h2 { color:#8a6000; border-color:#d0d0c0; }
+  body.light h3 { color:#2a6e2a; }
+  body.light h4 { color:#006688; }
+  body.light pre, body.light code { background:#e8e8e0; border-color:#c8c8b8; color:#1a1a2e; }
+  body.light .kw { color:#006688; } body.light .str { color:#2a6e2a; } body.light .fn { color:#8a6000; } body.light .cm { color:#888877; } body.light .num { color:#aa4400; }
+  body.light table th { background:#e0e0d0; color:#0066aa; border-color:#c0c0b0; }
+  body.light table td { border-color:#d0d0c0; }
+  body.light tr:nth-child(even) td { background:#f0f0e8; }
+  body.light .toc { background:#ffffff; border-color:#d0d0c0; }
+  body.light .note { background:#d4f0d4; }
+  body.light .warn { background:#f0f0d4; }
+  body.light .demo-box { background:#ffffff; border-color:#006688; }
+  body.light .demo-box input, body.light .demo-box textarea { background:#f0f0e8; color:#1a1a2e; border-color:#c0c0b0; }
+  body.light .demo-box button { background:#ddeeff; color:#0066aa; border-color:#006688; }
+  body.light .demo-table th { background:#e0e0d0; }
+  body.light .demo-table td { border-color:#d0d0c0; }
+  .theme-btn { position:fixed; top:14px; right:20px; background:#16213e; border:1px solid #30363d; color:#abb2bf; border-radius:20px; padding:5px 14px; cursor:pointer; font-size:13px; z-index:100; }
+  body.light .theme-btn { background:#ffffff; border-color:#c0c0b0; color:#555; }
+  .theme-btn:hover { color:#e0e0e0; border-color:#61dafb; }
+  .page-nav { padding: 14px 40px 0; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-nav a { color:#abb2bf; text-decoration:none; font-size:.82rem; padding:3px 8px; border:1px solid #2a2a4a; border-radius:4px; }
+  .page-nav a:hover { color:#61dafb; border-color:#61dafb; }
+  body.light .page-nav a { color:#555; border-color:#d0d0c0; }
+  body.light .page-nav a:hover { color:#0066aa; border-color:#0066aa; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+  .badge.connected { background: #1e4d1e; color: #98c379; }
+  .badge.disconnected { background: #4d1e1e; color: #e06c75; }
+  .badge.connecting { background: #4d4a1e; color: #e5c07b; }
+  .row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .row-controls label { font-size: 13px; color: #abb2bf; }
+  .stat { display: inline-block; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 3px 10px; margin: 3px; font-size: 13px; font-family: monospace; }
+  .stat span { color: #e5c07b; }
+</style>
+</head>
+<body>
+
+<button class="theme-btn" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'Dark Mode':'Light Mode'">Light Mode</button>
+
+<div class="page-nav">
+  <a href="projects.html">← Writer Projects</a>
+  <a href="evelyn_influx3_analysis.html">InfluxDB 3 Analysis</a>
+  <a href="evelyn_viz_comparison.html">Viz Comparison</a>
+  <a href="evelyn_kafka_analysis.html">Kafka Analysis</a>
+  <a href="evelyn_container_design.html">Container Design</a>
+</div>
+
+<h1>Evelyn — Real-Time Web Interface Design</h1>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#problem">The Real-Time Problem</a></li>
+    <li><a href="#arch">Three-Layer Architecture</a></li>
+    <li><a href="#flashmq-ws">FlashMQ WebSocket Configuration</a></li>
+    <li><a href="#mqttjs">mqtt.js Library Overview</a></li>
+    <li><a href="#demo1">Demo 1 — Raw MQTT Stream Viewer</a></li>
+    <li><a href="#demo2">Demo 2 — Unit Dashboard</a></li>
+    <li><a href="#duckdb-wasm">DuckDB-WASM Library Overview</a></li>
+    <li><a href="#demo3">Demo 3 — Current State Query</a></li>
+    <li><a href="#demo4">Demo 4 — Historical Range Query</a></li>
+    <li><a href="#bridge-api">bridge_api Extension: /query/current</a></li>
+    <li><a href="#bandwidth">FlashMQ WebSocket: What to Know</a></li>
+    <li><a href="#ports">Container Port Map</a></li>
+    <li><a href="#comparison">New vs Old Real-Time Path</a></li>
+  </ol>
+</div>
+
+<div class="content">
+
+<!-- ─── 1. THE PROBLEM ─── -->
+<h2 id="problem">1. The Real-Time Problem</h2>
+<p>real_writer receives MQTT messages, buffers them in memory, and flushes to Parquet every N seconds (configurable, typically 5–60 s). This means there is no in-process streaming path to a browser — data only becomes queryable after a flush.</p>
+<p>Today, the real-time display path is:</p>
+<pre>FlashMQ → Telegraf → InfluxDB2 → Grafana / custom dashboard (polling)</pre>
+<p>This works but adds three services, each with its own config, latency, and storage overhead. The goal of this document is to show that the existing parquet stack already has everything needed to satisfy real-time display requirements — without Telegraf or InfluxDB.</p>
+
+<p>real_writer already writes two near-real-time outputs on each flush:</p>
+<ul>
+  <li><code>hot_file_path</code> — recent-rows Parquet file, rewritten each flush cycle</li>
+  <li><code>current_state_path</code> — one row per sensor (latest value), rewritten each flush</li>
+  <li><code>GET /health</code> on port 8771 — JSON metrics (msgs_received, flush_count, buffer_rows, drops)</li>
+</ul>
+
+<hr>
+
+<!-- ─── 2. ARCHITECTURE ─── -->
+<h2 id="arch">2. Three-Layer Architecture</h2>
+
+<pre>
+  ┌─────────────────────────────────────────────────────────┐
+  │               LAYER 1 — LIVE STREAM                     │
+  │                                                         │
+  │  EMS hardware → MQTT :1883 → FlashMQ                    │
+  │                                  │                      │
+  │                           WS :9001 (new listener)       │
+  │                                  │                      │
+  │                           Browser mqtt.js               │
+  │                           subscribe("unit/0/#")         │
+  │                           &lt;100ms latency, true push     │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │          LAYER 2 — CURRENT STATE SNAPSHOT               │
+  │                                                         │
+  │  real_writer flushes → current_state.parquet            │
+  │                              │                          │
+  │  bridge_api GET /query/current → DuckDB → JSON          │
+  │                              │                          │
+  │  Browser polls every 2–5 s  ─┘                         │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │            LAYER 3 — HISTORICAL QUERIES                 │
+  │                                                         │
+  │  Archived parquet files served via HTTP (nginx)         │
+  │                              │                          │
+  │  DuckDB-WASM in browser ─────┘                         │
+  │  Full SQL, no server needed                             │
+  │  parquet_scan('http://host/parquet/*.parquet')          │
+  └─────────────────────────────────────────────────────────┘
+</pre>
+
+<p>Each layer is independent. Layer 1 requires only a config change to FlashMQ. Layer 2 requires ~20 lines added to bridge_api. Layer 3 requires nginx to serve parquet files with CORS headers.</p>
+
+<hr>
+
+<!-- ─── 3. FLASHMQ WS ─── -->
+<h2 id="flashmq-ws">3. FlashMQ WebSocket Configuration</h2>
+<p>FlashMQ has native MQTT-over-WebSocket support. Add a second <code>listen</code> block to <code>flashmq.conf</code>:</p>
+<pre>
+<span class="cm"># Existing MQTT listener</span>
+<span class="kw">listen</span> {
+    <span class="kw">port</span> <span class="num">1883</span>
+    <span class="kw">protocol</span> mqtt
+    <span class="kw">tcp_nodelay</span> <span class="kw">true</span>
+}
+
+<span class="cm"># New WebSocket listener for browser clients</span>
+<span class="kw">listen</span> {
+    <span class="kw">port</span> <span class="num">9001</span>
+    <span class="kw">protocol</span> websockets
+}
+</pre>
+<p>That is the only change. No recompile, no new service. Expose port 9001 from the container. Browsers connect to <code>ws://host:9001</code> using the standard MQTT-over-WebSocket protocol that mqtt.js speaks natively.</p>
+
+<hr>
+
+<!-- ─── 4. MQTT.JS ─── -->
+<h2 id="mqttjs">4. mqtt.js Library Overview</h2>
+<table>
+  <tr><th>Property</th><th>Detail</th></tr>
+  <tr><td>CDN</td><td><code>https://unpkg.com/mqtt/dist/mqtt.min.js</code></td></tr>
+  <tr><td>Version</td><td>5.x (current)</td></tr>
+  <tr><td>Size</td><td>~90 KB minified</td></tr>
+  <tr><td>Protocol</td><td>MQTT 3.1.1 / 5.0 over WebSocket (ws:// or wss://)</td></tr>
+</table>
+
+<h3>Key API</h3>
+<pre>
+<span class="cm">// Connect</span>
+<span class="kw">const</span> client = <span class="fn">mqtt.connect</span>(<span class="str">'ws://host:9001'</span>, {
+  clientId: <span class="str">'browser-'</span> + Math.<span class="fn">random</span>().<span class="fn">toString</span>(<span class="num">16</span>).<span class="fn">slice</span>(<span class="num">2</span>),
+  keepalive: <span class="num">30</span>,
+  reconnectPeriod: <span class="num">2000</span>,
+  connectTimeout: <span class="num">5000</span>
+});
+
+<span class="cm">// Events</span>
+client.<span class="fn">on</span>(<span class="str">'connect'</span>, () => { client.<span class="fn">subscribe</span>(<span class="str">'unit/#'</span>, { qos: <span class="num">0</span> }); });
+client.<span class="fn">on</span>(<span class="str">'message'</span>, (topic, payload) => { <span class="cm">/* payload is Uint8Array */</span> });
+client.<span class="fn">on</span>(<span class="str">'error'</span>,   (err) => console.<span class="fn">error</span>(err));
+client.<span class="fn">on</span>(<span class="str">'reconnect'</span>, () => { <span class="cm">/* fires on each reconnect attempt */</span> });
+client.<span class="fn">on</span>(<span class="str">'close'</span>,   () => { <span class="cm">/* connection closed */</span> });
+
+<span class="cm">// Disconnect</span>
+client.<span class="fn">end</span>(); <span class="cm">// graceful</span>
+</pre>
+
+<hr>
+
+<!-- ─── DEMO 1 ─── -->
+<h2 id="demo1">5. Demo 1 — Raw MQTT Stream Viewer</h2>
+<p>Connects to FlashMQ WebSocket and shows a scrolling table of incoming messages. Topic is parsed to extract <code>unit_id</code> and <code>point_name</code>. Payload is parsed as JSON for <code>value</code> and <code>dtype</code>.</p>
+
+<div class="demo-box">
+  <h3>Demo 1 — Raw MQTT Stream Viewer</h3>
+  <div class="row-controls">
+    <label>Host</label><input id="d1-host" value="192.168.86.48">
+    <label>WS Port</label><input id="d1-port" value="9001" style="width:70px">
+    <label>Topic</label><input id="d1-topic" value="unit/#" style="width:120px">
+    <button id="d1-connect">Connect</button>
+    <button id="d1-disconnect" class="danger" disabled>Disconnect</button>
+    <button id="d1-clear">Clear</button>
+    <span id="d1-badge" class="badge disconnected">Disconnected</span>
+  </div>
+  <div style="margin-bottom:8px">
+    <span class="stat">Messages: <span id="d1-total">0</span></span>
+    <span class="stat">Rate: <span id="d1-rate">0</span> msg/s</span>
+    <span class="stat">Unique points: <span id="d1-points">0</span></span>
+  </div>
+  <div style="overflow-x:auto; max-height:320px; overflow-y:auto;">
+    <table class="demo-table" id="d1-table">
+      <thead><tr><th>Time</th><th>Unit</th><th>Point</th><th>Value</th><th>dtype</th><th>Topic</th></tr></thead>
+      <tbody id="d1-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+(function() {
+  let d1client = null, d1total = 0, d1rateCount = 0, d1points = new Set();
+  const MAX_ROWS = 100;
+
+  setInterval(() => {
+    document.getElementById('d1-rate').textContent = d1rateCount;
+    d1rateCount = 0;
+  }, 1000);
+
+  document.getElementById('d1-connect').addEventListener('click', () => {
+    const host = document.getElementById('d1-host').value.trim();
+    const port = document.getElementById('d1-port').value.trim();
+    const topic = document.getElementById('d1-topic').value.trim();
+    const url = 'ws://' + host + ':' + port;
+    setBadge('d1-badge', 'connecting', 'Connecting…');
+    d1client = mqtt.connect(url, {
+      clientId: 'evelyn-demo1-' + Math.random().toString(16).slice(2),
+      keepalive: 30, reconnectPeriod: 0, connectTimeout: 6000
+    });
+    d1client.on('connect', () => {
+      setBadge('d1-badge', 'connected', 'Connected');
+      d1client.subscribe(topic, { qos: 0 });
+      document.getElementById('d1-connect').disabled = true;
+      document.getElementById('d1-disconnect').disabled = false;
+    });
+    d1client.on('error', err => {
+      setBadge('d1-badge', 'disconnected', 'Error');
+      console.error(err);
+    });
+    d1client.on('close', () => {
+      setBadge('d1-badge', 'disconnected', 'Disconnected');
+      document.getElementById('d1-connect').disabled = false;
+      document.getElementById('d1-disconnect').disabled = true;
+    });
+    d1client.on('message', (topic, payload) => {
+      d1total++; d1rateCount++;
+      let val = '—', dtype = '—';
+      try {
+        const obj = JSON.parse(new TextDecoder().decode(payload));
+        val = obj.value !== undefined ? obj.value : JSON.stringify(obj);
+        dtype = obj.dtype || '—';
+      } catch(e) {
+        val = new TextDecoder().decode(payload);
+      }
+      const parts = topic.split('/');
+      // topic format: [prefix/]unit/ID/point_name  or  unit/ID/point_name
+      let unitId = '—', pointName = topic;
+      const unitIdx = parts.indexOf('unit');
+      if (unitIdx >= 0 && parts.length > unitIdx + 2) {
+        unitId = parts[unitIdx + 1];
+        pointName = parts.slice(unitIdx + 2).join('/');
+      }
+      d1points.add(unitId + '/' + pointName);
+      document.getElementById('d1-total').textContent = d1total;
+      document.getElementById('d1-points').textContent = d1points.size;
+      const tbody = document.getElementById('d1-tbody');
+      const tr = document.createElement('tr');
+      const t = new Date().toISOString().slice(11, 23);
+      tr.innerHTML = '<td>' + t + '</td><td>' + escHtml(unitId) + '</td><td>' + escHtml(pointName) +
+        '</td><td style="color:#98c379">' + escHtml(String(val)) + '</td><td style="color:#56b6c2">' +
+        escHtml(dtype) + '</td><td style="color:#5c6370;font-size:11px">' + escHtml(topic) + '</td>';
+      tbody.insertBefore(tr, tbody.firstChild);
+      while (tbody.children.length > MAX_ROWS) tbody.removeChild(tbody.lastChild);
+    });
+  });
+
+  document.getElementById('d1-disconnect').addEventListener('click', () => {
+    if (d1client) { d1client.end(true); d1client = null; }
+  });
+
+  document.getElementById('d1-clear').addEventListener('click', () => {
+    document.getElementById('d1-tbody').innerHTML = '';
+    d1total = 0; d1rateCount = 0; d1points.clear();
+    document.getElementById('d1-total').textContent = '0';
+    document.getElementById('d1-points').textContent = '0';
+  });
+
+  function setBadge(id, cls, text) {
+    const b = document.getElementById(id);
+    b.className = 'badge ' + cls; b.textContent = text;
+  }
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+})();
+</script>
+
+<hr>
+
+<!-- ─── DEMO 2 ─── -->
+<h2 id="demo2">6. Demo 2 — Unit Dashboard (Latest Value Per Point)</h2>
+<p>Subscribes to a single unit's topic and maintains a live Map of point → {value, dtype, last updated}. Renders every 500 ms. Rows are color-coded by staleness: green (&lt;3 s), yellow (3–10 s), red (&gt;10 s).</p>
+
+<div class="demo-box">
+  <h3>Demo 2 — Unit Dashboard</h3>
+  <div class="row-controls">
+    <label>Host</label><input id="d2-host" value="192.168.86.48">
+    <label>WS Port</label><input id="d2-port" value="9001" style="width:70px">
+    <label>Unit topic</label><input id="d2-topic" value="unit/0/#" style="width:130px">
+    <button id="d2-connect">Connect</button>
+    <button id="d2-disconnect" class="danger" disabled>Disconnect</button>
+    <span id="d2-badge" class="badge disconnected">Disconnected</span>
+  </div>
+  <div style="margin-bottom:8px">
+    <span class="stat">Total msgs: <span id="d2-total">0</span></span>
+    <span class="stat">Unique points: <span id="d2-pts">0</span></span>
+    <span class="stat">Rate: <span id="d2-rate">0</span> msg/s</span>
+  </div>
+  <div style="overflow-x:auto; max-height:360px; overflow-y:auto;">
+    <table class="demo-table" id="d2-table">
+      <thead><tr><th>Point</th><th>Value</th><th>dtype</th><th>Age (s)</th></tr></thead>
+      <tbody id="d2-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function() {
+  let d2client = null, d2map = new Map(), d2total = 0, d2rate = 0, d2timer = null;
+
+  setInterval(() => {
+    document.getElementById('d2-rate').textContent = d2rate;
+    d2rate = 0;
+  }, 1000);
+
+  function renderD2() {
+    const now = Date.now();
+    const tbody = document.getElementById('d2-tbody');
+    const keys = Array.from(d2map.keys()).sort();
+    document.getElementById('d2-pts').textContent = keys.length;
+    let html = '';
+    for (const k of keys) {
+      const {value, dtype, ts} = d2map.get(k);
+      const age = ((now - ts) / 1000).toFixed(1);
+      const color = age < 3 ? '#1a3a1a' : age < 10 ? '#3a3a1a' : '#3a1a1a';
+      const ageColor = age < 3 ? '#98c379' : age < 10 ? '#e5c07b' : '#e06c75';
+      html += '<tr style="background:' + color + '"><td style="color:#abb2bf">' + escHtml2(k) +
+        '</td><td style="color:#98c379;font-weight:bold">' + escHtml2(String(value)) +
+        '</td><td style="color:#56b6c2">' + escHtml2(dtype) +
+        '</td><td style="color:' + ageColor + '">' + age + '</td></tr>';
+    }
+    tbody.innerHTML = html;
+  }
+
+  document.getElementById('d2-connect').addEventListener('click', () => {
+    const host = document.getElementById('d2-host').value.trim();
+    const port = document.getElementById('d2-port').value.trim();
+    const topic = document.getElementById('d2-topic').value.trim();
+    d2client = mqtt.connect('ws://' + host + ':' + port, {
+      clientId: 'evelyn-demo2-' + Math.random().toString(16).slice(2),
+      keepalive: 30, reconnectPeriod: 0
+    });
+    d2client.on('connect', () => {
+      setBadge2('d2-badge', 'connected', 'Connected');
+      d2client.subscribe(topic, { qos: 0 });
+      document.getElementById('d2-connect').disabled = true;
+      document.getElementById('d2-disconnect').disabled = false;
+      d2timer = setInterval(renderD2, 500);
+    });
+    d2client.on('close', () => {
+      setBadge2('d2-badge', 'disconnected', 'Disconnected');
+      document.getElementById('d2-connect').disabled = false;
+      document.getElementById('d2-disconnect').disabled = true;
+      if (d2timer) { clearInterval(d2timer); d2timer = null; }
+    });
+    d2client.on('message', (t, payload) => {
+      d2total++; d2rate++;
+      document.getElementById('d2-total').textContent = d2total;
+      let value = '—', dtype = '—';
+      try {
+        const obj = JSON.parse(new TextDecoder().decode(payload));
+        value = obj.value !== undefined ? obj.value : JSON.stringify(obj);
+        dtype = obj.dtype || '—';
+      } catch(e) { value = new TextDecoder().decode(payload); }
+      const parts = t.split('/');
+      const unitIdx = parts.indexOf('unit');
+      const pointName = unitIdx >= 0 && parts.length > unitIdx + 2
+        ? parts.slice(unitIdx + 2).join('/') : t;
+      d2map.set(pointName, { value, dtype, ts: Date.now() });
+    });
+  });
+
+  document.getElementById('d2-disconnect').addEventListener('click', () => {
+    if (d2client) { d2client.end(true); d2client = null; }
+    if (d2timer) { clearInterval(d2timer); d2timer = null; }
+  });
+
+  function setBadge2(id, cls, text) {
+    const b = document.getElementById(id);
+    b.className = 'badge ' + cls; b.textContent = text;
+  }
+  function escHtml2(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+})();
+</script>
+
+<hr>
+
+<!-- ─── 7. DUCKDB WASM ─── -->
+<h2 id="duckdb-wasm">7. DuckDB-WASM Library Overview</h2>
+<p>DuckDB-WASM runs the full DuckDB engine inside the browser via WebAssembly. It can load Parquet files over HTTP range requests and execute full SQL — no server-side DuckDB needed.</p>
+
+<pre>
+<span class="cm">// Load from CDN</span>
+<span class="kw">import</span> * <span class="kw">as</span> duckdb <span class="kw">from</span> <span class="str">'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm/+esm'</span>;
+
+<span class="cm">// Instantiate</span>
+<span class="kw">const</span> JSDELIVR_BUNDLES = duckdb.<span class="fn">getJsDelivrBundles</span>();
+<span class="kw">const</span> bundle = <span class="kw">await</span> duckdb.<span class="fn">selectBundle</span>(JSDELIVR_BUNDLES);
+<span class="kw">const</span> worker = <span class="kw">new</span> <span class="fn">Worker</span>(bundle.mainWorker);
+<span class="kw">const</span> logger = <span class="kw">new</span> duckdb.<span class="fn">ConsoleLogger</span>();
+<span class="kw">const</span> db     = <span class="kw">new</span> duckdb.<span class="fn">AsyncDuckDB</span>(logger, worker);
+<span class="kw">await</span> db.<span class="fn">instantiate</span>(bundle.mainModule, bundle.pthreadWorker);
+<span class="kw">const</span> conn   = <span class="kw">await</span> db.<span class="fn">connect</span>();
+
+<span class="cm">// Register a remote parquet file</span>
+<span class="kw">await</span> db.<span class="fn">registerFileURL</span>(
+  <span class="str">'current_state.parquet'</span>,
+  <span class="str">'http://host:8772/static/current_state.parquet'</span>,
+  duckdb.DuckDBDataProtocol.HTTP,
+  <span class="kw">false</span>
+);
+
+<span class="cm">// Query it</span>
+<span class="kw">const</span> result = <span class="kw">await</span> conn.<span class="fn">query</span>(
+  <span class="str">"SELECT point_name, value, dtype FROM parquet_scan('current_state.parquet') ORDER BY point_name"</span>
+);
+
+<span class="cm">// Arrow table → JS objects</span>
+<span class="kw">const</span> rows = result.<span class="fn">toArray</span>().<span class="fn">map</span>(r => r.<span class="fn">toJSON</span>());
+</pre>
+
+<div class="note">DuckDB-WASM uses HTTP range requests to read only the Parquet row groups it needs. The server must return <code>Accept-Ranges: bytes</code> and CORS headers. nginx handles both by default.</div>
+
+<hr>
+
+<!-- ─── DEMO 3 ─── -->
+<h2 id="demo3">8. Demo 3 — Current State Query (DuckDB-WASM)</h2>
+<p>Loads DuckDB-WASM from CDN, registers a remote <code>current_state.parquet</code> file, and runs arbitrary SQL against it. Results rendered as a table.</p>
+
+<div class="demo-box">
+  <h3>Demo 3 — Current State Query via DuckDB-WASM</h3>
+  <div class="row-controls">
+    <label>Parquet URL</label>
+    <input id="d3-url" value="http://192.168.86.48:8772/static/current_state.parquet" style="width:380px">
+  </div>
+  <div style="margin-bottom:8px">
+    <label style="font-size:13px;color:#abb2bf">SQL</label><br>
+    <textarea id="d3-sql" rows="3" style="width:100%;max-width:820px;margin-top:4px;background:#0d1117;color:#e0e0e0;border:1px solid #30363d;border-radius:4px;padding:8px;font-family:monospace;font-size:13px">SELECT point_name, value, dtype, ts FROM parquet_scan('current_state.parquet') ORDER BY point_name LIMIT 100</textarea>
+  </div>
+  <button id="d3-run">Run Query</button>
+  <span id="d3-status" style="margin-left:12px;font-size:13px;color:#abb2bf"></span>
+  <div style="overflow-x:auto;margin-top:10px;max-height:320px;overflow-y:auto" id="d3-output"></div>
+</div>
+
+<script type="module">
+(async function() {
+  let db3 = null, conn3 = null, duckdb3 = null;
+
+  async function initDB() {
+    const status = document.getElementById('d3-status');
+    status.textContent = 'Loading DuckDB-WASM…';
+    try {
+      duckdb3 = await import('https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm/+esm');
+      const bundles = duckdb3.getJsDelivrBundles();
+      const bundle = await duckdb3.selectBundle(bundles);
+      const workerUrl = URL.createObjectURL(new Blob(
+        ['importScripts("' + bundle.mainWorker + '");'],
+        { type: 'text/javascript' }
+      ));
+      const worker = new Worker(workerUrl);
+      const logger = new duckdb3.ConsoleLogger(duckdb3.LogLevel.WARNING);
+      db3 = new duckdb3.AsyncDuckDB(logger, worker);
+      await db3.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      conn3 = await db3.connect();
+      status.textContent = 'DuckDB-WASM ready';
+    } catch(e) {
+      status.textContent = 'Init failed: ' + e.message;
+    }
+  }
+
+  document.getElementById('d3-run').addEventListener('click', async () => {
+    const status = document.getElementById('d3-status');
+    const out = document.getElementById('d3-output');
+    if (!db3) { await initDB(); }
+    if (!db3) return;
+    const url = document.getElementById('d3-url').value.trim();
+    const sql = document.getElementById('d3-sql').value.trim();
+    status.textContent = 'Running…';
+    const t0 = performance.now();
+    try {
+      await db3.registerFileURL('current_state.parquet', url, duckdb3.DuckDBDataProtocol.HTTP, false);
+      const result = await conn3.query(sql);
+      const ms = (performance.now() - t0).toFixed(1);
+      const rows = result.toArray().map(r => r.toJSON());
+      if (rows.length === 0) { out.innerHTML = '<p style="color:#5c6370;padding:8px">No rows returned</p>'; status.textContent = ms + ' ms, 0 rows'; return; }
+      const cols = Object.keys(rows[0]);
+      let html = '<table class="demo-table"><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>';
+      for (const r of rows) {
+        html += '<tr>' + cols.map(c => '<td>' + String(r[c] ?? '') + '</td>').join('') + '</tr>';
+      }
+      html += '</tbody></table>';
+      out.innerHTML = html;
+      status.textContent = ms + ' ms, ' + rows.length + ' rows';
+    } catch(e) {
+      out.innerHTML = '<p style="color:#e06c75;padding:8px">Error: ' + e.message + '</p>';
+      status.textContent = 'Query failed';
+    }
+  });
+})();
+</script>
+
+<hr>
+
+<!-- ─── DEMO 4 ─── -->
+<h2 id="demo4">9. Demo 4 — Historical Range Query (DuckDB-WASM + Sparkline)</h2>
+<p>Queries archived Parquet files over a date/time range using DuckDB-WASM. Results include a Canvas sparkline rendered without any chart library dependency.</p>
+
+<div class="demo-box">
+  <h3>Demo 4 — Historical Range Query</h3>
+  <div class="row-controls">
+    <label>Parquet base URL</label>
+    <input id="d4-url" value="http://192.168.86.48:8772/static/parquet/" style="width:320px">
+    <label>Point name</label>
+    <input id="d4-point" value="soc" style="width:100px">
+  </div>
+  <div class="row-controls" style="margin-top:8px">
+    <label>From</label>
+    <input id="d4-from" type="datetime-local" style="width:200px">
+    <label>To</label>
+    <input id="d4-to" type="datetime-local" style="width:200px">
+  </div>
+  <div style="margin:8px 0">
+    <label style="font-size:13px;color:#abb2bf">Generated SQL (editable)</label><br>
+    <textarea id="d4-sql" rows="4" style="width:100%;max-width:820px;margin-top:4px;background:#0d1117;color:#e0e0e0;border:1px solid #30363d;border-radius:4px;padding:8px;font-family:monospace;font-size:13px"></textarea>
+  </div>
+  <button id="d4-run">Run Query</button>
+  <span id="d4-status" style="margin-left:12px;font-size:13px;color:#abb2bf"></span>
+  <div style="margin-top:12px">
+    <canvas id="d4-canvas" width="760" height="80" style="display:none;background:#0d1117;border:1px solid #30363d;border-radius:4px"></canvas>
+  </div>
+  <div style="overflow-x:auto;margin-top:10px;max-height:280px;overflow-y:auto" id="d4-output"></div>
+</div>
+
+<script>
+(function() {
+  // Set default date range: last 1 hour
+  const now = new Date();
+  const ago = new Date(now - 3600000);
+  function toLocal(d) {
+    return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+  }
+  document.getElementById('d4-from').value = toLocal(ago);
+  document.getElementById('d4-to').value = toLocal(now);
+
+  function updateSQL() {
+    const base = document.getElementById('d4-url').value.trim();
+    const point = document.getElementById('d4-point').value.trim();
+    const from = document.getElementById('d4-from').value;
+    const to = document.getElementById('d4-to').value;
+    const fromMs = from ? new Date(from).getTime() : 0;
+    const toMs = to ? new Date(to).getTime() : Date.now();
+    const sql = `SELECT ts, value, unit_id\nFROM parquet_scan('${base}*.parquet')\nWHERE point_name = '${point}'\n  AND ts >= ${fromMs}\n  AND ts <= ${toMs}\nORDER BY ts\nLIMIT 5000`;
+    document.getElementById('d4-sql').value = sql;
+  }
+
+  ['d4-url','d4-point','d4-from','d4-to'].forEach(id => {
+    document.getElementById(id).addEventListener('change', updateSQL);
+    document.getElementById(id).addEventListener('input', updateSQL);
+  });
+  updateSQL();
+
+  function drawSparkline(rows) {
+    const canvas = document.getElementById('d4-canvas');
+    const vals = rows.map(r => parseFloat(r.value)).filter(v => !isNaN(v));
+    if (vals.length < 2) { canvas.style.display = 'none'; return; }
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const range = mx - mn || 1;
+    const pad = 24;
+    ctx.strokeStyle = '#61dafb';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+      const x = pad + (i / (vals.length - 1)) * (W - 2 * pad);
+      const y = H - pad - ((v - mn) / range) * (H - 2 * pad);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#5c6370';
+    ctx.font = '11px monospace';
+    ctx.fillText(mx.toFixed(2), 2, 14);
+    ctx.fillText(mn.toFixed(2), 2, H - 6);
+    ctx.fillText(vals.length + ' pts', W - 60, 14);
+  }
+
+  document.getElementById('d4-run').addEventListener('click', async () => {
+    const status = document.getElementById('d4-status');
+    const out = document.getElementById('d4-output');
+    status.textContent = 'Waiting for DuckDB-WASM…';
+    // Dynamic import to avoid blocking page load
+    let ddb;
+    try {
+      ddb = await import('https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm/+esm');
+    } catch(e) { status.textContent = 'CDN load failed: ' + e.message; return; }
+    try {
+      const bundles = ddb.getJsDelivrBundles();
+      const bundle = await ddb.selectBundle(bundles);
+      const workerUrl = URL.createObjectURL(new Blob(
+        ['importScripts("' + bundle.mainWorker + '");'], { type: 'text/javascript' }
+      ));
+      const db = new ddb.AsyncDuckDB(new ddb.ConsoleLogger(ddb.LogLevel.WARNING), new Worker(workerUrl));
+      await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      const conn = await db.connect();
+      const sql = document.getElementById('d4-sql').value;
+      status.textContent = 'Running query…';
+      const t0 = performance.now();
+      const result = await conn.query(sql);
+      const ms = (performance.now() - t0).toFixed(1);
+      const rows = result.toArray().map(r => r.toJSON());
+      drawSparkline(rows);
+      if (rows.length === 0) { out.innerHTML = '<p style="color:#5c6370;padding:8px">No rows returned</p>'; status.textContent = ms + ' ms, 0 rows'; return; }
+      const cols = Object.keys(rows[0]);
+      let html = '<table class="demo-table"><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>';
+      for (const r of rows.slice(0, 200)) {
+        html += '<tr>' + cols.map(c => '<td>' + String(r[c] ?? '') + '</td>').join('') + '</tr>';
+      }
+      if (rows.length > 200) html += '<tr><td colspan="' + cols.length + '" style="color:#5c6370;text-align:center">… ' + (rows.length - 200) + ' more rows</td></tr>';
+      html += '</tbody></table>';
+      out.innerHTML = html;
+      status.textContent = ms + ' ms, ' + rows.length + ' rows';
+      await conn.close();
+    } catch(e) {
+      out.innerHTML = '<p style="color:#e06c75;padding:8px">Error: ' + e.message + '</p>';
+      status.textContent = 'Failed';
+    }
+  });
+})();
+</script>
+
+<hr>
+
+<!-- ─── 10. BRIDGE API ─── -->
+<h2 id="bridge-api">10. bridge_api Extension: /query/current</h2>
+<p>Add approximately 20 lines to <code>bridge_api_container.py</code> to serve the current state as JSON. Requires <code>pip install duckdb</code> in the container.</p>
+
+<pre>
+<span class="cm"># Add to imports at top of bridge_api_container.py</span>
+<span class="kw">import</span> duckdb
+
+<span class="cm"># Add constant</span>
+CURRENT_STATE_PATH = <span class="str">"/data/parquet/current_state.parquet"</span>
+
+<span class="cm"># In the request handler (handle_request function), add this elif branch:</span>
+<span class="kw">elif</span> path == <span class="str">"/query/current"</span> <span class="kw">and</span> method == <span class="str">"GET"</span>:
+    <span class="kw">try</span>:
+        <span class="kw">if not</span> os.path.<span class="fn">exists</span>(CURRENT_STATE_PATH):
+            <span class="fn">respond</span>(writer, <span class="str">"404 Not Found"</span>, {<span class="str">"error"</span>: <span class="str">"current_state.parquet not found"</span>})
+        <span class="kw">else</span>:
+            con = duckdb.<span class="fn">connect</span>()
+            result = con.<span class="fn">execute</span>(
+                <span class="fn">f"SELECT * FROM parquet_scan('{CURRENT_STATE_PATH}')"</span>
+            )
+            cols = [d[<span class="num">0</span>] <span class="kw">for</span> d <span class="kw">in</span> result.description]
+            rows = [<span class="fn">dict</span>(<span class="fn">zip</span>(cols, r)) <span class="kw">for</span> r <span class="kw">in</span> result.<span class="fn">fetchall</span>()]
+            con.<span class="fn">close</span>()
+            <span class="fn">respond</span>(writer, <span class="str">"200 OK"</span>, {<span class="str">"columns"</span>: cols, <span class="str">"rows"</span>: rows})
+    <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        <span class="fn">respond</span>(writer, <span class="str">"500 Internal Server Error"</span>, {<span class="str">"error"</span>: <span class="fn">str</span>(e)})
+</pre>
+
+<p>Enable <code>current_state_path</code> in <code>writer.yaml</code>:</p>
+<pre>
+output:
+  base_path: <span class="str">/data/parquet</span>
+  <span class="cm"># Add this line:</span>
+  current_state_path: <span class="str">/data/parquet/current_state.parquet</span>
+</pre>
+
+<hr>
+
+<!-- ─── 11. BANDWIDTH ─── -->
+<h2 id="bandwidth">11. FlashMQ WebSocket: What to Know</h2>
+
+<div class="warn">At full Evelyn load (81,420 msg/s, ~109 bytes/msg ≈ 8.9 MB/s), a browser tab <strong>cannot keep up</strong>. Subscribe narrow.</div>
+
+<table>
+  <tr><th>Subscription</th><th>msg/s</th><th>KB/s to browser</th><th>Use case</th></tr>
+  <tr><td><code>unit/#</code></td><td>81,420</td><td>~8,900</td><td>DO NOT USE in browser</td></tr>
+  <tr><td><code>unit/0/#</code></td><td>~1,770</td><td>~193</td><td>Single unit dashboard</td></tr>
+  <tr><td><code>unit/0/+/soc</code></td><td>~34</td><td>~4</td><td>Single point across modules</td></tr>
+  <tr><td><code>unit/0/rack0/+/soc</code></td><td>~8</td><td>~1</td><td>Single rack, single point</td></tr>
+</table>
+
+<p>Topic filtering happens at FlashMQ — only matching messages are forwarded to the WebSocket client. The broker load stays constant regardless of subscription narrowness. Always subscribe to the narrowest topic that satisfies the display need.</p>
+
+<hr>
+
+<!-- ─── 12. PORT MAP ─── -->
+<h2 id="ports">12. Container Port Map (Updated)</h2>
+<table>
+  <tr><th>Port</th><th>Service</th><th>Purpose</th></tr>
+  <tr><td><code>1883</code></td><td>FlashMQ</td><td>MQTT — EMS hardware, simulator, bridge</td></tr>
+  <tr><td><code>9001</code></td><td>FlashMQ</td><td>MQTT-over-WebSocket — browser live streaming</td></tr>
+  <tr><td><code>8080</code></td><td>nginx</td><td>HTML dashboard pages + static parquet file serving</td></tr>
+  <tr><td><code>8771</code></td><td>real_writer</td><td>Health JSON endpoint</td></tr>
+  <tr><td><code>8772</code></td><td>bridge_api</td><td>Management API + <code>/query/current</code> DuckDB endpoint</td></tr>
+</table>
+
+<hr>
+
+<!-- ─── 13. COMPARISON ─── -->
+<h2 id="comparison">13. New vs Old Real-Time Path</h2>
+<table>
+  <tr><th>Aspect</th><th>Telegraf / InfluxDB2</th><th>FlashMQ WS + DuckDB</th></tr>
+  <tr><td>Live latency</td><td>~10 s (scrape interval)</td><td>&lt;100 ms (MQTT push)</td></tr>
+  <tr><td>Current state per sensor</td><td>InfluxDB <code>last()</code></td><td>DuckDB on <code>current_state.parquet</code></td></tr>
+  <tr><td>Historical data</td><td>InfluxDB <code>range()</code> / Flux</td><td>DuckDB SQL on archived parquet</td></tr>
+  <tr><td>Browser query engine</td><td>HTTP Flux API (server-side)</td><td>DuckDB-WASM (in-browser, zero server)</td></tr>
+  <tr><td>Query power</td><td>Flux (limited, proprietary)</td><td>Full SQL + window functions</td></tr>
+  <tr><td>Extra services</td><td>Telegraf + InfluxDB2 + Grafana</td><td>FlashMQ WS config + 20 lines Python</td></tr>
+  <tr><td>Storage overhead</td><td>InfluxDB TSM: ~58.7 B/point (6× worse)</td><td>Already writing parquet</td></tr>
+  <tr><td>Cardinality limit</td><td>Yes (InfluxDB 2 pain point)</td><td>None (DuckDB handles any)</td></tr>
+  <tr><td>Edge-deployable</td><td>Requires 3 services</td><td>Already in the container</td></tr>
+</table>
+
+</div><!-- /content -->
+</body>
+</html>

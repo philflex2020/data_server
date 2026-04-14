@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fast Load Controller — User Manual</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2230;
+  --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
+  --accent:#58a6ff; --green:#3fb950; --yellow:#d29922;
+  --orange:#e3b341; --red:#f85149; --purple:#bc8cff;
+  --code-bg:#21262d;
+  --tr-even:#111518;
+  --warn-bg:#1a0f00; --warn-border:#6a3e00;
+  --tip-bg:#0c1f10;  --tip-border:#1f4e28;
+  --info-bg:#0d1e33; --info-border:#1f3a5f;
+}
+.light {
+  --bg:#ffffff; --surface:#f6f8fa; --surface2:#eaeef2;
+  --border:#d0d7de; --text:#1f2328; --muted:#57606a;
+  --accent:#0969da; --green:#1a7f37; --yellow:#9a6700;
+  --orange:#953800; --red:#cf222e; --purple:#8250df;
+  --code-bg:#f6f8fa;
+  --tr-even:#f0f3f6;
+  --warn-bg:#fff8f0; --warn-border:#d18616;
+  --tip-bg:#f0fff4;  --tip-border:#1a7f37;
+  --info-bg:#f0f6ff; --info-border:#0969da;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text);
+       font-family:'Segoe UI',system-ui,sans-serif;
+       padding:24px; max-width:900px; margin:0 auto; line-height:1.6;
+       transition:background .2s, color .2s; }
+
+/* theme toggle button */
+#theme-btn {
+  margin-left:auto; padding:3px 10px; border-radius:4px; font-size:.8rem;
+  cursor:pointer; border:1px solid var(--border);
+  background:var(--surface); color:var(--muted);
+  transition:border-color .15s, color .15s;
+}
+#theme-btn:hover { color:var(--accent); border-color:var(--accent); }
+
+.nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+         padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+.nav a:hover { color:var(--accent); border-color:var(--accent); }
+
+h1 { color:var(--accent); font-size:1.4rem; margin-bottom:4px; }
+.subtitle { color:var(--muted); font-size:.85rem; margin-bottom:28px; }
+
+h2 { color:var(--orange); font-size:1.05rem; font-weight:700;
+     border-bottom:1px solid var(--border); padding-bottom:6px;
+     margin:32px 0 14px; }
+
+h3 { color:var(--accent); font-size:.92rem; font-weight:700;
+     margin:20px 0 8px; }
+
+p { margin-bottom:10px; font-size:.88rem; }
+
+ul, ol { padding-left:1.4em; margin-bottom:12px; font-size:.88rem; }
+li { margin-bottom:5px; }
+
+code { background:var(--code-bg); color:var(--green); padding:1px 6px;
+       border-radius:3px; font-family:monospace; font-size:.85em; }
+
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:6px;
+      padding:14px 16px; font-family:monospace; font-size:.82rem;
+      overflow-x:auto; margin-bottom:14px; line-height:1.5; }
+pre .cmd  { color:var(--accent); }
+pre .out  { color:var(--green); }
+pre .cmt  { color:var(--muted); }
+
+.box { background:var(--surface); border:1px solid var(--border);
+       border-radius:6px; padding:14px 18px; margin-bottom:14px; font-size:.88rem; }
+.box.warn { border-color:var(--warn-border); background:var(--warn-bg); }
+.box.tip  { border-color:var(--tip-border);  background:var(--tip-bg); }
+.box.info { border-color:var(--info-border); background:var(--info-bg); }
+
+.box-hdr { font-weight:700; margin-bottom:6px; font-size:.85rem; }
+.warn .box-hdr { color:var(--orange); }
+.tip  .box-hdr { color:var(--green); }
+.info .box-hdr { color:var(--accent); }
+
+table { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:.85rem; }
+th { background:var(--surface2); color:var(--muted); font-weight:700;
+     text-align:left; padding:7px 10px; border:1px solid var(--border); }
+td { padding:6px 10px; border:1px solid var(--border); }
+tr:nth-child(even) td { background:var(--tr-even); }
+
+.step-num { display:inline-block; background:var(--accent); color:#000;
+            border-radius:50%; width:20px; height:20px; text-align:center;
+            line-height:20px; font-size:.75rem; font-weight:700;
+            margin-right:6px; flex-shrink:0; }
+.step-row  { display:flex; align-items:baseline; gap:0; margin-bottom:8px; }
+
+.toc { background:var(--surface); border:1px solid var(--border);
+       border-radius:6px; padding:14px 18px; margin-bottom:28px; }
+.toc ul { list-style:none; padding:0; margin:0; }
+.toc li { margin:4px 0; font-size:.87rem; }
+.toc a  { color:var(--accent); text-decoration:none; }
+.toc a:hover { text-decoration:underline; }
+.toc .sec { font-weight:700; color:var(--text); margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="fast_load_control.html">Fast Load Info</a>
+  <a href="fast_load_schematic.html">Schematic</a>
+  <a href="fast_load_ctrl.html">Control UI</a>
+  <button id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+</div>
+
+<h1>Fast Load Controller — User Manual</h1>
+<p class="subtitle">FastLoad v1.3.8 · Heltec LoRa32 V2 · I2S DMA DAC · 5 kHz · WebSocket :81</p>
+
+<!-- ── Table of Contents ── -->
+<div class="toc">
+  <div class="sec">Contents</div>
+  <ul>
+    <li><a href="#s1">1. Serial commissioning (/dev/ttyUSBx)</a></li>
+    <li><a href="#s2">2. WiFi setup via serial</a></li>
+    <li><a href="#s3">3. Connecting with the web UI</a></li>
+    <li><a href="#s4">4. Block Library — creating waveform blocks</a></li>
+    <li><a href="#s5">5. Sequences — building a playlist</a></li>
+    <li><a href="#s6">6. Running, stopping and monitoring</a></li>
+    <li><a href="#s7">7. Save and restore schedules</a></li>
+    <li><a href="#s8">8. Serial quick-reference</a></li>
+    <li><a href="#s9">9. WebSocket interface protocol</a></li>
+    <li><a href="#s10">10. Security — challenge-response authentication</a></li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s1">1. Serial commissioning (/dev/ttyUSBx)</h2>
+
+<p>On first power-up the board has no WiFi credentials. You must provision it via the
+USB serial port before connecting over the network.</p>
+
+<h3>1.1 Find the port</h3>
+<p>Plug the LoRa32 V2 into a USB port and run:</p>
+<pre><span class="cmd">ls /dev/ttyUSB* /dev/ttyACM*</span>
+<span class="out">/dev/ttyUSB0</span></pre>
+
+<p>If you see multiple entries, unplug the board and run the command again to see which one disappears.</p>
+
+<h3>1.2 Add user to dialout group</h3>
+<p>If you get a <em>permission denied</em> error on the port, add your user to the <code>dialout</code> group (log out and back in after):</p>
+<pre><span class="cmd">sudo usermod -aG dialout $USER</span>
+<span class="cmt"># apply immediately without logging out:</span>
+<span class="cmd">newgrp dialout</span></pre>
+
+<h3>1.3 Open the terminal</h3>
+<pre><span class="cmt"># Ctrl-A K to exit (or Ctrl-A : then quit)</span>
+<span class="cmd">screen /dev/ttyUSB0 115200</span>
+<span class="cmt"># or with picocom (Ctrl-A Ctrl-X to exit):</span>
+<span class="cmd">picocom /dev/ttyUSB0 --baud 115200 --echo --imap lfcrlf</span>
+<span class="cmt"># or minicom (Ctrl-A X to exit):</span>
+<span class="cmd">minicom -b 115200 -D /dev/ttyUSB0 -c on</span></pre>
+
+<p>Press the <strong>Reset (RST)</strong> button on the board — top-right edge as shown:</p>
+
+<!-- LoRa32 V2 board diagram -->
+<svg viewBox="0 0 520 162" width="520" height="162"
+     xmlns="http://www.w3.org/2000/svg"
+     style="display:block;margin:10px 0 14px;font-family:'Segoe UI',sans-serif;max-width:100%">
+
+  <!-- board body (landscape, PCB green) -->
+  <rect x="45" y="26" width="400" height="90" rx="4"
+        fill="#2a5c2a" stroke="#1a3c1a" stroke-width="1.5"/>
+
+  <!-- TOP PIN ROW: 14 pins, pitch=27, start x=52 -->
+  <rect x="52"  y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="79"  y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="106" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="133" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="160" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="187" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="214" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="241" y="16" width="10" height="14" rx="1" fill="#225599" stroke="#4488ff" stroke-width=".8"/>
+  <rect x="268" y="16" width="10" height="14" rx="1" fill="#225599" stroke="#4488ff" stroke-width=".8"/>
+  <rect x="295" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="322" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="349" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="376" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="403" y="16" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+
+  <!-- TOP ROW KEY LABELS -->
+  <text transform="translate(246,14) rotate(-75)" text-anchor="start" font-size="5.5" fill="#88aaff" font-weight="bold">DAC0&#x25B6;</text>
+  <text transform="translate(273,14) rotate(-75)" text-anchor="start" font-size="5.5" fill="#88aaff" font-weight="bold">DAC1&#x25B6;</text>
+
+  <!-- BOTTOM PIN ROW: 14 pins -->
+  <rect x="52"  y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="79"  y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="106" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="133" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="160" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="187" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="214" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="241" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="268" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="295" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="322" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="349" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="376" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+  <rect x="403" y="112" width="10" height="14" rx="1" fill="#c8a000" stroke="#a08000" stroke-width=".5"/>
+
+  <!-- LEFT END: PRG (top), USB-C (protruding left), RST (bottom) -->
+  <rect x="50" y="35" width="18" height="9" rx="3"
+        fill="#555" stroke="#888" stroke-width="1"/>
+  <text x="59" y="43" text-anchor="middle" font-size="6.5" fill="#ddd">PRG</text>
+
+  <!-- USB-C port protruding from left edge -->
+  <rect x="28" y="60" width="20" height="13" rx="3"
+        fill="#444" stroke="#777" stroke-width="1"/>
+  <text x="38" y="69" text-anchor="middle" font-size="5.5" fill="#bbb">USB</text>
+
+  <rect x="50" y="96" width="18" height="9" rx="3"
+        fill="#cc3333" stroke="#ff6666" stroke-width="1.5"/>
+  <text x="59" y="104" text-anchor="middle" font-size="6.5" fill="#fff" font-weight="bold">RST</text>
+
+  <!-- WiFi coil region -->
+  <rect x="90" y="32" width="58" height="78" rx="3"
+        fill="#234523" stroke="#345634" stroke-width=".8"/>
+  <ellipse cx="119" cy="58" rx="13" ry="5.5" fill="none" stroke="#6a9a6a" stroke-width="1.2"/>
+  <ellipse cx="119" cy="70" rx="13" ry="5.5" fill="none" stroke="#6a9a6a" stroke-width="1.2"/>
+  <ellipse cx="119" cy="82" rx="13" ry="5.5" fill="none" stroke="#6a9a6a" stroke-width="1.2"/>
+  <text x="119" y="101" text-anchor="middle" font-size="7" fill="#8aba8a">WiFi/BT</text>
+
+  <!-- OLED display -->
+  <rect x="155" y="31" width="95" height="80" rx="3"
+        fill="#050510" stroke="#223366" stroke-width="1.2"/>
+  <text x="202" y="68" text-anchor="middle" font-size="8.5" fill="#3355aa">OLED</text>
+  <text x="202" y="80" text-anchor="middle" font-size="7" fill="#224488">128×64</text>
+
+  <!-- LoRa SX1276 module -->
+  <rect x="257" y="29" width="115" height="84" rx="3"
+        fill="#1a2e1a" stroke="#2a4a2a" stroke-width="1.2"/>
+  <text x="314" y="68" text-anchor="middle" font-size="8.5" fill="#5a8a5a">LoRa</text>
+  <text x="314" y="81" text-anchor="middle" font-size="7" fill="#486848">SX1276</text>
+
+  <!-- Right end spacer / antenna lead -->
+  <rect x="378" y="31" width="62" height="80" rx="3"
+        fill="#254025" stroke="#345534" stroke-width=".8"/>
+
+  <!-- Antenna socket protruding from right edge -->
+  <rect x="443" y="57" width="18" height="18" rx="3"
+        fill="#555" stroke="#999" stroke-width="1"/>
+  <circle cx="452" cy="66" r="5" fill="none" stroke="#ccc" stroke-width="1.3"/>
+  <circle cx="452" cy="66" r="2" fill="#999"/>
+  <text x="452" y="84" text-anchor="middle" font-size="6.5" fill="#888">ANT</text>
+
+  <!-- RST callout: dashed line down to label box -->
+  <circle cx="59" cy="100" r="2.5" fill="#ff6666"/>
+  <line x1="59" y1="103" x2="59" y2="140" stroke="#ff6666" stroke-width="1.2" stroke-dasharray="3,2"/>
+  <rect x="4" y="140" width="152" height="18" rx="4"
+        fill="#2a0808" stroke="#ff6666" stroke-width="1.2"/>
+  <text x="80" y="152" text-anchor="middle" font-size="7.5" fill="#ff8888" font-weight="bold">RST — press to reboot</text>
+
+  <!-- PRG small label -->
+  <text x="50" y="26" text-anchor="start" font-size="6" fill="#888">PRG/Boot</text>
+
+  <!-- board label -->
+  <text x="440" y="123" text-anchor="end" font-size="7.5" fill="#5a8a5a">Heltec LoRa32 V2</text>
+</svg>
+
+<div class="tip" style="margin:10px 0">
+  <strong>Note — 7-pin expansion header</strong> (between LoRa32 and DC-DC converter, pinout to be confirmed):<br>
+  <code>OUT1 · OUT1 · IN1 · GND · NC · NC · OUT2</code>
+  <table style="margin-top:6px;border-collapse:collapse;font-size:0.85em">
+    <tr><th style="padding:2px 8px;text-align:center">1</th><th style="padding:2px 8px;text-align:center">2</th><th style="padding:2px 8px;text-align:center">3</th><th style="padding:2px 8px;text-align:center">4</th><th style="padding:2px 8px;text-align:center">5</th><th style="padding:2px 8px;text-align:center">6</th><th style="padding:2px 8px;text-align:center">7</th></tr>
+    <tr><td style="padding:2px 8px;text-align:center">OUT1</td><td style="padding:2px 8px;text-align:center">OUT1</td><td style="padding:2px 8px;text-align:center">IN1</td><td style="padding:2px 8px;text-align:center">GND</td><td style="padding:2px 8px;text-align:center">NC</td><td style="padding:2px 8px;text-align:center">NC</td><td style="padding:2px 8px;text-align:center">OUT2</td></tr>
+  </table>
+</div>
+
+<pre><span class="out">FastLoad v1.3.3
+Sample rate: 5000 Hz  Buffer: 4 × 64 samples
+I2S DAC: 5000 Hz, 4 bufs × 64 samples
+No WiFi credentials. Use: wifi add &lt;ssid&gt; &lt;pass&gt;
+Ready.</span></pre>
+
+<h3>1.3 Verify with <code>help</code></h3>
+<pre><span class="cmd">help</span>
+<span class="out">Commands:
+  wifi add &lt;ssid&gt; &lt;pass&gt;   wifi remove &lt;idx&gt;   wifi list
+  wifi status              wifi clear
+  set voltage &lt;0-60&gt;       set current &lt;0-200&gt;
+  set dac1 &lt;0-4095&gt;        set dac2 &lt;0-4095&gt;   set led &lt;on|off|blink&gt;
+  profile start            profile stop
+  version                  status</span></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s2">2. WiFi setup via serial</h2>
+
+<p>The board stores up to 4 SSID/password pairs in NVS flash and tries them in order at boot.</p>
+
+<h3>2.1 Add a network</h3>
+<pre><span class="cmd">wifi add MyNetwork MyPassword123</span>
+<span class="out">Added [0] MyNetwork</span></pre>
+
+<p>To add a second network (fallback):</p>
+<pre><span class="cmd">wifi add OfficeWifi office_pass99</span>
+<span class="out">Added [1] OfficeWifi</span></pre>
+
+<h3>2.2 Check connection status</h3>
+<pre><span class="cmd">wifi status</span>
+<span class="out">WiFi: CONNECTED  SSID: MyNetwork  IP: 192.168.86.55</span></pre>
+
+<p><strong>Note the IP address</strong> — you will need it to connect the web UI.</p>
+
+<h3>2.3 List stored credentials</h3>
+<pre><span class="cmd">wifi list</span>
+<span class="out">WiFi credentials (2/4):
+  [0] MyNetwork &lt;active&gt;
+  [1] OfficeWifi</span></pre>
+
+<h3>2.4 Remove a credential</h3>
+<pre><span class="cmd">wifi remove 1</span>
+<span class="out">Removed [1] OfficeWifi</span></pre>
+
+<h3>2.5 Clear all credentials</h3>
+<pre><span class="cmd">wifi clear</span>
+<span class="out">All WiFi credentials cleared.</span></pre>
+
+<div class="box warn">
+  <div class="box-hdr">⚠ Credentials survive reboot</div>
+  WiFi credentials are stored in NVS (non-volatile) flash. They persist across power cycles.
+  Use <code>wifi clear</code> before handing the board to another person or site.
+</div>
+
+<div class="box tip">
+  <div class="box-hdr">✓ Automatic reconnect</div>
+  If WiFi drops, the board retries every 10 seconds, cycling through all stored credentials.
+  No reboot needed.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s3">3. Connecting with the web UI</h2>
+
+<h3>3.1 Open the page</h3>
+<p>Open <code>fast_load_ctrl.html</code> directly in a browser — no web server needed.
+Double-click the file in your file manager, or drag it onto a browser window, or:</p>
+<pre><span class="cmd">xdg-open fast_load_ctrl.html</span>   <span class="cmt"># Linux</span>
+<span class="cmd">open fast_load_ctrl.html</span>        <span class="cmt"># macOS</span></pre>
+<p>The page runs entirely in the browser. It connects to the device over WebSocket once
+you enter the IP address — the HTML file itself can be on any drive or directory.</p>
+
+<h3>3.2 Enter the device address</h3>
+<ol>
+  <li>In the <strong>connection bar</strong> at the top, enter the IP address shown by <code>wifi status</code> in the <em>Host</em> field.</li>
+  <li>Leave port at <strong>81</strong> (WebSocket).</li>
+  <li>Click <strong>Connect</strong>.</li>
+</ol>
+
+<p>The indicator dot turns <span style="color:var(--green)">green</span> and the status bar shows
+<em>Connected</em>. The WS Log panel at the bottom will show the handshake messages.</p>
+
+<h3>3.3 Verify with Status</h3>
+<p>Click the <strong>Status</strong> button in the connection bar. The WS Log will show
+the current voltage, current, profile state and WiFi info reported by the firmware.</p>
+
+<h3>3.4 System Scale</h3>
+<p>Below the connection bar is a <strong>System Scale</strong> bar. Set:</p>
+<ul>
+  <li><strong>Max V</strong> — the maximum voltage your hardware outputs (default 60 V, range limited by hardware to 60 V)</li>
+  <li><strong>Max A</strong> — the maximum current (default 200 A)</li>
+</ul>
+<p>All waveform sliders and preset values are scaled to these limits. Set them before creating blocks.</p>
+
+<div class="box info">
+  <div class="box-hdr">ℹ DAC range</div>
+  The LoRa32 V2 outputs 0–3.3 V on GPIO25/GPIO26. With the LM324 amplifier stage
+  (gain 3.485×) the output range is 0–11.5 V ≈ 12 V. The firmware maps
+  <em>Max V / Max A</em> to DAC full-scale — set these to match your transducer/load scaling.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s4">4. Block Library — creating waveform blocks</h2>
+
+<p>A <strong>block</strong> is a named multi-step waveform. Each step defines a voltage target,
+current target, ramp time (ms) and hold time (ms). Blocks are the building material for sequences.</p>
+
+<h3>4.1 Create a new block</h3>
+<div class="step-row"><span class="step-num">1</span><span>In the <strong>Block Library</strong> panel (left column), click <strong>+ New</strong>.</span></div>
+<div class="step-row"><span class="step-num">2</span><span>The block editor expands. Type a name in the <em>Block Name</em> field (e.g. <code>Ramp Up</code>).</span></div>
+<div class="step-row"><span class="step-num">3</span><span>Click <strong>+ Step</strong> to add a step. Fill in the columns:</span></div>
+
+<table>
+  <tr><th>Column</th><th>Units</th><th>Description</th></tr>
+  <tr><td>V (V)</td><td>Volts</td><td>Target voltage at end of ramp</td></tr>
+  <tr><td>I (A)</td><td>Amps</td><td>Target current at end of ramp</td></tr>
+  <tr><td>Ramp ms</td><td>ms</td><td>Time to ramp from previous value to this target (0 = instant)</td></tr>
+  <tr><td>Hold ms</td><td>ms</td><td>Time to hold at this value before moving to next step</td></tr>
+</table>
+
+<div class="step-row"><span class="step-num">4</span><span>Add more steps as needed. Use the <strong>↑ ↓</strong> row buttons to reorder, <strong>×</strong> to delete a step.</span></div>
+<div class="step-row"><span class="step-num">5</span><span>Click <strong>Save</strong> to commit the block to the library.</span></div>
+
+<p>The block appears in the library list. The <strong>Waveform Preview</strong> canvas (top-right) shows
+voltage and current traces for the selected block. Toggle the <em>V Voltage</em> / <em>I Current</em>
+buttons to show/hide each channel.</p>
+
+<h3>4.2 Edit an existing block</h3>
+<p>Click the block card in the library list. The editor opens with that block's data.
+Make changes and click <strong>Save</strong>. To discard, click <strong>✕</strong>.</p>
+
+<h3>4.3 Delete a block</h3>
+<p>Open the block editor and click <strong>Delete</strong>. If the block is used in a sequence
+you will be warned first.</p>
+
+<h3>4.4 Load a preset</h3>
+<p>The <em>— Load Preset —</em> dropdown in the connection bar contains built-in waveform examples
+(charge pulse, constant current ramp, etc.). Select one and click <strong>Load</strong> to populate
+the block library with that preset's blocks.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s5">5. Sequences — building a playlist</h2>
+
+<p>A <strong>sequence</strong> is an ordered list of blocks with optional repeat counts and a loop toggle.
+Multiple named sequences can be stored locally in the browser.</p>
+
+<h3>5.1 Build a sequence</h3>
+<ol>
+  <li>In the <strong>Sequence</strong> panel, use the <em>— add block —</em> dropdown at the bottom to select a block from the library.</li>
+  <li>Click <strong>Add</strong>. The block appears in the sequence list with a repeat count of 1.</li>
+  <li>Repeat to add more blocks in order.</li>
+  <li>Change the <em>rpt</em> number on any entry to repeat that block N times within the sequence.</li>
+  <li>Use the <strong>↑ ↓</strong> arrows on each entry to reorder. Click <strong>×</strong> to remove.</li>
+  <li>Toggle <strong>Loop</strong> on/off to make the entire sequence repeat continuously.</li>
+</ol>
+
+<h3>5.2 Save a named sequence</h3>
+<ol>
+  <li>Click <strong>+ New</strong> in the sequence name bar. Enter a name (e.g. <code>Morning Cycle</code>).</li>
+  <li>The current sequence is saved under that name in browser local storage.</li>
+</ol>
+
+<h3>5.3 Load a named sequence</h3>
+<p>Select a name from the sequence dropdown (<em>— select sequence —</em>). The sequence list
+is immediately populated.</p>
+
+<h3>5.4 Rename or delete a saved sequence</h3>
+<ul>
+  <li><strong>Rename</strong> — select it, click <strong>Rename</strong>, enter new name.</li>
+  <li><strong>Del</strong> — select it, click <strong>Del</strong>. Does not affect the blocks in the library.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s6">6. Running, stopping and monitoring</h2>
+
+<h3>6.1 Load a profile to the device (without starting)</h3>
+<p>Click <strong>↑ Load (no start)</strong> in the Playback panel. The current sequence is
+serialised and sent to the firmware over WebSocket. The device stores it but does not begin
+outputting. Use this to pre-arm a profile before a test.</p>
+
+<h3>6.2 Start a sequence</h3>
+<ol>
+  <li>Choose the output channels from the <em>Both Channels / Voltage Only / Current Only</em> selector.</li>
+  <li>Click <strong>▶ Start</strong>. The sequence is sent and playback begins immediately.</li>
+</ol>
+
+<p>The <strong>Playback</strong> panel shows live status:</p>
+<table>
+  <tr><th>Indicator</th><th>Description</th></tr>
+  <tr><td>Block</td><td>Name of the block currently playing</td></tr>
+  <tr><td>Step</td><td>Current step index within that block</td></tr>
+  <tr><td>Repeat / Cycle</td><td>Current repeat count and sequence cycle number</td></tr>
+  <tr><td>FW: V | C</td><td>Firmware-reported step index for voltage and current — independent cross-check</td></tr>
+  <tr><td>Progress bar</td><td>Estimated progress through the current step hold time</td></tr>
+  <tr><td>Timeline</td><td>Colour-coded strip showing relative block durations in the sequence</td></tr>
+</table>
+
+<h3>6.3 Stop a sequence</h3>
+<p>Click <strong>■ Stop</strong>. The firmware immediately halts both channels. DAC outputs are
+held at their last value until overridden.</p>
+
+<div class="box warn">
+  <div class="box-hdr">⚠ Outputs are not zeroed on stop</div>
+  <code>profile stop</code> halts profile stepping but <em>holds the last DAC value</em>.
+  To return outputs to zero: use <code>set voltage 0</code> and <code>set current 0</code>
+  in the WS Terminal, or issue those commands via serial.
+</div>
+
+<h3>6.4 Direct voltage / current override</h3>
+<p>While connected you can send immediate one-shot commands from the <strong>WS Log</strong> area
+(type in the input bar below the log) or via serial:</p>
+<pre><span class="cmt"># Set voltage to 24 V immediately</span>
+<span class="cmd">set voltage 24</span>
+
+<span class="cmt"># Set current to 50 A immediately</span>
+<span class="cmd">set current 50</span>
+
+<span class="cmt"># Raw DAC (0-4095) — bypasses scaling</span>
+<span class="cmd">set dac1 2048</span>
+<span class="cmd">set dac2 1024</span></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s7">7. Save and restore schedules</h2>
+
+<p>Blocks and sequences live in browser local storage and are also exportable as JSON files
+for backup and transfer between machines.</p>
+
+<h3>7.1 Save to a JSON file</h3>
+<p>In the <strong>Block Library</strong> panel header, click <strong>↓ Save</strong>.
+Your browser downloads a <code>.json</code> file containing all blocks and all named sequences.</p>
+
+<h3>7.2 Load from a JSON file</h3>
+<p>Click <strong>↑ Load</strong> in the Block Library header and select a previously saved
+<code>.json</code> file. All blocks and sequences in the file are merged into the current library.</p>
+
+<div class="box tip">
+  <div class="box-hdr">✓ Tip: version your schedule files</div>
+  Name files with a date, e.g. <code>fastload_site_A_2026-04-08.json</code>.
+  The same file can be loaded on any machine running the UI without reconnecting to the device.
+</div>
+
+<h3>7.3 What is stored where</h3>
+<table>
+  <tr><th>Data</th><th>Where stored</th><th>Persists across…</th></tr>
+  <tr><td>Blocks &amp; named sequences</td><td>Browser local storage + JSON export</td><td>Browser sessions; survives page reload</td></tr>
+  <tr><td>Last loaded profile (steps)</td><td>Device NVS flash</td><td>Device power cycles; auto-starts on boot if it was running when saved</td></tr>
+  <tr><td>WiFi credentials</td><td>Device NVS flash</td><td>Device power cycles, firmware reflash does NOT clear</td></tr>
+  <tr><td>System Scale (Max V / Max A)</td><td>Browser local storage</td><td>Browser sessions</td></tr>
+</table>
+
+<div class="box info">
+  <div class="box-hdr">ℹ Auto-start on power cycle</div>
+  When you click <strong>▶ Start</strong>, the firmware saves the active profile to NVS and
+  marks it as running. On next boot the device restores and auto-starts that profile.
+  To prevent auto-start: click <strong>■ Stop</strong> before removing power (this saves
+  the profile with <em>stopped</em> state to NVS).
+</div>
+
+<h3>7.4 Modify an existing schedule</h3>
+<ol>
+  <li>Click a block in the library to open the editor.</li>
+  <li>Change step values, add or remove steps.</li>
+  <li>Click <strong>Save</strong>.</li>
+  <li>If the modified block is part of a named sequence, select that sequence — it uses
+      the updated block automatically (sequences reference blocks by ID).</li>
+  <li>Click <strong>▶ Start</strong> to send the updated profile to the device.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s8">8. Serial quick-reference</h2>
+
+<table>
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td><code>help</code></td><td>Print all serial commands</td></tr>
+  <tr><td><code>status</code></td><td>V, I, DAC values, profile state, WiFi, sample rate</td></tr>
+  <tr><td><code>version</code></td><td>Print firmware name and version</td></tr>
+  <tr><td colspan="2" style="color:var(--muted);font-size:.8rem;padding-top:10px">WiFi</td></tr>
+  <tr><td><code>wifi add &lt;ssid&gt; &lt;pass&gt;</code></td><td>Add a network credential (max 4)</td></tr>
+  <tr><td><code>wifi remove &lt;idx&gt;</code></td><td>Remove credential by index (0-based)</td></tr>
+  <tr><td><code>wifi list</code></td><td>List all stored credentials; show active</td></tr>
+  <tr><td><code>wifi status</code></td><td>Current connection state and IP address</td></tr>
+  <tr><td><code>wifi clear</code></td><td>Delete all stored credentials</td></tr>
+  <tr><td colspan="2" style="color:var(--muted);font-size:.8rem;padding-top:10px">Output control</td></tr>
+  <tr><td><code>set voltage &lt;V&gt;</code></td><td>Set DAC1 output voltage (0 – Max V)</td></tr>
+  <tr><td><code>set current &lt;A&gt;</code></td><td>Set DAC2 output current (0 – Max A)</td></tr>
+  <tr><td><code>set dac1 &lt;0-4095&gt;</code></td><td>Set DAC1 raw 12-bit value (bypasses scaling)</td></tr>
+  <tr><td><code>set dac2 &lt;0-4095&gt;</code></td><td>Set DAC2 raw 12-bit value</td></tr>
+  <tr><td><code>set led &lt;on|off|blink&gt;</code></td><td>Control onboard LED</td></tr>
+  <tr><td colspan="2" style="color:var(--muted);font-size:.8rem;padding-top:10px">Profile</td></tr>
+  <tr><td><code>profile start</code></td><td>Start the stored profile on both channels; saves to NVS</td></tr>
+  <tr><td><code>profile stop</code></td><td>Stop profile on both channels; saves stopped state to NVS</td></tr>
+  <tr><td colspan="2" style="color:var(--muted);font-size:.8rem;padding-top:10px">Security</td></tr>
+  <tr><td><code>set secret &lt;password&gt;</code></td><td>Set WS auth secret (saved to NVS); enables challenge-response on connect</td></tr>
+  <tr><td><code>set secret</code></td><td>Clear secret — device returns to open-access mode</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<h2 id="s9">9. WebSocket interface protocol</h2>
+
+<p>The device listens on <strong>port 81</strong>. All messages are UTF-8 JSON text frames.
+When a secret is set, the device issues a <strong>challenge</strong> on connect and all commands
+are blocked until the client authenticates (see §10). With no secret set the device
+sends <code>{"type":"ok","msg":"authenticated"}</code> immediately and commands are accepted.</p>
+
+<h3>9.1 Commands — client → device</h3>
+<p>Every command has a <code>"cmd"</code> string field. Additional fields depend on the command.</p>
+
+<table>
+  <tr><th>cmd</th><th>Extra fields</th><th>Description</th></tr>
+  <tr><td colspan="3" style="color:var(--muted);font-size:.8rem;padding-top:10px">Authentication</td></tr>
+  <tr><td><code>auth</code></td><td><code>response</code>: hex string</td><td>HMAC-SHA256 response to challenge (see §10)</td></tr>
+  <tr><td><code>set_secret</code></td><td><code>value</code>: string</td><td>Set the device secret — <strong>only accepted when no secret is currently set</strong>. Once set, use serial console to change.</td></tr>
+  <tr><td colspan="3" style="color:var(--muted);font-size:.8rem;padding-top:10px">Output control</td></tr>
+  <tr><td><code>set_voltage</code></td><td><code>value</code>: float (V)</td><td>Set voltage output</td></tr>
+  <tr><td><code>set_current</code></td><td><code>value</code>: float (A)</td><td>Set current output</td></tr>
+  <tr><td><code>set_dac</code></td><td><code>channel</code>: 0=DAC1/GPIO25, 1=DAC2/GPIO26<br><code>value</code>: int 0–4095</td><td>Set raw DAC value</td></tr>
+  <tr><td><code>set_led</code></td><td><code>state</code>: <code>"on"</code> | <code>"off"</code> | <code>"blink"</code></td><td>Control onboard LED</td></tr>
+  <tr><td><code>set_gpio</code></td><td><code>pin</code>: int<br><code>state</code>: bool</td><td>Set a GPIO output</td></tr>
+  <tr><td colspan="3" style="color:var(--muted);font-size:.8rem;padding-top:10px">Profile</td></tr>
+  <tr><td><code>load_profile</code></td><td>See §9.3</td><td>Upload a waveform profile</td></tr>
+  <tr><td><code>start_profile</code></td><td><code>channel</code>: <code>"both"</code> | <code>"voltage"</code> | <code>"current"</code></td><td>Start profile; state saved to NVS</td></tr>
+  <tr><td><code>stop_profile</code></td><td><code>channel</code>: <code>"both"</code> | <code>"voltage"</code> | <code>"current"</code></td><td>Stop profile; state saved to NVS</td></tr>
+  <tr><td colspan="3" style="color:var(--muted);font-size:.8rem;padding-top:10px">WiFi</td></tr>
+  <tr><td><code>wifi_add</code></td><td><code>ssid</code>, <code>pass</code></td><td>Add credential (max 4)</td></tr>
+  <tr><td><code>wifi_remove</code></td><td><code>idx</code>: int</td><td>Remove credential by index</td></tr>
+  <tr><td><code>wifi_list</code></td><td>—</td><td>Request stored credential list</td></tr>
+  <tr><td colspan="3" style="color:var(--muted);font-size:.8rem;padding-top:10px">Info</td></tr>
+  <tr><td><code>get_status</code></td><td>—</td><td>Request a status broadcast</td></tr>
+  <tr><td><code>get_version</code></td><td>—</td><td>Request firmware version</td></tr>
+  <tr><td><code>set_location</code></td><td><code>value</code>: string</td><td>Set location label (saved to NVS)</td></tr>
+</table>
+
+<h3>9.2 Messages — device → client</h3>
+<p>All responses have a <code>"type"</code> field.</p>
+
+<h4>challenge <span style="font-weight:normal;font-size:.85em">(first message when a secret is set)</span></h4>
+<pre><span class="out">{"type":"challenge","nonce":"bd16ff69a655584b320eba2645c459a1"}</span></pre>
+
+<h4>status <span style="font-weight:normal;font-size:.85em">(broadcast after auth, on any change, or in response to <code>get_status</code>)</span></h4>
+<pre><span class="out">{
+  "type":       "status",
+  "voltage":    12.5,        // current voltage setpoint (V)
+  "current":    5.0,         // current setpoint (A)
+  "dac1":       2048,        // DAC1 raw value (GPIO25, voltage)
+  "dac2":       1024,        // DAC2 raw value (GPIO26, current)
+  "profileV":   true,        // voltage profile running
+  "profileC":   false,       // current profile running
+  "vStep":      2,           // current voltage step index
+  "vStepCount": 5,           // total voltage steps loaded
+  "vStepName":  "ramp-up",  // name of current voltage step
+  "cStep":      0,
+  "cStepCount": 3,
+  "cStepName":  "hold",
+  "sampleRate": 5000,        // DAC sample rate (Hz)
+  "bufsPerSec": 156,         // DMA buffer completions per second
+  "stepsPerSec":0,           // profile step transitions per second
+  "location":   "lab"
+}</span></pre>
+
+<h4>version</h4>
+<pre><span class="out">{"type":"version","version":"1.3.8","name":"FastLoad"}</span></pre>
+
+<h4>wifi_list</h4>
+<pre><span class="out">{"type":"wifi_list","active":0,"creds":[{"idx":0,"ssid":"mywifi"},{"idx":1,"ssid":"backup"}]}</span></pre>
+
+<h4>ok / error</h4>
+<pre><span class="out">{"type":"ok","msg":"authenticated"}
+{"type":"ok","msg":"wifi added"}
+{"type":"error","msg":"secret already set — use serial console to change"}</span></pre>
+
+<h3>9.3 load_profile message</h3>
+<p>Voltage and current steps are independent arrays. Each step:</p>
+<pre><span class="cmt">// step object fields:</span>
+<span class="out">{
+  "name":       "ramp-up",  // label (display only)
+  "value":      12.5,       // target value (V or A)
+  "durationMs": 2000,       // total hold time at target
+  "rampMs":     500         // linear ramp time to reach target (0 = instant)
+}</span></pre>
+
+<p>Full example — two voltage steps, no current profile:</p>
+<pre><span class="out">{
+  "cmd":   "load_profile",
+  "loop":  true,
+  "voltage": [
+    {"name":"low",  "value":5.0,  "durationMs":1000, "rampMs":200},
+    {"name":"high", "value":12.0, "durationMs":1000, "rampMs":200}
+  ]
+}</span></pre>
+
+<div class="tip">Max 100 steps per channel. Up to 16 KB JSON payload accepted.</div>
+
+<h2 id="s10">10. Security — challenge-response authentication</h2>
+
+<p>The firmware uses <strong>HMAC-SHA256 challenge-response</strong> to authenticate WebSocket clients.
+The secret is never sent over the network — only a one-time signed proof that the client knows it.</p>
+
+<h3>10.1 How it works</h3>
+<ol>
+  <li>On connect, the device generates a fresh 32-char random hex <strong>nonce</strong> and sends it as a <code>challenge</code>.</li>
+  <li>The client computes <code>HMAC-SHA256(secret, nonce)</code> and sends the 64-char hex result in an <code>auth</code> command.</li>
+  <li>The device computes the same HMAC internally. If they match, it replies <code>{"type":"ok","msg":"authenticated"}</code> and unlocks the connection.</li>
+  <li>The nonce is unique per connection — replaying a captured auth response does not work.</li>
+</ol>
+
+<pre><span class="cmt">// 1. Device → client (on connect)</span>
+<span class="out">{"type":"challenge","nonce":"bd16ff69a655584b320eba2645c459a1"}</span>
+
+<span class="cmt">// 2. Client → device</span>
+<span class="inp">{"cmd":"auth","response":"a3f7c2e1..."}</span>   <span class="cmt">// HMAC-SHA256(secret, nonce)</span>
+
+<span class="cmt">// 3. Device → client</span>
+<span class="out">{"type":"ok","msg":"authenticated"}</span></pre>
+
+<h3>10.2 Setting the secret — first-time setup</h3>
+
+<p>After flashing, the NVS (flash storage) is blank and the device boots in <strong>open-access mode</strong>
+— no challenge is sent and all commands are accepted immediately.</p>
+
+<p><strong>Option A — set via serial console (recommended):</strong></p>
+<pre><span class="inp">set secret mypassword</span>
+<span class="out">WS secret updated (10 chars)</span></pre>
+
+<p><strong>Option B — set via web UI:</strong><br>
+Connect with <code>fast_load_ctrl.html</code> while the device is in open-access mode. A
+<span style="color:#a80">⚠ No secret set</span> bar appears. Type your secret and click
+<strong>Lock Device</strong>. The <code>set_secret</code> WS command is accepted once (when no secret is currently set) and then locked.</p>
+
+<div class="box tip">
+  <div class="box-hdr">✓ Auto-fill after locking</div>
+  The web UI copies the new secret into the auth field automatically, so the next reconnect authenticates without retyping.
+</div>
+
+<h3>10.3 Changing the secret</h3>
+
+<p>Once a secret is set, <code>set_secret</code> over WebSocket is rejected with an error.
+Use the serial console — physical access required:</p>
+<pre><span class="inp">set secret newpassword</span>   <span class="cmt">// change secret</span>
+<span class="inp">set secret</span>               <span class="cmt">// clear secret — re-enables open-access mode</span></pre>
+
+<h3>10.4 Open-access mode</h3>
+
+<p>If <code>wsSecret</code> is empty in NVS, the device skips the challenge entirely and sends
+<code>{"type":"ok","msg":"authenticated"}</code> as the first message. The <code>fast_load_ctrl_open.html</code>
+page is designed for this mode — it listens for that message before sending commands.</p>
+
+<div class="box warn">
+  <div class="box-hdr">⚠ Open-access is LAN-only</div>
+  Open-access mode is suitable for trusted LANs only. Set a secret before deploying on any shared or internet-accessible network.
+</div>
+
+<h3>10.5 Multiple clients</h3>
+
+<p>Up to 4 WebSocket clients can be connected simultaneously. Each connection has its own
+nonce and authentication state — one client authenticating does not authenticate others.</p>
+
+<div style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);
+            font-size:.75rem;color:var(--muted);text-align:center">
+  FastLoad v1.3.8 · Heltec LoRa32 V2 · DAC continuous 5 kHz · ws:81
+</div>
+
+<script>
+(function(){
+  const btn = document.getElementById('theme-btn');
+  const saved = localStorage.getItem('flc-manual-theme');
+  if (saved === 'light') { document.body.classList.add('light'); btn.textContent = '🌙 Dark'; }
+  window.toggleTheme = function() {
+    const light = document.body.classList.toggle('light');
+    btn.textContent = light ? '🌙 Dark' : '☀ Light';
+    localStorage.setItem('flc-manual-theme', light ? 'light' : 'dark');
+  };
+})();
+</script>
+</body>
+</html>

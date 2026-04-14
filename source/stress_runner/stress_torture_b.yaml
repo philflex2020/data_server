@@ -1,0 +1,37 @@
+# Stress runner config for torture test on phil-256g
+# Full topology: 2 sites × 12 racks × 8 modules × 52 cells = 9984 cells → ~80k msgs/sec
+mqtt:
+  host: broker
+  port: 1883
+  client_id: stress-b
+  username: ""
+  password: ""
+
+websocket:
+  host: 0.0.0.0
+  port: 8769
+
+topic_prefix: batteries_b
+topic_mode: per_cell_item
+sample_interval_seconds: 1
+
+cell_data:
+  voltage:     {min: 3.0,   max: 4.2,   nominal: 3.7,   drift: 0.005}
+  current:     {min: -10.0, max: 10.0,  nominal: 0.0,   drift: 0.2}
+  temperature: {min: 15.0,  max: 45.0,  nominal: 28.0,  drift: 0.1}
+  soc:         {min: 10.0,  max: 95.0,  nominal: 70.0,  drift: 0.05}
+  soh:         {min: 80.0,  max: 100.0, nominal: 98.0,  drift: 0.01}
+  resistance:  {min: 0.001, max: 0.01,  nominal: 0.003, drift: 0.00005}
+  capacity:    {min: 80.0,  max: 105.0, nominal: 100.0, drift: 0.01}
+
+projects:
+  - project_id: 1
+    sites:
+      - site_id: 10
+        racks: 12
+        modules_per_rack: 8
+        cells_per_module: 52
+      - site_id: 11
+        racks: 12
+        modules_per_rack: 8
+        cells_per_module: 52

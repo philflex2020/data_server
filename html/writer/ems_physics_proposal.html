@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EMS Physics Generator — Proposal</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2128; --border:#30363d;
+  --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+  --green:#3fb950; --yellow:#d29922; --red:#f85149;
+  --orange:#e3b341; --purple:#bc8cff; --teal:#39d353; --pink:#ff7b72;
+  --code-bg:#21262d;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text);
+       font-family:'Segoe UI',system-ui,sans-serif;
+       padding:20px; max-width:1100px; margin:0 auto; }
+.nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+         padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+.nav a:hover { color:var(--accent); border-color:var(--accent); }
+h1 { color:var(--accent); font-size:1.2rem; margin-bottom:4px; }
+.subtitle { color:var(--muted); font-size:.85rem; margin-bottom:28px; }
+h2 { color:var(--orange); font-size:1rem; margin:32px 0 12px;
+     padding-bottom:5px; border-bottom:1px solid var(--border); }
+h3 { color:var(--accent); font-size:.9rem; margin:18px 0 8px; }
+p  { font-size:.85rem; line-height:1.65; margin-bottom:10px; }
+ul,ol { font-size:.85rem; line-height:1.65; margin:6px 0 10px 20px; }
+li { margin-bottom:3px; }
+pre, code { background:var(--code-bg); border-radius:4px; font-family:'Cascadia Code','Fira Code',monospace; }
+pre { border:1px solid var(--border); padding:12px 14px; font-size:.78rem;
+      line-height:1.6; overflow-x:auto; margin:8px 0; }
+code { padding:1px 5px; font-size:.82rem; }
+.cm  { color:var(--muted); }
+.kw  { color:var(--pink); }
+.st  { color:var(--green); }
+.val { color:var(--teal); }
+.nm  { color:var(--orange); }
+
+.card-row { display:flex; gap:12px; margin:12px 0; flex-wrap:wrap; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+        padding:14px 16px; flex:1; min-width:180px; }
+.card-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+              color:var(--muted); margin-bottom:4px; }
+.card-val   { font-size:1.3rem; font-weight:700; font-family:monospace; }
+.card-sub   { font-size:.72rem; color:var(--muted); margin-top:2px; }
+.c-red .card-val { color:var(--red); }
+.c-green .card-val { color:var(--green); }
+.c-orange .card-val { color:var(--orange); }
+.c-blue .card-val { color:var(--accent); }
+
+.cmp-table { width:100%; border-collapse:collapse; font-size:.82rem; margin:12px 0; }
+.cmp-table th { background:var(--surface2); color:var(--muted); font-size:.72rem;
+                text-transform:uppercase; letter-spacing:.06em; padding:7px 12px;
+                border-bottom:1px solid var(--border); text-align:left; }
+.cmp-table td { padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+.cmp-table tr:last-child td { border-bottom:none; }
+.metric { color:var(--muted); font-size:.78rem; }
+.bad  { color:var(--red); }
+.good { color:var(--green); }
+
+.callout { background:var(--surface); border-left:3px solid var(--teal);
+           border-radius:4px; padding:12px 16px; margin:12px 0; font-size:.82rem; line-height:1.6; }
+.callout.warn { border-left-color:var(--orange); }
+
+details { margin-bottom:10px; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+summary { padding:9px 14px; cursor:pointer; font-size:.88rem; font-weight:600;
+          background:var(--code-bg); list-style:none; display:flex; align-items:center; gap:8px; user-select:none; }
+details > div { padding:12px 16px; }
+
+.diagram { margin:16px 0; background:var(--surface); border:1px solid var(--border);
+           border-radius:6px; padding:16px; overflow-x:auto; }
+hr { border:none; border-top:1px solid var(--border); margin:24px 0; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← projects</a>
+  <a href="projects.html">writer projects</a>
+  <a href="writer_compare_test.html">compare test</a>
+  <a href="aws_sim_stack.html">aws sim stack</a>
+</div>
+
+<h1>EMS Physics Generator — Proposal</h1>
+<p class="subtitle">Replace uniform-random signal pools with a physics-based state machine that produces believable BMS/PCS charge-discharge behaviour.</p>
+
+<!-- ── REAL DATA ── -->
+<h2>Ground Truth — SBESS3 Real Site Data</h2>
+
+<div class="callout">
+  <strong>SBESS3</strong> is a utility-scale Battery Energy Storage System (US site, 60 Hz grid).
+  InfluxDB export covers a <strong>3-hour operational window</strong> (2026-03-26 19:26–22:26 UTC)
+  across two unit controllers (UC 61B5, UC 63A1). 8 CSV files, 2.7 GB uncompressed, ~2.5M rows of signal data.
+  This window shows the system in <strong>active discharge</strong> (peak-shaving).
+</div>
+
+<div class="card-row">
+  <div class="card c-blue">
+    <div class="card-label">Cell voltage range</div>
+    <div class="card-val">3.328 – 3.393 V</div>
+    <div class="card-sub">41 mV total spread over 3 hr</div>
+  </div>
+  <div class="card c-green">
+    <div class="card-label">Cell temperature range</div>
+    <div class="card-val">20 – 29 °C</div>
+    <div class="card-sub">9 °C spread, slow RC thermal</div>
+  </div>
+  <div class="card c-orange">
+    <div class="card-label">SOC range observed</div>
+    <div class="card-val">78 – 92 %</div>
+    <div class="card-sub">~4.7 %/hr at −70 A avg</div>
+  </div>
+  <div class="card c-blue">
+    <div class="card-label">DC bus voltage</div>
+    <div class="card-val">1142 – 1157 V</div>
+    <div class="card-sub">342 cells in series, 14 V swing</div>
+  </div>
+</div>
+
+<table class="cmp-table" style="margin-top:12px">
+  <thead><tr><th>File</th><th>Signals</th><th>Key insight</th></tr></thead>
+  <tbody>
+    <tr><td>SBESS3 bms data - UC 61B5/63A1</td><td>BMS_SysSOC, BMS_SysCurrent, BMS_AvgCellV, cell temps, fault codes</td><td>Cell V is 3.33–3.39V; all fault/alarm codes = 0; SOH = 100%</td></tr>
+    <tr><td>SBESS3 pcs data - UC 61B5/63A1</td><td>DCV, DCA, kW, Hz, ACBreaker, BankEnable, PhVph, Aph, PF</td><td>DC bus 1130–1148V; AC grid 60 Hz; ACBreaker always 1; Banks always enabled</td></tr>
+    <tr><td>SBESS3 atc data - UC 61B5/63A1</td><td>BCPC alarms, cold aisle temps, ATC events</td><td>All 150k rows = 0 (cold aisle alarms never fire in healthy operation)</td></tr>
+    <tr><td>SBESS3 meter data</td><td>Site kW, kVAR, Hz, PF, Current, Voltage</td><td>Site-level power up to −85 MW discharge; Hz 59.94–60.04</td></tr>
+    <tr><td>SBESS3 site data</td><td>AUX meters, AllowedMaxP, bus setpoints</td><td>AUX loads stable ~525 kW; AllowedMaxP ~175–181 MW</td></tr>
+  </tbody>
+</table>
+
+<!-- ── THE PROBLEM ── -->
+<h2>What's Wrong Today</h2>
+
+<div class="callout warn">
+  <strong>Every signal is a uniform random number 0–100 every sweep.</strong>
+  The current <code>ems_site_simulator</code> pre-fills pools of random floats and cycles through them.
+  It is fast (~81k msg/s) but produces data that no real system could ever generate.
+</div>
+
+<div class="card-row">
+  <div class="card c-red">
+    <div class="card-label">Cell voltage range seen</div>
+    <div class="card-val">19 – 86 V</div>
+    <div class="card-sub">real Li-ion: 3.0 – 4.2 V</div>
+  </div>
+  <div class="card c-red">
+    <div class="card-label">SOC swing in 1 minute</div>
+    <div class="card-val">32 %pts</div>
+    <div class="card-sub">real 1C charge: ~1.7 %pts/min</div>
+  </div>
+  <div class="card c-red">
+    <div class="card-label">Rack door state</div>
+    <div class="card-val">always 1</div>
+    <div class="card-sub">should be 0 (closed) almost always</div>
+  </div>
+  <div class="card c-red">
+    <div class="card-label">PCS fault code</div>
+    <div class="card-val">always 2</div>
+    <div class="card-sub">should be 0 almost always</div>
+  </div>
+</div>
+
+<p>This matters because: compression ratios are unrealistic (random data doesn't compress), query patterns are meaningless, and the data cannot be used to demonstrate anomaly detection or alerting.</p>
+
+<!-- ── SIGNAL CLASSIFICATION ── -->
+<h2>Signal Classification</h2>
+
+<table class="cmp-table">
+  <thead><tr><th>Class</th><th>Examples</th><th>Real behaviour</th><th>Update model</th><th>Change rate</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong style="color:var(--teal)">Slow physicals</strong></td>
+      <td><code>Pack_SOC</code>, <code>Pack_Voltage</code>,<br><code>CellN_Voltage</code></td>
+      <td>SOC integrates current. Voltage is monotonic function of SOC. Cells track each other with ±2 mV imbalance.</td>
+      <td>SOC integrator + OCV lookup</td>
+      <td>&lt;0.05 V/min, &lt;2 %/min</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--orange)">Slow thermals</strong></td>
+      <td><code>CellN_Temperature</code></td>
+      <td>RC thermal model: rises when |current| high, decays toward ambient (25°C) when idle. 5–10 min time constant.</td>
+      <td>RC low-pass on |I|</td>
+      <td>&lt;0.5°C/min</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--accent)">Fast electrical</strong></td>
+      <td><code>Pack_Current</code>, <code>ActivePower</code>,<br><code>OutputCurrent</code>, <code>DCBusVoltage</code></td>
+      <td>Follows charge/discharge profile. Some noise (±1%) around setpoint. Ramps smoothly on state transition.</td>
+      <td>Profile setpoint + Gaussian noise</td>
+      <td>Ramp 5–30 s, then stable</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--purple)">Grid / PCS status</strong></td>
+      <td><code>GridConnected</code>, <code>GridFrequency</code>,<br><code>PCS_State</code></td>
+      <td>Grid connected = 1 almost always. Frequency 49.95–50.05 Hz. PCS state transitions with operation mode.</td>
+      <td>Constant + tiny drift for frequency</td>
+      <td>Frequency: ±0.05 Hz/min</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--yellow)">Rare events</strong></td>
+      <td><code>BMS_FaultCode</code>, <code>BMS_WarningCode</code>,<br><code>PCS_FaultCode</code>, <code>AlarmActive</code></td>
+      <td>Zero almost always. Occasional non-zero (1–3 per day per unit). Clear after 30–300 s. At most one active at a time.</td>
+      <td>Poisson arrivals at ~0.1/hr</td>
+      <td>1–2 events/day/unit</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--muted)">Binary states</strong></td>
+      <td><code>Rack_DoorOpen</code>, <code>Pack_ContactorState</code>,<br><code>CellBalancing</code>, <code>Rack_FanState</code></td>
+      <td>Door = 0 (closed) always. Contactor = closed during operation. Fan = on when temp &gt; threshold. Balancing = on near full SOC.</td>
+      <td>State machine derived from SOC/temp</td>
+      <td>Changes on state transitions only</td>
+    </tr>
+    <tr>
+      <td><strong style="color:var(--muted)">Health indicators</strong></td>
+      <td><code>Pack_SOH</code></td>
+      <td>Very slowly degrading. 95–100% for new units. Changes &lt;0.01%/day. Constant for simulation purposes.</td>
+      <td>Constant per unit with small offset</td>
+      <td>Days/months</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── CHARGE-DISCHARGE CYCLE ── -->
+<h2>Charge / Discharge Cycle Model</h2>
+
+<div class="diagram">
+<svg viewBox="0 0 860 260" xmlns="http://www.w3.org/2000/svg"
+     style="width:100%;max-width:860px;font-family:'Segoe UI',sans-serif;font-size:11px">
+  <rect width="860" height="260" fill="#161b22" rx="6"/>
+
+  <!-- grid -->
+  <line x1="60" y1="20" x2="60" y2="210" stroke="#30363d"/>
+  <line x1="60" y1="210" x2="820" y2="210" stroke="#30363d"/>
+  <!-- horizontal grid lines -->
+  <line x1="60" y1="60"  x2="820" y2="60"  stroke="#21262d"/>
+  <line x1="60" y1="100" x2="820" y2="100" stroke="#21262d"/>
+  <line x1="60" y1="140" x2="820" y2="140" stroke="#21262d"/>
+  <line x1="60" y1="180" x2="820" y2="180" stroke="#21262d"/>
+
+  <!-- Y labels -->
+  <text x="55" y="24"  fill="#8b949e" text-anchor="end">100%</text>
+  <text x="55" y="64"  fill="#8b949e" text-anchor="end">80%</text>
+  <text x="55" y="104" fill="#8b949e" text-anchor="end">60%</text>
+  <text x="55" y="144" fill="#8b949e" text-anchor="end">40%</text>
+  <text x="55" y="184" fill="#8b949e" text-anchor="end">20%</text>
+  <text x="55" y="214" fill="#8b949e" text-anchor="end">0%</text>
+  <text x="10" y="120" fill="#8b949e" text-anchor="middle" transform="rotate(-90,10,120)">SOC / normalised</text>
+
+  <!-- X axis labels: 24-hour simulation -->
+  <text x="60"  y="225" fill="#8b949e" text-anchor="middle">00:00</text>
+  <text x="193" y="225" fill="#8b949e" text-anchor="middle">04:00</text>
+  <text x="326" y="225" fill="#8b949e" text-anchor="middle">08:00</text>
+  <text x="459" y="225" fill="#8b949e" text-anchor="middle">12:00</text>
+  <text x="592" y="225" fill="#8b949e" text-anchor="middle">16:00</text>
+  <text x="725" y="225" fill="#8b949e" text-anchor="middle">20:00</text>
+  <text x="820" y="225" fill="#8b949e" text-anchor="middle">24:00</text>
+
+  <!-- State bands -->
+  <!-- IDLE 00:00-06:00 -->
+  <rect x="60"  y="20" width="200" height="190" fill="#39d35308" rx="0"/>
+  <text x="160" y="240" fill="#39d353" text-anchor="middle" font-size="9">IDLE</text>
+  <!-- CHARGING 06:00-12:00 -->
+  <rect x="260" y="20" width="200" height="190" fill="#58a6ff08" rx="0"/>
+  <text x="360" y="240" fill="#58a6ff" text-anchor="middle" font-size="9">CHARGING</text>
+  <!-- REST 12:00-14:00 -->
+  <rect x="460" y="20" width="66"  height="190" fill="#39d35308" rx="0"/>
+  <text x="493" y="240" fill="#39d353" text-anchor="middle" font-size="9">REST</text>
+  <!-- DISCHARGING 14:00-22:00 -->
+  <rect x="526" y="20" width="266" height="190" fill="#e3b34108" rx="0"/>
+  <text x="659" y="240" fill="#e3b341" text-anchor="middle" font-size="9">DISCHARGING</text>
+  <!-- IDLE 22:00-24:00 -->
+  <rect x="792" y="20" width="28"  height="190" fill="#39d35308" rx="0"/>
+  <text x="806" y="240" fill="#39d353" text-anchor="middle" font-size="9">IDLE</text>
+
+  <!-- SOC curve: starts 40%, idle flat, charges to 95%, rest flat, discharges to 25%, idle flat -->
+  <!-- idle: y=140 (40%), charging ramp to y=30 (95%), rest, discharge to y=170 (25%), idle -->
+  <polyline fill="none" stroke="#58a6ff" stroke-width="2.5"
+    points="60,140 260,140 460,32 526,32 792,172 820,172"/>
+  <text x="140" y="135" fill="#58a6ff" font-size="9">40% SOC</text>
+  <text x="400" y="28"  fill="#58a6ff" font-size="9">95%</text>
+  <text x="720" y="168" fill="#58a6ff" font-size="9">25%</text>
+
+  <!-- Cell voltage (scaled, 3.0-4.2V mapped to 0-100%) -->
+  <!-- OCV curve roughly follows SOC with slight S-curve -->
+  <polyline fill="none" stroke="#e3b341" stroke-width="1.5" stroke-dasharray="5,3"
+    points="60,148 260,148 460,40 526,40 792,178 820,178"/>
+  <text x="200" y="162" fill="#e3b341" font-size="9">OCV (voltage)</text>
+
+  <!-- Temperature: rises during charge/discharge, decays in idle -->
+  <polyline fill="none" stroke="#ff7b72" stroke-width="1.5"
+    points="60,160 260,160 360,148 460,140 526,136 659,128 792,145 820,150"/>
+  <text x="480" y="125" fill="#ff7b72" font-size="9">Temperature</text>
+
+  <!-- Current: 0 idle, +I charging, 0 rest, -I discharging, 0 idle -->
+  <polyline fill="none" stroke="#3fb950" stroke-width="1.5"
+    points="60,210 260,210 265,75 455,75 460,210 526,210 531,145 786,145 792,210 820,210"/>
+  <text x="360" y="70" fill="#3fb950" font-size="9">+I (charge)</text>
+  <text x="659" y="140" fill="#3fb950" font-size="9">−I (discharge)</text>
+
+  <!-- legend -->
+  <line x1="640" y1="20" x2="660" y2="20" stroke="#58a6ff" stroke-width="2.5"/>
+  <text x="664" y="24" fill="#58a6ff" font-size="9">SOC</text>
+  <line x1="640" y1="34" x2="660" y2="34" stroke="#e3b341" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="664" y="38" fill="#e3b341" font-size="9">Cell voltage (OCV)</text>
+  <line x1="640" y1="48" x2="660" y2="48" stroke="#ff7b72" stroke-width="1.5"/>
+  <text x="664" y="52" fill="#ff7b72" font-size="9">Temperature</text>
+  <line x1="640" y1="62" x2="660" y2="62" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="664" y="66" fill="#3fb950" font-size="9">Current (±)</text>
+</svg>
+</div>
+
+<p>The simulation accelerates this cycle so a configurable sweep count covers the full 24-hour profile.
+Each unit is offset in the cycle by a small random phase so units are not all at the same SOC simultaneously.</p>
+
+<!-- ── SIGNAL SPECS ── -->
+<h2>Signal Specifications — Calibrated from SBESS3 Real Data</h2>
+
+<div class="callout">
+  Values below are derived from <strong>SBESS3 InfluxDB export</strong> (3-hour window, 2026-03-26 19:26–22:26 UTC).
+  Two unit controllers observed: UC 61B5 and UC 63A1.
+  This is a utility-scale 60 Hz US system with ~342 cells in series per string (DC bus ~1142–1157 V).
+</div>
+
+<table class="cmp-table">
+  <thead><tr><th>Signal</th><th>Type</th><th>Real range (SBESS3)</th><th>Physics model</th></tr></thead>
+  <tbody>
+    <tr><td><code>BMS_SysSOC</code></td><td>float</td><td><strong>78 – 92 %</strong> (14 % change over 3 hr)</td><td>SOC integrator: ΔSOC = −I × Δt / capacity_Ah. Rate ~4.7 %/hr at −70 A avg discharge.</td></tr>
+    <tr><td><code>BMS_SysVoltage</code></td><td>float</td><td><strong>1142 – 1157 V</strong> (14 V spread)</td><td>OCV(SOC) × 342 series cells. At 80 % SOC: 3.340 V/cell × 342 = 1142 V.</td></tr>
+    <tr><td><code>BMS_AvgCellV</code></td><td>float</td><td><strong>3.340 – 3.381 V</strong> (41 mV spread)</td><td>BMS_SysVoltage / 342. Extremely stable — only moves with SOC.</td></tr>
+    <tr><td><code>BMS_MaxCellV</code></td><td>float</td><td><strong>3.343 – 3.393 V</strong></td><td>AvgCellV + imbalance_hi (fixed +15 mV per unit at init).</td></tr>
+    <tr><td><code>BMS_MinCellV</code></td><td>float</td><td><strong>3.328 – 3.373 V</strong></td><td>AvgCellV − imbalance_lo (fixed −12 mV per unit at init).</td></tr>
+    <tr><td><code>BMS_SysCurrent</code></td><td>float</td><td><strong>−243 – +7 A</strong> (avg −70 A, mostly discharging)</td><td>State setpoint: DISCHARGE=−100 A, CHARGE=+100 A, IDLE=0 A. + Gaussian noise σ=2 A.</td></tr>
+    <tr><td><code>BMS_MaxCellT</code></td><td>float</td><td><strong>26 – 29 °C</strong> (3 °C spread)</td><td>RC thermal: dT = (|I|·R_int − (T−T_ambient)/τ)·Δt. τ=600 s, T_ambient=22 °C.</td></tr>
+    <tr><td><code>BMS_MinCellT</code></td><td>float</td><td><strong>20 – 27 °C</strong> (7 °C spread)</td><td>MaxCellT − temp_gradient (fixed 4–6 °C per unit, cooler cells at pack edge).</td></tr>
+    <tr><td><code>BMS_AvgCellT</code></td><td>float</td><td><strong>0.0</strong> (sensor offline in this dataset)</td><td>Simulate as 0 to match; or (MaxCellT + MinCellT) / 2 if sensor enabled.</td></tr>
+    <tr><td><code>BMS_SysSOH</code></td><td>float</td><td><strong>100 %</strong> (constant)</td><td>Constant 100 % — new system. Degrade by 0.001 %/simulated-day if desired.</td></tr>
+    <tr><td><code>BMS_RackCount</code></td><td>float</td><td><strong>8</strong> (constant)</td><td>Constant. Set at init.</td></tr>
+    <tr><td><code>BMS_ChaCurrLimit</code></td><td>float</td><td><strong>−652 A</strong> (constant)</td><td>Constant limit, set at init.</td></tr>
+    <tr><td><code>BMS_DischCurrLimit</code></td><td>float</td><td><strong>+652 A</strong> (constant)</td><td>Constant limit, set at init.</td></tr>
+    <tr><td><code>ConnectingStatus</code></td><td>float</td><td><strong>3030</strong> (constant)</td><td>Constant status code. Changes to 0 on fault.</td></tr>
+    <tr><td><code>DCV</code> (PCS DC voltage)</td><td>float</td><td><strong>1130 – 1148 V</strong></td><td>BMS_SysVoltage − I·R_cable. Sags under discharge current.</td></tr>
+    <tr><td><code>DCA</code> (PCS DC current)</td><td>float</td><td><strong>−1412 – +39 A</strong></td><td>BMS_SysCurrent × strings_in_parallel (e.g. 6×). Follows BMS current setpoint.</td></tr>
+    <tr><td><code>kW</code> (PCS AC power)</td><td>float</td><td><strong>−1724 – +35 kW</strong></td><td>DCA × DCV / 1000 × inverter_efficiency. Negative = discharging to grid.</td></tr>
+    <tr><td><code>Hz</code></td><td>float</td><td><strong>59.91 – 60.04 Hz</strong></td><td>60.0 + slow random walk σ=0.005 Hz/sweep. Bounded 59.8–60.2.</td></tr>
+    <tr><td><code>PhVphA/B/C</code></td><td>float</td><td><strong>33.5 – 34.3 V</strong> (×1000 = 33.5–34.3 kV)</td><td>Constant per phase ≈ 34.1 kV + small ripple σ=0.05.</td></tr>
+    <tr><td><code>AphA/B/C</code></td><td>float</td><td><strong>0.4 – 29.8 A</strong></td><td>kW / (3 × PhVph_kV). Tracks active power.</td></tr>
+    <tr><td><code>PF</code></td><td>float</td><td><strong>0.07 – 1.0</strong> (avg 0.99)</td><td>Normally 0.98–1.0. Dips to 0.07 during reactive power transients.</td></tr>
+    <tr><td><code>ACBreaker</code></td><td>boolean_integer</td><td><strong>1</strong> (always closed)</td><td>Constant 1. Opens only on PCS fault.</td></tr>
+    <tr><td><code>Bank1/2/3Enable</code></td><td>float</td><td><strong>1</strong> (always enabled)</td><td>Constant 1 during normal operation.</td></tr>
+    <tr><td><code>Rack_DoorOpen</code></td><td>int</td><td><strong>0</strong> (always closed)</td><td>Constant 0. Poisson event: opens 0.05/day, clears after 5 min.</td></tr>
+    <tr><td><code>BMS_FaultCode / WarningCode</code></td><td>int</td><td><strong>0</strong> (all zero in SBESS3 window)</td><td>Poisson: fault 0.1/day, warning 0.3/day. Duration 60–600 s. Code 1–15.</td></tr>
+    <tr><td><code>AlarmActive / BCPC_* alarms</code></td><td>int</td><td><strong>0</strong> (all zero in SBESS3 window)</td><td>Derived: 1 when any fault active. All BCPC alarm codes = 0 normally.</td></tr>
+    <tr><td><code>BMS_SysHB</code> (heartbeat)</td><td>float</td><td><strong>1 – 65535</strong> (counter)</td><td>Incrementing counter wrapping at 65535. +1 per sweep.</td></tr>
+    <tr><td><code>WatchdogResponse</code></td><td>float</td><td><strong>0 – 255</strong></td><td>Incrementing 0–255 counter. +1 per sweep, wraps.</td></tr>
+  </tbody>
+</table>
+
+<!-- ── IMPLEMENTATION ── -->
+<h2>Proposed Implementation</h2>
+
+<p>New file: <code>source/stress_runner/ems_physics_runner.py</code>. Replaces the random-pool approach
+in <code>ems_site_simulator</code> (used by the compare benchmark and gx10 4-sim stack) while keeping
+the same MQTT topic format and publish rate.</p>
+
+<div class="callout">
+  <strong>Key design choice:</strong> Keep the publish rate unchanged (~1800 msg/s per unit).
+  The physics engine updates state once per sweep (all signals for one unit in one pass),
+  then publishes each signal as a separate MQTT message as today. No changes to the writer configs.
+</div>
+
+<h3>State per unit</h3>
+
+<pre><span class="kw">class</span> <span class="nm">UnitPhysics</span>:
+    <span class="cm"># Cycle state machine</span>
+    state       : <span class="nm">str</span>          <span class="cm"># IDLE | CHARGING | DISCHARGING | FAULT</span>
+    state_elapsed: <span class="nm">float</span>       <span class="cm"># seconds in current state</span>
+    cycle_phase : <span class="nm">float</span>        <span class="cm"># 0.0–1.0, initial offset per unit</span>
+
+    <span class="cm"># Integrator</span>
+    soc         : <span class="nm">float</span>        <span class="cm"># 0–100 %</span>
+    soh         : <span class="nm">float</span>        <span class="cm"># 94–100 %, constant per unit</span>
+
+    <span class="cm"># Thermals (per cell, RC model)</span>
+    cell_temp   : <span class="nm">list[float]</span>  <span class="cm"># one per cell, °C</span>
+    cell_imbalance: <span class="nm">list[float]</span><span class="cm"># fixed ±2 mV offset per cell</span>
+
+    <span class="cm"># Grid / PCS</span>
+    grid_freq   : <span class="nm">float</span>        <span class="cm"># Hz, slow random walk</span>
+
+    <span class="cm"># Rare event timers</span>
+    bms_fault_ttl    : <span class="nm">float</span>   <span class="cm"># seconds remaining, 0 = clear</span>
+    bms_warning_ttl  : <span class="nm">float</span>
+    pcs_fault_ttl    : <span class="nm">float</span>
+    door_open_ttl    : <span class="nm">float</span></pre>
+
+<h3>State machine transitions</h3>
+
+<pre><span class="cm"># Simulated day = 600 sweeps (configurable via --day-sweeps N)</span>
+<span class="cm"># Default cycle (fraction of day):</span>
+CYCLE = [
+    (<span class="st">"IDLE"</span>,        <span class="nm">0.25</span>),   <span class="cm"># 00:00–06:00  rest at ~40% SOC</span>
+    (<span class="st">"CHARGING"</span>,    <span class="nm">0.25</span>),   <span class="cm"># 06:00–12:00  constant-current charge to 95%</span>
+    (<span class="st">"REST"</span>,        <span class="nm">0.08</span>),   <span class="cm"># 12:00–14:00  post-charge rest</span>
+    (<span class="st">"DISCHARGING"</span>, <span class="nm">0.33</span>),   <span class="cm"># 14:00–22:00  peak-shaving discharge</span>
+    (<span class="st">"IDLE"</span>,        <span class="nm">0.09</span>),   <span class="cm"># 22:00–24:00  night rest</span>
+]</pre>
+
+<h3>OCV lookup table (Li-NMC)</h3>
+
+<pre><span class="cm"># SOC → open-circuit cell voltage (V), Li-NMC typical</span>
+OCV_TABLE = [
+    (<span class="nm">0</span>,   <span class="nm">3.000</span>), (<span class="nm">5</span>,  <span class="nm">3.350</span>), (<span class="nm">10</span>, <span class="nm">3.500</span>), (<span class="nm">20</span>, <span class="nm">3.620</span>),
+    (<span class="nm">30</span>,  <span class="nm">3.680</span>), (<span class="nm">40</span>, <span class="nm">3.720</span>), (<span class="nm">50</span>, <span class="nm">3.760</span>), (<span class="nm">60</span>, <span class="nm">3.800</span>),
+    (<span class="nm">70</span>,  <span class="nm">3.840</span>), (<span class="nm">80</span>, <span class="nm">3.890</span>), (<span class="nm">90</span>, <span class="nm">3.960</span>), (<span class="nm">95</span>, <span class="nm">4.100</span>),
+    (<span class="nm">100</span>, <span class="nm">4.200</span>),
+]
+<span class="cm"># Pack voltage = ocv(soc) × SERIES_CELLS (e.g. 96 cells in series = 288–403 V)</span></pre>
+
+<h3>Rare event scheduling (Poisson)</h3>
+
+<pre><span class="kw">def</span> <span class="nm">maybe_trigger_fault</span>(unit, dt_sim, rate_per_day):
+    <span class="cm"># rate_per_day = average faults per simulated day</span>
+    <span class="cm"># dt_sim = fraction of day this sweep represents</span>
+    prob = <span class="nm">1</span> - math.exp(-rate_per_day * dt_sim)
+    <span class="kw">if</span> random.random() < prob:
+        <span class="cm"># trigger fault: pick code, set TTL</span>
+        unit.bms_fault_code = random.randint(<span class="nm">1</span>, <span class="nm">15</span>)
+        unit.bms_fault_ttl  = random.uniform(<span class="nm">60</span>, <span class="nm">600</span>)  <span class="cm"># sim seconds</span></pre>
+
+<!-- ── COMPARISON ── -->
+<h2>Before / After</h2>
+
+<table class="cmp-table">
+  <thead><tr><th>Signal</th><th class="bad">Current (random)</th><th class="good">Proposed (physics)</th></tr></thead>
+  <tbody>
+    <tr><td><code>BMS_AvgCellV</code></td><td class="bad">26.4 → 63.3 V per sweep (random 0–100)</td><td class="good">3.340 → 3.381 V over 3 hr (real SBESS3 range, 41 mV total)</td></tr>
+    <tr><td><code>BMS_MaxCellT</code></td><td class="bad">40 → 88 °C (random)</td><td class="good">26 – 29 °C (real SBESS3 range, RC thermal model)</td></tr>
+    <tr><td><code>BMS_SysSOC</code></td><td class="bad">18 → 50 % in 1 min</td><td class="good">78 → 92 % over 3 hr (real SBESS3: ~4.7 %/hr at −70 A avg)</td></tr>
+    <tr><td><code>BMS_SysVoltage</code></td><td class="bad">random 0–100 (meaningless)</td><td class="good">1142 – 1157 V (real DC bus, 342 cells in series)</td></tr>
+    <tr><td><code>BMS_SysSOH</code></td><td class="bad">34 → 81 % (random)</td><td class="good">100 % constant (real SBESS3: new system)</td></tr>
+    <tr><td><code>BMS_FaultCode</code></td><td class="bad">0–3 every sweep</td><td class="good">0 always in healthy window; Poisson events 0.1/day, duration 60–600 s</td></tr>
+    <tr><td><code>Rack_DoorOpen</code></td><td class="bad">always 1 (always open!)</td><td class="good">always 0 (real SBESS3: closed). Poisson open event 0.05/day.</td></tr>
+    <tr><td><code>Hz</code></td><td class="bad">48 → 50 Hz (random) — wrong grid!</td><td class="good">59.91 – 60.04 Hz (real SBESS3: US 60 Hz grid)</td></tr>
+    <tr><td><code>ACBreaker</code></td><td class="bad">random 0/1/2</td><td class="good">always 1 (real SBESS3: breaker always closed)</td></tr>
+    <tr><td><code>Bank1/2/3Enable</code></td><td class="bad">random</td><td class="good">always 1 (real SBESS3: always enabled)</td></tr>
+    <tr><td><code>kW</code> (PCS)</td><td class="bad">72 → 4 kW (random)</td><td class="good">−1724 – +35 kW (real SBESS3 range, follows discharge profile)</td></tr>
+    <tr><td><code>BMS_RackCount</code></td><td class="bad">random</td><td class="good">constant 8 (real SBESS3)</td></tr>
+    <tr><td><code>BCPC alarm codes</code></td><td class="bad">random non-zero</td><td class="good">all 0 (real SBESS3: healthy system, 150k rows all zero)</td></tr>
+    <tr><td><code>Parquet compression</code></td><td class="bad">~4× (random data is incompressible)</td><td class="good">~15–20× (slowly-changing correlated physicals compress very well)</td></tr>
+  </tbody>
+</table>
+
+<!-- ── ACCELERATION ── -->
+<h2>Time Acceleration</h2>
+
+<p>To cover a full 24-hour cycle in a 10-minute benchmark run, the simulated clock advances faster
+than wall time. The acceleration factor is set by <code>--day-sweeps</code>:</p>
+
+<table class="cmp-table">
+  <thead><tr><th>--day-sweeps</th><th>Wall time for 1 day</th><th>SOC change/real-sec</th><th>Use case</th></tr></thead>
+  <tbody>
+    <tr><td>600</td><td>10 min</td><td>~0.12 %/s</td><td>writer_compare_test default</td></tr>
+    <tr><td>3600</td><td>60 min</td><td>~0.02 %/s</td><td>longer soak test</td></tr>
+    <tr><td>86400</td><td>24 hr</td><td>real-time</td><td>long-run production simulation</td></tr>
+  </tbody>
+</table>
+
+<!-- ── FILES ── -->
+<h2>Files to Create / Modify</h2>
+
+<table class="cmp-table">
+  <thead><tr><th>File</th><th>Action</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>source/stress_runner/ems_physics_runner.py</code></td><td class="good">CREATE</td><td>New physics engine. Standalone, no C++ changes needed.</td></tr>
+    <tr><td><code>source/stress_runner/ems_physics_config.yaml</code></td><td class="good">CREATE</td><td>Config: units, signals, cycle shape, Poisson rates.</td></tr>
+    <tr><td><code>scripts/writer_compare_test.sh</code></td><td>MODIFY</td><td>Add <code>--physics</code> flag to swap simulator. Default stays random for throughput tests.</td></tr>
+    <tr><td><code>source/stress_runner/ems_site_simulator</code> (C++)</td><td>no change</td><td>Physics mode is Python-only for now. C++ simulator stays for high-rate throughput tests.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>Compatibility:</strong> The physics runner publishes exactly the same MQTT topic format
+  (<code>bench/_/{unit_id}/{device}/{instance}/{point_name}/{dtype}</code>) and JSON payload
+  (<code>{"ts":"…","value":…}</code>) as the current simulator. The parquet writers, Telegraf configs,
+  and all downstream tooling require no changes.
+</div>
+
+<hr>
+<p style="font-size:.78rem;color:var(--muted)">
+  Related:
+  <a href="writer_compare_test.html" style="color:var(--accent)">writer_compare_test</a> ·
+  <a href="aws_sim_stack.html" style="color:var(--accent)">aws sim stack</a> ·
+  <a href="wide_parquet_writer.html" style="color:var(--accent)">wide writer</a>
+</p>
+
+</body>
+</html>

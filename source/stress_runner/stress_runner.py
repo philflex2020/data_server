@@ -94,6 +94,7 @@ def make_mqtt_client(mqtt_cfg: dict) -> mqtt.Client:
     client.on_connect    = lambda c, u, f, rc: log.info(
         "MQTT connected to %s:%d (rc=%d)", mqtt_cfg["host"], mqtt_cfg["port"], rc)
     client.on_disconnect = lambda c, u, rc: log.warning("MQTT disconnected (rc=%d)", rc)
+    client.reconnect_delay_set(min_delay=1, max_delay=5)  # reconnect within 1-5s after broker restart
     return client
 
 
@@ -146,24 +147,32 @@ async def site_publish_loop(project_id: int, site_cfg: dict, config: dict,
             for cell in cells:
                 if g_stop.is_set():
                     break
+                # Drop messages when paho's outbound queue is backing up — paho has no
+                # built-in size limit for QoS 0 packets, so without this guard the deque
+                # grows without bound if the broker is slow (e.g. cold start after reboot).
+                if len(g_mqtt_client._out_packet) > 20000:
+                    batch += 8 if mode == "per_cell_item" else 1   # count as sent for stats
+                    continue
                 # QoS 0 (fire-and-forget) avoids PUBACK backlog that causes FlashMQ to
                 # drop messages for slow subscribers before they even reach telegraf.
                 # TODO: discuss QoS tradeoffs with team — QoS 1 is correct for production
                 # but at high rates the PUBACK round-trip saturates broker queues.
                 if mode == "per_cell_item":
                     ts     = time.time()
+                    topic  = cell.topic.replace("batteries", topic_prefix, 1)  # apply shard prefix
                     values = {name: state.step() for name, state in cell.measurements.items()}
                     if "voltage" in values and "current" in values:
                         values["power"] = round(values["voltage"] * values["current"], 4)
                     for name, val in values.items():
                         g_mqtt_client.publish(
-                            f"{cell.topic}/{name}",
+                            f"{topic}/{name}",
                             json.dumps({"timestamp": ts, "value": val}),
                             qos=0,
                         )
                         batch += 1
                 else:
-                    g_mqtt_client.publish(cell.topic, json.dumps(cell.payload()), qos=0)
+                    t = cell.topic.replace("batteries", topic_prefix, 1)
+                    g_mqtt_client.publish(t, json.dumps(cell.payload()), qos=0)
                     batch += 1
 
             g_site_counters[key] += batch

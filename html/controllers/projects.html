@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Controller Projects</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --green:#3fb950; --yellow:#d29922; --red:#f85149;
+    --orange:#e3b341; --purple:#bc8cff; --code-bg:#21262d;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text);
+         font-family:'Segoe UI',system-ui,sans-serif; padding:14px; }
+
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem;
+           padding:3px 8px; border:1px solid var(--border); border-radius:4px; }
+  .nav a:hover { color:var(--accent); border-color:var(--accent); }
+  .nav a.here  { color:var(--accent); border-color:var(--accent); background:#0c2d6b22; }
+
+  h1 { color:var(--accent); font-size:1.2rem; margin-bottom:3px; }
+  .subtitle { color:var(--muted); font-size:.82rem; margin-bottom:20px; }
+  h2 { color:var(--orange); font-size:.9rem; margin:24px 0 10px;
+       padding-bottom:4px; border-bottom:1px solid var(--border); }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:6px;
+          padding:14px 16px; text-decoration:none; display:block;
+          transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .card-title { color:var(--accent); font-size:.95rem; font-weight:600; margin-bottom:4px; }
+  .card-desc  { color:var(--muted); font-size:.8rem; line-height:1.4; }
+  .card-tag   { display:inline-block; margin-top:8px; font-size:.7rem;
+                padding:1px 6px; border-radius:3px; border:1px solid var(--border);
+                color:var(--muted); }
+  .tag-live   { border-color:var(--green); color:var(--green); }
+  .tag-tool   { border-color:var(--purple); color:var(--purple); }
+  .tag-demo   { border-color:var(--yellow); color:var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="../projects.html">← All Projects</a>
+  <a href="projects.html" class="here">Controller Projects</a>
+</div>
+
+<h1>Controller Projects</h1>
+<p class="subtitle">Arduino / ESP32 hardware controllers — Heltec LoRa32 + load simulator browser UIs</p>
+
+<h2>Arduino Controller Systems</h2>
+<div class="card-grid">
+
+  <a class="card" href="load_controller.html">
+    <div class="card-title">Load Controller</div>
+    <div class="card-desc">Heltec LoRa32 DAC load controller — dual voltage/current DAC, waveform profiles, OLED display, OTA. Includes fast I2S DMA variant (5000 Hz).</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">ws :81</span>
+    <span class="card-tag">ESP32</span>
+  </a>
+
+  <a class="card" href="fast_load_control.html">
+    <div class="card-title">Fast Load Controller</div>
+    <div class="card-desc">High-speed DAC load controller — I2S DMA DAC at 5000 Hz (V2/T-Display) for smooth 200 µs ramp steps. PWM fallback for V3 (ESP32-S3). Same WebSocket/profile/OTA interface as Load Controller.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">ws :81</span>
+    <span class="card-tag">ESP32</span>
+    <span class="card-tag">5 kHz DMA</span>
+  </a>
+
+  <a class="card" href="chiller.html">
+    <div class="card-title">Chiller Controller</div>
+    <div class="card-desc">Liquid cooling chiller — compressor + fan speed DAC, pump/contactor GPIO, 4–20 mA temp ADC, auto setpoint control loop.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">ws :81</span>
+    <span class="card-tag">ESP32</span>
+  </a>
+
+  <a class="card" href="pcs.html">
+    <div class="card-title">PCS Controller</div>
+    <div class="card-desc">Bidirectional Power Conversion System — DC voltage + current limit DAC, grid/DC bus contactors, charge/discharge/standby/fault modes.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">ws :81</span>
+    <span class="card-tag">ESP32</span>
+  </a>
+
+  <a class="card" href="ups.html">
+    <div class="card-title">UPS Controller</div>
+    <div class="card-desc">UPS simulator/controller — output voltage DAC, battery current sense, mains bypass + inverter GPIO, normal/bypass/battery/test modes.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag">ws :81</span>
+    <span class="card-tag">ESP32</span>
+  </a>
+
+</div>
+
+<h2>Browser Control UIs (direct)</h2>
+<div class="card-grid">
+
+  <a class="card" href="fast_load_ctrl.html">
+    <div class="card-title">Fast Load Sequence Control</div>
+    <div class="card-desc">Named signal block editor + sequence playlist for the fast load controller — build, preview waveforms, and send to ws:81.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+    <span class="card-tag">5 kHz DMA</span>
+  </a>
+
+  <a class="card" href="load_simulator_v2.html">
+    <div class="card-title">Load Simulator v2</div>
+    <div class="card-desc">Browser control UI for the load controller — connect by IP, set voltage/current, run profiles.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="pcs_ctrl.html">
+    <div class="card-title">PCS Control UI</div>
+    <div class="card-desc">Browser control panel for the PCS controller — mode, DC voltage, current limit, power setpoint.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="chiller_ctrl.html">
+    <div class="card-title">Chiller Control UI</div>
+    <div class="card-desc">Browser control panel for the chiller — setpoint, compressor %, fan %, pump, mode.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="ups_ctrl.html">
+    <div class="card-title">UPS Control UI</div>
+    <div class="card-desc">Browser control panel for the UPS — mode, output voltage, load %, battery test.</div>
+    <span class="card-tag tag-live">live</span>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="bms_generator_v2.html">
+    <div class="card-title">BMS Generator v2</div>
+    <div class="card-desc">BMS data generator UI — connects to simulator (port 5003) and gateway (port 9001).</div>
+    <span class="card-tag tag-tool">tool</span>
+  </a>
+
+  <a class="card" href="modbus_dashboard.html">
+    <div class="card-title">Modbus Dashboard</div>
+    <div class="card-desc">Modbus proxy monitor — live register view and connection status.</div>
+    <span class="card-tag tag-live">live</span>
+  </a>
+
+</div>
+
+</body>
+</html>
