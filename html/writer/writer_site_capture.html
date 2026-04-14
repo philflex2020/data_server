@@ -1258,11 +1258,11 @@ print(f<span class="st">'{len(files)} file(s) in {VOL}\n'</span>)
         print(f<span class="st">'    columns: {len(cols)}  {cols}'</span>)
         print(f<span class="st">'    size   : {size/1024:.1f} kB'</span>)
         <span class="kw">if</span> rows:
-            df = t.to_pandas()
-            print(f<span class="st">'    ts range: {df["ts"].min()} → {df["ts"].max()}'</span>)
+            ts_col = t.column(<span class="st">'ts'</span>)
+            print(f<span class="st">'    ts range: {ts_col[0].as_py()} → {ts_col[-1].as_py()}'</span>)
             <span class="kw">if</span> <span class="st">'point_name'</span> <span class="kw">in</span> cols:
-                pts = df[<span class="st">'point_name'</span>].unique()
-                print(f<span class="st">'    signals : {len(pts)}  {list(pts[:5])}{"..." if len(pts)>5 else ""}'</span>)
+                pts = t.column(<span class="st">'point_name'</span>).unique().to_pylist()
+                print(f<span class="st">'    signals : {len(pts)}  {pts[:5]}{"..." if len(pts)>5 else ""}'</span>)
         print()</pre>
 
 <p>Run it while the container is live:</p>
