@@ -1250,6 +1250,11 @@ static uint64_t g_received_since_sync {0};
 static uint64_t g_sync_drops_detected {0};
 static std::string g_sync_session_id;
 
+// Seen topics (up to point_name, dtype_hint stripped) — for health endpoint
+static std::mutex                       g_seen_topics_mutex;
+static std::vector<std::string>         g_seen_topics_list;   // insertion order
+static std::unordered_set<std::string>  g_seen_topics_set;    // dedup
+
 // ---------------------------------------------------------------------------
 // Disk space check
 // ---------------------------------------------------------------------------
@@ -1633,8 +1638,21 @@ static void health_thread_fn() {
              << "\"last_flush_rows\":"     << g_last_flush_rows.load()    << ","
              << "\"total_rows_written\":"  << g_total_rows_written.load() << ","
              << "\"wal_replay_rows\":"     << g_wal_replay_rows.load()    << ","
-             << "\"disk_free_gb\":"        << disk_gb
-             << "}";
+             << "\"disk_free_gb\":" << disk_gb
+             << ",";
+
+        // Append seen_topics array
+        std::vector<std::string> topics_snap;
+        {
+            std::lock_guard<std::mutex> lk(g_seen_topics_mutex);
+            topics_snap = g_seen_topics_list;
+        }
+        body << "\"seen_topics\":[";
+        for (size_t i = 0; i < topics_snap.size(); ++i) {
+            if (i) body << ",";
+            body << "\"" << topics_snap[i] << "\"";
+        }
+        body << "]}";
 
         std::string b = body.str();
         std::ostringstream resp;
@@ -1759,6 +1777,21 @@ static void process_message(const char* topic, const char* payload) {
     else
         info_opt = parse_topic_kv(topic_str);
     if (!info_opt) return;
+
+    // Record seen topic (up to point_name — drop dtype_hint segment if present)
+    {
+        std::string seen = topic_str;
+        if (!info_opt->dtype_hint.empty()) {
+            auto pos = seen.rfind('/');
+            if (pos != std::string::npos) seen = seen.substr(0, pos);
+        }
+        std::lock_guard<std::mutex> lk(g_seen_topics_mutex);
+        if (g_seen_topics_set.find(seen) == g_seen_topics_set.end() &&
+            g_seen_topics_list.size() < 200) {
+            g_seen_topics_set.insert(seen);
+            g_seen_topics_list.push_back(seen);
+        }
+    }
 
     Row row = parse_payload(payload_str, *info_opt, *g_cfg);
 
