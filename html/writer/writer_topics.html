@@ -660,12 +660,37 @@ ems/site/<span class="st">SITE_A</span>/unit/0215D1D8/bms/...</pre>
         The broker delivers every topic under <code>ems/</code>; the writer's pattern
         list decides which ones to parse and which to ignore.</td>
   </tr>
+  <tr>
+    <td><span class="tag tag-bench">bench</span> <span class="tag tag-fractal">fractal</span></td>
+    <td><code>#</code></td>
+    <td>Subscribe to everything. Unmatched topics are silently dropped by the
+        writer. Safe on a dedicated site broker where all traffic is yours.
+        Avoids needing to update the subscription if the topic root ever changes.</td>
+  </tr>
 </table>
 
 <p>The MQTT broker delivers <em>all</em> messages matching the subscription.
 The writer applies the pattern list to each message.  If no pattern matches,
-the message is silently dropped — this is how the writer ignores irrelevant
-topics on a shared broker without needing a more specific subscription.</p>
+the message is silently dropped — filtering happens at parse time, not at
+subscribe time.</p>
+
+<h3>Choosing your subscription</h3>
+
+<table>
+  <tr><th>Broker type</th><th>Recommended subscription</th><th>Reason</th></tr>
+  <tr>
+    <td>Dedicated site broker<br><span style="font-size:.75rem;color:var(--muted);">all traffic is yours</span></td>
+    <td><code>#</code></td>
+    <td>Zero config when topic structure evolves. New topic roots are captured
+        automatically once you add the matching pattern.</td>
+  </tr>
+  <tr>
+    <td>Shared / multi-tenant broker<br><span style="font-size:.75rem;color:var(--muted);">other systems publishing</span></td>
+    <td><code>ems/#</code> or <code>bench/#</code></td>
+    <td>Unrelated high-volume topics would still be delivered to the writer pod
+        and discarded — wasted network and CPU. A specific prefix keeps load down.</td>
+  </tr>
+</table>
 
 <div class="note">
   <strong>seen_topics in /health:</strong> the <code>/health</code> endpoint exposes
