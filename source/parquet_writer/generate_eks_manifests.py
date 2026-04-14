@@ -13,12 +13,43 @@ Writes to output_dir (default: ./manifests/):
 
 Apply with:
   kubectl apply -f manifests/ -n <namespace>
+
+topic_format values (set in site.yaml under mqtt:):
+  bench   — single flat topic tree, topic_segments + drop_columns (default)
+  fractal — Fractal EMS variable-depth topics, all 4 patterns auto-generated
 """
 import sys, os, pathlib, subprocess, json
 try:
     import yaml
 except ImportError:
     print("pip3 install pyyaml"); sys.exit(1)
+
+# Fractal EMS topic patterns (4 depths, first match wins).
+# Generated automatically when mqtt.topic_format = fractal.
+# Source of truth: config.longbow.yaml
+FRACTAL_TOPIC_PATTERNS = """\
+      topic_patterns:
+
+        # 9-seg: unit signals with device + instance  (95% of traffic)
+        # ems/site/{site}/unit/{unit}/{device}/{instance}/{point}/{dtype}
+        - match: "ems/site/+/unit/+/+/+/+/+"
+          segments: ["_","_","site_id","_","unit_id","device","instance","point_name","dtype_hint"]
+
+        # 8-seg: unit root signals — no instance level
+        # ems/site/{site}/unit/{unit}/root/{point}/{dtype}
+        - match: "ems/site/+/unit/+/+/+/+"
+          segments: ["_","_","site_id","_","unit_id","device","point_name","dtype_hint"]
+
+        # 7-seg: meter/rtac/site-device signals — no unit
+        # ems/site/{site}/{device}/{instance}/{point}/{dtype}
+        - match: "ems/site/+/+/+/+/+"
+          segments: ["_","_","site_id","device","instance","point_name","dtype_hint"]
+
+        # 6-seg: site-level root signals — no unit or instance
+        # ems/site/{site}/root/{point}/{dtype}
+        - match: "ems/site/+/+/+/+"
+          segments: ["_","_","site_id","device","point_name","dtype_hint"]"""
+
 
 def load(path):
     with open(path) as f:
@@ -67,30 +98,26 @@ spec:
       storage: {eks["storage_gb"]}Gi
 """
 
-def configmap_yaml(s):
-    eks  = s["eks"]
-    mqtt = s["mqtt"]
-    cap  = s["capture"]
-    fmt  = cap["format"]
-    wide = "true" if fmt == "wide" else "false"
-    return f"""apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: parquet-writer-config
-  namespace: {eks["namespace"]}
-data:
-  config.yaml: |
-    mqtt:
-      host:         MQTT_HOST_PLACEHOLDER
-      port:         {mqtt["port"]}
+def _mqtt_block_bench(mqtt):
+    """topic_segments / drop_columns style (bench / simple flat topics)."""
+    return f"""\
       topic:        {mqtt["topic_root"]}/#
-      client_id:    {mqtt["client_id"]}
-      qos:          {mqtt["qos"]}
       topic_parser: positional
       topic_segments: {mqtt["topic_segments"]}
       drop_columns:   {mqtt["drop_columns"]}
-      partition_field: {mqtt["partition_field"]}
-    output:
+      partition_field: {mqtt["partition_field"]}"""
+
+def _mqtt_block_fractal(mqtt):
+    """Variable-depth topic_patterns style (Fractal EMS)."""
+    return f"""\
+      topic:        ems/#
+      topic_parser: positional
+      partition_field: site_id
+{FRACTAL_TOPIC_PATTERNS}"""
+
+def _output_block_bench(cap, wide):
+    """Output block for bench / simple flat topic format."""
+    return f"""\
       base_path:    /data/site-capture
       partitions:   ['{{year}}', '{{month}}', '{{day}}']
       partition_as_filename_prefix: true
@@ -101,7 +128,51 @@ data:
       store_sample_count: false
       site_id:      SITE_ID_PLACEHOLDER
       max_messages_per_part: {cap["max_messages_per_part"]}
-      max_total_buffer_rows: {cap["max_total_buffer_rows"]}
+      max_total_buffer_rows: {cap["max_total_buffer_rows"]}"""
+
+def _output_block_fractal(cap):
+    """Output block for Fractal format — site_id comes from topic, not secret."""
+    return f"""\
+      base_path:    /data/site-capture
+      site_id:      ""
+      partitions:   ['site={{site_id}}', '{{year}}', '{{month}}', '{{day}}']
+      flush_interval_seconds: {cap["flush_interval_seconds"]}
+      compression:  {cap["compression"]}
+      store_mqtt_topic:   false
+      store_sample_count: false
+      max_messages_per_part: {cap["max_messages_per_part"]}
+      max_total_buffer_rows: {cap["max_total_buffer_rows"]}"""
+
+def configmap_yaml(s):
+    eks  = s["eks"]
+    mqtt = s["mqtt"]
+    cap  = s["capture"]
+    fmt  = cap["format"]
+    topic_fmt = mqtt.get("topic_format", "bench")
+    wide = "true" if fmt == "wide" else "false"
+
+    if topic_fmt == "fractal":
+        mqtt_block   = _mqtt_block_fractal(mqtt)
+        output_block = _output_block_fractal(cap)
+    else:
+        mqtt_block   = _mqtt_block_bench(mqtt)
+        output_block = _output_block_bench(cap, wide)
+
+    return f"""apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parquet-writer-config
+  namespace: {eks["namespace"]}
+data:
+  config.yaml: |
+    mqtt:
+      host:         MQTT_HOST_PLACEHOLDER
+      port:         {mqtt["port"]}
+      client_id:    {mqtt["client_id"]}
+      qos:          {mqtt["qos"]}
+{mqtt_block}
+    output:
+{output_block}
     compact:
       enabled: {str(cap["compact_enabled"]).lower()}
     guard:
@@ -114,10 +185,17 @@ data:
 """
 
 def deployment_yaml(s, image):
-    eks  = s["eks"]
-    site = s["site"]
-    port = eks["health_port"]
-    delay = eks["liveness_initial_delay_seconds"]
+    eks      = s["eks"]
+    site     = s["site"]
+    mqtt     = s["mqtt"]
+    port     = eks["health_port"]
+    delay    = eks["liveness_initial_delay_seconds"]
+    topic_fmt = mqtt.get("topic_format", "bench")
+    unit_label = site.get("unit_id", "n-a")
+
+    # For fractal format, SITE_ID comes from the MQTT topic — the secret only
+    # carries MQTT_HOST.  We still inject SITE_ID for parity; entrypoint.sh will
+    # only replace the placeholder if it exists in the config, so it's harmless.
     return f"""apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -125,7 +203,8 @@ metadata:
   namespace: {eks["namespace"]}
   labels:
     site: {site["id"]}
-    unit: {site["unit_id"]}
+    unit: {unit_label}
+    topic-format: {topic_fmt}
 spec:
   replicas: 1
   selector:
@@ -136,7 +215,7 @@ spec:
       labels:
         app: parquet-writer
         site: {site["id"]}
-        unit: {site["unit_id"]}
+        unit: {unit_label}
     spec:
       containers:
         - name: writer
@@ -201,16 +280,17 @@ if __name__ == "__main__":
     output_dir = sys.argv[2] if len(sys.argv) > 2 else "manifests"
     s = load(site_file)
 
+    topic_fmt = s["mqtt"].get("topic_format", "bench")
     image = resolve_image(s["eks"])
-    print(f"Generating manifests for site={s['site']['id']} unit={s['site']['unit_id']}")
+    print(f"Generating manifests for site={s['site']['id']}  topic_format={topic_fmt}")
     print(f"  image: {image}")
     write(f"{output_dir}/pvc.yaml",           pvc_yaml(s))
     write(f"{output_dir}/configmap.yaml",     configmap_yaml(s))
     write(f"{output_dir}/deployment.yaml",    deployment_yaml(s, image))
     write(f"{output_dir}/kustomization.yaml", kustomization_yaml(s))
-    ns   = s["eks"]["namespace"]
-    host = s["mqtt"]["host"]
-    sid  = s["site"]["id"]
+    ns     = s["eks"]["namespace"]
+    host   = s["mqtt"]["host"]
+    sid    = s["site"]["id"]
     region = s["eks"]["region"]
 
     print(f"\nPush image to ECR:")
@@ -220,6 +300,9 @@ if __name__ == "__main__":
     print(f"  docker push {image}")
     print(f"\nCreate namespace + secret:")
     print(f"  kubectl create namespace {ns}")
+    if topic_fmt == "fractal":
+        print(f"  # For fractal format, SITE_ID is derived from the MQTT topic.")
+        print(f"  # Set SITE_ID to a placeholder value (e.g. the site name).")
     print(f"  kubectl create secret generic parquet-writer-secrets \\")
     print(f"    --from-literal=MQTT_HOST={host} \\")
     print(f"    --from-literal=SITE_ID={sid} \\")

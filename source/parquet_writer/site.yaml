@@ -9,16 +9,31 @@
 # │ Site identifier (column in every row) │ site.id          │ SITE_A   │
 # │ Unit / asset serial number            │ site.unit_id     │ 0215D1D8 │
 # │ MQTT broker IP or hostname            │ mqtt.host        │ 10.0.1.5 │
-# │ MQTT subscription root                │ mqtt.topic_root  │ bench    │
 # │ MQTT client ID (unique per pod)       │ mqtt.client_id   │ pw-site-a│
+# │ Topic format (bench or fractal)       │ mqtt.topic_format│ bench    │
 # │ ECR image URI                         │ eks.image        │ see below│
 # └───────────────────────────────────────┴──────────────────┴──────────┘
+#
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ topic_format controls the MQTT parser                                       │
+# ├─────────────────┬───────────────────────────────────────────────────────────┤
+# │ bench           │ Single flat topic tree.  Requires topic_root,             │
+# │                 │ topic_segments, drop_columns, partition_field below.       │
+# │                 │ Example: bench/0215D1D8/bms/bms_1/SysSOC/float            │
+# ├─────────────────┼───────────────────────────────────────────────────────────┤
+# │ fractal         │ Fractal EMS variable-depth topics (4 patterns generated   │
+# │                 │ automatically — no topic_segments needed).                 │
+# │                 │ Subscribes to ems/#.  site_id extracted from topic.       │
+# │                 │ Examples:                                                  │
+# │                 │   9-seg: ems/site/{s}/unit/{u}/{dev}/{inst}/{pt}/{dtype}   │
+# │                 │   8-seg: ems/site/{s}/unit/{u}/root/{pt}/{dtype}           │
+# │                 │   7-seg: ems/site/{s}/{dev}/{inst}/{pt}/{dtype}            │
+# │                 │   6-seg: ems/site/{s}/root/{pt}/{dtype}                   │
+# └─────────────────┴───────────────────────────────────────────────────────────┘
 #
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ REVIEW per site (defaults usually fine)                             │
 # ├───────────────────────────────────────┬──────────────────┬──────────┤
-# │ Topic segment order                   │ mqtt.topic_seg.. │ positional│
-# │ Columns to drop                       │ mqtt.drop_columns│ see below│
 # │ Capture format                        │ capture.format   │ long/wide│
 # │ Flush interval                        │ capture.flush_.. │ 600 s    │
 # │ EBS storage size                      │ eks.storage_gb   │ 20 Gi    │
@@ -40,20 +55,27 @@
 #     --from-literal=MQTT_HOST=<broker-ip> \
 #     --from-literal=SITE_ID=<site.id value> \
 #     -n <eks.namespace>
+#   Note: for fractal format, SITE_ID is extracted from the MQTT topic at
+#         runtime; set the secret value to the site name for labelling only.
 
 # ── MUST CHANGE ────────────────────────────────────────────────────────
 site:
   id:          SITE_A        # [CHANGE] written as site_id column in every parquet row
-  unit_id:     0215D1D8      # [CHANGE] asset serial / unit identifier — used as partition key
+  unit_id:     0215D1D8      # [CHANGE] asset serial / unit identifier
+                              #          bench: partition key   fractal: label only
   description: "Bench BESS unit 1"   # [CHANGE] human label, not used by writer
 
 mqtt:
   host:        192.168.86.34 # [CHANGE] MQTT broker IP or hostname at the site
-  topic_root:  bench         # [CHANGE] root of MQTT topic tree — subscribes to <topic_root>/#
   client_id:   parquet-writer-site-a  # [CHANGE] must be unique per running pod
 
-  # ── REVIEW ─────────────────────────────────────────────────────────
-  # topic_segments defines the positional parser — must match the site's topic structure exactly.
+  # [CHANGE] Topic parser mode — bench or fractal
+  #   bench   → uses topic_root / topic_segments / drop_columns below
+  #   fractal → ignores the bench fields; 4 Fractal EMS patterns are auto-generated
+  topic_format: bench
+
+  # ── REVIEW (bench format only — ignored when topic_format: fractal) ─
+  # topic_segments defines the positional parser — must match the site's topic structure.
   # Example topic: bench/0215D1D8/bms/bms_1/SysSOC/float
   #   position 0: source_type (bench)   → dropped
   #   position 1: unit_id    (0215D1D8) → partition key
@@ -61,8 +83,9 @@ mqtt:
   #   position 3: device     (bms_1)    → column / compound field
   #   position 4: point_name (SysSOC)   → column / compound field
   #   position 5: dtype_hint (float)    → dropped
-  topic_segments: [source_type, unit_id, device_type, device, point_name, dtype_hint]
-  drop_columns:   [source_type, dtype_hint]  # drop bookkeeping fields — not stored in parquet
+  topic_root:      bench     # [CHANGE] root of MQTT topic tree — subscribes to <topic_root>/#
+  topic_segments:  [source_type, unit_id, device_type, device, point_name, dtype_hint]
+  drop_columns:    [source_type, dtype_hint]
   partition_field: unit_id
 
   # ── FIXED ───────────────────────────────────────────────────────────
