@@ -240,6 +240,7 @@ spec:
               mountPath: /data
           ports:
             - containerPort: {port}
+              hostPort: {port}
           livenessProbe:
             httpGet:
               path: /health
