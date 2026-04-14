@@ -98,7 +98,32 @@ check-deps:
 # Targets
 # --------------------------------------------------------------------------
 
-.PHONY: clean deps test kpi
+.PHONY: help clean deps test kpi
+
+help:
+	@echo ''
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Build:'
+	@echo '  all             check deps then build parquet_writer (default)'
+	@echo '  parquet_writer  compile binary directly'
+	@echo '  clean           remove compiled binaries'
+	@echo '  deps            install apt build dependencies'
+	@echo ''
+	@echo 'Test:'
+	@echo '  test            build and run unit tests'
+	@echo '  kpi             build and run KPI/benchmark tests'
+	@echo ''
+	@echo 'Docker / Deploy:'
+	@echo '  image           build Docker image (tags parquet-writer:latest)'
+	@echo '  deploy          build image, import to k3s, bounce pod (local)'
+	@echo '  deploy DEPLOY_HOST=user@host  sync source + redeploy on remote host'
+	@echo ''
+	@echo 'Variables:'
+	@echo '  DEPLOY_HOST     remote build host (default: local)'
+	@echo '  DEPLOY_DIR      remote deploy directory (default: /home/phil/build/parquet-writer)'
+	@echo '  GIT_HASH        embedded in binary and /health (default: from git)'
+	@echo ''
 
 all: check-deps
 	$(MAKE) parquet_writer
