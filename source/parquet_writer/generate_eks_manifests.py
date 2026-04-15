@@ -261,14 +261,59 @@ spec:
             claimName: parquet-capture-pvc
 """
 
-def kustomization_yaml(s):
-    return """apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - pvc.yaml
-  - configmap.yaml
-  - deployment.yaml
+def query_deployment_yaml(s, image):
+    """Optional DuckDB query pod — only generated when eks.query_port is set."""
+    eks   = s["eks"]
+    ns    = eks["namespace"]
+    port  = eks["query_port"]
+    return f"""apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parquet-query
+  namespace: {ns}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parquet-query
+  template:
+    metadata:
+      labels:
+        app: parquet-query
+    spec:
+      containers:
+        - name: query
+          image: {image}
+          env:
+            - name: DATA_PATH
+              value: /data/site-capture
+            - name: QUERY_PORT
+              value: "{port}"
+          ports:
+            - containerPort: {port}
+              hostPort: {port}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {port}
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: parquet-capture-pvc
 """
+
+def kustomization_yaml(s):
+    resources = ["  - pvc.yaml", "  - configmap.yaml", "  - deployment.yaml"]
+    if s["eks"].get("query_port"):
+        resources.append("  - query-deployment.yaml")
+    return "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n" \
+           + "\n".join(resources) + "\n"
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -280,27 +325,41 @@ if __name__ == "__main__":
     s = load(site_file)
 
     topic_fmt = s["mqtt"].get("topic_format", "bench")
-    image = resolve_image(s["eks"])
+    eks       = s["eks"]
+    image     = resolve_image(eks)
     print(f"Generating manifests for site={s['site']['id']}  topic_format={topic_fmt}")
-    print(f"  image: {image}")
+    print(f"  writer image: {image}")
     write(f"{output_dir}/pvc.yaml",           pvc_yaml(s))
     write(f"{output_dir}/configmap.yaml",     configmap_yaml(s))
     write(f"{output_dir}/deployment.yaml",    deployment_yaml(s, image))
-    write(f"{output_dir}/kustomization.yaml", kustomization_yaml(s))
-    ns     = s["eks"]["namespace"]
-    host   = s["mqtt"]["host"]
-    sid    = s["site"]["id"]
-    region = s["eks"]["region"]
 
-    print(f"\nPush image to ECR:")
+    query_port = eks.get("query_port")
+    if query_port:
+        query_eks   = {**eks, "repo": eks.get("query_repo", "parquet-query")}
+        query_image = resolve_image(query_eks)
+        print(f"  query image:  {query_image}")
+        write(f"{output_dir}/query-deployment.yaml", query_deployment_yaml(s, query_image))
+    else:
+        print("  query pod:    disabled (set eks.query_port in site.yaml to enable)")
+
+    write(f"{output_dir}/kustomization.yaml", kustomization_yaml(s))
+    ns     = eks["namespace"]
+    host   = s["mqtt"]["host"]
+    region = eks["region"]
+
+    print(f"\nPush writer image to ECR:")
     print(f"  aws ecr get-login-password --region {region} | \\")
     print(f"    docker login --username AWS --password-stdin {image.split('/')[0]}")
     print(f"  docker tag parquet-writer:latest {image}")
     print(f"  docker push {image}")
+    if query_port:
+        print(f"\nPush query image to ECR:")
+        print(f"  docker tag parquet-query:latest {query_image}")
+        print(f"  docker push {query_image}")
     print(f"\nCreate namespace + secret:")
     print(f"  kubectl create namespace {ns}")
     print(f"  kubectl create secret generic parquet-writer-secrets \\")
     print(f"    --from-literal=MQTT_HOST={host} \\")
     print(f"    -n {ns}")
     print(f"\nApply manifests:")
-    print(f"  kubectl apply -f {output_dir}/ -n {ns}")
+    print(f"  kubectl apply -k {output_dir}/")

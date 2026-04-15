@@ -120,10 +120,13 @@ help:
 	@echo ''
 	@echo 'Docker / Deploy:'
 	@echo '  configmap       regenerate ConfigMap from site.yaml + apply to k3s'
-	@echo '  image           build Docker image (tags parquet-writer:latest)'
+	@echo '  image           build writer Docker image (parquet-writer:latest)'
+	@echo '  query-image     build query Docker image  (parquet-query:latest)'
 	@echo '  deploy          apply manifests + restart writer pod (image from registry)'
-	@echo '  demo            build image locally, import to k3s, bounce pod (demo only)'
+	@echo '  demo            build writer image locally, import to k3s, bounce pod'
+	@echo '  query-demo      build query image locally, import to k3s, bounce pod'
 	@echo '  demo DEPLOY_HOST=user@host  sync source + redeploy on remote host'
+	@echo '  (query pod is optional — only deployed when eks.query_port set in site.yaml)'
 	@echo ''
 	@echo 'Site configuration (edit site.yaml, then: make configmap && make deploy):'
 	@echo '  MUST CHANGE:'
@@ -237,7 +240,7 @@ DEPLOY_DIR  ?= /home/phil/build/parquet-writer
 # Namespace is read from the generated manifests (set in site.yaml → make configmap)
 NS = $(shell grep 'namespace:' manifests/deployment.yaml 2>/dev/null | head -1 | awk '{print $$2}')
 
-.PHONY: configmap image deploy demo
+.PHONY: configmap image query-image deploy demo query-demo
 
 # Regenerate and apply the k3s ConfigMap from site.yaml
 # Usage: make configmap [SITE=site.yaml]
@@ -253,9 +256,14 @@ configmap:
 	kubectl rollout status  deployment/parquet-writer-long -n $(NS) --timeout=60s
 
 image:
-	@echo '--- building Docker image (GIT_HASH=$(GIT_HASH)) ---'
+	@echo '--- building writer Docker image (GIT_HASH=$(GIT_HASH)) ---'
 	docker build --build-arg GIT_HASH=$(GIT_HASH) -t parquet-writer:latest .
 	@docker images parquet-writer
+
+query-image:
+	@echo '--- building query Docker image ---'
+	docker build -f Dockerfile.query -t parquet-query:latest .
+	@docker images parquet-query
 
 # deploy — production path: image already in registry, just apply manifests + bounce pod
 deploy:
@@ -286,3 +294,13 @@ else
 	@echo '--- running redeploy.sh on $(DEPLOY_HOST) ---'
 	ssh -t $(DEPLOY_HOST) "GIT_HASH=$(GIT_HASH) bash $(DEPLOY_DIR)/redeploy.sh"
 endif
+
+# query-demo — build query image locally, import to k3s, bounce pod
+query-demo:
+	@echo '--- building query Docker image ---'
+	docker build -f Dockerfile.query -t parquet-query:latest .
+	@echo '--- importing into k3s ---'
+	docker save parquet-query:latest | sudo k3s ctr images import -
+	@echo '--- bouncing query pod ---'
+	kubectl rollout restart deployment/parquet-query -n $(NS)
+	kubectl rollout status  deployment/parquet-query -n $(NS) --timeout=90s

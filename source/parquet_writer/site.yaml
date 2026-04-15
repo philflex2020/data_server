@@ -133,3 +133,7 @@ eks:
   storage_class:    gp2             # default EKS StorageClass; check: kubectl get storageclass
   health_port:      8771
   liveness_initial_delay_seconds: 30  # health only opens after MQTT connects
+
+  # ── Query pod (DuckDB HTTP server — shares writer PVC read-only) ────
+  query_repo:       parquet-query   # [CHANGE] ECR repo (same account/region as writer)
+  query_port:       8772            # host port for /query /sites /latest /health
