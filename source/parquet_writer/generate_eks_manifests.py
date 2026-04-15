@@ -274,6 +274,8 @@ metadata:
   name: parquet-query
   namespace: {ns}
 spec:
+  strategy:
+    type: Recreate
   replicas: 1
   selector:
     matchLabels:
