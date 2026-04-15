@@ -111,7 +111,10 @@ capture:
   # ── REVIEW ─────────────────────────────────────────────────────────
   format:                 long    # long  = one row per message (site capture default)
                                   # wide  = one row per timestamp, one col per signal (bench)
-  base_path: /data/site-capture   # [REVIEW] path inside container; PVC is mounted at /data
+  base_path: /data/site-capture   # [FIXED] must stay under /data — the diagnostic scripts
+                                  # (dump_parquet.py, wide_parquet.py, inspect_parquet.py)
+                                  # all search the container's /data mount point. Changing
+                                  # this to a path outside /data will cause them to miss files.
   # host_path: /media/phil/08958e92-490f-45e4-9ccd-9c3a065f3d22
   #            [OPTIONAL] if set, mounts this host directory directly instead of a PVC
   #            useful for external drives; omit to use PVC (internal storage)
