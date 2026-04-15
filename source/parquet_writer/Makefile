@@ -117,7 +117,6 @@ help:
 	@echo ''
 	@echo 'Docker / Deploy:'
 	@echo '  configmap       regenerate ConfigMap from site.yaml + apply to k3s'
-	@echo '  configmap SITE=other.yaml  use a different site descriptor'
 	@echo '  image           build Docker image (tags parquet-writer:latest)'
 	@echo '  deploy          build image, import to k3s, bounce pod (local)'
 	@echo '  deploy DEPLOY_HOST=user@host  sync source + redeploy on remote host'
@@ -126,6 +125,7 @@ help:
 	@echo '  DEPLOY_HOST     remote build host (default: local)'
 	@echo '  DEPLOY_DIR      remote deploy directory (default: /home/phil/build/parquet-writer)'
 	@echo '  GIT_HASH        embedded in binary and /health (default: from git)'
+	@echo '  SITE            site descriptor fed to configmap (default: site.yaml)'
 	@echo ''
 
 all: check-deps
