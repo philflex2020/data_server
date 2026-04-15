@@ -24,30 +24,29 @@ try:
 except ImportError:
     print("pip3 install pyyaml"); sys.exit(1)
 
-# Fractal EMS topic patterns (4 depths, first match wins).
-# Generated automatically when mqtt.topic_format = fractal.
-# Source of truth: config.longbow.yaml
-FRACTAL_TOPIC_PATTERNS = """\
+def _fractal_topic_patterns(root):
+    """Return the 4 Fractal EMS topic_patterns block for a given topic root."""
+    return f"""\
       topic_patterns:
 
         # 9-seg: unit signals with device + instance  (95% of traffic)
-        # ems/site/{site}/unit/{unit}/{device}/{instance}/{point}/{dtype}
-        - match: "ems/site/+/unit/+/+/+/+/+"
+        # {root}/site/{{site}}/unit/{{unit}}/{{device}}/{{instance}}/{{point}}/{{dtype}}
+        - match: "{root}/site/+/unit/+/+/+/+/+"
           segments: ["_","_","site_id","_","unit_id","device","instance","point_name","dtype_hint"]
 
         # 8-seg: unit root signals — no instance level
-        # ems/site/{site}/unit/{unit}/root/{point}/{dtype}
-        - match: "ems/site/+/unit/+/+/+/+"
+        # {root}/site/{{site}}/unit/{{unit}}/root/{{point}}/{{dtype}}
+        - match: "{root}/site/+/unit/+/+/+/+"
           segments: ["_","_","site_id","_","unit_id","device","point_name","dtype_hint"]
 
         # 7-seg: meter/rtac/site-device signals — no unit
-        # ems/site/{site}/{device}/{instance}/{point}/{dtype}
-        - match: "ems/site/+/+/+/+/+"
+        # {root}/site/{{site}}/{{device}}/{{instance}}/{{point}}/{{dtype}}
+        - match: "{root}/site/+/+/+/+/+"
           segments: ["_","_","site_id","device","instance","point_name","dtype_hint"]
 
         # 6-seg: site-level root signals — no unit or instance
-        # ems/site/{site}/root/{point}/{dtype}
-        - match: "ems/site/+/+/+/+"
+        # {root}/site/{{site}}/root/{{point}}/{{dtype}}
+        - match: "{root}/site/+/+/+/+"
           segments: ["_","_","site_id","device","point_name","dtype_hint"]"""
 
 
@@ -114,12 +113,13 @@ def _mqtt_block_bench(mqtt):
 
 def _mqtt_block_fractal(mqtt):
     """Variable-depth topic_patterns style (Fractal EMS)."""
+    root = mqtt.get("topic_root", "ems")
     return f"""\
-      topic:        ems/#
+      topic:        {root}/#
       topic_parser: positional
       partition_field: site_id
       drop_columns:    ["dtype_hint", "site_id"]
-{FRACTAL_TOPIC_PATTERNS}"""
+{_fractal_topic_patterns(root)}"""
 
 def _output_block_bench(cap, wide):
     """Output block for bench / simple flat topic format."""

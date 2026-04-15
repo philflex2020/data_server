@@ -10,7 +10,8 @@
 # │ Unit / asset serial number            │ site.unit_id     │ 0215D1D8 │
 # │ MQTT broker IP or hostname            │ mqtt.host        │ 10.0.1.5 │
 # │ MQTT client ID (unique per pod)       │ mqtt.client_id   │ pw-site-a│
-# │ Topic format (bench or fractal)       │ mqtt.topic_format│ bench    │
+# │ Topic format (bench or fractal)       │ mqtt.topic_format│ fractal  │
+# │ Subscribe root (topic prefix)         │ mqtt.topic_root  │ ems      │
 # │ ECR image URI                         │ eks.image        │ see below│
 # └───────────────────────────────────────┴──────────────────┴──────────┘
 #
@@ -23,7 +24,8 @@
 # ├─────────────────┼───────────────────────────────────────────────────────────┤
 # │ fractal         │ Fractal EMS variable-depth topics (4 patterns generated   │
 # │                 │ automatically — no topic_segments needed).                 │
-# │                 │ Subscribes to ems/#.  site_id extracted from topic.       │
+# │                 │ Subscribes to <mqtt.topic_root>/#  (default: ems).        │
+# │                 │ site_id extracted from topic segment 2.                   │
 # │                 │ Examples:                                                  │
 # │                 │   9-seg: ems/site/{s}/unit/{u}/{dev}/{inst}/{pt}/{dtype}   │
 # │                 │   8-seg: ems/site/{s}/unit/{u}/root/{pt}/{dtype}           │
@@ -34,19 +36,19 @@
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ REVIEW per site (defaults usually fine)                             │
 # ├───────────────────────────────────────┬──────────────────┬──────────┤
+# │ MQTT port                             │ mqtt.port        │ 1883     │
 # │ Capture format                        │ capture.format   │ long/wide│
-# │ Flush interval                        │ capture.flush_.. │ 600 s    │
+# │ Flush interval                        │ capture.flush_.. │ 30 s     │
 # │ EBS storage size                      │ eks.storage_gb   │ 20 Gi    │
+# │ Storage class                         │ eks.storage_class│ gp2      │
 # └───────────────────────────────────────┴──────────────────┴──────────┘
 #
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ FIXED — do not change unless you know why                           │
 # ├───────────────────────────────────────┬──────────────────┬──────────┤
-# │ MQTT port                             │ mqtt.port        │ 1883     │
 # │ MQTT QoS                              │ mqtt.qos         │ 0        │
 # │ Health port                           │ eks.health_port  │ 8771     │
 # │ Liveness initial delay                │ eks.liveness_..  │ 30 s     │
-# │ Storage class                         │ eks.storage_class│ gp2      │
 # │ Compaction during capture             │ capture.compact  │ false    │
 # └───────────────────────────────────────┴──────────────────┴──────────┘
 #
@@ -71,8 +73,13 @@ mqtt:
 
   # [CHANGE] Topic parser mode — bench or fractal
   #   bench   → uses topic_root / topic_segments / drop_columns below
-  #   fractal → ignores the bench fields; 4 Fractal EMS patterns are auto-generated
+  #   fractal → uses topic_root as subscribe prefix; 4 depth patterns auto-generated
   topic_format: fractal
+
+  # [CHANGE] MQTT subscribe root — writer subscribes to <topic_root>/#
+  #   fractal default: ems   → subscribes to ems/#
+  #   override if broker uses a different root, e.g. data or site/acme
+  topic_root:  ems
 
   # ── REVIEW (bench format only — ignored when topic_format: fractal) ─
   # topic_segments defines the positional parser — must match the site's topic structure.
@@ -83,13 +90,14 @@ mqtt:
   #   position 3: device     (bms_1)    → column / compound field
   #   position 4: point_name (SysSOC)   → column / compound field
   #   position 5: dtype_hint (float)    → dropped
-  topic_root:      bench     # [CHANGE] root of MQTT topic tree — subscribes to <topic_root>/#
   topic_segments:  [source_type, unit_id, device_type, device, point_name, dtype_hint]
   drop_columns:    [source_type, dtype_hint]
   partition_field: unit_id
 
+  # ── REVIEW ──────────────────────────────────────────────────────────
+  port: 1883    # [CHANGE] if broker uses non-standard port
+
   # ── FIXED ───────────────────────────────────────────────────────────
-  port: 1883
   qos:  0
 
 capture:
