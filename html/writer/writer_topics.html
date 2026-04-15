@@ -341,7 +341,7 @@ patterns are listed first.</p>
   <span class="kw">topic:</span>           <span class="st">"ems/#"</span>          <span class="cm"># single wildcard — all 4 depths</span>
   <span class="kw">topic_parser:</span>    <span class="val">positional</span>
   <span class="kw">partition_field:</span> <span class="val">site_id</span>          <span class="cm"># extracted from topic, used for filename prefix</span>
-  <span class="kw">drop_columns:</span>    <span class="val">["dtype_hint", "site_id"]</span>  <span class="cm"># used for routing, not stored in parquet</span>
+  <span class="kw">drop_columns:</span>    <span class="val">["dtype_hint"]</span>  <span class="cm"># dtype_hint dropped; site_id kept for filename prefix</span>
 
   <span class="cm"># First matching pattern wins — longer patterns listed first</span>
   <span class="kw">topic_patterns:</span>
@@ -625,7 +625,7 @@ ems/site/<span class="st">SITE_A</span>/unit/0215D1D8/bms/...
     <code>entrypoint.sh</code> no longer injects a site_id placeholder.</p>
     <pre><span class="kw">mqtt:</span>
   <span class="kw">partition_field:</span> <span class="val">site_id</span>        <span class="cm"># &#8594; filename prefix SITE_A_...</span>
-  <span class="kw">drop_columns:</span>    <span class="val">["dtype_hint", "site_id"]</span>  <span class="cm"># not stored in rows</span>
+  <span class="kw">drop_columns:</span>    <span class="val">["dtype_hint"]</span>  <span class="cm"># only dtype_hint dropped; site_id kept for filename prefix</span>
 <span class="kw">output:</span>
   <span class="kw">partitions:</span> <span class="val">['{year}', '{month}', '{day}']</span>
   <span class="kw">partition_as_filename_prefix:</span> <span class="val">true</span></pre>
