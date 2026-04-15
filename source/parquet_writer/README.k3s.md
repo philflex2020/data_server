@@ -74,6 +74,27 @@ Replace `<broker-ip>` with the IP or hostname of your MQTT broker.
 This is the only place the broker address is set — it is never stored in
 `site.yaml` or the Docker image.
 
+### Local FlashMQ demo (phil-dev / .46)
+
+FlashMQ runs on this host at `:1883`.  Use the host's LAN IP — **not**
+`localhost` — because the writer pod runs inside k3s and cannot reach the
+host loopback:
+
+```bash
+kubectl create secret generic parquet-writer-secrets \
+  --from-literal=MQTT_HOST=192.168.86.46 \
+  -n data-capture
+```
+
+`test_multi_publish.py` runs directly on the host so it can use `localhost`
+or the hostname.  The pod uses the LAN IP set in the secret above.
+
+```bash
+# publish test data from the host — connects to localhost:1883
+export WRITER_HOST=192.168.86.46
+python3 test_multi_publish.py --format fractal
+```
+
 ## 6 — Configure the site
 
 Edit `site.yaml` for this deployment:
