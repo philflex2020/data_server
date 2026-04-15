@@ -1083,8 +1083,15 @@ static int compact_directory(const fs::path& dir,
         for (const auto& f : files) {
             std::string stem = f.stem().string();
             if (stem.size() >= 7 && stem.substr(0, 7) == "compact") continue;
-            auto sep = stem.find('_');
-            if (sep != std::string::npos) { out_prefix = stem.substr(0, sep) + "_"; break; }
+            // Find the '_' immediately before the timestamp (first '_' followed by a digit).
+            // Handles both "0215D1D8_20260415T..." and "SITE_A_20260415T..." correctly.
+            for (size_t i = 0; i + 1 < stem.size(); ++i) {
+                if (stem[i] == '_' && std::isdigit((unsigned char)stem[i+1])) {
+                    out_prefix = stem.substr(0, i + 1);  // includes trailing '_'
+                    break;
+                }
+            }
+            if (!out_prefix.empty()) break;
         }
     } else if (!cfg.filename_prefix.empty()) {
         out_prefix = cfg.filename_prefix + "_";
