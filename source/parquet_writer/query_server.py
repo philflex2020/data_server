@@ -33,7 +33,7 @@ def new_con():
     if files:
         db.execute(
             f"CREATE VIEW data AS "
-            f"SELECT * FROM read_parquet('{GLOB}', hive_partitioning=true)"
+            f"SELECT * FROM read_parquet('{GLOB}', hive_partitioning=true, union_by_name=true)"
         )
     return db, len(files)
 
