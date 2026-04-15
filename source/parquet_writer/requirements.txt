@@ -1,0 +1,4 @@
+pyarrow
+paho-mqtt
+duckdb
+pyyaml

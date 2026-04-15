@@ -15,6 +15,8 @@ COPY --from=builder /build/parquet_writer /usr/local/bin/parquet_writer
 COPY entrypoint.sh /entrypoint.sh
 COPY README.k3s.md /README.k3s.md
 COPY site.yaml /site.yaml
+COPY requirements.txt /python/requirements.txt
+COPY *.py /python/
 RUN chmod +x /entrypoint.sh
 # Default MQTT broker — overridden at runtime by the MQTT_HOST secret
 ARG DEFAULT_MQTT_HOST=localhost
