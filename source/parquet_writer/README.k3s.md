@@ -110,36 +110,28 @@ Edit `site.yaml` for this deployment:
 
 All other fields can stay at their defaults for a demo.
 
-## 7 — Build the writer binary
+## 7 — Generate manifests and deploy
 
-```bash
-make all
-```
-
-Installs build deps if missing, then compiles `parquet_writer`.
-
-## 8 — Generate and apply manifests
+The writer binary is compiled **inside the Docker image** (two-stage build)
+so no local C++ toolchain is needed.
 
 ```bash
 make configmap
 ```
 
-Runs `generate_eks_manifests.py` from `site.yaml`, writes `manifests/`,
-applies the ConfigMap to k3s, and restarts the pod (first run will show
-an error if the pod doesn't exist yet — that's fine).
-
-## 9 — Build image and deploy (demo path)
+Generates `manifests/` from `site.yaml` and applies the ConfigMap to k3s.
+First run may show a rollout error if the pod doesn't exist yet — ignore it.
 
 ```bash
 make demo
 ```
 
-Builds the Docker image locally (`parquet-writer:latest`), imports it into
-k3s (bypasses a registry), and bounces the pod.  Requires sudo for the
-k3s ctr import step.
+Builds `parquet-writer:latest` via Docker (compiles the binary inside),
+imports the image into k3s, and bounces the pod.
 
-If sudo prompts for a password mid-run, use the manual steps shown in
-`make help` under "Manual deploy".
+> `make all` is only needed if you want to run the binary directly on the
+> host outside of Docker (e.g. native performance testing). Skip it for
+> the standard k3s demo.
 
 ## 10 — Verify
 
