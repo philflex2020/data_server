@@ -237,6 +237,11 @@ purge: clean
 DEPLOY_HOST ?=
 DEPLOY_DIR  ?= /home/phil/build/parquet-writer
 
+# Use ~/.kube/config if KUBECONFIG is not already set in the environment.
+# k3s kubectl defaults to /etc/rancher/k3s/k3s.yaml (requires sudo) so
+# we must point it at the user kubeconfig explicitly.
+export KUBECONFIG ?= $(HOME)/.kube/config
+
 # Namespace is read from the generated manifests (set in site.yaml → make configmap)
 NS = $(shell grep 'namespace:' manifests/deployment.yaml 2>/dev/null | head -1 | awk '{print $$2}')
 

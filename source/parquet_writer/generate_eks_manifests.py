@@ -343,23 +343,32 @@ if __name__ == "__main__":
         print("  query pod:    disabled (set eks.query_port in site.yaml to enable)")
 
     write(f"{output_dir}/kustomization.yaml", kustomization_yaml(s))
-    ns     = eks["namespace"]
-    host   = s["mqtt"]["host"]
-    region = eks["region"]
+    ns      = eks["namespace"]
+    host    = s["mqtt"]["host"]
+    region  = eks["region"]
+    is_local = str(eks.get("account_id", "")).lower() in ("local", "k3s", "")
 
-    print(f"\nPush writer image to ECR:")
-    print(f"  aws ecr get-login-password --region {region} | \\")
-    print(f"    docker login --username AWS --password-stdin {image.split('/')[0]}")
-    print(f"  docker tag parquet-writer:latest {image}")
-    print(f"  docker push {image}")
-    if query_port:
-        print(f"\nPush query image to ECR:")
-        print(f"  docker tag parquet-query:latest {query_image}")
-        print(f"  docker push {query_image}")
-    print(f"\nCreate namespace + secret:")
+    if is_local:
+        print(f"\nLocal k3s — no ECR push needed.")
+    else:
+        print(f"\nPush writer image to ECR:")
+        print(f"  aws ecr get-login-password --region {region} | \\")
+        print(f"    docker login --username AWS --password-stdin {image.split('/')[0]}")
+        print(f"  docker tag parquet-writer:latest {image}")
+        print(f"  docker push {image}")
+        if query_port:
+            print(f"\nPush query image to ECR:")
+            print(f"  docker tag parquet-query:latest {query_image}")
+            print(f"  docker push {query_image}")
+
+    print(f"\nCreate namespace + secret (if not already done):")
     print(f"  kubectl create namespace {ns}")
     print(f"  kubectl create secret generic parquet-writer-secrets \\")
-    print(f"    --from-literal=MQTT_HOST={host} \\")
+    if is_local:
+        print(f"    --from-literal=MQTT_HOST=<broker-ip> \\")
+        print(f"    # use host LAN IP, not localhost — pod cannot reach loopback")
+    else:
+        print(f"    --from-literal=MQTT_HOST={host} \\")
     print(f"    -n {ns}")
     print(f"\nApply manifests:")
     print(f"  kubectl apply -k {output_dir}/")
