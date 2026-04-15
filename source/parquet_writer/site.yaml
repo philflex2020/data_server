@@ -51,7 +51,8 @@
 # │ MQTT QoS                              │ mqtt.qos         │ 0        │
 # │ Health port                           │ eks.health_port  │ 8771     │
 # │ Liveness initial delay                │ eks.liveness_..  │ 30 s     │
-# │ Compaction during capture             │ capture.compact  │ false    │
+# │ Compaction enabled                    │ capture.compact..│ true     │
+# │ Compact interval / min files          │ capture.compact..│ 600 / 3  │
 # └───────────────────────────────────────┴──────────────────┴──────────┘
 #
 # Secret (never in this file):
@@ -110,13 +111,16 @@ capture:
   # host_path: /media/phil/08958e92-490f-45e4-9ccd-9c3a065f3d22
   #            [OPTIONAL] if set, mounts this host directory directly instead of a PVC
   #            useful for external drives; omit to use PVC (internal storage)
-  flush_interval_seconds: 30     # 10 min flush per manager instructions; lower = smaller files
+  flush_interval_seconds: 60      # [REVIEW] 1-minute flush files (10 files → 1 compacted)
 
   # ── FIXED ───────────────────────────────────────────────────────────
   compression:            snappy
   max_messages_per_part:  5000000
   max_total_buffer_rows:  2000000
-  compact_enabled:        false   # never compact during live capture — do it offline
+  compact_enabled:        true    # merge 1-min flush files into 10-min files in background
+  compact_interval_seconds: 600   # scan every 10 min
+  compact_min_files:      3       # don't compact unless at least 3 files present
+  compact_min_age_seconds: 120    # only touch files older than 2× flush_interval
 
 eks:
   # ── MUST CHANGE ─────────────────────────────────────────────────────

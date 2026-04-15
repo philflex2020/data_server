@@ -194,6 +194,9 @@ data:
 {output_block}
     compact:
       enabled: {str(cap["compact_enabled"]).lower()}
+      interval_seconds: {cap.get("compact_interval_seconds", 600)}
+      min_files: {cap.get("compact_min_files", 3)}
+      min_age_seconds: {cap.get("compact_min_age_seconds", 0)}
     guard:
       min_free_gb: 1.0
     health:
