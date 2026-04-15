@@ -110,6 +110,10 @@ Edit `site.yaml` for this deployment:
 
 All other fields can stay at their defaults for a demo.
 
+> **k3s storage class:** change `eks.storage_class` from `gp2` to `local-path`
+> — k3s ships with `local-path` as its default provisioner, not `gp2` (AWS EBS).
+> Check available classes with `kubectl get storageclass`.
+
 ## 7 — Generate manifests and deploy
 
 The writer binary is compiled **inside the Docker image** (two-stage build)
