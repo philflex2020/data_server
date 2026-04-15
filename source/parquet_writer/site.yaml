@@ -53,6 +53,10 @@
 # │ Liveness initial delay                │ eks.liveness_..  │ 30 s     │
 # │ Compaction enabled                    │ capture.compact..│ true     │
 # │ Compact interval / min files          │ capture.compact..│ 600 / 3  │
+# │ Min free disk space (GB)             │ capture.guard_.. │ 1.0      │
+# │ Write-ahead log enabled               │ capture.wal_en.. │ true     │
+# │ Store raw MQTT topic per row          │ capture.store_.. │ false    │
+# │ Store per-flush sample count          │ capture.store_.. │ false    │
 # └───────────────────────────────────────┴──────────────────┴──────────┘
 #
 # Secret (never in this file):
@@ -119,6 +123,10 @@ capture:
   #            [OPTIONAL] if set, mounts this host directory directly instead of a PVC
   #            useful for external drives; omit to use PVC (internal storage)
   flush_interval_seconds: 60      # [REVIEW] 1-minute flush files (10 files → 1 compacted)
+  store_mqtt_topic:   false       # [REVIEW] include raw MQTT topic string in every row
+  store_sample_count: false       # [REVIEW] include per-flush sample count column
+  guard_min_free_gb:  1.0         # [REVIEW] skip flush and warn if free space falls below this
+  wal_enabled:        true        # [REVIEW] write-ahead log — disable only for read-only replay
 
   # ── FIXED ───────────────────────────────────────────────────────────
   compression:            snappy

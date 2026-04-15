@@ -142,8 +142,8 @@ def _output_block_bench(cap, wide):
       wide_point_name: {wide}
       flush_interval_seconds: {cap["flush_interval_seconds"]}
       compression:  {cap["compression"]}
-      store_mqtt_topic:   false
-      store_sample_count: false
+      store_mqtt_topic:   {str(cap.get("store_mqtt_topic", False)).lower()}
+      store_sample_count: {str(cap.get("store_sample_count", False)).lower()}
       max_messages_per_part: {cap["max_messages_per_part"]}
       max_total_buffer_rows: {cap["max_total_buffer_rows"]}"""
 
@@ -157,8 +157,8 @@ def _output_block_fractal(cap):
       wide_point_name: false
       flush_interval_seconds: {cap["flush_interval_seconds"]}
       compression:  {cap["compression"]}
-      store_mqtt_topic:   false
-      store_sample_count: false
+      store_mqtt_topic:   {str(cap.get("store_mqtt_topic", False)).lower()}
+      store_sample_count: {str(cap.get("store_sample_count", False)).lower()}
       max_messages_per_part: {cap["max_messages_per_part"]}
       max_total_buffer_rows: {cap["max_total_buffer_rows"]}"""
 
@@ -198,12 +198,12 @@ data:
       min_files: {cap.get("compact_min_files", 3)}
       min_age_seconds: {cap.get("compact_min_age_seconds", 0)}
     guard:
-      min_free_gb: 1.0
+      min_free_gb: {cap.get("guard_min_free_gb", 1.0)}
     health:
       enabled: true
       port: {eks["health_port"]}
     wal:
-      enabled: true
+      enabled: {str(cap.get("wal_enabled", True)).lower()}
 """
 
 def deployment_yaml(s, image):
@@ -327,8 +327,7 @@ spec:
               readOnly: true
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: parquet-capture-pvc
+{_volume_data_block(cap)}
 """
 
 def kustomization_yaml(s):
