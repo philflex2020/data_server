@@ -13,7 +13,7 @@ data:
       topic:        ems/#
       topic_parser: positional
       partition_field: site_id
-      drop_columns:    ["dtype_hint", "site_id"]
+      drop_columns:    ["dtype_hint"]
       topic_patterns:
 
         # 9-seg: unit signals with device + instance  (95% of traffic)

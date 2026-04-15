@@ -118,7 +118,7 @@ def _mqtt_block_fractal(mqtt):
       topic:        ems/#
       topic_parser: positional
       partition_field: site_id
-      drop_columns:    ["dtype_hint", "site_id"]
+      drop_columns:    ["dtype_hint"]
 {FRACTAL_TOPIC_PATTERNS}"""
 
 def _output_block_bench(cap, wide):
