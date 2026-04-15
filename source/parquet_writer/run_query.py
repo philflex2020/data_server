@@ -5,7 +5,7 @@ run_query.py — CLI for the parquet-query pod (DuckDB HTTP server)
 Usage:
   python3 run_query.py health
   python3 run_query.py sites
-  python3 run_query.py latest [--site SITE_A] [--n 50]
+  python3 run_query.py latest [--site 0215D1D8] [--n 50]
   python3 run_query.py sql "SELECT site_id, point_name, val FROM data LIMIT 20"
   python3 run_query.py sql "SELECT * FROM data WHERE ts > now() - INTERVAL 1 HOUR"
 

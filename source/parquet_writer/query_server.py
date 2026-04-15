@@ -4,8 +4,8 @@ query_server.py — DuckDB HTTP query server for parquet-writer data
 
 Endpoints:
   GET  /health              pod status, parquet file count, disk free
-  GET  /sites               distinct site_ids in the data directory
-  GET  /latest?site=X&n=100 last N rows (default 100), optional site filter
+  GET  /sites               distinct unit_ids in the data directory
+  GET  /latest?site=X&n=100 last N rows (default 100), optional unit_id filter
   POST /query               body: {"sql": "SELECT * FROM data LIMIT 10"}
 
 'data' is a pre-registered DuckDB view over all parquet files in DATA_PATH.
@@ -100,9 +100,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 _, rows = rows_to_json(
-                    db.execute("SELECT DISTINCT site_id FROM data ORDER BY 1")
+                    db.execute("SELECT DISTINCT unit_id FROM data ORDER BY 1")
                 )
-                self.send_json(200, {"sites": [r["site_id"] for r in rows]})
+                self.send_json(200, {"sites": [r["unit_id"] for r in rows]})
             except Exception as e:
                 self.send_json(500, {"error": str(e)})
 
@@ -114,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"rows": [], "count": 0})
                 return
             try:
-                where = f"WHERE site_id = '{site}'" if site else ""
+                where = f"WHERE unit_id = '{site}'" if site else ""
                 cols, rows = rows_to_json(
                     db.execute(f"SELECT * FROM data {where} ORDER BY ts DESC LIMIT {n}")
                 )
