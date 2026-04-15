@@ -100,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 _, rows = rows_to_json(
-                    db.execute("SELECT DISTINCT unit_id FROM data ORDER BY 1")
+                    db.execute("SELECT DISTINCT unit_id FROM data WHERE unit_id IS NOT NULL ORDER BY 1")
                 )
                 self.send_json(200, {"sites": [r["unit_id"] for r in rows]})
             except Exception as e:

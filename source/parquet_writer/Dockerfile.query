@@ -1,5 +1,5 @@
 FROM python:3.11-slim
-RUN pip install --no-cache-dir duckdb
+RUN pip install --no-cache-dir duckdb pytz
 COPY query_server.py /query_server.py
 EXPOSE 8772
 CMD ["python3", "-u", "/query_server.py"]
