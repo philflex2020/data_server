@@ -197,7 +197,6 @@ def deployment_yaml(s, image):
     port     = eks["health_port"]
     delay    = eks["liveness_initial_delay_seconds"]
     topic_fmt = mqtt.get("topic_format", "bench")
-    unit_label = site.get("unit_id", "n-a")
 
     # For fractal format, SITE_ID comes from the MQTT topic — the secret only
     # carries MQTT_HOST.  We still inject SITE_ID for parity; entrypoint.sh will
@@ -208,8 +207,6 @@ metadata:
   name: {eks["deployment_name"]}
   namespace: {eks["namespace"]}
   labels:
-    site: {site["id"]}
-    unit: {unit_label}
     topic-format: {topic_fmt}
 spec:
   strategy:
@@ -222,8 +219,6 @@ spec:
     metadata:
       labels:
         app: parquet-writer
-        site: {site["id"]}
-        unit: {unit_label}
     spec:
       containers:
         - name: writer

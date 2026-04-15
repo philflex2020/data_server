@@ -4,8 +4,6 @@ metadata:
   name: parquet-writer-long
   namespace: data-capture
   labels:
-    site: SITE_A
-    unit: 0215D1D8
     topic-format: fractal
 spec:
   strategy:
@@ -18,8 +16,6 @@ spec:
     metadata:
       labels:
         app: parquet-writer
-        site: SITE_A
-        unit: 0215D1D8
     spec:
       containers:
         - name: writer
