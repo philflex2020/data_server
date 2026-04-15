@@ -340,7 +340,8 @@ patterns are listed first.</p>
 <pre><span class="kw">mqtt:</span>
   <span class="kw">topic:</span>           <span class="st">"ems/#"</span>          <span class="cm"># single wildcard — all 4 depths</span>
   <span class="kw">topic_parser:</span>    <span class="val">positional</span>
-  <span class="kw">partition_field:</span> <span class="val">site_id</span>          <span class="cm"># from topic, not from config</span>
+  <span class="kw">partition_field:</span> <span class="val">site_id</span>          <span class="cm"># extracted from topic, used for filename prefix</span>
+  <span class="kw">drop_columns:</span>    <span class="val">["dtype_hint", "site_id"]</span>  <span class="cm"># used for routing, not stored in parquet</span>
 
   <span class="cm"># First matching pattern wins — longer patterns listed first</span>
   <span class="kw">topic_patterns:</span>
@@ -362,24 +363,21 @@ patterns are listed first.</p>
       <span class="kw">segments:</span> <span class="val">["_","_","site_id","device","point_name","dtype_hint"]</span>
 
 <span class="kw">output:</span>
-  <span class="kw">base_path:</span>  <span class="st">/data/parquet-longbow</span>
-  <span class="kw">site_id:</span>    <span class="st">""</span>               <span class="cm"># empty — value comes from topic at runtime</span>
-  <span class="kw">partitions:</span>
-    - <span class="st">"{site_id}"</span>            <span class="cm"># first level groups by site</span>
-    - <span class="st">"{year}"</span>
-    - <span class="st">"{month}"</span>
-    - <span class="st">"{day}"</span></pre>
+  <span class="kw">base_path:</span>                    <span class="st">/data/site-capture</span>
+  <span class="kw">partitions:</span>                   <span class="val">['{year}', '{month}', '{day}']</span>
+  <span class="kw">partition_as_filename_prefix:</span> <span class="val">true</span>   <span class="cm"># SITE_A_20260414T....parquet</span>
+  <span class="kw">flush_interval_seconds:</span>       <span class="val">30</span>     <span class="cm"># set in site.yaml capture.flush_interval_seconds</span></pre>
 
 <h3>Resulting parquet columns (long format)</h3>
 <p>All four depths land in the same parquet files.  Columns absent for a given
-depth (<code>unit_id</code>, <code>instance</code>) are stored as <code>null</code> for those rows.</p>
+depth (<code>unit_id</code>, <code>instance</code>) are stored as <code>null</code> for those rows.
+<code>site_id</code> and <code>dtype_hint</code> are extracted at parse time and used for
+routing/partitioning, then <strong>dropped</strong> — they are not stored as columns.</p>
 
 <table>
   <tr><th>Column</th><th>9-seg</th><th>8-seg</th><th>7-seg</th><th>6-seg</th></tr>
   <tr><td><code>ts</code></td>
       <td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
-  <tr><td><code>site_id</code></td>
-      <td>SITE_A</td><td>SITE_A</td><td>SITE_A</td><td>SITE_A</td></tr>
   <tr><td><code>unit_id</code></td>
       <td>0215D1D8</td><td>0215D1D8</td><td><em>null</em></td><td><em>null</em></td></tr>
   <tr><td><code>device</code></td>
@@ -395,13 +393,15 @@ depth (<code>unit_id</code>, <code>instance</code>) are stored as <code>null</co
 </table>
 
 <h3>Output path</h3>
-<pre>/data/parquet-longbow/SITE_A/2026/04/14/20260414T100000Z.parquet</pre>
-<p>A broker serving multiple sites produces separate directory trees automatically —
-no config change required:</p>
-<pre>/data/parquet-longbow/
-  SITE_A/2026/04/14/...
-  SITE_B/2026/04/14/...
-  SITE_C/2026/04/14/...</pre>
+<pre>/data/site-capture/2026/04/14/SITE_A_20260414T195903Z.parquet</pre>
+<p><code>site_id</code> is extracted from the topic and used as the filename prefix
+(via <code>partition_as_filename_prefix: true</code> + <code>partition_field: site_id</code>),
+then dropped from stored columns.  A broker serving multiple sites produces
+separate files automatically:</p>
+<pre>/data/site-capture/2026/04/14/
+  SITE_A_20260414T....parquet
+  SITE_B_20260414T....parquet
+  SITE_C_20260414T....parquet</pre>
 
 <!-- ══════════════════════════════════════════════════════ TOPIC → DIR -->
 <h2 id="topic-to-dir">Topic &#8594; Directory Mapping</h2>
@@ -614,22 +614,23 @@ sed -i "s/SITE_ID_PLACEHOLDER/$SITE_ID/" /etc/writer/config.yaml</pre>
   </div>
   <div class="panel">
     <div class="panel-title">fractal — site_id is in the topic</div>
-    <p>In <code>output.site_id</code> the writer holds an <strong>empty string</strong>.
-    The value is populated at runtime from segment 2 of every incoming topic
-    (<code>ems/site/<strong>SITE_A</strong>/...</code>).
-    The writer extracts it as part of the positional parse — no secret injection needed.</p>
-    <pre><span class="cm"># site_id from topic segment 2</span>
-ems/site/<span class="st">SITE_A</span>/unit/0215D1D8/bms/...</pre>
-    <p>One broker → <em>many sites</em>.  Messages from SITE_A, SITE_B, SITE_C
-    all flow through the same pod and are automatically separated into
-    <code>site=SITE_A/</code>, <code>site=SITE_B/</code> etc.</p>
-    <pre><span class="kw">output:</span>
-  <span class="kw">site_id:</span> <span class="st">""</span>           <span class="cm"># populated from topic</span>
-  <span class="kw">partitions:</span>
-    - <span class="st">"{site_id}"</span>       <span class="cm"># groups by site first</span>
-    - <span class="st">"{year}"</span>
-    - <span class="st">"{month}"</span>
-    - <span class="st">"{day}"</span></pre>
+    <p>The writer extracts <code>site_id</code> from segment 2 of every incoming topic
+    (<code>ems/site/<strong>SITE_A</strong>/...</code>) at parse time.
+    It uses it as the <code>partition_field</code> to build the output filename prefix,
+    then <strong>drops it</strong> from the stored parquet columns.</p>
+    <pre><span class="cm"># site_id extracted from topic segment 2</span>
+ems/site/<span class="st">SITE_A</span>/unit/0215D1D8/bms/...
+         &#8593; extracted here, used for filename, then dropped</pre>
+    <p>No <code>SITE_ID</code> secret needed — the secret only carries <code>MQTT_HOST</code>.
+    <code>entrypoint.sh</code> no longer injects a site_id placeholder.</p>
+    <pre><span class="kw">mqtt:</span>
+  <span class="kw">partition_field:</span> <span class="val">site_id</span>        <span class="cm"># &#8594; filename prefix SITE_A_...</span>
+  <span class="kw">drop_columns:</span>    <span class="val">["dtype_hint", "site_id"]</span>  <span class="cm"># not stored in rows</span>
+<span class="kw">output:</span>
+  <span class="kw">partitions:</span> <span class="val">['{year}', '{month}', '{day}']</span>
+  <span class="kw">partition_as_filename_prefix:</span> <span class="val">true</span></pre>
+    <p>One broker &#8594; <em>many sites</em>.  Messages from SITE_A, SITE_B, SITE_C
+    all flow through the same pod and are automatically separated by filename prefix.</p>
   </div>
 </div>
 
@@ -789,9 +790,9 @@ is embedded in the ConfigMap.</p>
   </tr>
   <tr>
     <td><code>fractal</code></td>
-    <td><code>topic: ems/#</code><br><code>topic_patterns: [4 patterns]</code></td>
-    <td><code>""</code> (from topic at runtime)</td>
-    <td><code>[{site_id}, year, month, day]</code></td>
+    <td><code>topic: ems/#</code><br><code>topic_patterns: [4 patterns]</code><br><code>drop_columns: [dtype_hint, site_id]</code></td>
+    <td>not stored — extracted from topic, used as filename prefix, then dropped</td>
+    <td><code>[year, month, day]</code> + filename prefix <code>SITE_A_</code></td>
   </tr>
 </table>
 
@@ -805,6 +806,29 @@ Generating manifests for site=SITE_A  topic_format=fractal
   wrote manifests-fractal/configmap.yaml
   wrote manifests-fractal/deployment.yaml
   wrote manifests-fractal/kustomization.yaml</pre>
+
+<h3>make configmap — edit site.yaml and apply</h3>
+
+<p>The recommended workflow for changing the writer config on k3s:</p>
+<ol>
+  <li>Edit <code>site.yaml</code> — change <code>flush_interval_seconds</code>, <code>mqtt.host</code>, <code>topic_format</code>, etc.</li>
+  <li>Run <code>make configmap</code> — regenerates all manifests from <code>site.yaml</code>, applies the ConfigMap, and restarts the pod.</li>
+</ol>
+
+<pre><span class="cm"># edit site.yaml then:</span>
+make configmap
+
+<span class="cm"># or for a different site descriptor:</span>
+make configmap SITE=site.production.yaml</pre>
+
+<p>Key fields to tune in <code>site.yaml</code>:</p>
+<table>
+  <tr><th>Field</th><th>Current</th><th>Notes</th></tr>
+  <tr><td><code>mqtt.topic_format</code></td><td><code>fractal</code></td><td><code>bench</code> or <code>fractal</code></td></tr>
+  <tr><td><code>mqtt.host</code></td><td><code>192.168.86.51</code></td><td>MQTT broker IP</td></tr>
+  <tr><td><code>capture.flush_interval_seconds</code></td><td><code>30</code></td><td>30 for testing, 600 for production</td></tr>
+  <tr><td><code>eks.account_id</code></td><td><code>local</code></td><td><code>local</code> = use local docker image; set to AWS account ID for ECR</td></tr>
+</table>
 
 <h3>Testing with test_multi_publish.py</h3>
 
