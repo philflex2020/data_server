@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>site.yaml editor</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --accent: #58a6ff; --green: #3fb950; --yellow: #d29922;
+      --red: #f85149; --text: #c9d1d9; --muted: #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px; }
+    #layout { display: flex; flex-direction: column; height: 100vh; }
+    #toolbar {
+      display: flex; align-items: center; gap: 0.6rem;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0.45rem 1rem; flex-shrink: 0;
+    }
+    #toolbar h1 { font-size: 1rem; color: var(--accent); margin-right: 0.5rem; }
+    button {
+      background: #21262d; border: 1px solid var(--border); color: var(--text);
+      padding: 4px 12px; border-radius: 5px; cursor: pointer; font-size: 0.82rem;
+    }
+    button:hover { background: #30363d; }
+    button.primary { background: #1f6feb; border-color: #388bfd; color: #fff; }
+    button.primary:hover { background: #388bfd; }
+    #status-bar {
+      display: flex; align-items: center; gap: 1rem;
+      background: #010409; border-top: 1px solid var(--border);
+      padding: 3px 1rem; font-size: 0.75rem; color: var(--muted);
+      flex-shrink: 0; min-height: 24px;
+    }
+    #status-ok    { color: var(--green); }
+    #status-error { color: var(--red); }
+    #status-warn  { color: var(--yellow); }
+    #editor-container { flex: 1; overflow: hidden; }
+    #marker-panel {
+      background: var(--surface); border-top: 1px solid var(--border);
+      max-height: 160px; overflow-y: auto; flex-shrink: 0;
+      display: none;
+    }
+    #marker-panel.visible { display: block; }
+    .marker-row {
+      display: flex; gap: 0.5rem; padding: 4px 1rem;
+      border-bottom: 1px solid #0d1117; cursor: pointer;
+      font-size: 0.78rem; align-items: baseline;
+    }
+    .marker-row:hover { background: #1c2330; }
+    .sev-error { color: var(--red); font-weight: 600; min-width: 44px; }
+    .sev-warn  { color: var(--yellow); font-weight: 600; min-width: 44px; }
+    .marker-loc { color: var(--muted); min-width: 60px; }
+    .marker-msg { color: var(--text); }
+    #overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; z-index: 10; align-items: center; justify-content: center;
+    }
+    #overlay.visible { display: flex; }
+    #overlay-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.5rem 2rem; max-width: 480px; width: 90%;
+    }
+    #overlay-box h2 { color: var(--accent); font-size: 1rem; margin-bottom: 0.8rem; }
+    #overlay-box p  { color: var(--text); font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.5; }
+    #overlay-box textarea {
+      width: 100%; height: 80px; background: #0d1117; border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; padding: 6px; font-family: monospace;
+      font-size: 0.78rem; resize: vertical; margin-bottom: 1rem;
+    }
+    #overlay-box .btn-row { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .spacer { flex: 1; }
+    #error-count { cursor: pointer; }
+    #error-count:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+<div id="layout">
+  <div id="toolbar">
+    <h1>site.yaml</h1>
+    <button onclick="loadDefault()">Load default</button>
+    <button onclick="openLoad()">Paste YAML</button>
+    <button onclick="downloadYaml()">Download</button>
+    <button class="primary" onclick="validateNow()">Validate</button>
+    <span class="spacer"></span>
+    <span id="error-count" onclick="togglePanel()" title="Click to show/hide problems"></span>
+  </div>
+  <div id="editor-container"></div>
+  <div id="marker-panel"></div>
+  <div id="status-bar">
+    <span id="status-msg">Loading editor…</span>
+    <span class="spacer"></span>
+    <span id="cursor-pos">Ln 1, Col 1</span>
+  </div>
+</div>
+
+<!-- Paste/load overlay -->
+<div id="overlay">
+  <div id="overlay-box">
+    <h2>Paste YAML</h2>
+    <p>Paste the contents of your site.yaml below, then click Load.</p>
+    <textarea id="paste-area" placeholder="# paste site.yaml here…"></textarea>
+    <div class="btn-row">
+      <button onclick="closeLoad()">Cancel</button>
+      <button class="primary" onclick="loadPasted()">Load</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── JSON Schema for site.yaml ──────────────────────────────────────────────
+  const SITE_YAML_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "site.yaml",
+    "description": "Fractal EMS parquet_writer site deployment descriptor",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "site": {
+        "type": "object",
+        "description": "Site identity — id, unit_id, and human label.",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id":          { "type": "string",  "description": "Site identifier written as the `site_id` column in every parquet row. E.g. `SITE_A` or `02285AD0`." },
+          "unit_id":     { "type": "string",  "description": "Asset serial / unit identifier. In bench format this is the partition key. In fractal format it is a label only (unit_id is extracted from the MQTT topic)." },
+          "description": { "type": "string",  "description": "Human-readable label. Not used by the writer — for operator reference only." }
+        }
+      },
+      "mqtt": {
+        "type": "object",
+        "description": "MQTT broker connection and topic parser settings.",
+        "additionalProperties": false,
+        "required": ["host", "client_id", "topic_format"],
+        "properties": {
+          "host":         { "type": "string",  "description": "MQTT broker IP address or hostname at the site." },
+          "default_host": { "type": "string",  "description": "Compiled into the Docker image as a fallback. Used when the `parquet-writer-secrets` Kubernetes secret is absent. Override at runtime by creating the secret." },
+          "client_id":    { "type": "string",  "description": "MQTT client ID. Must be unique per running pod/process — two clients with the same ID will disconnect each other." },
+          "topic_format": { "type": "string",  "enum": ["bench", "fractal"], "description": "Topic parser mode.\n\n**bench** — flat 6-segment tree. Requires `topic_segments`, `drop_columns`, `partition_field`.\n\n**fractal** — Fractal EMS variable-depth topics (4 patterns: 6/7/8/9 segments). Topic root is `<topic_root>/#`." },
+          "topic_root":   { "type": "string",  "description": "MQTT subscribe root. Writer subscribes to `<topic_root>/#`. Default: `ems`." },
+          "topic_segments": { "type": "array", "items": { "type": "string" }, "description": "Positional segment parser list for **bench** format only. E.g. `[source_type, unit_id, device_type, device, point_name, dtype_hint]`." },
+          "drop_columns": { "type": "array", "items": { "type": "string" }, "description": "Columns to drop after topic parsing (bench format only). E.g. `[source_type, dtype_hint]`." },
+          "partition_field": { "type": "string", "description": "Partition key field name (bench format only). E.g. `unit_id`." },
+          "port":         { "type": "integer", "default": 1883, "minimum": 1, "maximum": 65535, "description": "MQTT broker port. Default: **1883**." },
+          "qos":          { "type": "integer", "enum": [0, 1, 2], "default": 0, "description": "MQTT QoS level. Fixed at **0** for high-throughput performance." },
+          "compound_field_name": { "type": "array", "items": { "type": "string" }, "description": "Fields to concatenate into a compound column name in 3-file wide RG mode." }
+        }
+      },
+      "capture": {
+        "type": "object",
+        "description": "Parquet capture settings — flush interval, storage path, WAL, compaction.",
+        "additionalProperties": false,
+        "properties": {
+          "format":       { "type": "string", "enum": ["long", "wide"], "description": "Output format.\n\n**long** — one row per MQTT message. Best for site capture.\n\n**wide** — one row per timestamp, one column per signal. Best for bench." },
+          "base_path":    { "type": "string", "description": "Base path inside the container for parquet output. Must stay under `/data` — diagnostic scripts (`dump_parquet.py` etc.) search this mount point." },
+          "host_path":    { "type": "string", "description": "Host drive path. If set, mounts this host directory directly instead of a PVC. Useful for external drives on bare-metal." },
+          "flush_interval_seconds": { "type": "integer", "minimum": 5, "maximum": 600, "description": "How often to flush the in-memory buffer to parquet files. Default: **30** seconds." },
+          "store_mqtt_topic":   { "type": "boolean", "description": "Include the raw MQTT topic string as a column in every parquet row. Useful for debugging. Default: false." },
+          "store_sample_count": { "type": "boolean", "description": "Include per-flush sample count as a column. Default: false." },
+          "guard_min_free_gb":  { "type": "number",  "minimum": 0.1, "description": "Skip flush and emit a warning when free disk space falls below this threshold (GB). Default: **1.0**." },
+          "wal_enabled":        { "type": "boolean", "description": "Write-ahead log for crash recovery. Reduces data loss window from `flush_interval` to `wal.checkpoint_interval_seconds`. Disable only for read-only replay. Default: **true**." },
+          "warn_duplicate_topics": { "type": "boolean", "description": "Log a warning when the same (partition, topic) pair fires more than once within the same flush window. Useful for diagnosing MQTT re-delivery or shared unit IDs. Can be toggled via SIGHUP." },
+          "compression":        { "type": "string", "enum": ["zstd", "snappy", "gzip", "none"], "description": "Parquet compression codec. **zstd** gives best compression ratio. **snappy** gives fastest decode. Default: **zstd**." },
+          "max_messages_per_part":   { "type": "integer", "description": "Max MQTT messages per partition before a forced flush. Prevents unbounded memory growth on high-rate topics." },
+          "max_total_buffer_rows":   { "type": "integer", "description": "Max total in-memory buffer rows across all partitions before a forced flush." },
+          "compact_enabled":         { "type": "boolean", "description": "Enable background compaction of small parquet files into larger ones. Reduces file count over time. Default: **false** — enable after initial capture settles." },
+          "compact_interval_seconds":{ "type": "integer", "description": "How often the compactor scans for eligible files (seconds). Default: **600**." },
+          "compact_min_files":       { "type": "integer", "minimum": 2, "description": "Minimum number of files in a partition before compaction triggers. Default: **3**." },
+          "compact_min_age_seconds": { "type": "integer", "description": "Only compact files older than this many seconds (prevents touching files still being written). Default: **120**." },
+          "wal": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "WAL (write-ahead log) checkpoint configuration.",
+            "properties": {
+              "checkpoint_interval_seconds": { "type": "integer", "minimum": 0, "description": "Snapshot the in-memory buffer to the WAL every N seconds. Reduces crash data loss from `flush_interval` (30s) down to this value. Set **0** to disable checkpointing. Default: **5**." }
+            }
+          },
+          "rg3file": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "3-file row-group output: one RG per `unit_id` per flush, written as `_units` / `_site` / `_comms` parquet files alongside the normal long-format capture.",
+            "properties": {
+              "enabled":               { "type": "boolean", "description": "Write 3-file RG parquet alongside long capture. The rg3 output is the hot tier consumed by `flux_duck`. Default: **true**." },
+              "path":                  { "type": "string",  "description": "Output path for rg3 files. Empty string = `base_path + '_rg3'` (auto-derived). Leave empty unless you need to override." },
+              "date_partitions":       { "type": "boolean", "description": "Partition rg3 output by date into `YYYY/MM/DD` subdirectories. Required for efficient time-range queries. Default: **true**." },
+              "delta_string_encoding": { "type": "boolean", "description": "Use `DELTA_BYTE_ARRAY` encoding for string columns. Leave **false** at 30s flush granularity — `RLE_DICTIONARY` is more efficient for short windows. Default: **false**." }
+            }
+          }
+        }
+      },
+      "eks": {
+        "type": "object",
+        "description": "Kubernetes / EKS deployment settings — image registry, storage, namespace.",
+        "additionalProperties": false,
+        "properties": {
+          "account_id":      { "type": "string",  "description": "AWS account ID (12-digit string), `'auto'` to resolve via `aws sts get-caller-identity`, or `'local'` for k3s." },
+          "region":          { "type": "string",  "description": "AWS region where the ECR repository lives. E.g. `us-east-1`." },
+          "repo":            { "type": "string",  "description": "ECR repository name for the parquet_writer image." },
+          "tag":             { "type": "string",  "description": "Docker image tag. Default: **latest**." },
+          "storage_gb":      { "type": "integer", "minimum": 1, "description": "EBS/PVC volume size in GiB. 20 GiB ≈ 3 days at 63 signals × 1 Hz." },
+          "namespace":       { "type": "string",  "description": "Kubernetes namespace. Default: `data-capture`." },
+          "deployment_name": { "type": "string",  "description": "Kubernetes Deployment name." },
+          "storage_class":   { "type": "string",  "enum": ["local-path", "gp2", "gp3"], "description": "Kubernetes StorageClass.\n\n**local-path** — for k3s on bare-metal.\n\n**gp2 / gp3** — for EKS on AWS. ⚠️ Using `gp2` on k3s will leave the PVC in Pending forever." },
+          "health_port":     { "type": "integer", "default": 8771, "description": "Port for `/health` and `/subs` endpoints. Fixed at **8771**." },
+          "liveness_initial_delay_seconds": { "type": "integer", "description": "Kubernetes liveness probe initial delay in seconds. Probe only opens after MQTT connects. Default: **30**." },
+          "query_repo":      { "type": "string",  "description": "ECR repository name for the query pod (flux_duck) image." },
+          "query_port":      { "type": "integer", "default": 8772, "description": "Host port for the query pod legacy API (`/query`, `/sites`, `/latest`, `/live`). Default: **8772**." }
+        }
+      },
+      "live_stream": {
+        "type": "object",
+        "description": "Arrow IPC push stream — writer pushes a 1 Hz snapshot to connected flux_duck query pods.",
+        "additionalProperties": false,
+        "properties": {
+          "enabled":     { "type": "boolean", "description": "Enable the 1 Hz Arrow IPC push stream. The writer broadcasts a live COV snapshot to all connected subscribers. Default: **false**." },
+          "address":     { "type": "string",  "description": "Socket address used by both writer (binds) and query pod (connects).\n\n**Unix socket** (shared PVC, same node): `unix:///data/site-capture/.live.sock`\n\n**TCP** (cross-node): `tcp://0.0.0.0:8774` on the writer, then set `FLUX_LIVE_CONNECT=tcp://<node-ip>:8774` on the query pod." },
+          "interval_ms": { "type": "integer", "minimum": 100, "maximum": 60000, "description": "Push cadence in milliseconds. Default: **1000** (1 Hz)." }
+        }
+      },
+      "query": {
+        "type": "object",
+        "description": "flux_duck query service configuration — read by Config.__post_init__ from FLUX_SITE_YAML. All values can be overridden by FLUX_* environment variables.",
+        "additionalProperties": false,
+        "properties": {
+          "hot_base":       { "type": "string",  "description": "Base directory for hot-tier rg3 parquet files. Auto-derived from `capture.rg3file.path` (or `capture.base_path + '_rg3'`) when not set." },
+          "wide_base":      { "type": "string",  "description": "Path to local compact wide files produced by `convert_wide_v2`. When set, takes precedence over the S3 cold tier for data older than `hot_days`. Structure: `wide_base/YYYY/MM/DD/units_wide.parquet`. Leave empty to use S3 cold tier." },
+          "hot_days":       { "type": "integer", "minimum": 1, "description": "Age in days beyond which data is read from the wide/S3 cold tier instead of the local hot tier. Default: **14**." },
+          "site_dirs":      { "type": "boolean", "description": "**true** — `hot_base` contains per-site subdirectories (multi-site k3s deployment).\n\n**false** — `hot_base` is a single site's rg3 data directory (native writer on .34)." },
+          "file_glob":      { "type": "string",  "description": "Glob pattern within each `YYYY/MM/DD` directory. `*.parquet` reads all 3-file flush types (`_units`, `_site`, `_comms`). Default: **`*.parquet`**." },
+          "include_quality":{ "type": "boolean", "description": "Include the DNP3 `_quality` column in query responses (1=ONLINE, 4=COMM_LOST). Default: **false**." },
+          "max_rows":       { "type": "integer", "minimum": 1, "description": "Hard row cap per query response. Prevents runaway queries from exhausting memory. Default: **100000**." },
+          "timeout_sec":    { "type": "integer", "minimum": 1, "description": "Query timeout in seconds. Default: **60**." },
+          "duckdb_threads": { "type": "integer", "minimum": 1, "description": "DuckDB worker thread count. Default: **4**." },
+          "duckdb_memory":  { "type": "string",  "description": "DuckDB memory limit string. E.g. `4GB`, `512MB`. Default: **`4GB`**." },
+          "cold_s3_bucket": { "type": "string",  "description": "S3 bucket containing compact-wide daily parquet files (cold tier). E.g. `fractal-ems`." },
+          "cold_s3_prefix": { "type": "string",  "description": "S3 key prefix for cold-tier compact-wide files. E.g. `compact`." },
+          "influx_compat":  { "type": "boolean", "description": "Enable InfluxDB compatibility mode. Remaps Telegraf tag names to parquet column names so Grafana dashboards built against InfluxDB work unchanged against flux_duck. Default: **false**.\n\nSee `tag_map` for the remapping table." },
+          "tag_map": {
+            "type": "object",
+            "description": "Tag name remapping table — active when `influx_compat: true`. Maps incoming Flux filter tag names to parquet column names. A `null` / `~` value drops the filter condition (no parquet equivalent).\n\nDefaults when empty:\n- `unit_controller_id` → `unit_id`\n- `source_device_id` → `instance`\n- `_measurement` → `device`\n- `site_controller_id`, `data_type`, `topic` → dropped",
+            "additionalProperties": {
+              "oneOf": [{ "type": "string" }, { "type": "null" }]
+            }
+          }
+        }
+      }
+    }
+  };
+
+  // ── Default site.yaml template ─────────────────────────────────────────────
+  const DEFAULT_YAML = `# site.yaml — Fractal EMS parquet_writer deployment descriptor
+# Edit below. Errors are highlighted inline. Hover over any key for documentation.
+
+site:
+  id:          SITE_A        # written as site_id column in every parquet row
+  unit_id:     0215D1D8      # asset serial number
+  description: "My site"
+
+mqtt:
+  host:         192.168.86.51
+  client_id:    parquet-writer-site-a
+  topic_format: fractal       # bench | fractal
+  topic_root:   ems
+  port:         1883
+  qos:          0
+
+capture:
+  format:                  long
+  base_path:               /data/site-capture
+  flush_interval_seconds:  30
+  store_mqtt_topic:        false
+  store_sample_count:      false
+  guard_min_free_gb:       1.0
+  wal_enabled:             true
+  warn_duplicate_topics:   true
+  compression:             zstd
+  compact_enabled:         false
+  compact_interval_seconds: 600
+  compact_min_files:       3
+  compact_min_age_seconds: 120
+  rg3file:
+    enabled:               true
+    path:                  ""
+    delta_string_encoding: false
+
+eks:
+  account_id:     local
+  region:         us-east-1
+  repo:           parquet-writer
+  tag:            latest
+  storage_gb:     20
+  namespace:      data-capture
+  deployment_name: parquet-writer-long
+  storage_class:  local-path    # local-path for k3s; gp2 / gp3 for EKS
+  health_port:    8771
+  liveness_initial_delay_seconds: 30
+  query_repo:     parquet-query
+  query_port:     8772
+
+live_stream:
+  enabled:     false
+  address:     "unix:///data/site-capture/.live.sock"
+  interval_ms: 1000
+
+query:
+  hot_days:        14
+  site_dirs:       true
+  file_glob:       "*.parquet"
+  include_quality: false
+  max_rows:        100000
+  timeout_sec:     60
+  duckdb_threads:  4
+  duckdb_memory:   "4GB"
+  cold_s3_bucket:  fractal-ems
+  cold_s3_prefix:  compact
+  influx_compat:   false
+  tag_map:
+    unit_controller_id: unit_id
+    source_device_id:   instance
+    _measurement:       device
+    site_controller_id: ~
+    data_type:          ~
+    topic:              ~
+`;
+
+  // ── Monaco loader ──────────────────────────────────────────────────────────
+  // js-yaml must load BEFORE Monaco's AMD loader.js so it exports to
+  // window.jsyaml.  js-yaml 4.x uses UMD and self-registers as an anonymous
+  // AMD module when window.define is already present, which means jsyaml is
+  // never set as a global — so load it first.
+  var require = {
+    paths: { vs: '/vendor/node_modules/monaco-editor/min/vs' },
+    // Monaco 0.55 fires both onLanguageEncountered and the tokeniser factory
+    // simultaneously when editor.create uses language:'yaml', causing
+    // yaml-DYGvmE88.js to call define() twice.  The loader has a built-in
+    // suppression list for exactly this scenario.
+    ignoreDuplicateModules: ['vs/yaml-DYGvmE88'],
+  };
+</script>
+<script src="/vendor/node_modules/js-yaml/dist/js-yaml.min.js"></script>
+<script src="/vendor/node_modules/monaco-editor/min/vs/loader.js"></script>
+<script>
+  require(['vs/editor/editor.main'], function() {
+    const s2 = document.createElement('script');
+    s2.src = '/ajv2020.bundle.js';
+    s2.onload = initEditor;
+    document.head.appendChild(s2);
+  });
+
+  var editor, ajv, validateFn, currentMarkers = [];
+
+  // ── YAML path helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Given text and a 1-based line number, return the schema path as an array.
+   * E.g. hovering on "hot_days" under "query:" returns ["query", "hot_days"].
+   * Works by reading the key on the target line then walking backwards by indentation.
+   */
+  function getYamlPathAtLine(text, lineNumber) {
+    const lines = text.split('\n');
+    const targetLine = lines[lineNumber - 1];
+    if (!targetLine) return null;
+
+    const trimmed = targetLine.trimStart();
+    if (!trimmed || trimmed.startsWith('#')) return null;
+
+    // key must start the trimmed line (not a list item or pure value)
+    const keyMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/);
+    if (!keyMatch) return null;
+
+    const key = keyMatch[1];
+    const indent = targetLine.length - trimmed.length;
+    const path = [key];
+    let currentIndent = indent;
+
+    for (let i = lineNumber - 2; i >= 0; i--) {
+      const l = lines[i];
+      const t = l.trimStart();
+      if (!t || t.startsWith('#')) continue;
+      const li = l.length - t.length;
+      if (li < currentIndent) {
+        const m = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/);
+        if (m) {
+          path.unshift(m[1]);
+          currentIndent = li;
+          if (li === 0) break;
+        }
+      }
+    }
+    return path;
+  }
+
+  /**
+   * Walk the schema following `path` and return the schema node, or null.
+   */
+  function getSchemaNode(schema, path) {
+    let node = schema;
+    for (const key of path) {
+      if (!node) return null;
+      if (node.properties && node.properties[key]) {
+        node = node.properties[key];
+      } else if (node.additionalProperties && typeof node.additionalProperties === 'object') {
+        node = node.additionalProperties;
+      } else {
+        return null;
+      }
+    }
+    return node;
+  }
+
+  /**
+   * Given a cursor line + indent, walk backwards to find the parent schema node.
+   * Used by the completion provider to know which keys to suggest.
+   */
+  function getParentSchemaNode(text, lineNumber, cursorIndent) {
+    const lines = text.split('\n');
+    const path = [];
+    let currentIndent = cursorIndent;
+
+    for (let i = lineNumber - 1; i >= 0; i--) {
+      const l = lines[i];
+      const t = l.trimStart();
+      if (!t || t.startsWith('#')) continue;
+      const li = l.length - t.length;
+      if (li < currentIndent) {
+        const m = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/);
+        if (m) {
+          path.unshift(m[1]);
+          currentIndent = li;
+          if (li === 0) break;
+        }
+      }
+    }
+    return path.length > 0 ? getSchemaNode(SITE_YAML_SCHEMA, path) : SITE_YAML_SCHEMA;
+  }
+
+  /**
+   * Build Markdown hover content from a schema node.
+   */
+  function buildHoverMarkdown(node, key) {
+    if (!node) return null;
+    const parts = [];
+    if (node.description) parts.push(node.description);
+    const meta = [];
+    if (node.type) meta.push(`**Type:** \`${node.type}\``);
+    if (node.default !== undefined) meta.push(`**Default:** \`${JSON.stringify(node.default)}\``);
+    if (node.enum) meta.push(`**Allowed:** ${node.enum.map(v => `\`${v}\``).join(' | ')}`);
+    if (node.minimum !== undefined) meta.push(`**Min:** ${node.minimum}`);
+    if (node.maximum !== undefined) meta.push(`**Max:** ${node.maximum}`);
+    if (meta.length) parts.push(meta.join('  \n'));
+    return parts.length ? parts.join('\n\n') : null;
+  }
+
+  // ── Editor init ────────────────────────────────────────────────────────────
+
+  function initEditor() {
+    const lang = monaco.languages.getLanguages().some(l => l.id === 'yaml') ? 'yaml' : 'plaintext';
+
+    editor = monaco.editor.create(document.getElementById('editor-container'), {
+      value: DEFAULT_YAML,
+      language: lang,
+      theme: 'vs-dark',
+      fontSize: 13,
+      lineNumbers: 'on',
+      wordWrap: 'off',
+      minimap: { enabled: true },
+      scrollBeyondLastLine: false,
+      tabSize: 2,
+      insertSpaces: true,
+      renderWhitespace: 'boundary',
+      bracketPairColorization: { enabled: true },
+      guides: { indentation: true },
+      suggest: { showWords: false },
+    });
+
+    // AJV setup
+    const Ajv2020 = window.Ajv2020Pkg.default || window.Ajv2020Pkg;
+    ajv = new Ajv2020({ allErrors: true, strict: false });
+    validateFn = ajv.compile(SITE_YAML_SCHEMA);
+
+    // Cursor position
+    editor.onDidChangeCursorPosition(e => {
+      document.getElementById('cursor-pos').textContent =
+        `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
+    });
+
+    // Validate on change (debounced 600ms)
+    let debounceTimer;
+    editor.onDidChangeModelContent(() => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(validateNow, 600);
+    });
+
+    // ── Hover provider — show schema description on key hover ────────────────
+    monaco.languages.registerHoverProvider(lang, {
+      provideHover: function(model, position) {
+        const text  = model.getValue();
+        const path  = getYamlPathAtLine(text, position.lineNumber);
+        if (!path || path.length === 0) return null;
+
+        const node = getSchemaNode(SITE_YAML_SCHEMA, path);
+        const md   = buildHoverMarkdown(node, path[path.length - 1]);
+        if (!md) return null;
+
+        const lineContent = model.getLineContent(position.lineNumber);
+        const keyMatch    = lineContent.trimStart().match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+        if (!keyMatch) return null;
+
+        const keyStart = lineContent.indexOf(keyMatch[1]) + 1;
+        const keyEnd   = keyStart + keyMatch[1].length;
+
+        return {
+          range: new monaco.Range(position.lineNumber, keyStart, position.lineNumber, keyEnd),
+          contents: [{ value: '**`' + path.join('.') + '`**\n\n' + md, isTrusted: true }],
+        };
+      }
+    });
+
+    // ── Completion provider — suggest schema keys with descriptions ───────────
+    monaco.languages.registerCompletionItemProvider(lang, {
+      triggerCharacters: ['\n', ' '],
+      provideCompletionItems: function(model, position) {
+        const text   = model.getValue();
+        const line   = model.getLineContent(position.lineNumber);
+        const indent = line.length - line.trimStart().length;
+
+        // Only suggest at start of a new key (line has only whitespace before cursor)
+        if (line.substring(0, position.column - 1).trim() !== '') return { suggestions: [] };
+
+        const parentNode = getParentSchemaNode(text, position.lineNumber - 1, indent);
+        if (!parentNode || !parentNode.properties) return { suggestions: [] };
+
+        // Collect keys already present at this indent level so we can de-dupe
+        const existingKeys = new Set();
+        const lines = text.split('\n');
+        for (const l of lines) {
+          const t = l.trimStart();
+          const li = l.length - t.length;
+          if (li === indent) {
+            const m = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:/);
+            if (m) existingKeys.add(m[1]);
+          }
+        }
+
+        const suggestions = Object.entries(parentNode.properties)
+          .filter(([key]) => !existingKeys.has(key))
+          .map(([key, schema]) => {
+            const isObj  = schema.type === 'object';
+            const detail = schema.type
+              ? (schema.enum ? schema.enum.join(' | ') : schema.type)
+              : '';
+            const doc = schema.description || '';
+            return {
+              label:            key,
+              kind:             isObj
+                                  ? monaco.languages.CompletionItemKind.Module
+                                  : monaco.languages.CompletionItemKind.Field,
+              detail:           detail,
+              documentation:    { value: doc, isTrusted: true },
+              insertText:       isObj ? key + ':\n' + ' '.repeat(indent + 2) : key + ': ',
+              insertTextRules:  monaco.languages.CompletionItemInsertTextRule.None,
+              sortText:         key,
+            };
+          });
+
+        return { suggestions };
+      }
+    });
+
+    // Initial validate
+    setTimeout(validateNow, 800);
+    document.getElementById('status-msg').textContent = 'Ready — hover keys for docs, Ctrl+Space for completions';
+  }
+
+  // ── Validation ─────────────────────────────────────────────────────────────
+
+  function validateNow() {
+    if (!editor || !validateFn) return;
+    const text = editor.getValue();
+    let parsed;
+    const markers = [];
+
+    // 1. YAML syntax check
+    try {
+      parsed = jsyaml.load(text);
+    } catch (e) {
+      const match = e.mark ? e.mark : null;
+      const line = match ? match.line + 1 : 1;
+      const col  = match ? match.column + 1 : 1;
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        message: 'YAML syntax error: ' + e.message.split('\n')[0],
+        startLineNumber: line, startColumn: col,
+        endLineNumber: line, endColumn: col + 10,
+      });
+      applyMarkers(markers);
+      return;
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      applyMarkers([]);
+      return;
+    }
+
+    // 2. JSON Schema validation
+    const valid = validateFn(parsed);
+    if (!valid && validateFn.errors) {
+      for (const err of validateFn.errors) {
+        const path = err.instancePath || err.schemaPath || '';
+        const lineNo = findLineForPath(text, path);
+        markers.push({
+          severity: err.keyword === 'additionalProperties'
+            ? monaco.MarkerSeverity.Error
+            : monaco.MarkerSeverity.Warning,
+          message: formatAjvError(err),
+          startLineNumber: lineNo, startColumn: 1,
+          endLineNumber: lineNo, endColumn: 200,
+        });
+      }
+    }
+
+    applyMarkers(markers);
+  }
+
+  function formatAjvError(err) {
+    const path = err.instancePath ? err.instancePath.replace(/^\//, '').replace(/\//g, '.') : '';
+    if (err.keyword === 'additionalProperties')
+      return `Unknown field: "${err.params.additionalProperty}"` + (path ? ` (in ${path})` : '');
+    if (err.keyword === 'enum')
+      return `${path || 'value'} must be one of: ${err.params.allowedValues.join(', ')}`;
+    if (err.keyword === 'type')
+      return `${path || 'value'} must be ${err.params.type}`;
+    if (err.keyword === 'minimum')
+      return `${path || 'value'} must be ≥ ${err.params.limit}`;
+    if (err.keyword === 'maximum')
+      return `${path || 'value'} must be ≤ ${err.params.limit}`;
+    if (err.keyword === 'required')
+      return `Required field missing: "${err.params.missingProperty}"`;
+    return (path ? path + ': ' : '') + err.message;
+  }
+
+  function findLineForPath(text, path) {
+    if (!path) return 1;
+    const parts = path.split('/').filter(Boolean);
+    const lines = text.split('\n');
+    let indent = 0;
+    let searchKey = parts[0];
+    let partIdx = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trimStart();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const lineIndent = line.length - trimmed.length;
+      if (trimmed.startsWith(searchKey + ':') && lineIndent === indent) {
+        if (partIdx === parts.length - 1) return i + 1;
+        partIdx++;
+        if (partIdx < parts.length) {
+          searchKey = parts[partIdx];
+          indent = lineIndent + 2;
+        }
+      }
+    }
+    return 1;
+  }
+
+  function applyMarkers(markers) {
+    currentMarkers = markers;
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel(), 'site-yaml', markers);
+    }
+
+    const errors = markers.filter(m => m.severity === monaco.MarkerSeverity.Error).length;
+    const warns  = markers.filter(m => m.severity === monaco.MarkerSeverity.Warning).length;
+    const ec = document.getElementById('error-count');
+    const sm = document.getElementById('status-msg');
+
+    if (errors === 0 && warns === 0) {
+      ec.textContent = '✓ No problems';
+      ec.style.color = 'var(--green)';
+      sm.textContent = 'Valid';
+      sm.style.color = 'var(--green)';
+    } else {
+      const parts = [];
+      if (errors) parts.push(`${errors} error${errors > 1 ? 's' : ''}`);
+      if (warns)  parts.push(`${warns} warning${warns > 1 ? 's' : ''}`);
+      ec.textContent = parts.join('  ');
+      ec.style.color = errors ? 'var(--red)' : 'var(--yellow)';
+      sm.textContent = errors ? 'Errors detected' : 'Warnings';
+      sm.style.color = errors ? 'var(--red)' : 'var(--yellow)';
+    }
+
+    renderMarkerPanel();
+  }
+
+  function renderMarkerPanel() {
+    const panel = document.getElementById('marker-panel');
+    if (currentMarkers.length === 0) {
+      panel.classList.remove('visible');
+      panel.innerHTML = '';
+      return;
+    }
+    panel.classList.add('visible');
+    panel.innerHTML = currentMarkers.map(m => {
+      const sev = m.severity === monaco.MarkerSeverity.Error ? 'error' : 'warn';
+      return `<div class="marker-row" onclick="goToMarker(${m.startLineNumber},${m.startColumn})">
+        <span class="sev-${sev}">${sev}</span>
+        <span class="marker-loc">Ln ${m.startLineNumber}</span>
+        <span class="marker-msg">${escHtml(m.message)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function goToMarker(line, col) {
+    if (!editor) return;
+    editor.setPosition({ lineNumber: line, column: col });
+    editor.revealLineInCenter(line);
+    editor.focus();
+  }
+
+  function togglePanel() {
+    const p = document.getElementById('marker-panel');
+    if (currentMarkers.length === 0) return;
+    p.classList.toggle('visible');
+  }
+
+  function loadDefault() {
+    if (editor) { editor.setValue(DEFAULT_YAML); editor.focus(); }
+  }
+
+  function openLoad() {
+    document.getElementById('overlay').classList.add('visible');
+    setTimeout(() => document.getElementById('paste-area').focus(), 50);
+  }
+
+  function closeLoad() {
+    document.getElementById('overlay').classList.remove('visible');
+  }
+
+  function loadPasted() {
+    const v = document.getElementById('paste-area').value.trim();
+    if (v && editor) { editor.setValue(v); }
+    closeLoad();
+    document.getElementById('paste-area').value = '';
+    if (editor) editor.focus();
+  }
+
+  function downloadYaml() {
+    if (!editor) return;
+    const blob = new Blob([editor.getValue()], { type: 'text/yaml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'site.yaml';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLoad();
+  });
+</script>
+</body>
+</html>

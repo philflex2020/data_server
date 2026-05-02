@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parquet Query Indexing — Closing the InfluxDB Gap</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1200px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.8em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.1em; margin: 40px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.95em; margin: 22px 0 8px; }
+p    { color: #c9d1d9; font-size: 0.88em; margin-bottom: 10px; }
+li   { color: #c9d1d9; font-size: 0.88em; margin-bottom: 4px; }
+ul, ol { margin: 8px 0 12px 22px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 14px 16px; overflow-x: auto; margin: 10px 0 16px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.82em; line-height: 1.6; }
+pre code .cm  { color: #6a9955; }
+pre code .kw  { color: #c586c0; }
+pre code .st  { color: #ce9178; }
+pre code .num { color: #b5cea8; }
+strong { color: #e6edf3; }
+a    { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.subtitle { color: #8b949e; font-size: 0.90em; margin-bottom: 32px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 14px 20px; margin-bottom: 36px;
+}
+.meta-item { font-size: 0.82em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+.result-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin: 16px 0 24px;
+}
+.card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.card .label { font-size: 0.75em; color: #8b949e; text-transform: uppercase;
+               letter-spacing: 0.06em; margin-bottom: 6px; }
+.card .value { font-size: 1.4em; font-weight: 700; color: #3fb950; }
+.card .value.blue   { color: #58a6ff; }
+.card .value.amber  { color: #f0883e; }
+.card .value.red    { color: #f85149; }
+.card .value.purple { color: #d2a679; }
+.card .sub { font-size: 0.78em; color: #8b949e; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84em; margin: 12px 0 20px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 12px;
+  font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 12px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.num   { text-align: right; font-variant-numeric: tabular-nums; color: #58a6ff; }
+td.hi    { color: #e6edf3; font-weight: 600; }
+td.green { color: #3fb950; font-weight: 600; }
+td.amber { color: #f0883e; }
+td.red   { color: #f85149; font-weight: 700; }
+td.muted { color: #8b949e; font-style: italic; }
+td.code  { font-family: monospace; font-size: 0.80em; color: #f39c12; }
+.callout {
+  border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 0.87em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.section { margin-bottom: 52px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.82em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; text-decoration: none; }
+.tech-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px; margin: 16px 0 28px;
+}
+.tech-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 18px 20px;
+}
+.tech-card .tc-num {
+  display: inline-block; font-size: 0.72em; font-weight: 700;
+  padding: 2px 10px; border-radius: 4px; margin-bottom: 10px;
+  letter-spacing: 0.05em;
+}
+.tc-1 .tc-num { background: #1f3a6e; color: #79c0ff; }
+.tc-2 .tc-num { background: #1a3320; color: #3fb950; }
+.tc-3 .tc-num { background: #2d1f0e; color: #f0883e; }
+.tc-4 .tc-num { background: #2a1e3a; color: #d2a679; }
+.tc-5 .tc-num { background: #0d2d1a; color: #3fb950; }
+.tech-card .tc-title { color: #e6edf3; font-size: 0.95em; font-weight: 600; margin-bottom: 6px; }
+.tech-card .tc-desc  { color: #8b949e; font-size: 0.82em; line-height: 1.55; margin-bottom: 10px; }
+.tech-card .tc-impact { font-size: 0.80em; font-weight: 700; }
+.tc-1 .tc-impact { color: #79c0ff; }
+.tc-2 .tc-impact { color: #3fb950; }
+.tc-3 .tc-impact { color: #f0883e; }
+.tc-4 .tc-impact { color: #d2a679; }
+.tc-5 .tc-impact { color: #3fb950; }
+.arch-ascii {
+  background: #0e1d2d; border: 1px solid #1d3a5c; border-radius: 8px;
+  padding: 20px 24px; font-family: monospace; font-size: 0.80em; line-height: 1.8;
+  color: #8ac4f5; margin: 16px 0 24px; overflow-x: auto; white-space: pre;
+}
+.arch-ascii .dim    { color: #3a5a6e; }
+.arch-ascii .hi     { color: #f0883e; }
+.arch-ascii .ok     { color: #3fb950; }
+.arch-ascii .label  { color: #f39c12; }
+.file-badge {
+  display: inline-block; background: #161b22; border: 1px solid #30363d;
+  border-radius: 4px; padding: 1px 8px; font-family: monospace;
+  font-size: 0.78em; color: #f39c12; margin: 0 2px 4px;
+}
+.effort-pill {
+  display: inline-block; border-radius: 12px; padding: 2px 10px;
+  font-size: 0.75em; font-weight: 600; margin-left: 8px;
+}
+.effort-low  { background: #0d2d1a; color: #3fb950; border: 1px solid #3fb95055; }
+.effort-med  { background: #2d1f0e; color: #f0883e; border: 1px solid #f0883e55; }
+.effort-high { background: #2a1e3a; color: #d2a679; border: 1px solid #d2a67955; }
+.sep { border: none; border-top: 1px solid #21262d; margin: 28px 0; }
+</style>
+</head>
+<body>
+
+<h1>Parquet Query Indexing — Closing the InfluxDB Gap</h1>
+<p class="subtitle">Four concrete code changes to reduce flux_duck single-series latency from ~1 s to &lt; 100 ms</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Date:</strong> 2026-05-02</div>
+  <div class="meta-item"><strong>Branch:</strong> feat/writer-v2-pipeline</div>
+  <div class="meta-item"><strong>Baseline:</strong> flux_duck 0.3.0 vs InfluxDB 2.x live on .34</div>
+  <div class="meta-item"><strong>Data:</strong> site 02285AD0 — 12 units, ~15,929 pts/sec</div>
+</div>
+
+<div class="nav">
+  <a href="#baseline">Baseline</a>
+  <a href="#bloom">1 · Bloom Filters</a>
+  <a href="#hive">2 · Hive Partition</a>
+  <a href="#summary">3 · Summary Tier</a>
+  <a href="#index">4 · RG Index</a>
+  <a href="#live">5 · Live All-Points</a>
+  <a href="#roadmap">Roadmap</a>
+  <a href="/may_2_works.html">← May 2 Status</a>
+  <a href="/may_day_planning.html">← May Day Plan</a>
+</div>
+
+<!-- ── BASELINE ── -->
+<div class="section" id="baseline">
+<h2>Baseline — Current Query Performance</h2>
+
+<p>Live comparison run 2026-05-02 on <strong>.34</strong> against the same FlashMQ MQTT stream.
+InfluxDB holds a persistent TSM B-tree index; flux_duck scans parquet row groups from disk.
+The gap is architectural — O(log&nbsp;n) index lookup vs O(n) columnar scan — but parquet
+provides hooks to approach index-like behaviour without changing the file format.</p>
+
+<table>
+  <thead><tr>
+    <th>Query</th><th>flux_duck (rg3)</th><th>InfluxDB</th><th>Ratio</th><th>Root cause</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td>Single series, 1 h raw</td>
+      <td class="amber">~1 000 ms</td>
+      <td class="green">52 ms</td>
+      <td class="red">20×</td>
+      <td class="muted">Scans all row groups, all signals</td>
+    </tr>
+    <tr>
+      <td>Single series, 5 m agg, 1 h</td>
+      <td class="amber">~750 ms</td>
+      <td class="green">26 ms</td>
+      <td class="red">27×</td>
+      <td class="muted">Same scan + aggregation</td>
+    </tr>
+    <tr>
+      <td>Single series, 24 h raw</td>
+      <td class="amber">~2 100 ms</td>
+      <td class="green">82 ms</td>
+      <td class="red">25×</td>
+      <td class="muted">Scans across multiple daily files</td>
+    </tr>
+    <tr>
+      <td>All series, hourly mean, 6 h</td>
+      <td class="amber">~5 300 ms</td>
+      <td class="amber">1 183 ms</td>
+      <td class="amber">4.4×</td>
+      <td class="muted">Gap closes on fan-out aggregation</td>
+    </tr>
+    <tr>
+      <td>Site-wide count, 1 h</td>
+      <td class="amber">~14 700 ms</td>
+      <td class="amber">5 376 ms</td>
+      <td class="amber">2.7×</td>
+      <td class="muted">Parquet columnar catches up</td>
+    </tr>
+    <tr>
+      <td>All series, 1 h raw</td>
+      <td class="red">fails (5.1 M rows)</td>
+      <td class="red">timeout (22 s)</td>
+      <td class="muted">—</td>
+      <td class="muted">Neither system can serve unbounded scan</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>Why the gap is largest for single-series:</strong> InfluxDB's TSM index stores one
+  sorted run per (measurement, tag-set, field) — a point query seeks directly to the right
+  pages in O(log n). DuckDB reads the <em>entire</em> parquet file column-by-column, filtering
+  in memory. All four proposals below attack this directly.
+</div>
+
+<div class="result-grid">
+  <div class="card"><div class="label">Target — single series 1 h</div>
+    <div class="value">≤ 100 ms</div><div class="sub">from ~1 000 ms today</div></div>
+  <div class="card"><div class="label">Target — 5 m dashboard panel</div>
+    <div class="value blue">≤ 20 ms</div><div class="sub">via pre-aggregated tier</div></div>
+  <div class="card"><div class="label">Storage vs InfluxDB (post-compaction)</div>
+    <div class="value purple">3.4×</div><div class="sub">raw pre-compaction: ~1.6× <em>larger</em> than TSM</div></div>
+  <div class="card"><div class="label">Schema changes needed</div>
+    <div class="value amber">0</div><div class="sub">all changes are write-time / routing</div></div>
+</div>
+
+<div class="callout warn">
+  <strong>Measured storage on .34 — 2026-05-02 (11.75 h of data):</strong>
+  rg3 parquet = <strong>2.4 GB</strong> (1238 raw flush files) vs InfluxDB TSM = <strong>1.5 GB</strong>.
+  Pre-compaction rg3 is larger because TSM compacts continuously in the background while
+  parquet accumulates 30 s flush files until the daily compaction job runs.
+  After the C++ compactor collapses those 1238 files the expected size is ~700 MB — giving
+  the 3.4× advantage. <strong>The storage efficiency claim only holds post-compaction.</strong>
+</div>
+</div>
+
+<!-- ── OVERVIEW ── -->
+<div class="section">
+<h2>Proposed Techniques — Overview</h2>
+
+<div class="tech-grid">
+  <div class="tech-card tc-1">
+    <div class="tc-num">TECHNIQUE 1</div>
+    <div class="tc-title">Bloom Filters on <code>point_name</code> + <code>unit_id</code></div>
+    <div class="tc-desc">Add per-row-group bloom filters to every parquet file written by the
+    compaction pipeline. DuckDB reads the filter header (a few KB) before deciding whether to
+    fetch any row group data. A <code>point_name = 'AvgCellT'</code> query skips &gt;99% of
+    row groups with a single hash check.</div>
+    <div class="tc-impact">Expected: 10–20× speedup · ~50–100 ms for single series 1 h</div>
+  </div>
+  <div class="tech-card tc-2">
+    <div class="tc-num">TECHNIQUE 2</div>
+    <div class="tc-title">Hive Partition by <code>unit_id</code> at Daily Level</div>
+    <div class="tc-desc">Restructure the daily compacted files into per-unit subdirectories.
+    DuckDB's hive partitioning eliminates entire files for other units at the filesystem level —
+    no bloom filter lookup needed, no row group scan at all.</div>
+    <div class="tc-impact">Expected: 10× file-level skip · composable with bloom filters</div>
+  </div>
+  <div class="tech-card tc-3">
+    <div class="tc-num">TECHNIQUE 3</div>
+    <div class="tc-title">Pre-aggregated 5 min Summary Tier</div>
+    <div class="tc-desc">Write a <code>units_5m.parquet</code> alongside each daily compaction
+    containing mean/min/max for every signal at 5-minute granularity. Route
+    <code>aggregateWindow(every: 5m)</code> Flux queries to this file instead of raw data.
+    The summary file is ~1 MB vs 1.1 GB raw — a Grafana panel query becomes a trivial read.</div>
+    <div class="tc-impact">Expected: &lt; 20 ms for any windowed dashboard query</div>
+  </div>
+  <div class="tech-card tc-4">
+    <div class="tc-num">TECHNIQUE 4</div>
+    <div class="tc-title">Persistent DuckDB Row-Group Index</div>
+    <div class="tc-desc">Maintain a small <code>rg_index.duckdb</code> file that maps
+    <code>(unit_id, point_name, date)</code> to exact row groups within the parquet files.
+    Queries consult the index first, then call
+    <code>read_parquet(path, row_groups=[N,M])</code> to read only the 2–4 relevant groups.
+    This is the closest equivalent to TSM's B-tree — O(log n) lookup, minimal I/O.</div>
+    <div class="tc-impact">Expected: 20–50× speedup · approaches TSM for any query type</div>
+  </div>
+  <div class="tech-card tc-5">
+    <div class="tc-num">TECHNIQUE 5</div>
+    <div class="tc-title">Real-time All-Points via <code>/live</code></div>
+    <div class="tc-desc">The hardest query for parquet — all current signal values for a unit
+    — is already solved by the <code>/live</code> endpoint. The parquet_writer pushes a
+    one-row-per-signal Arrow IPC snapshot on each 30 s flush; <code>live_receiver</code> holds
+    it in memory. Response is sub-millisecond with zero parquet I/O. A 2-minute hot-tier
+    fallback covers disconnected periods.</div>
+    <div class="tc-impact">Already shipped · &lt; 1 ms · beats InfluxDB for this pattern</div>
+  </div>
+</div>
+</div>
+
+<!-- ── TECHNIQUE 1: BLOOM FILTERS ── -->
+<div class="section" id="bloom">
+<h2>Technique 1 — Bloom Filters <span class="effort-pill effort-low">LOW EFFORT</span></h2>
+
+<p>Parquet stores optional bloom filter bitsets per column per row group in the file footer.
+DuckDB reads them before fetching row group data — a probe costs a few microseconds and
+one network/disk round-trip for the footer block. No query-path changes needed; this is
+purely a write-time change.</p>
+
+<h3>Files to change</h3>
+<p>
+  <span class="file-badge">python/writer_v2/restructure_rg.py</span>
+  <span class="file-badge">python/writer_v2/compact_rg3.py</span>
+  <span class="file-badge">python/writer_v2/reconstruct_john_v2.py</span>
+  <span class="file-badge">src/parquet_writer.cpp</span> (C++ writer flush)
+</p>
+
+<h3>Python compaction scripts — add bloom filter options to <code>pq.write_table()</code></h3>
+<pre><code><span class="cm"># Before (current)</span>
+pq.write_table(
+    tbl, output_path,
+    compression='zstd',
+    compression_level=1,
+    write_statistics=True,
+)
+
+<span class="cm"># After — add bloom_filter_columns</span>
+pq.write_table(
+    tbl, output_path,
+    compression='zstd',
+    compression_level=1,
+    write_statistics=True,
+    bloom_filter_columns=['point_name', 'unit_id'],   <span class="cm"># NEW</span>
+    bloom_filter_fpp=0.005,                           <span class="cm"># NEW — 0.5% false positive rate</span>
+    column_encoding={                                 <span class="cm"># NEW — better ts compression</span>
+        'ts': 'DELTA_BINARY_PACKED',
+    },
+)</code></pre>
+
+<h3>C++ writer — <code>src/parquet_writer.cpp</code> flush path</h3>
+<pre><code><span class="cm">// In flush_3file_rg() or write_parquet_file(), add to WriterProperties builder:</span>
+
+auto props = parquet::WriterProperties::Builder()
+    .compression(parquet::Compression::ZSTD)
+    .compression_level(1)
+    .enable_statistics()
+    .enable_bloom_filter()                          <span class="cm">// NEW — enable for all columns</span>
+    .bloom_filter_fpp(0.005)                        <span class="cm">// NEW</span>
+    .set_column_encoding(                           <span class="cm">// NEW — delta encoding on ts</span>
+        parquet::schema::ColumnPath::FromDotString("ts"),
+        parquet::Encoding::DELTA_BINARY_PACKED)
+    .build();
+
+<span class="cm">// Optionally restrict bloom filters to specific columns to limit footer size:</span>
+<span class="cm">// ArrowWriterProperties only enables bloom filter per-column:</span>
+auto arrow_props = parquet::ArrowWriterProperties::Builder()
+    .store_schema()
+    .build();</code></pre>
+
+<h3>Expected bloom filter overhead</h3>
+<table>
+  <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Bloom filter size per column per RG</td><td class="num">~8 KB at 0.5% FPP</td></tr>
+    <tr><td>Footer overhead per 30 s rg3 file (12 units × 2 columns)</td><td class="num">~192 KB</td></tr>
+    <tr><td>Footer overhead per daily compacted file</td><td class="num">~2 MB on 1.1 GB file (&lt; 0.2%)</td></tr>
+    <tr><td>DuckDB probe time per row group</td><td class="num">~2–5 µs</td></tr>
+    <tr><td>Row groups skipped for <code>point_name='AvgCellT'</code></td><td class="num">~99% (1 of ~100 signals)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  Bloom filters require <strong>zero query-path changes</strong>. DuckDB detects and uses them
+  automatically. Re-compacting existing files with the new write options immediately benefits
+  all subsequent queries. Estimated latency after: <strong>50–100 ms</strong> for single-series 1 h.
+</div>
+</div>
+
+<!-- ── TECHNIQUE 2: HIVE PARTITION ── -->
+<div class="section" id="hive">
+<h2>Technique 2 — Hive Partition by <code>unit_id</code> <span class="effort-pill effort-low">LOW EFFORT</span></h2>
+
+<p>Change the daily compacted file layout from one shared file to one file per unit.
+DuckDB's hive partitioning reads the directory name as a column value and prunes files
+before opening them — no I/O at all for non-matching units.</p>
+
+<h3>Directory layout change</h3>
+<div class="arch-ascii"><span class="dim"># Current layout — all units in one file per day</span>
+<span class="hi">hot_base/2026/05/02/units.parquet</span>           <span class="dim"># 1.1 GB — all 12 units mixed</span>
+
+<span class="dim"># Proposed layout — one file per unit per day</span>
+<span class="ok">hot_base/unit_id=0215F6BD/2026/05/02/units.parquet</span>  <span class="dim"># ~92 MB — one unit</span>
+<span class="ok">hot_base/unit_id=0215F8D0/2026/05/02/units.parquet</span>  <span class="dim"># ~90 MB</span>
+<span class="ok">hot_base/unit_id=02285B10/2026/05/02/units.parquet</span>  <span class="dim"># ~88 MB</span>
+<span class="dim">... (12 files per day vs 1)</span></div>
+
+<h3>Compaction script change — split output by <code>unit_id</code></h3>
+<pre><code><span class="cm"># In compact_rg3.py / reconstruct_john_v2.py, replace single write with per-unit split:</span>
+
+<span class="kw">import</span> pyarrow.parquet <span class="kw">as</span> pq
+
+<span class="kw">def</span> write_hive_partitioned(tbl, hot_base, date_str):
+    <span class="cm"># date_str = "2026/05/02"</span>
+    <span class="kw">for</span> unit_id <span class="kw">in</span> tbl.column(<span class="st">'unit_id'</span>).unique().to_pylist():
+        <span class="kw">if</span> unit_id <span class="kw">is None</span>:
+            <span class="kw">continue</span>
+        unit_tbl = tbl.filter(pc.equal(tbl[<span class="st">'unit_id'</span>], unit_id))
+        out_dir = f<span class="st">"{hot_base}/unit_id={unit_id}/{date_str}"</span>
+        os.makedirs(out_dir, exist_ok=<span class="kw">True</span>)
+        pq.write_table(
+            unit_tbl,
+            f<span class="st">"{out_dir}/units.parquet"</span>,
+            compression=<span class="st">'zstd'</span>, compression_level=<span class="num">1</span>,
+            write_statistics=<span class="kw">True</span>,
+            bloom_filter_columns=[<span class="st">'point_name'</span>],   <span class="cm"># unit_id no longer needed (it's in the path)</span>
+            bloom_filter_fpp=<span class="num">0.005</span>,
+        )</code></pre>
+
+<h3>builder.py — <code>_hot_glob()</code> update</h3>
+<pre><code><span class="cm"># In flux_duck/builder.py _hot_glob(), detect hive layout and use it:</span>
+
+<span class="kw">def</span> _hot_glob(hot_base, bucket, r, now=<span class="kw">None</span>, site_dirs=<span class="kw">True</span>, file_glob=<span class="st">"*.parquet"</span>):
+    <span class="cm"># ... existing date range logic ...</span>
+
+    <span class="cm"># NEW: detect hive layout (unit_id= subdirs present)</span>
+    unit_id = _extract_unit_id(bucket)   <span class="cm"># parse from "ems/0215F6BD" or filter conditions</span>
+    hive_path = f<span class="st">"{hot_base}/unit_id={unit_id}"</span> <span class="kw">if</span> unit_id <span class="kw">else None</span>
+    base = hive_path <span class="kw">if</span> (hive_path <span class="kw">and</span> os.path.isdir(hive_path)) <span class="kw">else</span> hot_base
+
+    <span class="cm"># use base instead of hot_base for all subsequent path construction</span>
+    ...
+
+<span class="cm"># Alternatively — pass unit_id as parameter from build() when a unit filter exists:</span>
+<span class="kw">def</span> build(p, hot_base=<span class="st">'/pool4/rg3'</span>, ...):
+    <span class="cm"># extract unit_id from filter conditions before building glob</span>
+    unit_ids = [c.value <span class="kw">for</span> s <span class="kw">in</span> p.filters <span class="kw">for</span> c <span class="kw">in</span> s.conditions
+                <span class="kw">if</span> c.column == <span class="st">'unit_id'</span> <span class="kw">and</span> c.op == <span class="st">'=='</span>]
+    unit_id = unit_ids[<span class="num">0</span>] <span class="kw">if</span> len(unit_ids) == <span class="num">1</span> <span class="kw">else None</span>
+    glob = _hot_glob(hot_base, p.bucket, r, now, site_dirs, file_glob, unit_id=unit_id)</code></pre>
+
+<div class="callout info">
+  <strong>Composable with Technique 1:</strong> once files are split by unit_id, bloom filters
+  only need to cover <code>point_name</code> (not <code>unit_id</code>), halving the filter
+  overhead per file. The two techniques multiply: file-level unit skip + row-group-level
+  signal skip.
+</div>
+</div>
+
+<!-- ── TECHNIQUE 3: SUMMARY TIER ── -->
+<div class="section" id="summary">
+<h2>Technique 3 — Pre-aggregated 5 min Summary Tier <span class="effort-pill effort-med">MEDIUM EFFORT</span></h2>
+
+<p>90% of Grafana dashboard panels display a windowed aggregate (5 min mean, 15 min mean)
+rather than raw rows. InfluxDB handles these fast because it indexes on the already-computed
+data. We can match this by writing a tiny pre-aggregated parquet alongside each daily
+compaction. A 5-minute aggregate of one day's data for one unit is ~800 rows — a trivial
+DuckDB query.</p>
+
+<h3>Files to change / add</h3>
+<p>
+  <span class="file-badge">python/writer_v2/compact_rg3.py</span> (write summary alongside compacted file)
+  <span class="file-badge">python/flux_duck/builder.py</span> (route aggregateWindow queries to summary)
+  <span class="file-badge">python/flux_duck/config.py</span> (summary_base config key)
+</p>
+
+<h3>Summary file generation — add to compaction step</h3>
+<pre><code><span class="kw">import</span> duckdb
+
+<span class="kw">def</span> write_summary(raw_parquet_path, summary_path, intervals=(<span class="num">5</span>, <span class="num">15</span>, <span class="num">60</span>)):
+    <span class="kw">"""Write pre-aggregated summary parquet files alongside the raw daily file."""</span>
+    con = duckdb.connect()
+    <span class="kw">for</span> minutes <span class="kw">in</span> intervals:
+        out = summary_path.replace(<span class="st">'.parquet'</span>, f<span class="st">'_{minutes}m.parquet'</span>)
+        con.execute(f<span class="st">"""
+            COPY (
+                SELECT
+                    time_bucket(INTERVAL '{minutes} minutes', ts)  AS ts,
+                    unit_id,
+                    device, instance, point_name,
+                    AVG(value)   AS value,
+                    MIN(value)   AS value_min,
+                    MAX(value)   AS value_max,
+                    COUNT(*)     AS n
+                FROM read_parquet('{raw_parquet_path}',
+                                  union_by_name=true, hive_partitioning=false)
+                WHERE value IS NOT NULL
+                GROUP BY 1, unit_id, device, instance, point_name
+                ORDER BY ts
+            ) TO '{out}' (FORMAT PARQUET, COMPRESSION ZSTD,
+                          STATISTICS true,
+                          BLOOM_FILTER_COLUMNS ['point_name', 'unit_id'])
+        """</span>)
+
+<span class="cm"># File size estimate for one unit, one day, 5m granularity:</span>
+<span class="cm">#   ~1,437 signals × 288 buckets × ~40 bytes/row ≈ 16 MB (vs 92 MB raw)</span>
+<span class="cm">#   After ZSTD: ~1–2 MB per unit per day</span></code></pre>
+
+<h3>builder.py — route <code>aggregateWindow</code> queries to summary files</h3>
+<pre><code><span class="kw">def</span> build(p, hot_base=<span class="st">''</span>, ..., summary_base=<span class="st">''</span>, ...):
+    <span class="cm"># summary_base: same layout as hot_base but contains _5m / _15m / _1h files</span>
+
+    <span class="cm"># Route windowed queries to summary tier when available</span>
+    <span class="kw">if</span> p.window <span class="kw">and</span> summary_base:
+        every_mins = _every_to_minutes(p.window.every)   <span class="cm"># '5m' → 5</span>
+        summary_glob = _summary_glob(summary_base, p.bucket, r, now,
+                                     site_dirs, every_mins)
+        <span class="kw">if</span> summary_glob <span class="kw">is not None</span>:
+            <span class="cm"># summary file has value/value_min/value_max — map aggregation fn</span>
+            <span class="kw">return</span> _summary_sql(p, summary_glob, now)
+
+    <span class="cm"># fall through to normal hot/cold path</span>
+    ...
+
+<span class="kw">def</span> _summary_sql(p, glob, now):
+    <span class="cm">"""Query pre-aggregated summary file — no GROUP BY needed, just SELECT."""</span>
+    agg = p.window.fn   <span class="cm"># 'mean' | 'min' | 'max' | 'count'</span>
+    col = {<span class="st">'mean'</span>: <span class="st">'value'</span>, <span class="st">'min'</span>: <span class="st">'value_min'</span>,
+           <span class="st">'max'</span>: <span class="st">'value_max'</span>, <span class="st">'count'</span>: <span class="st">'n'</span>}.get(agg, <span class="st">'value'</span>)
+    where = _build_where(p)
+    <span class="kw">return</span> f<span class="st">"""
+SELECT ts AS _time, 'units' AS _measurement,
+       device||'/'||instance||'/'||point_name AS _field,
+       {col} AS _value, unit_id
+FROM read_parquet({glob}, union_by_name=true, hive_partitioning=false)
+{where}
+ORDER BY _time"""</span></code></pre>
+
+<div class="callout ok">
+  <strong>Impact:</strong> A Grafana panel showing 1 h of 5-min averages currently takes
+  ~750 ms (scan raw + aggregate). With a summary file it reads ~800 pre-computed rows in
+  <strong>&lt; 20 ms</strong> — faster than InfluxDB's 26 ms for the same query. This is
+  the single biggest win for interactive dashboard use.
+</div>
+</div>
+
+<!-- ── TECHNIQUE 4: RG INDEX ── -->
+<div class="section" id="index">
+<h2>Technique 4 — Persistent DuckDB Row-Group Index <span class="effort-pill effort-high">HIGHER EFFORT</span></h2>
+
+<p>The most complete solution. Maintain a small <code>rg_index.duckdb</code> file alongside
+the hot tier that maps <code>(unit_id, point_name, date)</code> to the exact row groups in
+each parquet file. A query consults the index first (microseconds), then reads only the
+2–4 relevant row groups. This is structurally equivalent to InfluxDB's TSM index.</p>
+
+<h3>New file: <code>python/flux_duck/rg_index.py</code></h3>
+<pre><code><span class="cm">"""
+rg_index.py — Row-group index for hot-tier parquet files.
+
+Index schema:
+  (unit_id, point_name, parquet_path, rg_id, ts_min, ts_max)
+
+Build: called after each compaction step.
+Query: called from executor.py before building SQL.
+"""</span>
+<span class="kw">import</span> duckdb, os
+<span class="kw">from</span> pathlib <span class="kw">import</span> Path
+
+_INDEX_FILE = <span class="st">"rg_index.duckdb"</span>
+_SCHEMA = <span class="st">"""
+    CREATE TABLE IF NOT EXISTS rg_index (
+        unit_id     VARCHAR NOT NULL,
+        point_name  VARCHAR NOT NULL,
+        path        VARCHAR NOT NULL,
+        rg_id       INTEGER NOT NULL,
+        ts_min      TIMESTAMPTZ NOT NULL,
+        ts_max      TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (path, rg_id, unit_id, point_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_lookup
+        ON rg_index (unit_id, point_name, ts_min, ts_max);
+"""</span>
+
+<span class="kw">def</span> open_index(hot_base: str) -> duckdb.DuckDBPyConnection:
+    path = os.path.join(hot_base, _INDEX_FILE)
+    con = duckdb.connect(path)
+    con.execute(_SCHEMA)
+    <span class="kw">return</span> con
+
+<span class="kw">def</span> index_file(con, parquet_path: str) -> <span class="kw">None</span>:
+    <span class="cm">"""Scan a newly-written parquet file and insert its row-group stats."""</span>
+    con.execute(<span class="st">"""
+        INSERT OR REPLACE INTO rg_index
+        SELECT unit_id, point_name, ? AS path, row_group_id AS rg_id,
+               MIN(ts) AS ts_min, MAX(ts) AS ts_max
+        FROM parquet_scan(?, row_group_id=true)
+        WHERE unit_id IS NOT NULL
+        GROUP BY unit_id, point_name, row_group_id
+    """</span>, [parquet_path, parquet_path])
+
+<span class="kw">def</span> lookup(con, unit_id: str, point_name: str,
+           ts_start: str, ts_stop: str) -> dict[str, list[int]]:
+    <span class="cm">"""Return {path: [rg_id, ...]} for row groups covering the time range."""</span>
+    rows = con.execute(<span class="st">"""
+        SELECT path, rg_id FROM rg_index
+        WHERE unit_id   = ?
+          AND point_name = ?
+          AND ts_max    >= ?::TIMESTAMPTZ
+          AND ts_min    <= ?::TIMESTAMPTZ
+        ORDER BY path, rg_id
+    """</span>, [unit_id, point_name, ts_start, ts_stop]).fetchall()
+    result = {}
+    <span class="kw">for</span> path, rg_id <span class="kw">in</span> rows:
+        result.setdefault(path, []).append(rg_id)
+    <span class="kw">return</span> result</code></pre>
+
+<h3>executor.py — use index when available</h3>
+<pre><code><span class="kw">from</span> . <span class="kw">import</span> rg_index <span class="kw">as</span> rgi
+
+<span class="kw">def</span> execute(flux: str, cfg: Config, now=<span class="kw">None</span>) -> QueryResult:
+    pipeline = parse(flux)
+
+    <span class="cm"># Try index-assisted path for targeted single-series queries</span>
+    <span class="kw">if</span> cfg.hot_base <span class="kw">and</span> cfg.rg_index_enabled:
+        idx_sql = _try_indexed_query(pipeline, cfg, now)
+        <span class="kw">if</span> idx_sql:
+            <span class="cm"># execute idx_sql directly — skip build()</span>
+            ...
+
+    <span class="cm"># Fall back to normal scan path</span>
+    sql = build(pipeline, ...)
+    ...
+
+<span class="kw">def</span> _try_indexed_query(p, cfg, now):
+    <span class="cm">"""Return indexed SQL if the query targets a single unit + single signal."""</span>
+    unit_ids    = [c.value <span class="kw">for</span> s <span class="kw">in</span> p.filters <span class="kw">for</span> c <span class="kw">in</span> s.conditions
+                   <span class="kw">if</span> c.column == <span class="st">'unit_id'</span> <span class="kw">and</span> c.op == <span class="st">'=='</span>]
+    point_names = [c.value <span class="kw">for</span> s <span class="kw">in</span> p.filters <span class="kw">for</span> c <span class="kw">in</span> s.conditions
+                   <span class="kw">if</span> c.column == <span class="st">'point_name'</span> <span class="kw">and</span> c.op == <span class="st">'=='</span>]
+    <span class="kw">if</span> len(unit_ids) != <span class="num">1</span> <span class="kw">or</span> len(point_names) != <span class="num">1</span>:
+        <span class="kw">return None</span>   <span class="cm"># fan-out query — fall back to scan</span>
+
+    con = rgi.open_index(cfg.hot_base)
+    rgs = rgi.lookup(con,
+        unit_id=unit_ids[<span class="num">0</span>], point_name=point_names[<span class="num">0</span>],
+        ts_start=_resolve_ts(p.range_spec.start, now),
+        ts_stop=_resolve_ts(p.range_spec.stop, now) <span class="kw">if</span> p.range_spec.stop <span class="kw">else</span> str(now),
+    )
+    <span class="kw">if not</span> rgs:
+        <span class="kw">return None</span>
+
+    <span class="cm"># Build read_parquet() with explicit row_groups per file</span>
+    <span class="cm"># DuckDB syntax: read_parquet(['f1','f2'], row_groups=[[0,1],[2]])</span>
+    files = list(rgs.keys())
+    groups = [rgs[f] <span class="kw">for</span> f <span class="kw">in</span> files]
+    file_list  = <span class="st">', '</span>.join(f<span class="st">f"'{f}'"</span> <span class="kw">for</span> f <span class="kw">in</span> files)
+    group_list = <span class="st">', '</span>.join(str(g) <span class="kw">for</span> g <span class="kw">in</span> groups)
+    <span class="kw">return</span> f<span class="st">"""
+SELECT ts AS _time, 'units' AS _measurement,
+       device||'/'||instance||'/'||point_name AS _field,
+       value AS _value, unit_id
+FROM read_parquet([{file_list}],
+     row_groups=[{group_list}],
+     union_by_name=true, hive_partitioning=false)
+WHERE {_range_where(p.range_spec, now)}
+  AND unit_id = '{unit_ids[0]}'
+  AND point_name = '{point_names[0]}'
+ORDER BY _time"""</span></code></pre>
+
+<h3>Index maintenance — call after each compaction</h3>
+<pre><code><span class="cm"># In compact_rg3.py, after writing each daily file:</span>
+<span class="kw">from</span> flux_duck <span class="kw">import</span> rg_index <span class="kw">as</span> rgi
+
+con = rgi.open_index(hot_base)
+rgi.index_file(con, output_parquet_path)
+con.close()
+
+<span class="cm"># Index size estimate:
+# 12 units × 1,437 signals × 48 row-groups/day × ~80 bytes/row ≈ 66 MB/day
+# With 14-day hot window: ~920 MB index — acceptable for a DuckDB file
+# Prune entries older than hot_days during each compaction run</span></code></pre>
+
+<div class="callout warn">
+  <strong>Note on <code>row_groups=</code> parameter:</strong> DuckDB's <code>read_parquet()</code>
+  row_groups parameter support should be verified against the installed DuckDB version before
+  committing to this approach. An alternative is to store byte offsets and use <code>seek()</code>
+  via Arrow's file reader directly, or rely on Technique 1 (bloom filters) as the primary
+  mechanism and use the index only for path/file selection.
+</div>
+</div>
+
+<!-- ── TECHNIQUE 5: LIVE ALL-POINTS ── -->
+<div class="section" id="live">
+<h2>Technique 5 — Real-time All-Points Query <span class="effort-pill effort-low">ALREADY SHIPPED</span></h2>
+
+<p>The hardest query pattern for a parquet system is <em>"give me the latest value of every
+signal for unit X right now"</em>. On InfluxDB this is instant — a single index lookup on
+<code>unit_controller_id</code> returns the last record per series directly from the TSM
+B-tree. On flux_duck a raw scan returns 5.1 M rows (hits <code>max_rows</code>); a
+<code>last()</code> aggregation across 1 h of data takes ~14 s.
+<strong>30-second staleness is acceptable</strong> — the parquet_writer flushes every 30 s.</p>
+
+<h3>Primary path — <code>/live</code> endpoint (already implemented)</h3>
+
+<p>The flux_duck server already maintains a <code>live_receiver</code> module that subscribes
+to the parquet_writer's Arrow IPC push stream. On each 30-second flush the writer pushes a
+snapshot table — one row per active series, current COV value — directly into memory.
+<code>GET /live?site=0215F6BD</code> serves it with zero parquet I/O.</p>
+
+<pre><code><span class="cm"># Query all current values for a unit — sub-millisecond response</span>
+curl http://localhost:8772/live?site=0215F6BD
+
+<span class="cm"># Response:</span>
+{
+  <span class="st">"seq"</span>: <span class="num">4821</span>,          <span class="cm"># increments each 30s flush</span>
+  <span class="st">"connected"</span>: <span class="kw">true</span>,
+  <span class="st">"count"</span>: <span class="num">1437</span>,         <span class="cm"># one row per active signal</span>
+  <span class="st">"rows"</span>: [
+    {<span class="st">"unit_id"</span>: <span class="st">"0215F6BD"</span>, <span class="st">"point_name"</span>: <span class="st">"AvgCellT"</span>, <span class="st">"value"</span>: <span class="num">23.4</span>, <span class="st">"ts"</span>: <span class="st">"..."</span>},
+    ...
+  ]
+}</code></pre>
+
+<p>This is <strong>faster than InfluxDB</strong> for this query pattern — it is a push model
+(writer sends data) rather than a poll model (query hits disk). No bloom filters, no row
+groups, no SQL planner. A Grafana "current values" panel polling <code>/live</code> every 5 s
+gets data that is at most 30 s stale (the flush interval) regardless of how many signals
+the unit has.</p>
+
+<div class="callout ok">
+  <strong>In the flux_duck Flux API:</strong> there is no Flux syntax for "latest value per
+  series". Route this query type to <code>/live</code> at the application layer — not through
+  <code>/api/v2/query</code>. The live snapshot is the correct data source for real-time
+  dashboard panels showing current state.
+</div>
+
+<h3>When <code>/live</code> is unavailable — range fallback</h3>
+
+<p>If <code>live_receiver</code> is disconnected (writer pod restart, network gap), the
+<code>/live</code> response includes <code>"connected": false</code>. The tempting fallback
+is a tight range query, but there is a <strong>correctness trap:</strong></p>
+
+<pre><code><span class="cm"># Narrow window — fast but dangerous</span>
+FD_LIVE_FALLBACK="from(bucket:\"ems\")
+  |> range(start: -2m)
+  |> filter(fn: (r) => r[\"unit_id\"] == \"$UNIT\")
+  |> last()"
+
+<span class="cm"># Hits ~4 files × 200 KB = ~800 KB I/O → ~200–500 ms
+# BUT: any signal that hasn't fired in the last 2 minutes will be absent.
+# Slow-moving points (alarm states, mode registers, binary inputs) are silently dropped.</span>
+
+<span class="cm"># Wider window — correct but slow</span>
+FD_LIVE_1H="from(bucket:\"ems\")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r[\"unit_id\"] == \"$UNIT\")
+  |> last()"
+<span class="cm"># Scans full hot-tier slice → ~8–15 s. Not viable for a live panel.</span></code></pre>
+
+<div class="callout warn">
+  <strong>The -2m range is not a safe fallback</strong> unless the site guarantees all
+  signals publish at least once per minute. In real EMS deployments many alarm/state points
+  fire only on change — they may not appear for hours. A live panel using <code>range(-2m)</code>
+  will silently show stale or missing values for those signals.
+</div>
+
+<h3>Recommended fallback — "latest values" sidecar file</h3>
+
+<p>The correct solution when <code>/live</code> is unavailable: have the writer produce a
+tiny <code>units_latest.parquet</code> alongside each 30 s flush containing <em>one row per
+signal</em> (the last value seen in that window). At ~1,437 rows × ~40 bytes this is a
+~60 KB file — trivially fast to query with guaranteed full signal coverage:</p>
+
+<pre><code><span class="cm"># In C++ writer flush — after flushing the main parquet file, write a sidecar:</span>
+<span class="cm">// parquet_writer.cpp — add to flush_3file_rg() after main file write</span>
+<span class="cm">//</span>
+<span class="cm">// 1. Collect last-seen row per (unit_id, point_name) from the in-memory COV table</span>
+<span class="cm">// 2. Write to  &lt;flush_dir&gt;/&lt;timestamp&gt;Z_latest.parquet</span>
+<span class="cm">// 3. Atomically replace a fixed symlink:  latest.parquet → &lt;timestamp&gt;Z_latest.parquet</span>
+<span class="cm">//    so query layer always reads one stable path.</span>
+
+<span class="cm"># Python equivalent (for restructure_rg / test harness):</span>
+<span class="kw">import</span> duckdb, pyarrow.parquet <span class="kw">as</span> pq
+
+<span class="kw">def</span> write_latest_sidecar(arrow_table, flush_dir: str, ts_tag: str) -> str:
+    <span class="cm">"""One row per signal — last value seen in this flush window."""</span>
+    con = duckdb.connect()
+    con.register(<span class="st">'tbl'</span>, arrow_table)
+    latest = con.execute(<span class="st">"""
+        SELECT DISTINCT ON (unit_id, point_name)
+               unit_id, device, instance, point_name, ts, value
+        FROM   tbl
+        ORDER BY unit_id, point_name, ts DESC
+    """</span>).arrow()
+    out = f<span class="st">"{flush_dir}/{ts_tag}_latest.parquet"</span>
+    pq.write_table(latest, out, compression=<span class="st">'zstd'</span>, write_statistics=<span class="kw">True</span>)
+    <span class="cm"># update stable symlink</span>
+    link = f<span class="st">"{flush_dir}/latest.parquet"</span>
+    <span class="kw">import</span> os
+    <span class="kw">if</span> os.path.islink(link): os.unlink(link)
+    os.symlink(out, link)
+    <span class="kw">return</span> out
+
+<span class="cm"># Query — always read the symlink, never needs a glob:</span>
+<span class="cm"># SELECT * FROM read_parquet('/pool4/fractal/data/writer-b/rg3/latest.parquet')</span>
+<span class="cm"># → 1,437 rows, &lt; 5 ms, full signal coverage regardless of COV frequency</span></code></pre>
+
+<table>
+  <thead><tr>
+    <th>Path</th><th>Latency</th><th>Signal coverage</th><th>Staleness</th><th>Status</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="hi"><code>/live</code> endpoint</td>
+      <td class="green">&lt; 1 ms</td>
+      <td class="green">All signals</td>
+      <td class="green">≤ 30 s</td>
+      <td class="green">Shipped</td>
+    </tr>
+    <tr>
+      <td class="hi">Latest sidecar <code>latest.parquet</code></td>
+      <td class="green">&lt; 5 ms</td>
+      <td class="green">All signals</td>
+      <td class="green">≤ 30 s</td>
+      <td class="amber">Add to writer</td>
+    </tr>
+    <tr>
+      <td>InfluxDB <code>last()</code></td>
+      <td class="amber">~50–150 ms</td>
+      <td class="green">All signals</td>
+      <td class="green">Immediate</td>
+      <td class="muted">Baseline</td>
+    </tr>
+    <tr>
+      <td>Flux <code>range(-2m) |&gt; last()</code></td>
+      <td class="amber">200–500 ms</td>
+      <td class="red">Frequent signals only</td>
+      <td class="green">≤ 30 s</td>
+      <td class="red">Not safe</td>
+    </tr>
+    <tr>
+      <td>Flux <code>range(-1h) |&gt; last()</code></td>
+      <td class="red">8–15 s</td>
+      <td class="green">All signals</td>
+      <td class="green">≤ 30 s</td>
+      <td class="red">Too slow</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <strong>Recommendation:</strong> implement the <code>latest.parquet</code> symlink sidecar in
+  the C++ writer as a safety net. The <code>/live</code> push path is primary and instant; the
+  sidecar is the correct fallback — &lt; 5 ms, full signal coverage, no range window needed.
+  The narrow-range Flux query should not be used for this pattern.
+</div>
+</div>
+
+<!-- ── ROADMAP ── -->
+<div class="section" id="roadmap">
+<h2>Implementation Roadmap</h2>
+
+<table>
+  <thead><tr>
+    <th>#</th><th>Technique</th><th>Effort</th>
+    <th>Expected latency after (single series 1 h)</th>
+    <th>Changes</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="num">1</td>
+      <td class="hi">Bloom filters on <code>point_name</code> + <code>unit_id</code></td>
+      <td class="green">Low</td>
+      <td class="green">~50–100 ms</td>
+      <td class="code">compact_rg3.py, restructure_rg.py, parquet_writer.cpp</td>
+    </tr>
+    <tr>
+      <td class="num">2</td>
+      <td class="hi">Hive partition by <code>unit_id</code></td>
+      <td class="green">Low</td>
+      <td class="green">~40–80 ms (with T1)</td>
+      <td class="code">compact_rg3.py, builder.py (_hot_glob)</td>
+    </tr>
+    <tr>
+      <td class="num">3</td>
+      <td class="hi">Pre-aggregated 5 min summary tier</td>
+      <td class="amber">Medium</td>
+      <td class="green">&lt; 20 ms for windowed queries</td>
+      <td class="code">compact_rg3.py (write_summary), builder.py (routing), config.py</td>
+    </tr>
+    <tr>
+      <td class="num">4</td>
+      <td class="hi">Persistent DuckDB row-group index</td>
+      <td class="amber">Medium–High</td>
+      <td class="green">&lt; 20 ms for indexed queries</td>
+      <td class="code">rg_index.py (new), executor.py, compact_rg3.py (index_file)</td>
+    </tr>
+    <tr>
+      <td class="num">5</td>
+      <td class="hi">Real-time all-points via <code>/live</code> + 2 min fallback</td>
+      <td class="green">Done / Low</td>
+      <td class="green">&lt; 1 ms (/live) · &lt; 300 ms (fallback)</td>
+      <td class="code">/live already shipped · optional: units_latest.parquet sidecar</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Techniques 1 and 2 are the right first move — both are changes to the <em>write path only</em>
+with no query-path complexity. Together they address the O(n) scan problem at two levels:
+row-group (bloom filter) and file (hive partition). Implementing both and re-running the
+benchmark will give a clear signal on whether Techniques 3 and 4 are still needed.</p>
+
+<div class="result-grid">
+  <div class="card">
+    <div class="label">After T1 + T2 (estimated)</div>
+    <div class="value">~60 ms</div>
+    <div class="sub">single series 1 h · was 1 000 ms</div>
+  </div>
+  <div class="card">
+    <div class="label">After T3 (windowed)</div>
+    <div class="value blue">&lt; 20 ms</div>
+    <div class="sub">dashboard panels · beats InfluxDB 26 ms</div>
+  </div>
+  <div class="card">
+    <div class="label">After T4 (indexed)</div>
+    <div class="value purple">&lt; 20 ms</div>
+    <div class="sub">any targeted query · near TSM parity</div>
+  </div>
+  <div class="card">
+    <div class="label">Storage advantage (post-compaction)</div>
+    <div class="value amber">3.4×</div>
+    <div class="sub">raw flush files are ~1.6× <em>larger</em> than TSM until compacted</div>
+  </div>
+</div>
+
+<div class="callout info">
+  <strong>Suggested order:</strong>
+  Implement T1 (bloom filters) in the next compaction script update — it is a one-line
+  pyarrow change and a one-block C++ change with no risk. Run the benchmark again.
+  If single-series latency drops below 100 ms that may be sufficient for the Grafana use case
+  without the complexity of T4 (persistent index). Reserve T4 for cases where sub-20 ms is
+  required across all query types.
+</div>
+</div>
+
+<hr class="sep">
+<p style="font-size:0.78em; color:#484f58;">
+  Generated 2026-05-02 · data-storage feat/writer-v2-pipeline ·
+  baseline: site 02285AD0, 12 units, 15,929 pts/sec, flux_duck 0.3.0
+</p>
+
+</body>
+</html>

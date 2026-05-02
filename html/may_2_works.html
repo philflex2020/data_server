@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>May 2 Status — Where We Are</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #e6edf3;
+  padding: 40px 32px; max-width: 1100px; margin: auto; line-height: 1.65;
+}
+h1   { color: #58a6ff; font-size: 1.7em; margin-bottom: 6px; }
+h2   { color: #79c0ff; font-size: 1.05em; margin: 38px 0 14px;
+       border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+h3   { color: #d2a679; font-size: 0.92em; margin: 18px 0 7px; }
+p    { color: #c9d1d9; font-size: 0.87em; margin-bottom: 10px; }
+li   { color: #c9d1d9; font-size: 0.87em; margin-bottom: 5px; }
+ul, ol { margin: 6px 0 12px 20px; }
+code { color: #f39c12; background: #161b22; padding: 1px 6px; border-radius: 3px; font-size: 0.84em; }
+pre  { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+       padding: 12px 16px; overflow-x: auto; margin: 10px 0 14px; }
+pre code { background: none; padding: 0; color: #79c0ff; font-size: 0.81em; line-height: 1.6; }
+.cm { color: #6a9955; }
+strong { color: #e6edf3; }
+.subtitle { color: #8b949e; font-size: 0.88em; margin-bottom: 30px; margin-top: 4px; }
+.meta-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+  padding: 12px 18px; margin-bottom: 34px;
+}
+.meta-item { font-size: 0.81em; color: #8b949e; }
+.meta-item strong { color: #c9d1d9; }
+.status-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px; margin: 14px 0 26px;
+}
+.card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px;
+}
+.card .label { font-size: 0.74em; color: #8b949e; text-transform: uppercase;
+               letter-spacing: 0.06em; margin-bottom: 5px; }
+.card .value { font-size: 1.5em; font-weight: 700; }
+.card .value.green  { color: #3fb950; }
+.card .value.amber  { color: #f0883e; }
+.card .value.blue   { color: #58a6ff; }
+.card .sub { font-size: 0.77em; color: #8b949e; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.83em; margin: 10px 0 18px; }
+thead th {
+  background: #161b22; color: #8b949e; text-align: left; padding: 8px 10px;
+  font-size: 0.77em; text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid #30363d;
+}
+tbody td { padding: 8px 10px; color: #c9d1d9; border-bottom: 1px solid #21262d; }
+tbody tr:hover td { background: #161b22; }
+td.done  { color: #3fb950; font-weight: 600; }
+td.pend  { color: #f0883e; }
+td.next  { color: #58a6ff; font-weight: 600; }
+td.muted { color: #8b949e; font-style: italic; }
+td.code  { font-family: monospace; font-size: 0.79em; color: #f39c12; }
+.callout {
+  border-radius: 6px; padding: 12px 16px; margin: 14px 0; font-size: 0.86em; line-height: 1.6;
+}
+.callout.ok   { background: #0d2d1a; border-left: 3px solid #3fb950; color: #7fba84; }
+.callout.info { background: #0e1d2d; border-left: 3px solid #58a6ff; color: #8ac4f5; }
+.callout.warn { background: #2d1f0e; border-left: 3px solid #f0883e; color: #e3b981; }
+.callout.purple { background: #1e1530; border-left: 3px solid #d2a679; color: #d2a679; }
+.section { margin-bottom: 48px; }
+.nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+.nav a {
+  padding: 5px 12px; border-radius: 5px; font-size: 0.81em;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+  text-decoration: none;
+}
+.nav a:hover { border-color: #58a6ff; color: #58a6ff; }
+.check { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.check .icon { flex-shrink: 0; font-size: 1.0em; margin-top: 1px; }
+.check .text { font-size: 0.87em; color: #c9d1d9; line-height: 1.55; }
+.check .text code { font-size: 0.85em; }
+.done-icon  { color: #3fb950; }
+.pend-icon  { color: #f0883e; }
+.next-icon  { color: #58a6ff; }
+.sep { border: none; border-top: 1px solid #21262d; margin: 26px 0; }
+.link-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 16px; }
+.link-btn {
+  padding: 6px 14px; border-radius: 5px; font-size: 0.82em; font-weight: 600;
+  background: #161b22; border: 1px solid #30363d; color: #8b949e;
+  text-decoration: none; display: inline-block;
+}
+.link-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+.tag {
+  display: inline-block; border-radius: 4px; padding: 1px 8px;
+  font-size: 0.73em; font-weight: 700; letter-spacing: 0.04em; margin-left: 6px;
+  vertical-align: middle;
+}
+.tag-done   { background: #0d2d1a; color: #3fb950; border: 1px solid #3fb95055; }
+.tag-pend   { background: #2d1f0e; color: #f0883e; border: 1px solid #f0883e55; }
+.tag-next   { background: #0e1d2d; color: #58a6ff; border: 1px solid #58a6ff55; }
+.tag-devops { background: #2a1e3a; color: #d2a679; border: 1px solid #d2a67955; }
+</style>
+</head>
+<body>
+
+<h1>May 2 — Where We Are</h1>
+<p class="subtitle">Status snapshot: flux_duck · site_yaml_editor · pods · DevOps deploy</p>
+
+<div class="meta-bar">
+  <div class="meta-item"><strong>Date:</strong> 2026-05-02</div>
+  <div class="meta-item"><strong>Branch:</strong> feat/writer-v2-pipeline</div>
+  <div class="meta-item"><strong>Dev machine:</strong> phil-dev (.46)  · k3s namespace: data-capture</div>
+  <div class="meta-item"><strong>Test node:</strong> .34  · writers a-p4, b-p3, b-p4, c-p4  · FlashMQ :11885</div>
+</div>
+
+<div class="status-grid">
+  <div class="card">
+    <div class="label">Shipped today</div>
+    <div class="value green">7</div>
+    <div class="sub">flux_duck, editor, query fix, proposal…</div>
+  </div>
+  <div class="card">
+    <div class="label">Needs testing</div>
+    <div class="value amber">2</div>
+    <div class="sub">writer pod · query pod</div>
+  </div>
+  <div class="card">
+    <div class="label">Docs gaps</div>
+    <div class="value amber">2</div>
+    <div class="sub">site.yaml query: section · deploy guide</div>
+  </div>
+  <div class="card">
+    <div class="label">DevOps ready</div>
+    <div class="value blue">~70%</div>
+    <div class="sub">site.yaml + docs + pod test needed</div>
+  </div>
+</div>
+
+<div class="nav">
+  <a href="#shipped">Shipped</a>
+  <a href="#pods">Pod Testing</a>
+  <a href="#siteyaml">site.yaml Docs</a>
+  <a href="#devops">DevOps Deploy</a>
+  <a href="#links">Links</a>
+  <a href="/parquet_query_index_proposal.html">Query Proposal →</a>
+  <a href="/may_day_planning.html">May Day Plan →</a>
+</div>
+
+<!-- ── SHIPPED ── -->
+<div class="section" id="shipped">
+<h2>What's Shipped</h2>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>flux_duck 0.3.0</strong> — wide_base routing, /live endpoint,
+  live_receiver push stream, debug/config endpoint showing all active keys.
+  Deployed on .34 (<code>start_flux_duck.sh</code>). <span class="tag tag-done">DONE</span></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>site_yaml_editor.html</strong> — three bugs fixed: AJV 2020 schema URI,
+  Monaco duplicate module warning, <code>jsyaml is not defined</code> (load-order fix).
+  Editor validates YAML, shows schema hints, wide_base field added.
+  <span class="tag tag-done">DONE</span> — live at <a href="/site_yaml_editor.html">/site_yaml_editor.html</a></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>query_compare.sh</strong> — InfluxDB org parameter was passed as HTTP
+  header (returned 1 row always). Fixed to <code>?org=ems-org</code> URL parameter.
+  Now produces real comparison numbers. <span class="tag tag-done">DONE</span></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>Baseline numbers measured</strong> on .34 — InfluxDB 10–27× faster for
+  single-series; parquet 2.7–4.4× faster for fan-out aggregation. Storage measured:
+  rg3 2.4 GB vs InfluxDB 1.5 GB pre-compaction (reverses to 3.4× parquet advantage post-compaction).
+  <span class="tag tag-done">DONE</span></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>parquet_query_index_proposal.html</strong> — 5 techniques with
+  specific code changes: bloom filters, hive partition, summary tier, RG index, real-time
+  all-points (/live + sidecar). <span class="tag tag-done">DONE</span> —
+  live at <a href="/parquet_query_index_proposal.html">/parquet_query_index_proposal.html</a></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>/live real-time all-points</strong> — already serves &lt; 1 ms
+  response with one row per active signal. Faster than InfluxDB <code>last()</code> for
+  this pattern because it is push-based. <code>latest.parquet</code> sidecar designed as fallback.
+  <span class="tag tag-done">DONE</span></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>May Day shipping items 6/8</strong> — DuckDB out, push stream,
+  live_receiver, API merge, site.yaml, YAML editor. Port 8772 = flux_duck combined server.
+  <span class="tag tag-done">DONE</span></div>
+</div>
+</div>
+
+<!-- ── POD TESTING ── -->
+<div class="section" id="pods">
+<h2>Pod Testing Needed <span class="tag tag-pend">TODO</span></h2>
+
+<p>The k3s pods on .46 have not been smoke-tested since the flux_duck / live_receiver changes.
+Run through both pods before the DevOps deployment conversation.</p>
+
+<h3>Writer pod — <code>parquet-writer-long</code></h3>
+<pre><code><span class="cm"># Health check</span>
+curl http://localhost:8771/health
+
+<span class="cm"># Expected:</span>
+<span class="cm"># {"status":"ok","mqtt_connected":true,"parquet_files":N,"disk_free_gb":...}</span>
+
+<span class="cm"># Verify parquet files are flushing</span>
+ls -lth /media/phil/08958e92-490f-45e4-9ccd-9c3a065f3d22/site-capture/ | head -10
+<span class="cm"># should see files newer than 30s</span>
+
+<span class="cm"># Check pod logs</span>
+kubectl -n data-capture logs deployment/parquet-writer-long --tail=40</code></pre>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text">Health returns <code>mqtt_connected: true</code></div>
+</div>
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text">Parquet files flushing every ~30 s to PVC</div>
+</div>
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text">Sites <code>0215D1D8</code> and <code>0227C829</code> visible in logs</div>
+</div>
+
+<h3>Query pod — <code>parquet-query</code></h3>
+<pre><code><span class="cm"># Health</span>
+curl http://localhost:8772/health
+<span class="cm"># live_connected should be true, live_series > 0</span>
+
+<span class="cm"># Sites</span>
+curl http://localhost:8772/sites
+
+<span class="cm"># Live snapshot</span>
+curl http://localhost:8772/live | python3 -m json.tool | head -20
+
+<span class="cm"># Flux query</span>
+curl -s -X POST http://localhost:8772/api/v2/query \
+  -H "Content-Type: application/vnd.flux" \
+  --data 'from(bucket:"ems")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r["unit_id"] == "0215D1D8")
+  |> filter(fn: (r) => r["point_name"] == "AvgCellT")' | head -5
+
+<span class="cm"># debug/config — verify wide_base, live_connect, hot_base</span>
+curl http://localhost:8772/debug/config</code></pre>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><code>/health</code> returns <code>live_connected: true</code> and <code>live_series &gt; 0</code></div>
+</div>
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><code>/sites</code> returns the two active unit IDs</div>
+</div>
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><code>/live</code> returns rows with recent timestamps</div>
+</div>
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text">Flux query returns CSV with data (not empty)</div>
+</div>
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><code>/debug/config</code> shows correct <code>hot_base</code>, <code>live_connect</code></div>
+</div>
+</div>
+
+<!-- ── SITE.YAML DOCS ── -->
+<div class="section" id="siteyaml">
+<h2>site.yaml — Documentation Needed <span class="tag tag-pend">TODO</span></h2>
+
+<p>The site.yaml <code>query:</code> section has grown significantly. DevOps need to know
+what to set for a new deployment. The editor validates it but the keys are not documented
+end-to-end anywhere except code comments.</p>
+
+<h3>Keys that need prose docs</h3>
+
+<table>
+  <thead><tr>
+    <th>Key</th><th>Section</th><th>What to document</th><th>Status</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="code">query.hot_base</td>
+      <td>query:</td>
+      <td>Path to hot-tier rg3 parquet files; used by all Flux queries</td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">query.wide_base</td>
+      <td>query:</td>
+      <td>Path to compact wide files (convert_wide_v2 output); optional, enables cold-range routing</td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">query.influx_compat</td>
+      <td>query:</td>
+      <td>true → emit _measurement/_field/_value columns so Grafana InfluxDB dashboards work</td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">query.tag_map</td>
+      <td>query:</td>
+      <td>Rename columns for Grafana: e.g. unit_id → unit_controller_id to match InfluxDB tags</td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">query.file_glob</td>
+      <td>query:</td>
+      <td>Glob pattern for parquet files within date dirs; default <code>*.parquet</code></td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">query.live_connect</td>
+      <td>query:</td>
+      <td>Arrow IPC address of writer live stream; e.g. <code>tcp://localhost:8774</code></td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">query.hot_days</td>
+      <td>query:</td>
+      <td>Number of days to keep in hot tier before routing to cold/wide; default 7</td>
+      <td class="pend">Missing</td>
+    </tr>
+    <tr>
+      <td class="code">capture.host_path</td>
+      <td>capture:</td>
+      <td>Node path for PVC; must match <code>storageClassName: local-path</code></td>
+      <td class="done">In CLAUDE.md</td>
+    </tr>
+    <tr>
+      <td class="code">eks.storage_class</td>
+      <td>eks:</td>
+      <td>Must be <code>local-path</code> on k3s — <code>gp2</code> leaves PVC Pending</td>
+      <td class="done">In CLAUDE.md</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>Suggested location:</strong> add a <code>docs/site-yaml-reference.md</code> page
+  to the mkdocs site on .23. The editor's JSON schema already serves as machine-readable docs;
+  the markdown page should cover the "why" — when to set each key and what goes wrong if you don't.
+</div>
+</div>
+
+<!-- ── DEVOPS DEPLOY ── -->
+<div class="section" id="devops">
+<h2>DevOps Deployment Readiness <span class="tag tag-devops">NEXT</span></h2>
+
+<p>Goal: hand a DevOps engineer a complete package to deploy the parquet writer + query stack
+at a new customer site. The k3s setup on .46 is the reference implementation.</p>
+
+<h3>What DevOps needs</h3>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>Docker images</strong> — <code>parquet-writer:latest</code> and
+  <code>parquet-query:latest</code> built locally; Dockerfiles in <code>src/</code>.
+  Need to push to a registry (ECR or Docker Hub) for non-local deployments.
+  <span class="tag tag-pend">Registry push needed</span></div>
+</div>
+
+<div class="check">
+  <div class="icon done-icon">✓</div>
+  <div class="text"><strong>k8s manifests</strong> generated by <code>make configmap</code> from
+  <code>src/site.yaml</code>. Layout is in <code>src/manifests/</code>.</div>
+</div>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><strong>site.yaml reference</strong> — DevOps need to know which keys to set for
+  their site. Currently undocumented outside code. <span class="tag tag-pend">Docs needed</span></div>
+</div>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><strong>Pod smoke test</strong> — confirm writer + query pods healthy on .46
+  before presenting to DevOps. Don't hand over a stack you haven't tested.
+  <span class="tag tag-pend">Test first</span></div>
+</div>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><strong>Grafana datasource config</strong> — how to point Grafana at
+  flux_duck on port 8772 (InfluxDB v2 datasource, org=ems, bucket=ems, no auth token needed).
+  <span class="tag tag-pend">One-pager needed</span></div>
+</div>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><strong>MQTT credentials / topic format</strong> — site-specific.
+  Document the <code>mqtt:</code> section of site.yaml with real examples.
+  <span class="tag tag-pend">Example needed</span></div>
+</div>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><strong>Storage sizing guide</strong> — PVC size = N units × ~100 MB/day × retention days.
+  At 12 units × 100 MB × 90 days = ~108 GB. Need a table.
+  <span class="tag tag-pend">Write up</span></div>
+</div>
+
+<div class="check">
+  <div class="icon pend-icon">○</div>
+  <div class="text"><strong>Rollback procedure</strong> — if writer pod crashes on new site,
+  how to recover without data loss (WAL / in-flight parquet files).
+  <span class="tag tag-pend">Write up</span></div>
+</div>
+
+<h3>Suggested deploy sequence for DevOps hand-off</h3>
+<pre><code><span class="cm"># 1. Edit site.yaml for target site</span>
+vi src/site.yaml   <span class="cm"># set mqtt.host, site.id, capture.host_path, eks.storage_class</span>
+
+<span class="cm"># 2. Regenerate manifests</span>
+cd src && make configmap
+
+<span class="cm"># 3. Build images (or pull from registry)</span>
+make image        <span class="cm"># parquet-writer:latest</span>
+make query-image  <span class="cm"># parquet-query:latest</span>
+
+<span class="cm"># 4. Import to k3s and deploy</span>
+make demo         <span class="cm"># writer: import + apply + rollout</span>
+make query-demo   <span class="cm"># query: import + apply + rollout</span>
+
+<span class="cm"># 5. Smoke test</span>
+curl http://&lt;node&gt;:8771/health   <span class="cm"># writer healthy + mqtt_connected</span>
+curl http://&lt;node&gt;:8772/health   <span class="cm"># query healthy + live_connected + live_series > 0</span>
+curl http://&lt;node&gt;:8772/sites    <span class="cm"># returns unit IDs seen in parquet files</span>
+
+<span class="cm"># 6. Grafana — add InfluxDB v2 datasource</span>
+<span class="cm">#   URL: http://&lt;node&gt;:8772</span>
+<span class="cm">#   Org: ems  ·  Bucket: ems  ·  Token: (any non-empty string)</span></code></pre>
+
+<div class="callout purple">
+  <strong>Before the DevOps conversation:</strong> complete pod testing (above), write the
+  site.yaml reference page, and have a Grafana screenshot showing a working dashboard against
+  flux_duck. That's the demo. The proposal HTML covers storage/query trade-offs if they ask.
+</div>
+</div>
+
+<!-- ── LINKS ── -->
+<div class="section" id="links">
+<h2>Quick Links</h2>
+<div class="link-row">
+  <a class="link-btn" href="/site_yaml_editor.html">site.yaml Editor</a>
+  <a class="link-btn" href="/parquet_query_index_proposal.html">Query Index Proposal</a>
+  <a class="link-btn" href="/parquet_writer_v2_changes_test.html">Writer V2 Changes</a>
+</div>
+
+<table>
+  <thead><tr><th>Endpoint</th><th>URL</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Writer health</td><td class="code">http://localhost:8771/health</td><td class="muted">parquet-writer-long pod</td></tr>
+    <tr><td>Query health</td><td class="code">http://localhost:8772/health</td><td class="muted">parquet-query pod / flux_duck</td></tr>
+    <tr><td>Live snapshot</td><td class="code">http://localhost:8772/live</td><td class="muted">all-points, &lt; 1 ms</td></tr>
+    <tr><td>Sites</td><td class="code">http://localhost:8772/sites</td><td class="muted">unit IDs in parquet store</td></tr>
+    <tr><td>Debug config</td><td class="code">http://localhost:8772/debug/config</td><td class="muted">verify hot_base, wide_base, live_connect</td></tr>
+    <tr><td>Flux query debug</td><td class="code">POST http://localhost:8772/debug/sql</td><td class="muted">Flux → DuckDB SQL, no execution</td></tr>
+  </tbody>
+</table>
+</div>
+
+<hr class="sep">
+<p style="font-size:0.77em; color:#484f58;">
+  Generated 2026-05-02 · feat/writer-v2-pipeline · phil-dev (.46) · next: pod test → site.yaml docs → DevOps deploy
+</p>
+
+</body>
+</html>

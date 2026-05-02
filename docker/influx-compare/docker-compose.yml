@@ -1,0 +1,63 @@
+version: "3.9"
+
+# Influx/Telegraf comparison stack for the .34 replay rig.
+#
+# Taps the existing FlashMQ broker (192.168.86.34:11885) — no broker needed here.
+# Run alongside the normal parquet_writer replay to measure:
+#   influxd RSS/CPU  vs  parquet_writer RSS/CPU
+#   influxd disk growth vs parquet rg3 disk growth
+#
+# Usage:
+#   cd docker/influx-compare
+#   docker-compose up -d
+#   # wait ~30 min for steady state, then:
+#   bash measure.sh
+#
+# Ports exposed on host:
+#   8096  — InfluxDB UI / API
+#   9273  — Telegraf Prometheus metrics
+
+networks:
+  influx-compare:
+    name: influx_compare_net
+    driver: bridge
+
+services:
+
+  influxdb-compare:
+    image: influxdb:2.7
+    container_name: influxdb-compare
+    networks: [influx-compare]
+    ports:
+      - "8096:8086"
+    volumes:
+      - /pool4/fractal/data/influx-compare/influxdb-data:/var/lib/influxdb2
+      - /pool4/fractal/data/influx-compare/influxdb-config:/etc/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE:       setup
+      DOCKER_INFLUXDB_INIT_USERNAME:   admin
+      DOCKER_INFLUXDB_INIT_PASSWORD:   adminpassword123
+      DOCKER_INFLUXDB_INIT_ORG:        ems-org
+      DOCKER_INFLUXDB_INIT_BUCKET:     ems-data
+      DOCKER_INFLUXDB_INIT_RETENTION:  168h
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ems-token-secret
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  telegraf-compare:
+    image: telegraf:1.30
+    container_name: telegraf-compare
+    networks: [influx-compare]
+    ports:
+      - "9273:9273"
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      influxdb-compare:
+        condition: service_healthy
+    restart: unless-stopped

@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>May Day Planning — data_storage roadmap (rev 4)</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --accent:  #58a6ff;
+      --green:   #3fb950;
+      --yellow:  #d29922;
+      --red:     #f85149;
+      --purple:  #bc8cff;
+      --text:    #c9d1d9;
+      --muted:   #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 1.8rem; color: var(--accent); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 0.9rem; }
+    h2 {
+      font-size: 1.15rem; color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.4rem; margin: 2rem 0 1rem;
+    }
+    h3 { font-size: 1rem; color: var(--yellow); margin: 1.2rem 0 0.5rem; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; }
+    .item-number { font-size: 1.6rem; font-weight: 700; color: var(--purple); min-width: 2rem; }
+    .item-title  { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+    .tag {
+      display: inline-block; font-size: 0.72rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 12px; margin-left: 0.5rem; vertical-align: middle;
+    }
+    .tag-writer  { background: #1f3a5f; color: var(--accent); }
+    .tag-flux    { background: #1f3b2a; color: var(--green); }
+    .tag-pod     { background: #3b2f1f; color: var(--yellow); }
+    .tag-arch    { background: #2d1f3b; color: var(--purple); }
+    .tag-future  { background: #2a1f3b; color: #d2a0ff; }
+    .tag-shipped { background: #0d2b1a; color: #56d364; border: 1px solid #56d364; }
+    .tag-design  { background: #2b1f0d; color: #e3b341; border: 1px solid #e3b341; }
+    p  { margin-bottom: 0.6rem; }
+    ul { padding-left: 1.4rem; margin-bottom: 0.6rem; }
+    li { margin-bottom: 0.3rem; }
+    code {
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.82rem; background: #1c2330;
+      padding: 1px 5px; border-radius: 4px; color: #e6edf3;
+    }
+    pre {
+      background: #1c2330; border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.9rem 1rem; overflow-x: auto;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.82rem; margin: 0.6rem 0; white-space: pre;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 0.8rem 0; }
+    th {
+      background: #1c2330; color: var(--muted); text-align: left;
+      padding: 6px 10px; border: 1px solid var(--border);
+      font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    td { padding: 6px 10px; border: 1px solid var(--border); vertical-align: top; }
+    tr:nth-child(even) td { background: #0f1318; }
+    .note {
+      background: #1a1f0e; border-left: 3px solid var(--green);
+      padding: 0.5rem 0.9rem; border-radius: 0 4px 4px 0;
+      font-size: 0.85rem; margin: 0.6rem 0;
+    }
+    .warn {
+      background: #1f1a0e; border-left: 3px solid var(--yellow);
+      padding: 0.5rem 0.9rem; border-radius: 0 4px 4px 0;
+      font-size: 0.85rem; margin: 0.6rem 0;
+    }
+    .future {
+      background: #1a0e1f; border-left: 3px solid #bc8cff;
+      padding: 0.5rem 0.9rem; border-radius: 0 4px 4px 0;
+      font-size: 0.85rem; margin: 0.6rem 0;
+    }
+    .toc {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem;
+      display: inline-block; min-width: 360px;
+    }
+    .toc h2 { margin-top: 0; font-size: 0.9rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .toc ol { padding-left: 1.4rem; }
+    .toc li { margin-bottom: 0.25rem; }
+    .toc a { color: var(--accent); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .revision {
+      font-size: 0.75rem; color: var(--green);
+      background: #1a1f0e; padding: 2px 7px; border-radius: 10px;
+      margin-left: 0.5rem; vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<h1>May Day Planning</h1>
+<div class="subtitle">data_storage roadmap &nbsp;&middot;&nbsp; 2026-05-01 &nbsp;&middot;&nbsp; phil-dev (.46) &nbsp;&middot;&nbsp; rev 4 — 8/9 shipped</div>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#item1">Remove DuckDB from <code>parquet_writer</code></a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#item2">Arrow IPC push stream: writer → query pod</a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#item3">Live data path in <code>flux_duck</code></a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#item4">Merge legacy query API into <code>flux_duck</code> (query pod)</a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#item5"><code>flux_duck</code> as data-location source of truth</a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#shared-config">Shared <code>site.yaml</code> config</a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#yaml-editor"><code>site.yaml</code> editor</a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#tests">Test suites — <code>parquet_writer</code> &amp; <code>flux_duck</code></a> <span class="tag tag-shipped">shipped</span></li>
+    <li><a href="#wal">WAL substitute — future direction</a> <span class="tag tag-design">design</span></li>
+    <li><a href="#glossary">Glossary / FAQ cross-reference</a></li>
+  </ol>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 32px;">
+  <a href="/may_2_works.html"
+     style="padding:5px 12px;border-radius:5px;font-size:0.82em;background:#161b22;
+            border:1px solid #30363d;color:#8b949e;text-decoration:none;">May 2 Status →</a>
+  <a href="/parquet_query_index_proposal.html"
+     style="padding:5px 12px;border-radius:5px;font-size:0.82em;background:#161b22;
+            border:1px solid #30363d;color:#8b949e;text-decoration:none;">Query Proposal →</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ 1 -->
+<div class="card" id="item1">
+  <div class="card-header">
+    <span class="item-number">1</span>
+    <span class="item-title">Remove DuckDB from <code>parquet_writer</code>
+      <span class="tag tag-writer">parquet_writer</span>
+      <span class="tag tag-shipped">shipped</span>
+    </span>
+  </div>
+
+  <h3>Current state</h3>
+  <p>The live C++ writer pod (<code>parquet-writer-long</code> on .46) currently embeds a DuckDB
+  connection for two purposes:</p>
+  <ul>
+    <li>COV (Change-of-Value) suppression: a <code>last_written</code> in-process DuckDB table
+        tracks the last-emitted value per series so unchanged values are not flushed.</li>
+    <li>Ad-hoc diagnostic queries fired against the local rg3 files while the writer is running.</li>
+  </ul>
+  <p>This couples a heavy analytical database into a write-critical hot path. DuckDB initialisation
+  adds startup latency, holds memory, and complicates the Docker image.</p>
+
+  <h3>Target state</h3>
+  <ul>
+    <li>COV state moves to a lightweight in-memory C++ hash map
+        (<code>std::unordered_map&lt;SeriesKey, LastValue&gt;</code>) — no database, no schema, no file I/O.</li>
+    <li>The same hash map becomes the source for the Arrow IPC push stream (item 2):
+        once per second the writer serialises its current-value map and pushes it to connected subscribers.</li>
+    <li>Diagnostic query capability moves entirely to the query pod (see item 4).</li>
+    <li>The writer image shrinks; the writer binary no longer links DuckDB.</li>
+  </ul>
+
+  <h3>Affected files</h3>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>src/parquet_writer.cpp</code></td><td>Remove DuckDB include, connection setup, <code>last_written</code> table. Replace COV check with in-process hash map lookup. Add 1 Hz push timer that serialises map to Arrow IPC and sends to subscribers.</td></tr>
+    <tr><td><code>src/Dockerfile</code></td><td>Remove DuckDB dev library from build stage.</td></tr>
+    <tr><td><code>src/Makefile</code></td><td>Remove <code>-lduckdb</code> linker flag.</td></tr>
+  </table>
+
+  <div class="note">
+    The COV map lives only in RAM. A writer restart clears it — the first post-restart
+    value for every series is always emitted, which is correct since values may have drifted
+    during the outage.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ 2 -->
+<div class="card" id="item2">
+  <div class="card-header">
+    <span class="item-number">2</span>
+    <span class="item-title">Arrow IPC push stream: writer → query pod
+      <span class="tag tag-writer">parquet_writer</span>
+      <span class="tag tag-flux">flux_duck</span>
+      <span class="tag tag-shipped">shipped</span>
+      <span class="revision">revised</span>
+    </span>
+  </div>
+
+  <h3>Design principle: push, not poll</h3>
+  <p>The writer owns the data and knows when it is ready. There is no benefit to
+  <code>flux_duck</code> polling at some interval and hoping data has arrived.
+  Instead the writer <strong>pushes</strong> a snapshot to all connected subscribers
+  once per second — matching the 1 Hz delivery requirement — and subscribers receive
+  it the moment it is sent.</p>
+
+  <h3>Transport: Arrow IPC stream</h3>
+  <p>The writer already builds Arrow Tables for every flush. Serialising the current-value
+  snapshot as an <strong>Arrow IPC stream</strong> costs almost nothing:</p>
+  <ul>
+    <li>No JSON encoding/decoding — the writer converts its C++ hash map to an Arrow
+        RecordBatch in the same layout as the rg3 schema and writes the IPC frame directly
+        to the socket.</li>
+    <li><code>flux_duck</code> receives it via <code>pyarrow.ipc.open_stream</code> — zero
+        extra conversion, already a pandas DataFrame in one call.</li>
+    <li>Both sides already link Arrow (C++ writer: <code>arrow/api.h</code>; flux_duck:
+        <code>pyarrow</code>). No new dependency on either side.</li>
+  </ul>
+
+  <h3>Connection topology</h3>
+  <pre>parquet_writer (C++)          query pod (Python)
+┌───────────────────┐          ┌──────────────────────────┐
+│  COV hash map     │          │  flux_duck               │
+│      │            │          │  ┌────────────────────┐  │
+│      ▼  1 Hz      │  TCP or  │  │  live_receiver.py  │  │
+│  Arrow IPC frame  │─Unix─────▶  │  (background thread│  │
+│  ──────────────   │  socket  │  │   or asyncio task) │  │
+│  ts, unit_id,     │          │  │                    │  │
+│  device,          │          │  │  live_buffer:      │  │
+│  instance,        │          │  │  deque(maxlen=120) │  │
+│  point_name,      │          │  │  (120 s of frames) │  │
+│  value, value_str │          │  └────────────────────┘  │
+│  quality          │          └──────────────────────────┘
+└───────────────────┘</pre>
+
+  <h3>Overhead target: &lt; 1%</h3>
+  <p>Estimated cost per 1 Hz push for a typical site (~3,000 active series):</p>
+  <table>
+    <tr><th>Operation</th><th>Estimated cost</th></tr>
+    <tr><td>Serialise 3,000-row RecordBatch to Arrow IPC</td><td>~0.3 ms</td></tr>
+    <tr><td>Write frame to Unix socket (co-located pod, same node)</td><td>~0.05 ms</td></tr>
+    <tr><td>Flush interval</td><td>30,000 ms</td></tr>
+    <tr><td><strong>Overhead fraction</strong></td><td><strong>~0.35 ms / 1000 ms = 0.035%</strong></td></tr>
+  </table>
+  <p>Well within the &lt; 1% budget even over TCP between pods on the same node.</p>
+
+  <h3>Configuration (in <code>site.yaml</code>)</h3>
+  <pre>live_stream:
+  enabled:  true
+  address:  "unix:///tmp/pw_live.sock"   # or "tcp://0.0.0.0:8773"
+  interval_ms: 1000                      # push cadence</pre>
+
+  <div class="note">
+    Unix socket is preferred when writer and query pod are co-located on the same k3s node
+    (shared <code>hostPath</code> volume for the socket file). TCP is used when they run on
+    separate nodes.
+  </div>
+
+  <h3>Single frame type — sequence number drives buffer management</h3>
+  <p>There is one frame type. Every SNAPSHOT carries a <code>seq</code> field: a monotonically
+  increasing integer that the writer increments <em>once per parquet write</em>, immediately
+  after the file is renamed into place.</p>
+
+  <table>
+    <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+    <tr><td><code>seq</code></td><td>uint32</td><td>Flush cycle counter. Constant for all 1 Hz frames within one 30 s cycle. Increments when parquet lands.</td></tr>
+    <tr><td><code>ts, unit_id, device, instance, point_name, value, value_str, quality</code></td><td>same as rg3 schema</td><td>Latest value per active series (COV map snapshot).</td></tr>
+  </table>
+
+  <h3>flux_duck state machine</h3>
+  <p>Buffer management is a single rule: <strong>on <code>seq</code> change, discard the
+  previous cycle's frames</strong>. No separate flush notification needed.</p>
+
+  <pre>current_seq  = None
+live_frames  = []       # Arrow batches for the current (in-progress) flush cycle
+live_max_ts  = 0.0      # used as join boundary against parquet
+
+def on_snapshot(seq, batch):
+    if seq != current_seq:
+        # seq changed → parquet has landed for previous cycle; drop it
+        live_frames.clear()
+        current_seq = seq
+    live_frames.append(batch)
+    live_max_ts = max(live_max_ts, batch['ts'].max())</pre>
+
+  <div class="note">
+    <strong>Resilience:</strong> if any individual SNAPSHOT is dropped (non-blocking send,
+    transient socket stall), the <code>seq</code> on the <em>next</em> received frame still
+    triggers the trim. With a separate FLUSH frame a dropped notification would require
+    special-case handling. The sequence number approach is self-healing — no edge cases.
+  </div>
+
+  <h3>What the IPC stream is NOT</h3>
+  <p>Each SNAPSHOT carries the COV map: one row per series, most recent value. If a series
+  changes 5 times in one second, only the last value appears — intermediate values are dropped.
+  This is correct for live display. It is <strong>not</strong> a WAL. See the WAL section
+  for how a delta stream could be added later without changing this frame layout.</p>
+
+  <h3>Back pressure</h3>
+  <p>The 1 Hz push runs on a dedicated timer thread. Socket writes are non-blocking: if the
+  send buffer is full (slow or disconnected consumer), the frame is silently dropped and the
+  writer continues. A slow query pod never impacts writer throughput.</p>
+
+  <div class="warn">
+    This is an option, not a must-have. When <code>live_stream.enabled: false</code> the
+    writer behaves exactly as today; <code>flux_duck</code> serves only parquet history.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ 3 -->
+<div class="card" id="item3">
+  <div class="card-header">
+    <span class="item-number">3</span>
+    <span class="item-title">Live data path in <code>flux_duck</code>
+      <span class="tag tag-flux">flux_duck</span>
+      <span class="tag tag-shipped">shipped</span>
+      <span class="revision">revised</span>
+    </span>
+  </div>
+
+  <h3>Goal</h3>
+  <p><code>flux_duck</code> currently serves only historical data from parquet files (hot rg3 tier
+  and cold S3 compact-wide tier). The live receiver (item 2) fills a short in-memory buffer of
+  recent Arrow IPC frames. When a Flux query range includes "now", <code>flux_duck</code> appends
+  rows from the live buffer to the parquet result before returning annotated CSV.</p>
+
+  <h3>Architecture</h3>
+  <pre>Grafana  ──── POST /api/v2/query ───▶  flux_duck  (port 8086)
+                                              │
+              ┌───────────────────────────────┼───────────────────────────┐
+              │                               │                           │
+         hot tier                        cold tier                   live buffer
+     read_parquet(rg3)            read_parquet(S3 compact)        deque of Arrow frames
+     DuckDB  (≤ hot_days)         DuckDB  (&gt; hot_days)           received from writer
+              │                               │                      via IPC socket
+              └───────────────────────────────┼───────────────────────────┘
+                                              │
+                                   pandas concat + time-sort
+                                              │
+                                   annotated CSV response</pre>
+
+  <h3>Live buffer design</h3>
+  <ul>
+    <li>A background asyncio task (or thread) in <code>executor.py</code> receives Arrow IPC
+        frames from the writer socket and appends them to a
+        <code>collections.deque(maxlen=120)</code> — 120 seconds of 1 Hz frames.</li>
+    <li>Each frame is a pandas DataFrame in the same schema as the hot-tier parquet
+        (<code>ts, unit_id, device, instance, point_name, value, value_str, quality</code>).</li>
+    <li>When a query range extends to now, the executor concatenates the relevant frames
+        (filtered by time range and any field/unit_id filters from the Flux query) with the
+        parquet result and re-sorts by <code>ts</code>.</li>
+    <li>The live buffer is entirely optional. If the socket is not connected or the writer
+        does not have <code>live_stream.enabled: true</code>, the deque stays empty and queries
+        return parquet-only results.</li>
+  </ul>
+
+  <h3>New config fields (in <code>site.yaml</code> or env var override)</h3>
+  <table>
+    <tr><th>Key / Env var</th><th>Default</th><th>Effect</th></tr>
+    <tr><td><code>live_stream.address</code> / <code>FLUX_LIVE_ADDR</code></td><td><em>unset</em></td><td>IPC socket address to connect to. When unset the live tier is disabled.</td></tr>
+    <tr><td><code>live_stream.buffer_seconds</code> / <code>FLUX_LIVE_BUFFER</code></td><td><code>120</code></td><td>How many seconds of live frames to retain in the deque.</td></tr>
+  </table>
+
+  <h3>Join boundary — automatic via sequence number</h3>
+  <p>When a Flux query range extends to now, the executor splits cleanly between parquet
+  history and the live buffer using <code>live_max_ts</code> — the highest <code>ts</code>
+  seen across all frames for the <em>current</em> sequence:</p>
+  <ul>
+    <li>Parquet query: <code>WHERE ts &le; live_max_ts</code> of the <em>previous</em>
+        completed cycle (i.e. any cycle with <code>seq &lt; current_seq</code>).</li>
+    <li>Live buffer rows appended to the result: <code>ts &gt;</code> that boundary.</li>
+    <li>The two sets are disjoint by construction — no deduplication needed.</li>
+    <li>On seq change the previous cycle's <code>live_max_ts</code> becomes the new
+        parquet boundary, the live buffer clears, and the new cycle starts accumulating.</li>
+  </ul>
+
+  <h3>Affected files</h3>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>python/flux_duck/config.py</code></td><td>Add <code>live_addr</code>, <code>live_buffer_seconds</code>.</td></tr>
+    <tr><td><code>python/flux_duck/executor.py</code></td><td>Add <code>LiveReceiver</code> background task; maintain <code>current_seq</code>, <code>live_frames</code>, <code>live_max_ts</code>; merge live frames when range includes now.</td></tr>
+    <tr><td><code>manifests/query-deployment.yaml</code></td><td>Add <code>FLUX_LIVE_ADDR</code> env var; mount shared socket hostPath if Unix socket mode.</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ 4 -->
+<div class="card" id="item4">
+  <div class="card-header">
+    <span class="item-number">4</span>
+    <span class="item-title">Merge legacy query API into <code>flux_duck</code> (query pod)
+      <span class="tag tag-pod">query pod</span>
+      <span class="tag tag-flux">flux_duck</span>
+      <span class="tag tag-shipped">shipped</span>
+    </span>
+  </div>
+
+  <h3>Current state</h3>
+  <p>The <strong>query pod</strong> (<code>parquet-query</code> on .46) runs two independent servers:</p>
+  <table>
+    <tr><th>Port</th><th>Server</th><th>Protocol</th><th>Clients</th></tr>
+    <tr><td><strong>8772</strong></td><td><code>query_server.py</code> (legacy)</td><td>JSON over HTTP</td><td>Ad-hoc DuckDB SQL; <code>run_query.py</code> CLI; diagnostic scripts</td></tr>
+    <tr><td><strong>8086</strong></td><td><code>flux_duck</code> (FastAPI)</td><td>InfluxDB v2 annotated CSV</td><td>Grafana; any InfluxDB 2 client</td></tr>
+  </table>
+  <p>The two servers share no state and maintain separate DuckDB connections.</p>
+
+  <h3>Target state</h3>
+  <p>Merge the legacy JSON SQL API into <code>flux_duck</code> (FastAPI on port 8086) as additional
+  routes. Port 8772 is retired. A single <code>uvicorn</code> process serves both protocols.</p>
+
+  <table>
+    <tr><th>Route</th><th>Status</th><th>Description</th></tr>
+    <tr><td><code>POST /api/v2/query</code></td><td>existing</td><td>Flux → annotated CSV (Grafana path)</td></tr>
+    <tr><td><code>POST /debug/sql</code></td><td>existing</td><td>Flux → generated SQL only (no execution)</td></tr>
+    <tr><td><code>GET  /debug/config</code></td><td>existing</td><td>Active runtime configuration</td></tr>
+    <tr><td><code>GET  /health</code></td><td>existing</td><td>Health + timestamp</td></tr>
+    <tr><td><code>POST /query/sql</code></td><td><strong>new</strong></td><td>Raw DuckDB SQL → JSON (replaces port 8772 legacy API)</td></tr>
+    <tr><td><code>GET  /query/sites</code></td><td><strong>new</strong></td><td>List discovered sites (equivalent to <code>run_query.py sites</code>)</td></tr>
+    <tr><td><code>GET  /query/fields?unit_id=X</code></td><td><strong>new</strong></td><td>List fields for a unit</td></tr>
+  </table>
+
+  <h3>Migration path for CLI clients</h3>
+  <p><code>python/run_query.py</code> currently targets port 8772. It gets a
+  <code>--url</code> flag defaulting to <code>http://localhost:8086</code> and uses
+  <code>/query/sql</code> instead of the legacy endpoint.</p>
+
+  <h3>Affected files</h3>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>python/flux_duck/server.py</code></td><td>Add <code>/query/sql</code>, <code>/query/sites</code>, <code>/query/fields</code> routes using the existing DuckDB connection.</td></tr>
+    <tr><td><code>src/query_entrypoint.sh</code></td><td>Remove <code>query_server.py</code> launch; start only <code>uvicorn flux_duck.server:app</code>.</td></tr>
+    <tr><td><code>manifests/query-deployment.yaml</code></td><td>Remove <code>containerPort/hostPort: 8772</code>.</td></tr>
+    <tr><td><code>python/run_query.py</code></td><td>Add <code>--url</code> flag; target <code>/query/sql</code>.</td></tr>
+    <tr><td><code>src/Dockerfile.query</code></td><td>No longer needs to <code>EXPOSE 8772</code>.</td></tr>
+  </table>
+
+  <div class="note">
+    Port 8772 can remain exposed during a transition window with a compatibility shim
+    that proxies to <code>/query/sql</code>. Remove once all consumers are updated.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ 5 -->
+<div class="card" id="item5">
+  <div class="card-header">
+    <span class="item-number">5</span>
+    <span class="item-title"><code>flux_duck</code> as data-location source of truth
+      <span class="tag tag-arch">architecture</span>
+      <span class="tag tag-shipped">shipped</span>
+    </span>
+  </div>
+
+  <h3>Goal</h3>
+  <p>Storage tier boundaries are currently scattered across env vars in the writer pod, the
+  compactor script, and <code>flux_duck</code> config. With shared <code>site.yaml</code>
+  (see below), <code>flux_duck</code> reads the canonical config and exposes it as a
+  <code>GET /locations</code> endpoint. The compactor becomes a thin client that asks
+  flux_duck where to read hot files and where to write cold files.</p>
+
+  <h3>Proposed <code>GET /locations</code> response</h3>
+  <pre>{
+  "hot": {
+    "base":      "/pool4/rg3",
+    "site_dirs": true,
+    "days":      14,
+    "format":    "rg3-long"
+  },
+  "cold": {
+    "s3_bucket": "fractal-ems",
+    "s3_prefix": "compact",
+    "format":    "compact-wide"
+  },
+  "boundary_days": 14
+}</pre>
+
+  <h3>Compactor integration</h3>
+  <ul>
+    <li>The compactor (<code>convert_wide_v2_2_args.py</code>) calls <code>GET /locations</code> at startup.</li>
+    <li>It reads from <code>hot.base</code>, writes to <code>cold.s3_bucket / cold.s3_prefix</code>.</li>
+    <li>The boundary date is derived from <code>boundary_days</code>.</li>
+    <li>No CLI arg duplication — one config source (the shared <code>site.yaml</code>) drives
+        writer, query, and compaction.</li>
+  </ul>
+
+  <h3>Affected files</h3>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>python/flux_duck/server.py</code></td><td>Add <code>GET /locations</code> route that serialises <code>Config</code> storage fields to JSON.</td></tr>
+    <tr><td><code>python/writer_v2/convert_wide_v2_2_args.py</code></td><td>Add optional <code>--flux-duck-url</code> flag; when set, fetch <code>/locations</code> and override local path args.</td></tr>
+  </table>
+
+  <div class="note">
+    <code>/locations</code> is read-only and exposes only path strings and integers —
+    no AWS credentials, no secrets.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ SHARED CONFIG -->
+<div class="card" id="shared-config">
+  <div class="card-header">
+    <span class="item-number" style="font-size:1.2rem">&#9632;</span>
+    <span class="item-title">Shared <code>site.yaml</code> config
+      <span class="tag tag-arch">architecture</span>
+      <span class="tag tag-shipped">shipped</span>
+    </span>
+  </div>
+
+  <h3>Motivation</h3>
+  <p>The writer and <code>flux_duck</code> are tightly coupled: they share the same data
+  stream (IPC), the same hot-tier path, the same site ID, and (in the live path) the same
+  flush timing. Having two separate config mechanisms (writer reads <code>site.yaml</code>;
+  flux_duck reads env vars) means the same values must be set twice, and they can drift.</p>
+
+  <h3>Proposal</h3>
+  <p>Extend <code>site.yaml</code> with a <code>flux_duck:</code> section and have both
+  components read the same file. The query pod mounts the same ConfigMap that the writer pod
+  already mounts.</p>
+
+  <pre>## site.yaml additions
+
+capture:
+  host_path: /media/phil/.../site-capture   # writer output (existing)
+
+live_stream:
+  enabled:      true
+  address:      "unix:///tmp/pw_live.sock"
+  interval_ms:  1000
+
+flux_duck:
+  hot_base:     /pool4/rg3                  # same as capture.host_path parent
+  site_dirs:    true
+  hot_days:     14
+  quality:      true
+  cold:
+    s3_bucket:  fractal-ems
+    s3_prefix:  compact
+  live_buffer_seconds: 120</pre>
+
+  <h3>Config loading priority</h3>
+  <p>When a <code>site.yaml</code> path is given, it wins. Env vars remain valid as overrides
+  for standalone / ad-hoc use without a yaml (e.g. running <code>flux_duck</code> directly
+  against <code>.34</code> data). Priority: <strong>env vars &gt; site.yaml &gt; built-in defaults</strong>.</p>
+
+  <h3>Affected files</h3>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>python/flux_duck/config.py</code></td><td>Add <code>from_yaml(path)</code> classmethod that reads the <code>flux_duck:</code> section of <code>site.yaml</code>.</td></tr>
+    <tr><td><code>python/flux_duck/server.py</code></td><td>Accept <code>--config</code> CLI flag (path to <code>site.yaml</code>).</td></tr>
+    <tr><td><code>manifests/query-deployment.yaml</code></td><td>Mount the same site.yaml ConfigMap already used by the writer pod; pass path as <code>FLUX_CONFIG_PATH</code> env var.</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ YAML EDITOR -->
+<div class="card" id="yaml-editor">
+  <div class="card-header">
+    <span class="item-number" style="font-size:1.2rem">&#9632;</span>
+    <span class="item-title"><code>site.yaml</code> editor
+      <span class="tag tag-arch">tooling</span>
+      <span class="tag tag-shipped">shipped</span>
+    </span>
+  </div>
+
+  <h3>Motivation</h3>
+  <p>The shared <code>site.yaml</code> is growing: <code>mqtt</code>, <code>capture</code>,
+  <code>rg3file</code>, <code>eks</code>, <code>live_stream</code>, <code>flux_duck</code>
+  sections, each with typed fields, enums, and constraints. A plain text editor offers no
+  guard against typos, wrong types, or unknown keys. Before handing site config to anyone
+  other than a dev, a schema-aware editor is needed.</p>
+
+  <h3>What it does</h3>
+  <ul>
+    <li><strong>Inline error squiggles</strong> — red for errors (unknown fields, wrong type),
+        yellow for warnings (value out of expected range).</li>
+    <li><strong>Hover documentation</strong> — each field shows its description and allowed
+        values on hover.</li>
+    <li><strong>Autocomplete</strong> — known field names suggested as you type.</li>
+    <li><strong>Problem panel</strong> — click the error count in the toolbar to expand a
+        list of all issues with line numbers; click a row to jump to the line.</li>
+    <li><strong>Schema source</strong> — JSON Schema defined inline; covers all known
+        <code>site.yaml</code> sections including the new <code>live_stream</code> and
+        <code>flux_duck</code> blocks.</li>
+    <li><strong>Download</strong> — saves the current editor content as <code>site.yaml</code>.</li>
+  </ul>
+
+  <h3>Technology</h3>
+  <ul>
+    <li>Monaco Editor (VS Code's engine) via CDN — no build step, no npm.</li>
+    <li>js-yaml for YAML parsing (syntax error detection with line/column).</li>
+    <li>Ajv (JSON Schema validator) for schema validation against the JSON Schema.</li>
+    <li>Served as a standalone HTML file — <code>site_yaml_editor.html</code> on the .46
+        web server (<a href="/site_yaml_editor.html" style="color:var(--accent)" target="_blank">open editor</a>).</li>
+  </ul>
+
+  <h3>Current limitations</h3>
+  <ul>
+    <li>No server-side file read/write — paste YAML in or use Load default; download to save.
+        Full read/write from the filesystem is the next step (small FastAPI endpoint).</li>
+    <li>YAML mode in Monaco requires the <code>monaco-yaml</code> plugin for native YAML
+        language service; the current version uses plaintext mode + external js-yaml + Ajv.
+        Hover docs and autocomplete are not yet wired into Monaco's language service —
+        that upgrade can be added when needed.</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ TESTS -->
+<div class="card" id="tests">
+  <div class="card-header">
+    <span class="item-number" style="font-size:1.2rem">&#9632;</span>
+    <span class="item-title">Test suites — <code>parquet_writer</code> &amp; <code>flux_duck</code>
+      <span class="tag tag-writer">parquet_writer</span>
+      <span class="tag tag-flux">flux_duck</span>
+      <span class="tag tag-shipped">shipped</span>
+    </span>
+  </div>
+
+  <h3>parquet_writer — C++ unit tests &amp; KPI benchmarks</h3>
+  <p>Coverage expanded from 41 to <strong>65 tests</strong> to cover all new functionality added during this session.
+  A separate KPI file measures throughput on the four hot paths.</p>
+
+  <table>
+    <tr><th>Target</th><th>File</th><th>Result</th></tr>
+    <tr><td><code>make test</code></td><td><code>src/tests/test_parquet_writer.cpp</code></td><td>65 / 65 passing</td></tr>
+    <tr><td><code>make kpi</code></td><td><code>src/tests/kpi_parquet_writer.cpp</code></td><td>4 / 4 thresholds met</td></tr>
+  </table>
+
+  <p>New sections added: <code>normalise_quality_field</code> (5 tests), SIGHUP <code>live_stream</code> reload (1),
+  <code>live_stream</code> YAML loading (3), <code>push_schema</code> (4), <code>serialize_push_snapshot</code> (7),
+  <code>SeriesKey</code> ordering (3).  KPI thresholds: <code>parse_payload</code> 1.8 M msgs/s,
+  <code>flush_partition</code> 1.8 M rows/s, <code>serialize_push_snapshot</code> 9.4 M series/s,
+  WAL round-trip 1.8 M rows/s — all ≥ 90× above threshold.</p>
+
+  <h3>flux_duck — Python unit tests &amp; KPI benchmarks</h3>
+  <p><strong>79 tests</strong> covering all five modules; KPI benchmarks for the three hot paths.</p>
+
+  <table>
+    <tr><th>Command</th><th>File</th><th>Result</th></tr>
+    <tr><td><code>pytest tests/test_flux_duck.py</code></td><td><code>python/tests/test_flux_duck.py</code></td><td>79 / 79 passing</td></tr>
+    <tr><td><code>python3 tests/kpi_flux_duck.py</code></td><td><code>python/tests/kpi_flux_duck.py</code></td><td>4 / 4 thresholds met</td></tr>
+  </table>
+
+  <table>
+    <tr><th>Module</th><th>Tests</th><th>What's covered</th></tr>
+    <tr><td><code>parser.py</code></td><td>18</td><td><code>parse()</code>, filter body, stage splitting, error cases</td></tr>
+    <tr><td><code>builder.py</code></td><td>21</td><td>Duration arithmetic, glob building, hot / cold / span routing</td></tr>
+    <tr><td><code>config.py</code></td><td>6</td><td>Env var defaults, <code>QUERY_PORT</code> priority, <code>live_enabled</code></td></tr>
+    <tr><td><code>executor.py</code></td><td>7</td><td><code>raw_query</code> with / without parquet files, <code>data_stats</code>, <code>QueryError</code></td></tr>
+    <tr><td><code>serialiser.py</code></td><td>11</td><td>Annotated CSV schema, groups, quality column, <code>_fmt_time</code></td></tr>
+    <tr><td><code>live_receiver.py</code></td><td>9</td><td><code>_parse_addr</code> TCP/Unix, <code>_ingest</code>, <code>get_snapshot</code></td></tr>
+  </table>
+
+  <p>KPI results: <code>parse()</code> 24 k queries/s (5× threshold), <code>build()</code> 78 k pipelines/s (15×),
+  <code>to_annotated_csv()</code> 21 k rows/s (2×), <code>_ingest()</code> 76 k batches/s (15×).</p>
+
+  <h3>Documentation</h3>
+  <p>Both test suites are documented on the .23 MkDocs site:</p>
+  <ul>
+    <li><a href="http://192.168.86.23/parquet_writer/internals/tests/" style="color:var(--accent)" target="_blank">Internals → Tests &amp; KPI</a> — parquet_writer, 65 tests</li>
+    <li><a href="http://192.168.86.23/parquet_writer/query-pod/tests/" style="color:var(--accent)" target="_blank">Querying → Tests &amp; KPI</a> — flux_duck, 79 tests</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ WAL -->
+<div class="card" id="wal">
+  <div class="card-header">
+    <span class="item-number" style="font-size:1.2rem">&#9632;</span>
+    <span class="item-title">WAL substitute — future direction
+      <span class="tag tag-future">future</span>
+      <span class="tag tag-design">design</span>
+    </span>
+  </div>
+
+  <p>The Arrow IPC push stream (item 2) is structurally similar to a WAL segment:</p>
+  <ul>
+    <li>Frames arrive in flush order, monotone in <code>ts</code>.</li>
+    <li>They carry the exact same schema as the rg3 parquet row groups.</li>
+    <li>The live buffer frames (keyed by <code>seq</code>) can be appended to a persistent
+        file (<code>.arrow</code> / <code>.ipc</code>), giving a durable recovery point.</li>
+  </ul>
+
+  <h3>Critical distinction: snapshot vs. delta</h3>
+  <p>The SNAPSHOT frame carries the <strong>COV map</strong> — one row per series, most
+  recent value. If a series changes 5 times in a second, only the last value is in the
+  snapshot; the intermediate values are gone. This is intentional and correct for live
+  display, but it means:</p>
+  <ul>
+    <li>The IPC stream <strong>cannot reconstruct a missing 30 s parquet flush</strong> — the
+        intermediate changes are not there.</li>
+    <li>A true WAL would require a separate <strong>delta stream</strong>: every received MQTT
+        row, in arrival order. This is a higher-bandwidth channel and a separate design.</li>
+  </ul>
+
+  <p>If WAL recovery ever becomes a requirement, the path is:</p>
+  <ol style="padding-left:1.4rem">
+    <li>Add a second frame type <code>DELTA</code>: every received row buffered at the writer
+        and flushed after each parquet write, covering the same rows that went into the file.</li>
+    <li>Persist DELTA frames on the query pod as an append file.</li>
+    <li>On recovery: detect the missing parquet file; replay the DELTA file to reconstruct it.</li>
+  </ol>
+
+  <div class="future">
+    Design thought only — no current implementation plan. The SNAPSHOT/FLUSH frame layout in
+    items 2 and 3 is chosen to leave this path open (DELTA is just a third frame type in the
+    same IPC channel).
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ GLOSSARY -->
+<div class="card" id="glossary">
+  <div class="card-header">
+    <span class="item-number" style="font-size:1.2rem; color:var(--muted)">#</span>
+    <span class="item-title">Glossary — names used in this doc (all in FAQ.md)</span>
+  </div>
+
+  <table>
+    <tr><th>Name</th><th>What it is</th><th>Where defined</th></tr>
+    <tr><td><code>parquet_writer</code> / <code>parquet-writer-long</code></td><td>C++ MQTT subscriber that writes rg3 flush files every 30 s. Runs as k3s pod on .46.</td><td><code>src/parquet_writer.cpp</code>; FAQ machine table</td></tr>
+    <tr><td><code>flux_duck</code></td><td>Python Flux→DuckDB translation service. Accepts InfluxDB v2 Flux queries, executes against parquet, returns annotated CSV. Port 8086.</td><td><code>python/flux_duck/</code>; docs/parquet_writer/queries/flux-duck.md</td></tr>
+    <tr><td>query pod / <code>parquet-query</code></td><td>k3s pod on .46 hosting <code>flux_duck</code> (port 8086) and legacy query server (port 8772, to be retired).</td><td>FAQ port map; <code>manifests/query-deployment.yaml</code></td></tr>
+    <tr><td>hot tier</td><td>rg3 long-format parquet files on EBS / local NVMe. Age ≤ <code>hot_days</code> (default 14).</td><td>FAQ; flux-duck.md data tiers</td></tr>
+    <tr><td>cold tier</td><td>Compact-wide parquet on S3. Age &gt; <code>hot_days</code>. Produced by the compactor.</td><td>FAQ; flux-duck.md data tiers</td></tr>
+    <tr><td>rg3 / 3-file RG</td><td>3-file row-group format per flush: <code>_units</code>, <code>_site</code>, <code>_comms</code>. One RG per unit_id in <code>_units</code>.</td><td>FAQ project terminology</td></tr>
+    <tr><td>compactor / <code>convert_wide_v2_2_args.py</code></td><td>24h compact job: reads hot rg3 long files, pivots to wide, uploads to S3 cold tier.</td><td>FAQ; <code>python/writer_v2/</code></td></tr>
+    <tr><td>COV</td><td>Change-of-Value suppression — only flush a row when the value differs from the last written value for that series.</td><td>FAQ project terminology</td></tr>
+    <tr><td>Arrow IPC</td><td>Apache Arrow inter-process communication format. Framed binary stream; zero-copy schema. Used for the 1 Hz push from writer to query pod.</td><td>Item 2 of this document</td></tr>
+    <tr><td>live buffer</td><td>In-memory <code>deque</code> of Arrow IPC frames in flux_duck. Holds the last N seconds of pushed data for appending to query results.</td><td>Item 3 of this document</td></tr>
+    <tr><td><code>live_stream</code></td><td>Config section in <code>site.yaml</code> that enables/configures the 1 Hz Arrow IPC push from writer to query pod.</td><td>Item 2 / shared config section</td></tr>
+    <tr><td><code>seq</code></td><td>Flush-cycle sequence number carried in every IPC SNAPSHOT frame. Constant across all 1 Hz frames within one 30 s cycle; incremented once per parquet write. flux_duck drops its live buffer when <code>seq</code> changes.</td><td>Item 2 of this document</td></tr>
+    <tr><td><code>GET /locations</code></td><td>flux_duck endpoint that returns canonical hot/cold storage paths. Used by the compactor to discover where to land its output.</td><td>Item 5 of this document</td></tr>
+    <tr><td>.46 / phil-dev</td><td>Primary dev machine: k3s, live EMS data, this repo. IP 192.168.86.46.</td><td>FAQ machine table</td></tr>
+    <tr><td>.34 / phil-256g</td><td>Heavy compute / replay test rig. 256 GB RAM. Two live writer paths (revised + original dtypes).</td><td>FAQ machine table; <code>.34 service port map</code></td></tr>
+    <tr><td>FlashMQ</td><td>MQTT broker. Port 1883 on .46. Ports 11883 / 11884 on .34 (replay brokers).</td><td>FAQ port map; CLAUDE.md</td></tr>
+    <tr><td>DNP3 quality byte</td><td>Optional INT32 column in rg3 files. <code>0x01</code>=ONLINE, <code>0x04</code>=COMM_LOST. Sourced from MQTT payload <code>"quality"</code> field.</td><td>docs/parquet_writer/internals/quality.md</td></tr>
+    <tr><td>annotated CSV</td><td>InfluxDB v2 wire format returned by flux_duck. Three header rows followed by column names and data rows.</td><td>docs/parquet_writer/queries/flux-duck.md</td></tr>
+  </table>
+</div>
+
+</body>
+</html>
